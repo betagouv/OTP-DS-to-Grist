@@ -1,0 +1,29 @@
+# Requirements pour l'application Flask DS to Grist
+# Installation: pip install -r requirements.txt
+
+# Framework web principal
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+
+# Gestion des variables d'environnement
+python-dotenv==1.0.0
+
+# Communication HTTP
+requests==2.31.0
+
+# WebSocket support
+python-socketio==5.8.0
+eventlet==0.33.3
+
+# Utilitaires pour les dates et JSON
+python-dateutil==2.8.2
+
+# Support pour les threads et parallélisme (déjà inclus dans Python standard)
+# concurrent.futures - module standard
+# threading - module standard
+# queue - module standard
+# subprocess - module standard
+
+# Dépendances existantes du projet (à garder)
+# Ces modules sont déjà présents dans votre projet
+# queries.py, queries_config.py, etc.

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}🦄 One Trick Pony DS to Grist{% endblock %}</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦄</text></svg>">
+    
+    <!-- DSFR CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/utility/utility.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome pour les icônes -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        /* Styles personnalisés complémentaires */
+        .progress-bar {
+            background-color: var(--blue-france-sun-113);
+        }
+        
+        .log-area {
+            background-color: #f6f6f6;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-success { background-color: #18753c; }
+        .status-error { background-color: #ce0500; }
+        .status-warning { background-color: #b34000; }
+        .status-info { background-color: var(--blue-france-sun-113); }
+        
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Customisation pour les notifications */
+        .notification {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            max-width: 400px;
+            z-index: 9999;
+        }
+
+        /* Fix pour éviter les espaces énormes */
+        .fr-container {
+            max-width: 1200px;
+        }
+
+        /* Fix pour l'espacement des cartes */
+        .fr-card {
+            margin-bottom: 2rem;
+        }
+
+        /* Fix pour la navigation active */
+        .fr-nav__link[aria-current="page"] {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <!-- En-tête avec logo Marianne -->
+    <header class="fr-header">
+        <div class="fr-header__body">
+            <div class="fr-container">
+                <div class="fr-header__body-row">
+                    <div class="fr-header__brand fr-enlarge-link">
+                        <div class="fr-header__brand-top">
+                            <div class="fr-header__logo">
+                                <p class="fr-logo">
+                                    République
+                                    <br>Française
+                                </p>
+                            </div>
+                            <div class="fr-header__navbar">
+                                <button class="fr-btn--menu fr-btn" data-fr-opened="false" aria-controls="modal-menu" aria-haspopup="menu" title="Menu">
+                                    Menu
+                                </button>
+                            </div>
+                        </div>
+                        <div class="fr-header__service">
+                            <a href="/" title="Accueil - One Trick Pony DS to Grist">
+                                <p class="fr-header__service-title">🦄 One Trick Pony DS to Grist</p>
+                            </a>
+                            <p class="fr-header__service-tagline">Synchronisation Démarches Simplifiées vers Grist</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Navigation -->
+        <div class="fr-header__menu fr-modal" id="modal-menu" aria-labelledby="modal-menu">
+            <div class="fr-container">
+                <button class="fr-btn--close fr-btn" aria-controls="modal-menu" title="Fermer">
+                    Fermer
+                </button>
+                <nav class="fr-nav" role="navigation" aria-label="Menu principal">
+                    <ul class="fr-nav__list">
+                        <li class="fr-nav__item">
+                            <a class="fr-nav__link" href="/">
+                                <i class="fas fa-cog fr-mr-1w"></i>Configuration
+                            </a>
+                        </li>
+                        <li class="fr-nav__item">
+                            <a class="fr-nav__link" href="/execution">
+                                <i class="fas fa-play fr-mr-1w"></i>Exécution
+                            </a>
+                        </li>
+                        <li class="fr-nav__item">
+                            <a class="fr-nav__link" href="/debug">
+                                <i class="fas fa-bug fr-mr-1w"></i>Débogage
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenu principal -->
+    <main class="fr-container fr-py-4w">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Pied de page -->
+    <footer class="fr-footer" role="contentinfo">
+        <div class="fr-container">
+            <div class="fr-footer__body">
+                <div class="fr-footer__brand fr-enlarge-link">
+                    <a href="/" title="Retour à l'accueil">
+                        <p class="fr-logo">
+                            République
+                            <br>Française
+                        </p>
+                    </a>
+                </div>
+                <div class="fr-footer__content">
+                    <p class="fr-footer__content-desc">
+                        Application de synchronisation pour Démarches Simplifiées et Grist
+                    </p>
+                </div>
+            </div>
+            <div class="fr-footer__bottom">
+                <ul class="fr-footer__bottom-list">
+                    <li class="fr-footer__bottom-item">
+                        <span class="fr-footer__bottom-link">Version Flask optimisée</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts DSFR -->
+    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.module.min.js" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.nomodule.min.js" nomodule></script>
+    
+    <!-- Socket.IO -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    
+    <script>
+        // Initialisation de Socket.IO
+        const socket = io();
+        
+        // Marquer la page active dans la navigation
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('.fr-nav__link');
+            
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath || 
+                    (currentPath === '/' && link.getAttribute('href') === '/')) {
+                    link.setAttribute('aria-current', 'page');
+                }
+            });
+        });
+        
+        // Utilitaires globaux
+        window.App = {
+            showNotification: function(message, type = 'info') {
+                const typeMap = {
+                    success: 'fr-notice--success',
+                    error: 'fr-notice--error',
+                    warning: 'fr-notice--warning',
+                    info: 'fr-notice--info'
+                };
+                
+                const notification = document.createElement('div');
+                notification.className = `fr-notice ${typeMap[type]} notification fade-in`;
+                notification.innerHTML = `
+                    <div class="fr-container">
+                        <div class="fr-notice__body">
+                            <p class="fr-notice__title">
+                                ${message}
+                            </p>
+                            <button class="fr-btn--close fr-btn" title="Masquer le message" onclick="this.closest('.fr-notice').remove()">
+                                Masquer le message
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(notification);
+                
+                // Auto-remove après 5 secondes
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 5000);
+            },
+            
+            formatBytes: function(bytes, decimals = 2) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const dm = decimals < 0 ? 0 : decimals;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+            },
+            
+            formatDuration: function(seconds) {
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                const secs = Math.floor(seconds % 60);
+                
+                if (hours > 0) {
+                    return `${hours}h ${minutes}m ${secs}s`;
+                } else if (minutes > 0) {
+                    return `${minutes}m ${secs}s`;
+                } else {
+                    return `${secs}s`;
+                }
+            }
+        };
+        
+        // Gestion des erreurs Socket.IO
+        socket.on('connect_error', function(error) {
+            console.error('Erreur de connexion Socket.IO:', error);
+            App.showNotification('Erreur de connexion en temps réel', 'error');
+        });
+        
+        socket.on('connect', function() {
+            console.log('Connecté au serveur via Socket.IO');
+        });
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

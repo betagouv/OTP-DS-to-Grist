@@ -1,0 +1,551 @@
+{% extends "base.html" %}
+
+{% block title %}Débogage - 🦄 One Trick Pony DS to Grist{% endblock %}
+
+{% block content %}
+<style>
+    /* Force l'ordre d'affichage des titres de cartes */
+    .fr-card__title {
+        order: -1 !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    .fr-card__content {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+</style>
+
+<!-- En-tête de page -->
+<div class="fr-mb-4w">
+    <h1 class="fr-h1">
+        <i class="fas fa-bug fr-mr-2w" style="color: #000091;" aria-hidden="true"></i>
+        <span style="color: #000091;">Outils de débogage</span>
+    </h1>
+    <p class="fr-text--lead">Informations système et diagnostics</p>
+</div>
+
+<!-- Informations système -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-info-circle fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Informations système</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-grid-row fr-grid-row--gutters">
+                    <div class="fr-col-12 fr-col-md-6">
+                        <h3 class="fr-h6">Répertoires</h3>
+                        <div class="fr-table fr-table--no-caption">
+                            <table>
+                                <tbody>
+                                    <tr>
+                                        <td class="fr-text--bold">Script</td>
+                                        <td><code class="fr-text--xs">{{ script_dir }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fr-text--bold">Travail</td>
+                                        <td><code class="fr-text--xs" id="current_dir">Chargement...</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="fr-col-12 fr-col-md-6">
+                        <h3 class="fr-h6">Application</h3>
+                        <div class="fr-table fr-table--no-caption">
+                            <table>
+                                <tbody>
+                                    <tr>
+                                        <td class="fr-text--bold">Version</td>
+                                        <td>Flask optimisée</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fr-text--bold">WebSocket</td>
+                                        <td>
+                                            <span class="fr-badge fr-badge--success fr-badge--sm">
+                                                <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Activé
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Vérification des dépendances -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-puzzle-piece fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Vérification des dépendances</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-grid-row fr-grid-row--gutters">
+                    {% for file, exists in file_status.items() %}
+                    <div class="fr-col-12 fr-col-md-6 fr-col-lg-4">
+                        <div class="fr-card fr-card--shadow fr-card--sm {{ 'fr-card--green-tilleul-verveine' if exists else 'fr-card--red-marianne' }}">
+                            <div class="fr-card__body">
+                                <div class="fr-card__content">
+                                    <div class="fr-grid-row fr-grid-row--middle">
+                                        <div class="fr-col">
+                                            <p class="fr-text--sm fr-mb-0">
+                                                <code>{{ file }}</code>
+                                            </p>
+                                        </div>
+                                        <div class="fr-col-auto">
+                                            {% if exists %}
+                                            <span class="fr-badge fr-badge--success fr-badge--sm">
+                                                <i class="fas fa-check" aria-hidden="true"></i>
+                                            </span>
+                                            {% else %}
+                                            <span class="fr-badge fr-badge--error fr-badge--sm">
+                                                <i class="fas fa-times" aria-hidden="true"></i>
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                {% set missing_files = file_status.items() | selectattr('1', 'equalto', False) | list %}
+                <div class="fr-mt-4w">
+                    {% if missing_files %}
+                    <div class="fr-alert fr-alert--error">
+                        <h3 class="fr-alert__title">Fichiers manquants détectés</h3>
+                        <p>{{ missing_files | length }} fichier(s) requis non trouvé(s). 
+                        Assurez-vous que tous les modules sont présents dans le répertoire de travail.</p>
+                    </div>
+                    {% else %}
+                    <div class="fr-alert fr-alert--success">
+                        <h3 class="fr-alert__title">Tous les fichiers requis sont présents</h3>
+                        <p>{{ file_status.items() | length }} fichiers vérifiés avec succès.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Variables d'environnement -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-cogs fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Variables d'environnement</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-grid-row fr-grid-row--gutters">
+                    <!-- Configuration principale -->
+                    <div class="fr-col-12 fr-col-lg-6">
+                        <h3 class="fr-h6">Configuration principale</h3>
+                        <div class="fr-table fr-table--no-caption">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Variable</th>
+                                        <th scope="col">Valeur</th>
+                                        <th scope="col">Statut</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for var, value in env_vars.items() %}
+                                    <tr>
+                                        <td><code class="fr-text--xs">{{ var }}</code></td>
+                                        <td><code class="fr-text--xs">{{ value }}</code></td>
+                                        <td>
+                                            {% if value == "Non défini" %}
+                                            <span class="fr-badge fr-badge--error fr-badge--sm">
+                                                <i class="fas fa-times" aria-hidden="true"></i>
+                                            </span>
+                                            {% else %}
+                                            <span class="fr-badge fr-badge--success fr-badge--sm">
+                                                <i class="fas fa-check" aria-hidden="true"></i>
+                                            </span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Variables de filtrage -->
+                    <div class="fr-col-12 fr-col-lg-6">
+                        <h3 class="fr-h6">Variables de filtrage</h3>
+                        <div class="fr-table fr-table--no-caption">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Variable</th>
+                                        <th scope="col">Valeur</th>
+                                        <th scope="col">Statut</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for var, value in filter_vars.items() %}
+                                    <tr>
+                                        <td><code class="fr-text--xs">{{ var }}</code></td>
+                                        <td><code class="fr-text--xs">{{ value }}</code></td>
+                                        <td>
+                                            {% if value == "Non défini" %}
+                                            <span class="fr-badge fr-badge--warning fr-badge--sm">
+                                                <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+                                            </span>
+                                            {% else %}
+                                            <span class="fr-badge fr-badge--info fr-badge--sm">
+                                                <i class="fas fa-info" aria-hidden="true"></i>
+                                            </span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Liste des fichiers -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-folder-open fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Contenu du répertoire</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-search-bar" role="search">
+                    <label class="fr-label" for="file_search">Rechercher un fichier</label>
+                    <input class="fr-input" placeholder="Tapez le nom du fichier..." type="search" id="file_search" name="file_search">
+                    <button class="fr-btn" title="Rechercher">Rechercher</button>
+                </div>
+                
+                <div class="fr-mt-4w" style="max-height: 400px; overflow-y: auto;">
+                    <div class="fr-grid-row fr-grid-row--gutters" id="files_grid">
+                        {% for file in all_files %}
+                        <div class="fr-col-12 fr-col-md-6 fr-col-lg-4 fr-col-xl-3 file-item">
+                            <div class="fr-card fr-card--grey fr-card--sm">
+                                <div class="fr-card__body">
+                                    <div class="fr-card__content">
+                                        <div class="fr-grid-row fr-grid-row--middle">
+                                            <div class="fr-col-auto fr-mr-2w">
+                                                {% if file.endswith('.py') %}
+                                                <i class="fab fa-python" style="color: #3776ab;" aria-hidden="true"></i>
+                                                {% elif file.endswith('.html') %}
+                                                <i class="fab fa-html5" style="color: #e34f26;" aria-hidden="true"></i>
+                                                {% elif file.endswith('.js') %}
+                                                <i class="fab fa-js-square" style="color: #f7df1e;" aria-hidden="true"></i>
+                                                {% elif file.endswith('.css') %}
+                                                <i class="fab fa-css3-alt" style="color: #1572b6;" aria-hidden="true"></i>
+                                                {% elif file.endswith('.json') %}
+                                                <i class="fas fa-code" style="color: #666;" aria-hidden="true"></i>
+                                                {% elif file.endswith('.env') %}
+                                                <i class="fas fa-cog" style="color: #28a745;" aria-hidden="true"></i>
+                                                {% elif file.endswith('.md') %}
+                                                <i class="fab fa-markdown" style="color: #000;" aria-hidden="true"></i>
+                                                {% else %}
+                                                <i class="fas fa-file" style="color: #6c757d;" aria-hidden="true"></i>
+                                                {% endif %}
+                                            </div>
+                                            <div class="fr-col">
+                                                <p class="fr-text--xs fr-mb-0">
+                                                    <code>{{ file }}</code>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <div class="fr-mt-2w">
+                    <p class="fr-text--sm">
+                        Total: <span id="files_count" class="fr-text--bold">{{ all_files | length }}</span> fichiers
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test de connectivité -->
+<div class="fr-card">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-network-wired fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Test de connectivité</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-grid-row fr-grid-row--gutters">
+                    <div class="fr-col-12 fr-col-md-6">
+                        <h3 class="fr-h6">WebSocket</h3>
+                        <div id="websocket_status" class="fr-mb-3w">
+                            <div class="fr-alert fr-alert--info">
+                                <p>Test de connexion WebSocket...</p>
+                            </div>
+                        </div>
+                        <button class="fr-btn fr-btn--secondary" onclick="testWebSocket()">
+                            <i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>
+                            Tester WebSocket
+                        </button>
+                    </div>
+                    
+                    <div class="fr-col-12 fr-col-md-6">
+                        <h3 class="fr-h6">APIs externes</h3>
+                        <button class="fr-btn" onclick="testExternalConnections()">
+                            <i class="fas fa-satellite-dish fr-mr-1w" aria-hidden="true"></i>
+                            Tester les connexions externes
+                        </button>
+                        <div id="external_tests_result" class="fr-mt-3w"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let wsTestTimeout;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // Afficher le répertoire de travail actuel
+        document.getElementById('current_dir').textContent = window.location.origin;
+        
+        // Initialiser la recherche de fichiers
+        initFileSearch();
+        
+        // Tester automatiquement WebSocket au chargement
+        setTimeout(testWebSocket, 1000);
+    });
+
+    function initFileSearch() {
+        const searchInput = document.getElementById('file_search');
+        const filesGrid = document.getElementById('files_grid');
+        const filesCount = document.getElementById('files_count');
+        const allFiles = Array.from(filesGrid.querySelectorAll('.file-item'));
+        
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            let visibleCount = 0;
+            
+            allFiles.forEach(fileItem => {
+                const fileName = fileItem.textContent.toLowerCase();
+                if (fileName.includes(searchTerm)) {
+                    fileItem.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    fileItem.style.display = 'none';
+                }
+            });
+            
+            filesCount.textContent = visibleCount;
+        });
+    }
+
+    function testWebSocket() {
+        const statusDiv = document.getElementById('websocket_status');
+        
+        // Réinitialiser l'état
+        statusDiv.innerHTML = `
+            <div class="fr-alert fr-alert--info">
+                <p>Test de connexion WebSocket en cours...</p>
+            </div>
+        `;
+        
+        // Tester la connexion WebSocket
+        let wsConnected = false;
+        
+        const testSocket = io();
+        
+        testSocket.on('connect', function() {
+            wsConnected = true;
+            clearTimeout(wsTestTimeout);
+            
+            statusDiv.innerHTML = `
+                <div class="fr-alert fr-alert--success">
+                    <h3 class="fr-alert__title">WebSocket connecté avec succès</h3>
+                    <p>ID de connexion: ${testSocket.id}</p>
+                </div>
+            `;
+            
+            App.showNotification('WebSocket connecté', 'success');
+            testSocket.disconnect();
+        });
+        
+        testSocket.on('connect_error', function(error) {
+            clearTimeout(wsTestTimeout);
+            
+            statusDiv.innerHTML = `
+                <div class="fr-alert fr-alert--error">
+                    <h3 class="fr-alert__title">Erreur de connexion WebSocket</h3>
+                    <p>Erreur: ${error.message || 'Connexion impossible'}</p>
+                </div>
+            `;
+            
+            App.showNotification('Erreur WebSocket', 'error');
+        });
+        
+        // Timeout après 5 secondes
+        wsTestTimeout = setTimeout(() => {
+            if (!wsConnected) {
+                statusDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--warning">
+                        <h3 class="fr-alert__title">Timeout de connexion WebSocket</h3>
+                        <p>La connexion a pris trop de temps</p>
+                    </div>
+                `;
+                
+                App.showNotification('Timeout WebSocket', 'warning');
+                testSocket.disconnect();
+            }
+        }, 5000);
+    }
+
+    async function testExternalConnections() {
+        const resultDiv = document.getElementById('external_tests_result');
+        
+        resultDiv.innerHTML = `
+            <div class="fr-alert fr-alert--info">
+                <p>Test des connexions externes en cours...</p>
+            </div>
+        `;
+        
+        try {
+            // Charger la configuration actuelle
+            const configResponse = await fetch('/api/config');
+            const config = await configResponse.json();
+            
+            const tests = [];
+            
+            // Test Démarches Simplifiées si configuré
+            if (config.ds_api_token && config.ds_api_token !== '***' && config.ds_api_url) {
+                tests.push({
+                    name: 'Démarches Simplifiées',
+                    test: fetch('/api/test-connection', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'demarches',
+                            api_token: config.ds_api_token,
+                            api_url: config.ds_api_url,
+                            demarche_number: config.demarche_number
+                        })
+                    }).then(r => r.json())
+                });
+            }
+            
+            // Test Grist si configuré
+            if (config.grist_api_key && config.grist_api_key !== '***' && config.grist_base_url && config.grist_doc_id) {
+                tests.push({
+                    name: 'Grist',
+                    test: fetch('/api/test-connection', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'grist',
+                            base_url: config.grist_base_url,
+                            api_key: config.grist_api_key,
+                            doc_id: config.grist_doc_id
+                        })
+                    }).then(r => r.json())
+                });
+            }
+            
+            if (tests.length === 0) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--warning">
+                        <h3 class="fr-alert__title">Aucune API configurée pour le test</h3>
+                        <p>Configurez d'abord vos connexions dans l'onglet Configuration</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Exécuter tous les tests en parallèle
+            const results = await Promise.allSettled(tests.map(t => t.test));
+            
+            let html = '<div class="fr-grid-row fr-grid-row--gutters">';
+            
+            results.forEach((result, index) => {
+                const testName = tests[index].name;
+                
+                if (result.status === 'fulfilled' && result.value) {
+                    const success = result.value.success;
+                    const message = result.value.message;
+                    
+                    html += `
+                        <div class="fr-col-12 fr-col-md-6">
+                            <div class="fr-alert ${success ? 'fr-alert--success' : 'fr-alert--error'}">
+                                <h4 class="fr-alert__title">${testName}</h4>
+                                <p>${message}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="fr-col-12 fr-col-md-6">
+                            <div class="fr-alert fr-alert--error">
+                                <h4 class="fr-alert__title">${testName}</h4>
+                                <p>Erreur de test de connexion</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            
+            html += '</div>';
+            resultDiv.innerHTML = html;
+            
+            // Notification globale
+            const successCount = results.filter(r => r.status === 'fulfilled' && r.value && r.value.success).length;
+            const totalCount = results.length;
+            
+            if (successCount === totalCount) {
+                App.showNotification(`Tous les tests de connexion réussis (${successCount}/${totalCount})`, 'success');
+            } else {
+                App.showNotification(`${successCount}/${totalCount} connexions réussies`, 'warning');
+            }
+            
+        } catch (error) {
+            console.error('Erreur lors des tests de connexion:', error);
+            resultDiv.innerHTML = `
+                <div class="fr-alert fr-alert--error">
+                    <h3 class="fr-alert__title">Erreur lors des tests</h3>
+                    <p>${error.message}</p>
+                </div>
+            `;
+            App.showNotification('Erreur lors des tests de connexion', 'error');
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,837 @@
+{% extends "base.html" %}
+
+{% block title %}Exécution - 🦄 One Trick Pony DS to Grist{% endblock %}
+
+{% block content %}
+<style>
+    /* Force l'ordre d'affichage des titres de cartes */
+    .fr-card__title {
+        order: -1 !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    .fr-card__content {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+</style>
+<!-- En-tête de page -->
+<div class="fr-mb-4w">
+    <h1 class="fr-h1">
+        <i class="fas fa-play fr-mr-2w" style="color: #000091;" aria-hidden="true"></i>
+        <span style="color: #000091;">Exécution de la synchronisation</span>
+    </h1>
+    <p class="fr-text--lead">Configurez les filtres et lancez la synchronisation</p>
+</div>
+
+<!-- Statut de la configuration -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-info-circle fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Statut de la configuration</span>
+            </h2>
+            <div id="config_check_result" class="fr-mt-2w">
+                <div class="fr-alert fr-alert--info">
+                    <p>Vérification de la configuration en cours...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtres de données -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-filter fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Filtres de données</span>
+            </h2>
+            
+            <!-- Filtres par date -->
+            <div class="fr-mt-4w">
+                <fieldset class="fr-fieldset" aria-labelledby="date-filter-legend">
+                    <legend class="fr-fieldset__legend" id="date-filter-legend">
+                        Filtrer par date de dépôt
+                        <span class="fr-hint-text">Sélectionnez une période pour limiter les dossiers à synchroniser</span>
+                    </legend>
+                    
+                    <div class="fr-fieldset__content">
+                        <div class="fr-grid-row fr-grid-row--gutters">
+                            <div class="fr-col-12 fr-col-md-6">
+                                <div class="fr-input-group">
+                                    <label class="fr-label" for="date_debut">
+                                        Date de début
+                                        <span class="fr-hint-text">Dossiers déposés à partir de cette date (inclus)</span>
+                                    </label>
+                                    <input class="fr-input" type="date" id="date_debut" name="date_debut">
+                                </div>
+                            </div>
+                            <div class="fr-col-12 fr-col-md-6">
+                                <div class="fr-input-group">
+                                    <label class="fr-label" for="date_fin">
+                                        Date de fin
+                                        <span class="fr-hint-text">Dossiers déposés jusqu'à cette date (inclus)</span>
+                                    </label>
+                                    <input class="fr-input" type="date" id="date_fin" name="date_fin">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- Filtres par statut -->
+            <div class="fr-mt-4w">
+                <fieldset class="fr-fieldset" aria-labelledby="status-filter-legend">
+                    <legend class="fr-fieldset__legend" id="status-filter-legend">
+                        Filtrer par statut
+                        <span class="fr-hint-text">Aucune sélection = tous les statuts</span>
+                    </legend>
+                    
+                    <div class="fr-fieldset__content">
+                        <div class="fr-grid-row fr-grid-row--gutters">
+                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+                                <div class="fr-checkbox-group">
+                                    <input type="checkbox" id="statut_construction" name="statuts" value="en_construction">
+                                    <label class="fr-label" for="statut_construction">En construction</label>
+                                </div>
+                            </div>
+                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+                                <div class="fr-checkbox-group">
+                                    <input type="checkbox" id="statut_instruction" name="statuts" value="en_instruction">
+                                    <label class="fr-label" for="statut_instruction">En instruction</label>
+                                </div>
+                            </div>
+                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+                                <div class="fr-checkbox-group">
+                                    <input type="checkbox" id="statut_accepte" name="statuts" value="accepte">
+                                    <label class="fr-label" for="statut_accepte">Accepté</label>
+                                </div>
+                            </div>
+                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+                                <div class="fr-checkbox-group">
+                                    <input type="checkbox" id="statut_refuse" name="statuts" value="refuse">
+                                    <label class="fr-label" for="statut_refuse">Refusé</label>
+                                </div>
+                            </div>
+                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+                                <div class="fr-checkbox-group">
+                                    <input type="checkbox" id="statut_sans_suite" name="statuts" value="sans_suite">
+                                    <label class="fr-label" for="statut_sans_suite">Sans suite</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- Filtres par groupe instructeur -->
+            <div class="fr-mt-4w">
+                <fieldset class="fr-fieldset" aria-labelledby="group-filter-legend">
+                    <legend class="fr-fieldset__legend" id="group-filter-legend">
+                        Filtrer par groupe instructeur
+                        <span class="fr-hint-text">Aucune sélection = tous les groupes</span>
+                    </legend>
+                    
+                    <div class="fr-fieldset__content">
+                        <div id="groupes_container">
+                            <div class="fr-alert fr-alert--info">
+                                <p>Chargement des groupes instructeurs...</p>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- Boutons d'action pour les filtres -->
+            <div class="fr-mt-4w">
+                <ul class="fr-btns-group">
+                    <li>
+                        <button class="fr-btn" onclick="applyFilters()">
+                            <i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>
+                            Appliquer les filtres
+                        </button>
+                    </li>
+                    <li>
+                        <button class="fr-btn fr-btn--secondary" onclick="resetFilters()">
+                            <i class="fas fa-undo fr-mr-1w" aria-hidden="true"></i>
+                            Réinitialiser
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtres actifs -->
+<div id="active_filters" class="fr-card fr-mb-4w" style="display: none;">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h3 class="fr-card__title">
+                <i class="fas fa-check fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Filtres actifs</span>
+            </h3>
+            <div id="active_filters_list" class="fr-mt-2w"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Zone d'exécution -->
+<div class="fr-card">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-play fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Synchronisation</span>
+            </h2>
+            
+            <div id="sync_controls" class="fr-mt-4w">
+                <button class="fr-btn fr-btn--lg" onclick="startSync()" id="start_sync_btn">
+                    <i class="fas fa-play fr-mr-1w" aria-hidden="true"></i>
+                    Lancer la synchronisation
+                </button>
+            </div>
+
+            <!-- Progression -->
+            <div id="sync_progress" style="display: none;" class="fr-mt-4w">
+                <div class="fr-mb-2w">
+                    <div class="fr-grid-row fr-grid-row--middle">
+                        <div class="fr-col">
+                            <span class="fr-text--bold">Progression</span>
+                        </div>
+                        <div class="fr-col-auto">
+                            <span id="progress_percentage" class="fr-badge fr-badge--blue-ecume">0%</span>
+                        </div>
+                    </div>
+                    <div class="fr-mt-1w">
+                        <div style="background-color: #e5e5e5; height: 8px; border-radius: 4px; overflow: hidden;">
+                            <div id="progress_bar" class="progress-bar" style="width: 0%; height: 100%; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="fr-mb-2w">
+                    <div class="fr-alert fr-alert--info">
+                        <p id="current_status">Initialisation...</p>
+                    </div>
+                </div>
+
+                <!-- Statistiques en temps réel -->
+                <div id="sync_stats" class="fr-mb-4w">
+                    <div class="fr-grid-row fr-grid-row--gutters">
+                        <div class="fr-col-6 fr-col-md-3">
+                            <div class="fr-card fr-card--grey">
+                                <div class="fr-card__body">
+                                    <div class="fr-card__content">
+                                        <div class="fr-grid-row fr-grid-row--middle fr-mb-2v">
+                                            <div class="fr-col-auto">
+                                                <i class="fas fa-clock" style="color: #000091;" aria-hidden="true"></i>
+                                            </div>
+                                            <div class="fr-col">
+                                                <p class="fr-text--xs fr-mb-0" style="color: #000091; font-weight: 600;">Temps écoulé</p>
+                                            </div>
+                                        </div>
+                                        <p id="elapsed_time" class="fr-text--bold fr-text--lg fr-mb-0">0s</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fr-col-6 fr-col-md-3">
+                            <div class="fr-card fr-card--grey">
+                                <div class="fr-card__body">
+                                    <div class="fr-card__content">
+                                        <div class="fr-grid-row fr-grid-row--middle fr-mb-2v">
+                                            <div class="fr-col-auto">
+                                                <i class="fas fa-file-alt" style="color: #000091;" aria-hidden="true"></i>
+                                            </div>
+                                            <div class="fr-col">
+                                                <p class="fr-text--xs fr-mb-0" style="color: #000091; font-weight: 600;">Dossiers traités</p>
+                                            </div>
+                                        </div>
+                                        <p id="processed_count" class="fr-text--bold fr-text--lg fr-mb-0">0</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fr-col-6 fr-col-md-3">
+                            <div class="fr-card fr-card--grey">
+                                <div class="fr-card__body">
+                                    <div class="fr-card__content">
+                                        <div class="fr-grid-row fr-grid-row--middle fr-mb-2v">
+                                            <div class="fr-col-auto">
+                                                <i class="fas fa-tachometer-alt" style="color: #000091;" aria-hidden="true"></i>
+                                            </div>
+                                            <div class="fr-col">
+                                                <p class="fr-text--xs fr-mb-0" style="color: #000091; font-weight: 600;">Vitesse traitement</p>
+                                            </div>
+                                        </div>
+                                        <p id="processing_speed" class="fr-text--bold fr-text--lg fr-mb-0">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fr-col-6 fr-col-md-3">
+                            <div class="fr-card fr-card--grey">
+                                <div class="fr-card__body">
+                                    <div class="fr-card__content">
+                                        <div class="fr-grid-row fr-grid-row--middle fr-mb-2v">
+                                            <div class="fr-col-auto">
+                                                <i class="fas fa-hourglass-half" style="color: #000091;" aria-hidden="true"></i>
+                                            </div>
+                                            <div class="fr-col">
+                                                <p class="fr-text--xs fr-mb-0" style="color: #000091; font-weight: 600;">Temps restant</p>
+                                            </div>
+                                        </div>
+                                        <p id="eta" class="fr-text--bold fr-text--lg fr-mb-0">-</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs en temps réel -->
+                <div class="fr-mb-4w">
+                    <button class="fr-btn fr-btn--tertiary-no-outline" onclick="toggleLogs()">
+                        <i id="logs_toggle_icon" class="fas fa-chevron-down fr-mr-1w" aria-hidden="true"></i>
+                        <span id="logs_toggle_text">Afficher les logs</span>
+                        (<span id="logs_count">0</span>)
+                    </button>
+                    <div id="logs_container" class="log-area fr-mt-2w" style="display: none; height: 300px;">
+                        <div id="logs_content"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Résultat final -->
+            <div id="sync_result" style="display: none;" class="fr-mt-4w">
+                <div id="result_content"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentTaskId = null;
+    let startTime = null;
+    let logsVisible = false;
+    let logsCount = 0;
+    let currentConfig = null;
+    let errorCount = 0;
+    let successCount = 0;
+    let totalDossiers = 0;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        checkConfiguration();
+        loadGroupes();
+    });
+
+    // Socket.IO pour les mises à jour en temps réel
+    socket.on('task_update', function(data) {
+        if (data.task_id === currentTaskId) {
+            updateTaskProgress(data.task);
+        }
+    });
+
+    async function checkConfiguration() {
+        try {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            currentConfig = config;
+
+            const resultDiv = document.getElementById('config_check_result');
+            
+            // Vérifier que tous les champs requis sont présents
+            const requiredFields = ['ds_api_token', 'ds_api_url', 'demarche_number', 
+                                   'grist_base_url', 'grist_api_key', 'grist_doc_id'];
+            
+            const missingFields = requiredFields.filter(field => !config[field] || config[field] === '***');
+            
+            if (missingFields.length === 0) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--success">
+                        <h3 class="fr-alert__title">Configuration complète</h3>
+                        <p>Démarche ${config.demarche_number} → Document Grist ${config.grist_doc_id}</p>
+                    </div>
+                `;
+                document.getElementById('start_sync_btn').disabled = false;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <h3 class="fr-alert__title">Configuration incomplète</h3>
+                        <p>Champs manquants: ${missingFields.join(', ')}</p>
+                        <p><a href="/" class="fr-link">Aller à la configuration</a></p>
+                    </div>
+                `;
+                document.getElementById('start_sync_btn').disabled = true;
+            }
+            
+        } catch (error) {
+            console.error('Erreur lors de la vérification de la configuration:', error);
+            document.getElementById('config_check_result').innerHTML = `
+                <div class="fr-alert fr-alert--error">
+                    <h3 class="fr-alert__title">Erreur lors de la vérification</h3>
+                    <p>Impossible de charger la configuration</p>
+                </div>
+            `;
+        }
+    }
+
+    async function loadGroupes() {
+        try {
+            const response = await fetch('/api/groups');
+            const groups = await response.json();
+            
+            const container = document.getElementById('groupes_container');
+            
+            if (groups.length === 0) {
+                container.innerHTML = `
+                    <div class="fr-alert fr-alert--info">
+                        <p>Aucun groupe instructeur disponible ou connexion non établie</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '<div class="fr-grid-row fr-grid-row--gutters">';
+            groups.forEach(([number, label]) => {
+                html += `
+                    <div class="fr-col-12 fr-col-md-6 fr-col-lg-4">
+                        <div class="fr-checkbox-group">
+                            <input type="checkbox" id="groupe_${number}" name="groupes" value="${number}">
+                            <label class="fr-label" for="groupe_${number}">${label} (#${number})</label>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            container.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Erreur lors du chargement des groupes:', error);
+            document.getElementById('groupes_container').innerHTML = `
+                <div class="fr-alert fr-alert--error">
+                    <p>Erreur lors du chargement des groupes instructeurs</p>
+                </div>
+            `;
+        }
+    }
+
+    function applyFilters() {
+        const activeFilters = [];
+        
+        // Collecter les filtres de date
+        const dateDebut = document.getElementById('date_debut').value;
+        const dateFin = document.getElementById('date_fin').value;
+        
+        if (dateDebut) {
+            activeFilters.push(`Date de début: ${formatDate(dateDebut)}`);
+        }
+        if (dateFin) {
+            activeFilters.push(`Date de fin: ${formatDate(dateFin)}`);
+        }
+        
+        // Collecter les statuts sélectionnés
+        const statutsSelected = Array.from(document.querySelectorAll('input[name="statuts"]:checked'))
+                                     .map(el => el.value);
+        if (statutsSelected.length > 0) {
+            activeFilters.push(`Statuts: ${statutsSelected.join(', ')}`);
+        }
+        
+        // Collecter les groupes sélectionnés
+        const groupesSelected = Array.from(document.querySelectorAll('input[name="groupes"]:checked'))
+                                     .map(el => el.value);
+        if (groupesSelected.length > 0) {
+            const groupeLabels = groupesSelected.map(num => {
+                const checkbox = document.querySelector(`input[name="groupes"][value="${num}"]`);
+                return checkbox ? checkbox.nextElementSibling.textContent : `Groupe #${num}`;
+            });
+            activeFilters.push(`Groupes: ${groupeLabels.join(', ')}`);
+        }
+        
+        // Afficher les filtres actifs
+        const activeFiltersDiv = document.getElementById('active_filters');
+        const activeFiltersList = document.getElementById('active_filters_list');
+        
+        if (activeFilters.length > 0) {
+            let filtersHtml = '<ul class="fr-list">';
+            activeFilters.forEach(filter => {
+                filtersHtml += `<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>${filter}</li>`;
+            });
+            filtersHtml += '</ul>';
+            activeFiltersList.innerHTML = filtersHtml;
+            activeFiltersDiv.style.display = 'block';
+        } else {
+            activeFiltersDiv.style.display = 'none';
+        }
+        
+        App.showNotification('Filtres appliqués avec succès', 'success');
+    }
+
+    function resetFilters() {
+        // Réinitialiser tous les champs de filtre
+        document.getElementById('date_debut').value = '';
+        document.getElementById('date_fin').value = '';
+        
+        document.querySelectorAll('input[name="statuts"]').forEach(el => el.checked = false);
+        document.querySelectorAll('input[name="groupes"]').forEach(el => el.checked = false);
+        
+        // Masquer les filtres actifs
+        document.getElementById('active_filters').style.display = 'none';
+        
+        App.showNotification('Filtres réinitialisés', 'info');
+    }
+
+    async function startSync() {
+        if (!currentConfig) {
+            App.showNotification('Configuration non chargée', 'error');
+            return;
+        }
+        
+        // Collecter les filtres
+        const filters = {
+            date_depot_debut: document.getElementById('date_debut').value,
+            date_depot_fin: document.getElementById('date_fin').value,
+            statuts_dossiers: Array.from(document.querySelectorAll('input[name="statuts"]:checked'))
+                                   .map(el => el.value).join(','),
+            groupes_instructeurs: Array.from(document.querySelectorAll('input[name="groupes"]:checked'))
+                                       .map(el => el.value).join(',')
+        };
+        
+        try {
+            const response = await fetch('/api/start-sync', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    config: currentConfig,
+                    filters: filters
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                currentTaskId = result.task_id;
+                startTime = Date.now();
+                
+                // Réinitialiser les compteurs
+                errorCount = 0;
+                successCount = 0;
+                totalDossiers = 0;
+                
+                // Afficher la zone de progression
+                document.getElementById('sync_controls').style.display = 'none';
+                document.getElementById('sync_progress').style.display = 'block';
+                document.getElementById('sync_result').style.display = 'none';
+                
+                // Réinitialiser les compteurs et l'affichage
+                logsCount = 0;
+                document.getElementById('logs_count').textContent = '0';
+                document.getElementById('logs_content').innerHTML = '';
+                
+                // Réinitialiser les statistiques
+                document.getElementById('progress_bar').style.width = '0%';
+                document.getElementById('progress_percentage').textContent = '0%';
+                document.getElementById('current_status').textContent = 'Initialisation...';
+                document.getElementById('elapsed_time').textContent = '0s';
+                document.getElementById('processed_count').textContent = '0';
+                document.getElementById('processing_speed').textContent = '-';
+                document.getElementById('eta').textContent = '-';
+                
+                App.showNotification('Synchronisation démarrée', 'success');
+            } else {
+                App.showNotification(result.message, 'error');
+            }
+            
+        } catch (error) {
+            console.error('Erreur:', error);
+            App.showNotification('Erreur lors du démarrage de la synchronisation', 'error');
+        }
+    }
+
+    function updateTaskProgress(task) {
+        if (!task) return;
+        
+        // Mettre à jour la barre de progression
+        const progress = Math.round(task.progress || 0);
+        document.getElementById('progress_bar').style.width = `${progress}%`;
+        document.getElementById('progress_percentage').textContent = `${progress}%`;
+        
+        // Mettre à jour le statut
+        document.getElementById('current_status').textContent = task.message || 'En cours...';
+        
+        // Mettre à jour le temps écoulé
+        if (startTime) {
+            const elapsed = (Date.now() - startTime) / 1000;
+            document.getElementById('elapsed_time').textContent = App.formatDuration(elapsed);
+            
+            // Calculer la vitesse en dossiers/s et l'ETA seulement si on a des données valides
+            if (elapsed > 10 && successCount > 0) { // Attendre au moins 10 secondes pour un calcul stable
+                const dossiersPerSecond = successCount / elapsed;
+                document.getElementById('processing_speed').textContent = `${dossiersPerSecond.toFixed(1)} dossiers/s`;
+                
+                // Calculer l'ETA basé sur la progression et non sur le nombre total de dossiers
+                if (progress > 0 && progress < 100) {
+                    const progressRate = progress / elapsed; // pourcentage par seconde
+                    const remainingProgress = 100 - progress;
+                    const remainingTime = remainingProgress / progressRate;
+                    
+                    if (remainingTime > 0 && remainingTime < 86400) { // Limiter à 24h max
+                        document.getElementById('eta').textContent = App.formatDuration(remainingTime);
+                    } else {
+                        document.getElementById('eta').textContent = '-';
+                    }
+                } else {
+                    document.getElementById('eta').textContent = '-';
+                }
+            } else if (elapsed > 0 && successCount === 0) {
+                // Si aucun dossier traité après un certain temps
+                document.getElementById('processing_speed').textContent = '0.0 dossiers/s';
+                document.getElementById('eta').textContent = '-';
+            } else {
+                // Phase d'initialisation
+                document.getElementById('processing_speed').textContent = '-';
+                document.getElementById('eta').textContent = '-';
+            }
+        }
+        
+        // Ajouter les nouveaux logs
+        if (task.logs && task.logs.length > logsCount) {
+            const newLogs = task.logs.slice(logsCount);
+            const logsContent = document.getElementById('logs_content');
+            
+            newLogs.forEach(log => {
+                const logTime = new Date(log.timestamp * 1000).toLocaleTimeString();
+                const message = log.message;
+                
+                // Détecter les erreurs pour les mettre en couleur
+                const isError = message.toLowerCase().includes('erreur') || 
+                               message.toLowerCase().includes('error') || 
+                               message.toLowerCase().includes('échec') ||
+                               message.toLowerCase().includes('failed');
+                
+                const logStyle = isError ? 'color: #ce0500; font-weight: bold;' : '';
+                
+                logsContent.innerHTML += `<div style="color: #666; font-size: 0.8rem;">[${logTime}]</div><div style="margin-bottom: 0.5rem; ${logStyle}">${escapeHtml(message)}</div>`;
+                
+                // Extraire les statistiques depuis les logs
+                extractStatsFromLog(message);
+            });
+            
+            logsCount = task.logs.length;
+            document.getElementById('logs_count').textContent = logsCount;
+            
+            // Auto-scroll vers le bas si les logs sont visibles
+            if (logsVisible) {
+                logsContent.scrollTop = logsContent.scrollHeight;
+            }
+        }
+        
+        // Gérer la fin de la tâche
+        if (task.status === 'completed' || task.status === 'error') {
+            document.getElementById('sync_result').style.display = 'block';
+            document.getElementById('sync_controls').style.display = 'block';
+            
+            const resultContent = document.getElementById('result_content');
+            
+            // Déterminer le type de résultat en fonction des erreurs détectées
+            const hasSignificantErrors = errorCount > 0 || task.status === 'error';
+            const successRate = totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0;
+            
+            if (task.status === 'completed' && !hasSignificantErrors) {
+                resultContent.innerHTML = `
+                    <div class="fr-alert fr-alert--success">
+                        <h3 class="fr-alert__title">Synchronisation terminée avec succès!</h3>
+                        <p>${task.message}</p>
+                        <p><strong>${successCount}</strong> dossiers traités avec succès</p>
+                    </div>
+                `;
+                App.showNotification('Synchronisation terminée avec succès!', 'success');
+            } else if (task.status === 'completed' && hasSignificantErrors && successCount > 0) {
+                resultContent.innerHTML = `
+                    <div class="fr-alert fr-alert--warning">
+                        <h3 class="fr-alert__title">Synchronisation terminée avec des erreurs</h3>
+                        <p>${task.message}</p>
+                        <p><strong>${successCount}</strong> dossiers traités avec succès, <strong>${errorCount}</strong> en échec</p>
+                        <p>Taux de réussite: ${successRate.toFixed(1)}%</p>
+                    </div>
+                `;
+                App.showNotification('Synchronisation terminée avec des erreurs', 'warning');
+            } else {
+                resultContent.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <h3 class="fr-alert__title">Erreur lors de la synchronisation</h3>
+                        <p>${task.message}</p>
+                        ${errorCount > 0 ? `<p><strong>${errorCount}</strong> erreurs détectées</p>` : ''}
+                    </div>
+                `;
+                App.showNotification('Erreur lors de la synchronisation', 'error');
+            }
+            
+            currentTaskId = null;
+        }
+    }
+
+function extractStatsFromLog(message) {
+    // Extraire le nombre total de dossiers
+    let totalMatch = message.match(/Nombre total de dossiers trouvés:\s*(\d+)/i);
+    if (!totalMatch) {
+        totalMatch = message.match(/Après filtrage:\s*(\d+)\s+dossiers/i);
+    }
+    if (!totalMatch) {
+        totalMatch = message.match(/(\d+)\s+dossiers?\s+(?:trouvés?|à traiter)/i);
+    }
+    if (totalMatch) {
+        const newTotal = parseInt(totalMatch[1]);
+        if (newTotal > totalDossiers) {
+            totalDossiers = newTotal;
+            console.log(`Total dossiers mis à jour: ${totalDossiers}`);
+        }
+    }
+
+    // NOUVELLE LOGIQUE : Extraire le nombre de dossiers traités avec succès
+    let successMatch = null;
+    
+    // 1. Rechercher le message final de succès
+    successMatch = message.match(/Dossiers traités avec succès:\s*(\d+)/i);
+    
+    // 2. Rechercher les messages de lot de succès
+    if (!successMatch) {
+        const lotMatch = message.match(/Lot\s+\d+\s+terminé:\s*(\d+)\s+dossiers?\s+traités?\s+avec\s+succès/i);
+        if (lotMatch) {
+            const lotSuccess = parseInt(lotMatch[1]);
+            successCount += lotSuccess; // Additionner au lieu de remplacer
+            document.getElementById('processed_count').textContent = successCount;
+            console.log(`Dossiers du lot ajoutés: +${lotSuccess}, total: ${successCount}`);
+        }
+    }
+    
+    // 3. Rechercher les messages de création/mise à jour réussies
+    if (!successMatch) {
+        // Upsert par lot réussi
+        const upsertMatch = message.match(/Upsert par lot de\s*(\d+)\s+dossiers.../i);
+        if (upsertMatch && !message.includes('ERREUR')) {
+            const upsertSuccess = parseInt(upsertMatch[1]);
+            successCount = Math.max(successCount, upsertSuccess);
+            document.getElementById('processed_count').textContent = successCount;
+            console.log(`Upsert dossiers détecté: ${upsertSuccess}`);
+        }
+    }
+    
+    // 4. Rechercher les créations par lot
+    if (!successMatch) {
+        const createMatch = message.match(/Création par lot:\s*(\d+)\s+enregistrements?\s+créés?\s+avec\s+succès/i);
+        if (createMatch) {
+            const createSuccess = parseInt(createMatch[1]);
+            successCount += createSuccess; // Additionner
+            document.getElementById('processed_count').textContent = successCount;
+            console.log(`Créations ajoutées: +${createSuccess}, total: ${successCount}`);
+        }
+    }
+    
+    // 5. Rechercher les mises à jour par lot
+    if (!successMatch) {
+        const updateMatch = message.match(/Mise à jour par lot:\s*(\d+)\s+enregistrements?\s+mis à jour avec succès/i);
+        if (updateMatch) {
+            const updateSuccess = parseInt(updateMatch[1]);
+            successCount += updateSuccess; // Additionner
+            document.getElementById('processed_count').textContent = successCount;
+            console.log(`Mises à jour ajoutées: +${updateSuccess}, total: ${successCount}`);
+        }
+    }
+    
+    // 6. Traitement du message final de succès (écrase le compteur)
+    if (successMatch) {
+        const newSuccess = parseInt(successMatch[1]);
+        successCount = newSuccess; // Utiliser la valeur finale
+        document.getElementById('processed_count').textContent = successCount;
+        console.log(`Succès final: ${successCount}`);
+    }
+
+    // Extraire le nombre d'erreurs/échecs
+    let errorMatch = message.match(/(\d+)\s+dossiers?\s+en\s+échec/i);
+    if (!errorMatch) {
+        errorMatch = message.match(/Échecs?:\s*(\d+)/i);
+    }
+    if (!errorMatch) {
+        errorMatch = message.match(/(\d+)\s+erreurs?\s+détectées?/i);
+    }
+    if (!errorMatch) {
+        errorMatch = message.match(/(\d+)\s+dossiers?\s+n'ont\s+pas\s+pu\s+être\s+récupérés/i);
+    }
+    if (errorMatch) {
+        const newErrors = parseInt(errorMatch[1]);
+        if (newErrors > errorCount) {
+            errorCount = newErrors;
+            console.log(`Erreurs mises à jour: ${errorCount}`);
+        }
+    }
+
+    // Détecter les pourcentages de récupération faibles (signe d'erreurs)
+    let recoveryMatch = message.match(/(\d+)\/(\d+)\s+dossiers?\s+récupérés?\s+\((\d+(?:\.\d+)?)%\)/i);
+    if (recoveryMatch) {
+        const recovered = parseInt(recoveryMatch[1]);
+        const total = parseInt(recoveryMatch[2]);
+        const percentage = parseFloat(recoveryMatch[3]);
+        
+        if (percentage < 80) { // Si moins de 80% récupérés, c'est problématique
+            const failedCount = total - recovered;
+            errorCount = Math.max(errorCount, failedCount);
+            console.log(`Échecs détectés depuis taux de récupération: ${failedCount}`);
+        }
+    }
+
+    // Détecter les messages d'erreur individuels pour incrémenter le compteur
+    if (message.toLowerCase().includes('erreur lors de la récupération du dossier') ||
+        message.toLowerCase().includes('max retries exceeded') ||
+        message.toLowerCase().includes('sslerror') ||
+        message.toLowerCase().includes('connection') && message.toLowerCase().includes('failed') ||
+        message.toLowerCase().includes('timeout')) {
+        errorCount++;
+        console.log(`Erreur individuelle détectée, total erreurs: ${errorCount}`);
+    }
+}
+    function toggleLogs() {
+        const container = document.getElementById('logs_container');
+        const icon = document.getElementById('logs_toggle_icon');
+        const text = document.getElementById('logs_toggle_text');
+        
+        logsVisible = !logsVisible;
+        
+        if (logsVisible) {
+            container.style.display = 'block';
+            icon.className = 'fas fa-chevron-up fr-mr-1w';
+            text.textContent = 'Masquer les logs';
+            
+            // Auto-scroll vers le bas
+            setTimeout(() => {
+                container.scrollTop = container.scrollHeight;
+            }, 100);
+        } else {
+            container.style.display = 'none';
+            icon.className = 'fas fa-chevron-down fr-mr-1w';
+            text.textContent = 'Afficher les logs';
+        }
+    }
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('fr-FR');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

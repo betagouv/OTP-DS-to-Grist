@@ -1,0 +1,514 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - 🦄 One Trick Pony DS to Grist{% endblock %}
+
+{% block content %}
+<style>
+    /* Force l'ordre d'affichage des titres de cartes */
+    .fr-card__title {
+        order: -1 !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    .fr-card__content {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+</style>
+
+<!-- En-tête de page -->
+<div class="fr-mb-4w">
+    <h1 class="fr-h1">
+        <i class="fas fa-cog fr-mr-2w" style="color: #000091;" aria-hidden="true"></i>
+        <span style="color: #000091;">Configuration des connexions</span>
+    </h1>
+    <p class="fr-text--lead">Configurez vos connexions aux APIs Démarches Simplifiées et Grist</p>
+</div>
+
+<!-- Configuration Démarches Simplifiées -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-file-alt fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">API Démarches Simplifiées</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-grid-row fr-grid-row--gutters">
+                    <div class="fr-col-12 fr-col-md-6">
+                        <div class="fr-input-group">
+                            <label class="fr-label" for="ds_api_token">
+                                Token API
+                                <span class="fr-hint-text">Votre token d'accès personnel à l'API</span>
+                            </label>
+                            <input class="fr-input" type="password" id="ds_api_token" name="ds_api_token">
+                            <div id="ds_token_status" class="fr-mt-1v"></div>
+                        </div>
+                    </div>
+                    <div class="fr-col-12 fr-col-md-6">
+                        <div class="fr-input-group">
+                            <label class="fr-label" for="ds_api_url">
+                                URL de l'API
+                                <span class="fr-hint-text">Point d'entrée GraphQL de l'API</span>
+                            </label>
+                            <input class="fr-input" type="url" id="ds_api_url" name="ds_api_url" 
+                                   value="https://www.demarches-simplifiees.fr/api/v2/graphql">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="fr-mt-3w">
+                    <div class="fr-input-group">
+                        <label class="fr-label" for="demarche_number">
+                            Numéro de démarche
+                            <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
+                        </label>
+                        <input class="fr-input" type="number" id="demarche_number" name="demarche_number" 
+                               placeholder="Ex: 12345" style="max-width: 200px;">
+                    </div>
+                </div>
+                
+                <div class="fr-mt-4w">
+                    <button class="fr-btn" onclick="testDemarchesConnection()" id="test_ds_btn">
+                        <i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>
+                        Tester la connexion
+                    </button>
+                    <div id="ds_test_result" class="fr-mt-2w"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Grist -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-table fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">API Grist</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-grid-row fr-grid-row--gutters">
+                    <div class="fr-col-12 fr-col-md-6">
+                        <div class="fr-input-group">
+                            <label class="fr-label" for="grist_base_url">
+                                URL de base Grist
+                                <span class="fr-hint-text">URL de votre instance Grist</span>
+                            </label>
+                            <input class="fr-input" type="url" id="grist_base_url" name="grist_base_url" 
+                                   value="https://grist.numerique.gouv.fr/api">
+                        </div>
+                    </div>
+                    <div class="fr-col-12 fr-col-md-6">
+                        <div class="fr-input-group">
+                            <label class="fr-label" for="grist_api_key">
+                                Clé API Grist
+                                <span class="fr-hint-text">Clé d'accès à votre document Grist</span>
+                            </label>
+                            <input class="fr-input" type="password" id="grist_api_key" name="grist_api_key">
+                            <div id="grist_key_status" class="fr-mt-1v"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="fr-mt-3w">
+                    <div class="fr-input-group">
+                        <label class="fr-label" for="grist_doc_id">
+                            ID du document Grist
+                            <span class="fr-hint-text">Identifiant du document de destination</span>
+                        </label>
+                        <input class="fr-input" type="text" id="grist_doc_id" name="grist_doc_id" 
+                               style="max-width: 300px;">
+                    </div>
+                </div>
+                
+                <div class="fr-mt-4w">
+                    <button class="fr-btn" onclick="testGristConnection()" id="test_grist_btn">
+                        <i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>
+                        Tester la connexion
+                    </button>
+                    <div id="grist_test_result" class="fr-mt-2w"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration avancée -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-cogs fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Configuration avancée</span>
+            </h2>
+            
+            <div class="fr-mt-4w">
+                <div class="fr-grid-row fr-grid-row--gutters">
+                    <div class="fr-col-12 fr-col-md-4">
+                        <div class="fr-input-group">
+                            <label class="fr-label" for="batch_size">
+                                Taille des lots
+                                <span class="fr-hint-text">Nombre de dossiers traités par lot (1-100)</span>
+                            </label>
+                            <input class="fr-input" type="number" id="batch_size" name="batch_size" 
+                                   value="25" min="1" max="100">
+                        </div>
+                    </div>
+                    <div class="fr-col-12 fr-col-md-4">
+                        <div class="fr-input-group">
+                            <label class="fr-label" for="max_workers">
+                                Workers parallèles
+                                <span class="fr-hint-text">Nombre de threads pour le traitement parallèle (1-10)</span>
+                            </label>
+                            <input class="fr-input" type="number" id="max_workers" name="max_workers" 
+                                   value="2" min="1" max="10">
+                        </div>
+                    </div>
+                    <div class="fr-col-12 fr-col-md-4">
+                        <div class="fr-select-group">
+                            <label class="fr-label" for="parallel">
+                                Traitement parallèle
+                                <span class="fr-hint-text">Active/désactive le traitement parallèle</span>
+                            </label>
+                            <select class="fr-select" id="parallel" name="parallel">
+                                <option value="true">Activé</option>
+                                <option value="false">Désactivé</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bouton de sauvegarde -->
+<div class="fr-grid-row fr-grid-row--right">
+    <div class="fr-col-auto">
+        <button class="fr-btn fr-btn--lg" onclick="saveConfiguration()">
+            <i class="fas fa-save fr-mr-1w" aria-hidden="true"></i>
+            Sauvegarder la configuration
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentConfig = {};
+    
+    // Charger la configuration au démarrage
+    document.addEventListener('DOMContentLoaded', function() {
+        loadConfiguration();
+    });
+
+    async function loadConfiguration() {
+        try {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            currentConfig = config;
+            
+            // Remplir les champs avec la configuration
+            document.getElementById('ds_api_token').value = config.ds_api_token_exists ? '' : '';
+            document.getElementById('ds_api_url').value = config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql';
+            document.getElementById('demarche_number').value = config.demarche_number || '';
+            document.getElementById('grist_base_url').value = config.grist_base_url || 'https://grist.numerique.gouv.fr/api';
+            document.getElementById('grist_api_key').value = config.grist_api_key_exists ? '' : '';
+            document.getElementById('grist_doc_id').value = config.grist_doc_id || '';
+            document.getElementById('batch_size').value = config.batch_size || 25;
+            document.getElementById('max_workers').value = config.max_workers || 2;
+            document.getElementById('parallel').value = config.parallel ? 'true' : 'false';
+            
+            // Afficher le statut des tokens
+            if (config.ds_api_token_exists) {
+                document.getElementById('ds_token_status').innerHTML = `
+                    <span class="fr-badge fr-badge--success fr-badge--sm">
+                        <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
+                    </span>
+                `;
+                document.getElementById('ds_api_token').placeholder = 'Token déjà configuré (laissez vide pour conserver)';
+            } else {
+                document.getElementById('ds_token_status').innerHTML = `
+                    <span class="fr-badge fr-badge--error fr-badge--sm">
+                        <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
+                    </span>
+                `;
+            }
+            
+            if (config.grist_api_key_exists) {
+                document.getElementById('grist_key_status').innerHTML = `
+                    <span class="fr-badge fr-badge--success fr-badge--sm">
+                        <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
+                    </span>
+                `;
+                document.getElementById('grist_api_key').placeholder = 'Clé API déjà configurée (laissez vide pour conserver)';
+            } else {
+                document.getElementById('grist_key_status').innerHTML = `
+                    <span class="fr-badge fr-badge--error fr-badge--sm">
+                        <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
+                    </span>
+                `;
+            }
+            
+        } catch (error) {
+            console.error('Erreur lors du chargement de la configuration:', error);
+            App.showNotification('Erreur lors du chargement de la configuration', 'error');
+        }
+    }
+
+    async function saveConfiguration() {
+        const ds_token = document.getElementById('ds_api_token').value;
+        const grist_key = document.getElementById('grist_api_key').value;
+        
+        const config = {
+            ds_api_token: ds_token || currentConfig.ds_api_token || '',
+            ds_api_url: document.getElementById('ds_api_url').value,
+            demarche_number: document.getElementById('demarche_number').value,
+            grist_base_url: document.getElementById('grist_base_url').value,
+            grist_api_key: grist_key || currentConfig.grist_api_key || '',
+            grist_doc_id: document.getElementById('grist_doc_id').value,
+            batch_size: parseInt(document.getElementById('batch_size').value),
+            max_workers: parseInt(document.getElementById('max_workers').value),
+            parallel: document.getElementById('parallel').value === 'true'
+        };
+
+        // Validation basique
+        const requiredFields = [
+            {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
+            {key: 'ds_api_url', name: 'URL API Démarches Simplifiées'},
+            {key: 'demarche_number', name: 'Numéro de démarche'},
+            {key: 'grist_base_url', name: 'URL de base Grist'},
+            {key: 'grist_api_key', name: 'Clé API Grist'},
+            {key: 'grist_doc_id', name: 'ID du document Grist'}
+        ];
+        
+        for (const field of requiredFields) {
+            if (!config[field.key]) {
+                App.showNotification(`Le champ "${field.name}" est requis`, 'error');
+                return;
+            }
+        }
+
+        try {
+            // Afficher un indicateur de chargement
+            const saveButton = document.querySelector('button[onclick="saveConfiguration()"]');
+            const originalText = saveButton.innerHTML;
+            saveButton.disabled = true;
+            saveButton.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Sauvegarde...';
+
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(config)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                App.showNotification('Configuration sauvegardée avec succès', 'success');
+                // Recharger la configuration pour mettre à jour les statuts
+                setTimeout(() => {
+                    loadConfiguration();
+                }, 500);
+            } else {
+                App.showNotification(result.message || 'Erreur lors de la sauvegarde', 'error');
+            }
+
+            // Restaurer le bouton
+            saveButton.disabled = false;
+            saveButton.innerHTML = originalText;
+
+        } catch (error) {
+            console.error('Erreur:', error);
+            App.showNotification('Erreur lors de la sauvegarde', 'error');
+            
+            // Restaurer le bouton en cas d'erreur
+            const saveButton = document.querySelector('button[onclick="saveConfiguration()"]');
+            saveButton.disabled = false;
+            saveButton.innerHTML = '<i class="fas fa-save fr-mr-1w" aria-hidden="true"></i>Sauvegarder la configuration';
+        }
+    }
+
+    async function testDemarchesConnection() {
+        const button = document.getElementById('test_ds_btn');
+        const resultDiv = document.getElementById('ds_test_result');
+        
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Test en cours...';
+        
+        try {
+            const ds_token_input = document.getElementById('ds_api_token').value || '';
+            const ds_api_url = document.getElementById('ds_api_url').value || '';
+            const demarche_number = document.getElementById('demarche_number').value || '';
+            
+            // Utiliser le token saisi OU recharger la config si vide
+            let ds_token = ds_token_input;
+            if (!ds_token && currentConfig && currentConfig.ds_api_token_exists) {
+                try {
+                    const configResponse = await fetch('/api/config');
+                    if (configResponse.ok) {
+                        const latestConfig = await configResponse.json();
+                        ds_token = latestConfig.ds_api_token || '';
+                    }
+                } catch (e) {
+                    console.error('Erreur rechargement config:', e);
+                }
+            }
+            
+            if (!ds_token) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const response = await fetch('/api/test-connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: 'demarches',
+                    api_token: ds_token,
+                    api_url: ds_api_url,
+                    demarche_number: demarche_number
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--success">
+                        <p>${result.message}</p>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <p>${result.message}</p>
+                    </div>
+                `;
+            }
+
+            App.showNotification(result.message, result.success ? 'success' : 'error');
+            
+        } catch (error) {
+            console.error('Erreur lors du test DS:', error);
+            resultDiv.innerHTML = `
+                <div class="fr-alert fr-alert--error">
+                    <p>Erreur de connexion: ${error.message}</p>
+                </div>
+            `;
+            App.showNotification('Erreur lors du test de connexion', 'error');
+        } finally {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion';
+        }
+    }
+
+    async function testGristConnection() {
+        const button = document.getElementById('test_grist_btn');
+        const resultDiv = document.getElementById('grist_test_result');
+        
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Test en cours...';
+        
+        try {
+            const grist_key_input = document.getElementById('grist_api_key').value;
+            const grist_base_url = document.getElementById('grist_base_url').value;
+            const grist_doc_id = document.getElementById('grist_doc_id').value;
+            
+            // Utiliser la clé saisie OU recharger la config si vide
+            let grist_key = grist_key_input;
+            if (!grist_key && currentConfig.grist_api_key_exists) {
+                try {
+                    const configResponse = await fetch('/api/config');
+                    const latestConfig = await configResponse.json();
+                    grist_key = latestConfig.grist_api_key;
+                } catch (e) {
+                    console.error('Erreur rechargement config:', e);
+                }
+            }
+            
+            if (!grist_key) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (!grist_base_url) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <p>URL de base Grist requise</p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (!grist_doc_id) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <p>ID du document Grist requis</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const response = await fetch('/api/test-connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: 'grist',
+                    base_url: grist_base_url,
+                    api_key: grist_key,
+                    doc_id: grist_doc_id
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--success">
+                        <p>${result.message}</p>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="fr-alert fr-alert--error">
+                        <p>${result.message}</p>
+                    </div>
+                `;
+            }
+
+            App.showNotification(result.message, result.success ? 'success' : 'error');
+            
+        } catch (error) {
+            console.error('Erreur lors du test Grist:', error);
+            resultDiv.innerHTML = `
+                <div class="fr-alert fr-alert--error">
+                    <p>Erreur de connexion: ${error.message}</p>
+                </div>
+            `;
+            App.showNotification('Erreur lors du test de connexion', 'error');
+        } finally {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion';
+        }
+    }
+</script>
+{% endblock %}
