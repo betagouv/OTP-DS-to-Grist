@@ -88,20 +88,20 @@ FLASK_SECRET_KEY='dev-key-change-in-production-2024'
 1. **Connectez-vous** à votre compte DS administrateur
 2. **Accédez** aux paramètres de votre compte
 3. **Générez** un nouveau token API dans la section "Jeton d'accès"
-4. **Copiez** le token généré (format : `MGQwODNjMWEt...`)
+4. **Copiez** le token généré (format : `MGQ...`)
 
 ### Clé API Grist
 
 1. **Connectez-vous** à votre instance Grist
 2. **Accédez** à votre profil utilisateur
 3. **Générez** une nouvelle clé API
-4. **Copiez** la clé générée (format : `17b43efb5ace...`)
+4. **Copiez** la clé générée (format : `17...`)
 
 ### ID Document Grist
 
 1. **Ouvrez** votre document Grist de destination
 2. **Copiez l'ID** depuis l'URL : `https://grist.../doc/ID_DOCUMENT_ICI`
-3. L'ID ressemble à : `mYMMbLiT3QKYiQAuzkTnWN`
+3. L'ID ressemble à : `mYMMb...`
 
 ## ▶️ Lancement de l'application
 
