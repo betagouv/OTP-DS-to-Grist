@@ -75,45 +75,60 @@ def normalize_key(key_string):
     
     return normalized
 
-def normalize_column_name(name, max_length=40):
+def normalize_column_name(name, max_length=50):
     """
-    Normalise un nom de colonne pour Grist :
-    - Supprime les accents et les caractères spéciaux
-    - Remplace les espaces par des underscores
-    - Tronque la longueur si nécessaire
-    - S'assure que le nom commence par une lettre
+    Normalise un nom de colonne pour Grist en garantissant des identifiants valides.
+    Gère correctement les apostrophes et autres caractères spéciaux.
     
     Args:
-        name: Nom original de la colonne
-        max_length: Longueur maximale autorisée
+        name: Le nom original de la colonne
+        max_length: Longueur maximale autorisée (défaut: 50)
         
     Returns:
-        str: Nom normalisé pour Grist
+        str: Nom de colonne normalisé pour Grist
     """
     if not name:
         return "column"
     
-    # Importer ici pour éviter les dépendances circulaires
-    import unicodedata
+    # Supprimer les espaces en début et fin, et remplacer les espaces consécutifs par un seul espace
     import re
+    import unicodedata
+    import hashlib
+    
+    name = name.strip()
+    name = re.sub(r'\s+', ' ', name)
+    
+    # ÉTAPE CRITIQUE: Remplacer les apostrophes par des underscores AVANT de supprimer les accents
+    # Cela évite que "l'enseignant" devienne "lenseignant" au lieu de "l_enseignant"
+    name = name.replace("'", "_")
+    name = name.replace("'", "_")  # Apostrophe typographique
+    name = name.replace("`", "_")  # Accent grave utilisé comme apostrophe
     
     # Supprimer les accents
     name = unicodedata.normalize('NFKD', name)
     name = ''.join([c for c in name if not unicodedata.combining(c)])
     
-    # Supprimer les caractères spéciaux et espaces multiples
-    name = re.sub(r'[^\w\s]', '', name)
-    name = re.sub(r'\s+', '_', name)
+    # Convertir en minuscules et remplacer les caractères non alphanumériques par des underscores
+    name = name.lower()
+    name = re.sub(r'[^a-z0-9_]', '_', name)
+    
+    # Éliminer les underscores multiples consécutifs
+    name = re.sub(r'_+', '_', name)
+    
+    # Éliminer les underscores en début et fin
+    name = name.strip('_')
     
     # S'assurer que le nom commence par une lettre
-    if not name[0].isalpha():
-        name = "c_" + name
+    if not name or not name[0].isalpha():
+        name = "col_" + (name or "")
     
-    # Tronquer si nécessaire
+    # Tronquer si nécessaire à max_length caractères
     if len(name) > max_length:
-        name = name[:max_length]
+        # Générer un hash pour garantir l'unicité
+        hash_part = hashlib.md5(name.encode()).hexdigest()[:6]
+        name = f"{name[:max_length-7]}_{hash_part}"
     
-    return name.lower()
+    return name
 
 def format_value_for_grist(value, value_type):
     """
