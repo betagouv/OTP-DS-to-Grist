@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import sys
 import re
@@ -8,6 +9,7 @@ import repetable_processor as rp
 from dotenv import load_dotenv
 from datetime import datetime
 from queries import get_demarche, get_dossier, get_demarche_dossiers, dossier_to_flat_data, format_complex_json_for_grist
+from queries_graphql import get_demarche_dossiers_filtered
 
 
 # Configuration du niveau de log
@@ -32,7 +34,6 @@ try:
     log("Module schema_utils trouvé et chargé avec succès.")
 except ImportError:
     log_error("Module schema_utils non trouvé. La création de schéma avancée ne sera pas disponible.")
-
 
 # Fonction pour supprimer les accents d'une chaîne de caractères
 def normalize_column_name(name, max_length=50):
@@ -993,12 +994,6 @@ class GristClient:
                         record_id = record.get('id')
                         fields = record.get('fields', {})
                         
-                        # FILTRAGE EXPLICITE DES ENREGISTREMENTS PROBLÉMATIQUES
-                        # Vérifier s'il s'agit d'un champ HeaderSectionChamp ou ExplicationChamp
-                        if any(key.lower() in ["header", "section", "explication", "title"] for key in fields.keys()):
-                            log_verbose(f"Enregistrement ignoré car potentiellement un HeaderSectionChamp ou ExplicationChamp: {record_id}")
-                            continue
-                        
                         # Vérifier si dossier_number ou number est présent
                         dossier_num = None
                         if 'dossier_number' in fields and fields['dossier_number']:
@@ -1030,19 +1025,7 @@ class GristClient:
             if not self.doc_id:
                 raise ValueError("Document ID is required")
 
-        # FILTRAGE EXPLICITE DES CHAMPS PROBLÉMATIQUES
-        # Retirer tous les champs qui pourraient correspondre à HeaderSectionChamp et ExplicationChamp
-        filtered_row_dict = {}
-        for key, value in row_dict.items():
-            # Vérifier si la clé contient des mots-clés problématiques
-            if any(keyword in key.lower() for keyword in ["header", "section", "explication", "title"]):
-                log_verbose(f"Champ ignoré car potentiellement un HeaderSectionChamp ou ExplicationChamp: {key}")
-                continue
-            filtered_row_dict[key] = value
         
-        # Utiliser le dictionnaire filtré à la place du dictionnaire original
-        row_dict = filtered_row_dict
-
         # Vérifier si nous avons le numéro de dossier
         dossier_number = row_dict.get("dossier_number") or row_dict.get("number")
 
@@ -1162,28 +1145,16 @@ class GristClient:
             
             # FILTRAGE EXPLICITE DES COLONNES PROBLÉMATIQUES
             # Retirer toutes les colonnes qui pourraient correspondre à HeaderSectionChamp et ExplicationChamp
-            filtered_champ_columns = []
+            filtered_champ_columns = column_types.get("champs", [])
             for col in column_types.get("champs", []):
                 col_id = col.get("id", "").lower()
-                # Vérifier si l'ID de la colonne contient des mots-clés problématiques
-                if any(keyword in col_id for keyword in ["header", "section", "explication", "title"]):
-                    log(f"Colonne ignorée car potentiellement un HeaderSectionChamp ou ExplicationChamp: {col_id}")
-                    continue
-                filtered_champ_columns.append(col)
-            
             # Remplacer les colonnes originales par les colonnes filtrées
             column_types["champs"] = filtered_champ_columns
             
             # Filtrage similaire pour les colonnes d'annotations
-            filtered_annotation_columns = []
+            filtered_annotation_columns = column_types.get("annotations", [])
             for col in column_types.get("annotations", []):
                 col_id = col.get("id", "").lower()
-                # Vérifier si l'ID de la colonne contient des mots-clés problématiques
-                if any(keyword in col_id for keyword in ["header", "section", "explication", "title"]):
-                    log(f"Colonne d'annotation ignorée car potentiellement un HeaderSectionChamp ou ExplicationChamp: {col_id}")
-                    continue
-                filtered_annotation_columns.append(col)
-            
             # Remplacer les colonnes originales par les colonnes filtrées
             column_types["annotations"] = filtered_annotation_columns
             
@@ -1262,11 +1233,7 @@ class GristClient:
                 remaining_columns = []
                 for col in column_types["repetable_rows"]:
                     if col["id"] not in ["dossier_number", "block_label", "block_row_index", "block_row_id"]:
-                        # FILTRAGE SUPPLÉMENTAIRE pour les colonnes des blocs répétables
-                        col_id = col.get("id", "").lower()
-                        if any(keyword in col_id for keyword in ["header", "section", "explication", "title"]):
-                            log(f"Colonne répétable ignorée car potentiellement un HeaderSectionChamp ou ExplicationChamp: {col_id}")
-                            continue
+                        
                         remaining_columns.append(col)
                 
                 # Ajouter des colonnes cartographiques spécifiques seulement si des champs carto sont présents
@@ -1322,13 +1289,7 @@ class GristClient:
                         
                         # Trouver les colonnes manquantes
                         missing_columns = []
-                        for col in column_types["repetable_rows"]:
-                            # FILTRAGE SUPPLÉMENTAIRE pour les colonnes manquantes
-                            col_id = col["id"].lower()
-                            if any(keyword in col_id for keyword in ["header", "section", "explication", "title"]):
-                                log(f"Colonne répétable ignorée car potentiellement un HeaderSectionChamp ou ExplicationChamp: {col_id}")
-                                continue
-                                
+                        for col in column_types["repetable_rows"]:  
                             if col["id"] not in existing_column_ids:
                                 missing_columns.append(col)
                         
@@ -2271,10 +2232,9 @@ def process_demarche_for_grist(client, demarche_number):
 
 # Fonction optimisée pour le traitement d'une démarche pour Grist (Possibilité d'augmenter ou de diminuer batch_size et max_workers)
 # Cette fonction est conçue pour être plus rapide et plus efficace, en utilisant le traitement par lots et le traitement parallèle.
-def process_demarche_for_grist_optimized(client, demarche_number, parallel=True, batch_size=150, max_workers=3):
+def process_demarche_for_grist_optimized(client, demarche_number, parallel=True, batch_size=100, max_workers=3, api_filters=None):
     """
-    Version optimisée du traitement d'une démarche pour Grist.
-    Gère la pagination pour plus de 100 dossiers et applique les filtres.
+    Version optimisée du traitement d'une démarche pour Grist avec filtrage côté serveur.
     
     Args:
         client: Instance de GristClient
@@ -2282,6 +2242,7 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
         parallel: Utiliser le traitement parallèle si True
         batch_size: Taille des lots pour le traitement par lot
         max_workers: Nombre maximum de workers pour le traitement parallèle
+        api_filters: Filtres optimisés à appliquer côté serveur (NOUVEAU)
         
     Returns:
         bool: Succès ou échec global
@@ -2289,44 +2250,6 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
     try:
         start_time = time.time()
         
-        # Récupérer les filtres depuis les variables d'environnement
-        date_debut_str = os.getenv("DATE_DEPOT_DEBUT", "")
-        date_fin_str = os.getenv("DATE_DEPOT_FIN", "")
-        statuts_filter = os.getenv("STATUTS_DOSSIERS", "").split(",") if os.getenv("STATUTS_DOSSIERS") else []
-        groupes_filter = os.getenv("GROUPES_INSTRUCTEURS", "").split(",") if os.getenv("GROUPES_INSTRUCTEURS") else []
-        
-        # Ajouter cette vérification pour s'assurer que les valeurs vides sont bien traitées comme absence de filtre
-        if date_debut_str.strip() == "":
-            date_debut_str = None
-        if date_fin_str.strip() == "":
-            date_fin_str = None
-        # Nettoyer les listes vides (en cas de valeurs comme ",,,")
-        statuts_filter = [s for s in statuts_filter if s.strip()]
-        groupes_filter = [g for g in groupes_filter if g.strip()]
-
-        # Convertir les dates en objets datetime si présentes
-        date_debut = None
-        date_fin = None
-        if date_debut_str:
-            try:
-                date_debut = datetime.strptime(date_debut_str, "%Y-%m-%d")
-                log(f"Filtre par date de début: {date_debut.strftime('%Y-%m-%d')}")
-            except ValueError:
-                log_error(f"Format de date de début invalide: {date_debut_str}. Format attendu: YYYY-MM-DD")
-        
-        if date_fin_str:
-            try:
-                date_fin = datetime.strptime(date_fin_str, "%Y-%m-%d")
-                log(f"Filtre par date de fin: {date_fin.strftime('%Y-%m-%d')}")
-            except ValueError:
-                log_error(f"Format de date de fin invalide: {date_fin_str}. Format attendu: YYYY-MM-DD")
-                
-        # Afficher les filtres actifs
-        if statuts_filter:
-            log(f"Filtre par statuts: {', '.join(statuts_filter)}")
-        if groupes_filter:
-            log(f"Filtre par groupes instructeurs: {', '.join(groupes_filter)}")
-
         # Initialiser des ensembles pour suivre les dossiers traités
         successful_dossiers = set()
         failed_dossiers = set()
@@ -2362,6 +2285,7 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                 has_repetable_blocks = column_types.get("has_repetable_blocks", False)
                 has_carto_fields = column_types.get("has_carto_fields", False)
                 
+                log(f"Identificateurs de {len(problematic_descriptor_ids)} descripteurs problématiques à filtrer")
                 log(f"Types de colonnes détectés à partir du schéma:")
                 log(f"  - Colonnes dossiers: {len(column_types['dossier'])}")
                 log(f"  - Colonnes champs: {len(column_types['champs'])}")
@@ -2382,106 +2306,50 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
             traceback.print_exc()
             log("Utilisation de la méthode alternative avec échantillons de dossiers...")
         
-        # Si la méthode basée sur le schéma a échoué, utiliser la méthode basée sur les échantillons
-        if not schema_method_successful:
-            # Récupérer les informations de base de la démarche (sans les dossiers)
-            log(f"Récupération des données de la démarche {demarche_number}...")
-            demarche_brief = get_demarche(demarche_number)
-            if not demarche_brief:
-                log_error(f"Aucune donnée trouvée pour la démarche {demarche_number}")
-                return False
-            
-            log(f"Démarche trouvée: {demarche_brief['title']}")
-            
-            # Récupérer les IDs des champs problématiques à filtrer
-            problematic_descriptor_ids = get_problematic_descriptor_ids(demarche_number)
-            log(f"Filtrage de {len(problematic_descriptor_ids)} descripteurs problématiques")
-            
-            # RÉCUPÉRER LES DOSSIERS avant de détecter le schéma
-            log(f"Récupération de tous les dossiers avec pagination...")
-            all_dossiers = get_demarche_dossiers(demarche_number)
-            
-            total_dossiers_brut = len(all_dossiers)
-            log(f"Nombre total de dossiers trouvés: {total_dossiers_brut}")
-            
-            # Appliquer les filtres sur les dossiers
-            filtered_dossiers = []
-            for dossier in all_dossiers:
-                # Filtre par statut
-                if statuts_filter and dossier["state"] not in statuts_filter:
-                    continue
-                    
-                # Filtre par groupe instructeur
-                if groupes_filter and (
-                    not dossier.get("groupeInstructeur") or 
-                    str(dossier["groupeInstructeur"].get("number", "")) not in groupes_filter
-                ):
-                    continue
-                    
-                # Filtre par date de dépôt
-                if date_debut or date_fin:
-                    date_depot_str = dossier.get("dateDepot")
-                    if not date_depot_str:
-                        continue
-                    
-                    try:
-                        # Convertir la date de dépôt en objet datetime
-                        date_depot = datetime.strptime(date_depot_str.split("T")[0], "%Y-%m-%d")
-                        
-                        # Vérifier si la date est dans la plage
-                        if date_debut and date_depot < date_debut:
-                            continue
-                        if date_fin and date_depot > date_fin:
-                            continue
-                    except (ValueError, AttributeError, TypeError):
-                        # Ignorer les dossiers avec des dates invalides
-                        continue
-                
-                # Si tous les filtres sont passés, ajouter le dossier à la liste filtrée
-                filtered_dossiers.append(dossier)
-            
-            total_dossiers = len(filtered_dossiers)
-            log(f"Après filtrage: {total_dossiers} dossiers ({(total_dossiers/total_dossiers_brut*100) if total_dossiers_brut > 0 else 0:.1f}%)")
-            
-            if total_dossiers == 0:
-                log("Aucun dossier ne correspond aux critères de filtrage")
-                return False
-            
-            # Récupérer quelques dossiers pour analyse du schéma
-            sample_size = min(5, total_dossiers)
-            log(f"Récupération de {sample_size} dossiers pour détection de schéma...")
-            
-            sample_dossier_numbers = [filtered_dossiers[i]["number"] for i in range(sample_size)]
-            
-            if parallel:
-                sample_dossiers = fetch_dossiers_in_parallel(sample_dossier_numbers, max_workers=max_workers).values()
-            else:
-                sample_dossiers = []
-                for num in sample_dossier_numbers:
-                    dossier = get_dossier(num)
-                    if dossier:
-                        sample_dossiers.append(dossier)
-            
-            if not sample_dossiers:
-                log_error("Aucun dossier n'a pu être récupéré pour l'analyse du schéma")
-                return False
-            
-            # Détecter les types de colonnes
-            log("Détection des types de colonnes...")
-            column_types = detect_column_types_from_multiple_dossiers(sample_dossiers, problematic_ids=problematic_descriptor_ids)
-
         # Essayer d'utiliser la méthode de mise à jour qui préserve les données existantes
-        
         try:
             if 'update_grist_tables_from_schema' in globals():
                 log("Mise à jour des tables Grist en préservant les données existantes...")
-                table_ids = update_grist_tables_from_schema(client, demarche_number, column_types, problematic_descriptor_ids)
+                table_ids = update_grist_tables_from_schema(client, demarche_number, column_types if schema_method_successful else None, problematic_descriptor_ids)
             else:
                 # Méthode classique qui peut effacer des données
                 log("Utilisation de la méthode classique de création/modification de tables")
-                table_ids = client.create_or_clear_grist_tables(demarche_number, column_types)
+                table_ids = client.create_or_clear_grist_tables(demarche_number, column_types if schema_method_successful else None)
         except Exception as e:
             log_error(f"Erreur lors de la mise à jour des tables Grist: {str(e)}")
+            # Fallback sur la méthode classique si pas de column_types
+            if not schema_method_successful:
+                # Récupérer les IDs des champs problématiques à filtrer
+                problematic_descriptor_ids = get_problematic_descriptor_ids(demarche_number)
+                log(f"Filtrage de {len(problematic_descriptor_ids)} descripteurs problématiques")
+                
+                # Récupérer quelques dossiers pour analyse du schéma
+                sample_dossiers = []
+                sample_dossier_numbers = []
+                
+                # Utiliser l'ancienne méthode pour récupérer des échantillons
+                try:
+                    from queries_graphql import get_demarche_dossiers
+                    all_dossiers_brief = get_demarche_dossiers(demarche_number)
+                    sample_size = min(3, len(all_dossiers_brief))
+                    sample_dossier_numbers = [all_dossiers_brief[i]["number"] for i in range(sample_size)]
+                    
+                    for num in sample_dossier_numbers:
+                        dossier = get_dossier(num)
+                        if dossier:
+                            sample_dossiers.append(dossier)
+                except Exception as e:
+                    log_error(f"Erreur lors de la récupération des échantillons: {e}")
+                    return False
+                
+                if not sample_dossiers:
+                    log_error("Aucun dossier n'a pu être récupéré pour l'analyse du schéma")
+                    return False
+                
+                # Détecter les types de colonnes
+                log("Détection des types de colonnes...")
+                column_types = detect_column_types_from_multiple_dossiers(sample_dossiers, problematic_ids=problematic_descriptor_ids)
+            
             # Fallback sur la méthode classique
             log("Fallback sur la méthode classique de création/modification de tables")
             table_ids = client.create_or_clear_grist_tables(demarche_number, column_types)
@@ -2493,19 +2361,87 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
         log(f"  Table annotations: {table_ids['annotation_table_id']}")
         if table_ids.get('repetable_table_id'):
             log(f"  Table blocs répétables: {table_ids['repetable_table_id']}")
-        else:
-            log_verbose(f"  Table blocs répétables: Non créée (aucun bloc répétable détecté)")
         
-        # NOUVELLE SECTION: récupérer les dossiers si ce n'est pas déjà fait
-        if schema_method_successful:
-            # Si la méthode basée sur le schéma a été utilisée, récupérer les dossiers maintenant
+        # ========================================
+        # NOUVELLE SECTION : RÉCUPÉRATION OPTIMISÉE DES DOSSIERS
+        # ========================================
+        
+        if api_filters and api_filters:
+            # Utiliser la récupération optimisée avec filtres côté serveur
+            log(f"[FILTRAGE] Récupération optimisée des dossiers avec filtres côté serveur...")
+        # Vérifier les filtres passés
+        if api_filters.get('groupes_instructeurs'):
+            log(f"Filtre par groupes instructeurs (numéros): {', '.join(map(str, api_filters['groupes_instructeurs']))}")
+        if api_filters.get('statuts'):
+            log(f"Filtre par statuts: {', '.join(api_filters['statuts'])}")
+        if api_filters.get('date_debut'):
+            log(f"Filtre par date de début: {api_filters['date_debut']}")
+        if api_filters.get('date_fin'):
+            log(f"Filtre par date de fin: {api_filters['date_fin']}")
+            
+            all_dossiers = get_demarche_dossiers_filtered(
+                demarche_number,
+                date_debut=api_filters.get('date_debut'),
+                date_fin=api_filters.get('date_fin'),
+                groupes_instructeurs=api_filters.get('groupes_instructeurs'),
+                statuts=api_filters.get('statuts')
+            )
+            
+            total_dossiers = len(all_dossiers)
+            log(f"[OK] Dossiers récupérés avec filtres optimisés: {total_dossiers}")
+            
+            # Pas besoin de filtrage côté client car déjà fait côté serveur
+            filtered_dossiers = all_dossiers
+            
+        else:
+            # Utiliser l'ancienne méthode avec filtrage côté client
+            log(f"[ATTENTION] Récupération classique de tous les dossiers (pas de filtres optimisés)")
+            
+            # Récupérer les filtres depuis les variables d'environnement pour compatibilité
+            date_debut_str = os.getenv("DATE_DEPOT_DEBUT", "")
+            date_fin_str = os.getenv("DATE_DEPOT_FIN", "")
+            statuts_filter = os.getenv("STATUTS_DOSSIERS", "").split(",") if os.getenv("STATUTS_DOSSIERS") else []
+            groupes_filter = os.getenv("GROUPES_INSTRUCTEURS", "").split(",") if os.getenv("GROUPES_INSTRUCTEURS") else []
+            
+            # Nettoyer les filtres
+            if date_debut_str.strip() == "":
+                date_debut_str = None
+            if date_fin_str.strip() == "":
+                date_fin_str = None
+            statuts_filter = [s for s in statuts_filter if s.strip()]
+            groupes_filter = [g for g in groupes_filter if g.strip()]
+            
+            # Convertir les dates
+            date_debut = None
+            date_fin = None
+            if date_debut_str:
+                try:
+                    date_debut = datetime.strptime(date_debut_str, "%Y-%m-%d")
+                    log(f"Filtre par date de début: {date_debut.strftime('%Y-%m-%d')}")
+                except ValueError:
+                    log_error(f"Format de date de début invalide: {date_debut_str}")
+            
+            if date_fin_str:
+                try:
+                    date_fin = datetime.strptime(date_fin_str, "%Y-%m-%d")  
+                    log(f"Filtre par date de fin: {date_fin.strftime('%Y-%m-%d')}")
+                except ValueError:
+                    log_error(f"Format de date de fin invalide: {date_fin_str}")
+            
+            if statuts_filter:
+                log(f"Filtre par statuts: {', '.join(statuts_filter)}")
+            if groupes_filter:
+                log(f"Filtre par groupes instructeurs: {', '.join(groupes_filter)}")
+            
+            # Récupérer tous les dossiers puis filtrer côté client
+            from queries_graphql import get_demarche_dossiers
             log(f"Récupération de tous les dossiers avec pagination...")
             all_dossiers = get_demarche_dossiers(demarche_number)
             
             total_dossiers_brut = len(all_dossiers)
             log(f"Nombre total de dossiers trouvés: {total_dossiers_brut}")
             
-            # Appliquer les filtres sur les dossiers
+            # Appliquer les filtres côté client
             filtered_dossiers = []
             for dossier in all_dossiers:
                 # Filtre par statut
@@ -2526,19 +2462,15 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                         continue
                     
                     try:
-                        # Convertir la date de dépôt en objet datetime
                         date_depot = datetime.strptime(date_depot_str.split("T")[0], "%Y-%m-%d")
                         
-                        # Vérifier si la date est dans la plage
                         if date_debut and date_depot < date_debut:
                             continue
                         if date_fin and date_depot > date_fin:
                             continue
                     except (ValueError, AttributeError, TypeError):
-                        # Ignorer les dossiers avec des dates invalides
                         continue
                 
-                # Si tous les filtres sont passés, ajouter le dossier à la liste filtrée
                 filtered_dossiers.append(dossier)
             
             total_dossiers = len(filtered_dossiers)
@@ -2564,6 +2496,9 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
             dossier_batches.append(batch_dossier_numbers)
         
         log(f"Dossiers organisés en {batch_count} lots de {batch_size} maximum")
+        
+        # Le reste du traitement reste identique...
+        # [COPIER LE RESTE DE LA FONCTION EXISTANTE DEPUIS "# Traiter les lots de dossiers"]
         
         # Traiter les lots de dossiers
         total_success = 0
@@ -2596,7 +2531,7 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
             for dossier_num, dossier_data in batch_dossiers_dict.items():
                 try:
                     # Extraire les données à plat
-                    exclude_repetition = column_types.get("has_repetable_blocks", False)  # Exclure seulement si on va les traiter séparément
+                    exclude_repetition = column_types.get("has_repetable_blocks", False)
                     flat_data = dossier_to_flat_data(dossier_data, exclude_repetition_champs=exclude_repetition, problematic_ids=problematic_descriptor_ids)
                     
                     # Préparer l'enregistrement pour la table des dossiers
@@ -2722,14 +2657,6 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                     import traceback
                     traceback.print_exc()
             
-            # Debug pour voir le contenu des enregistrements
-            if dossier_records:
-                log_verbose(f"  Exemple de dossier_record: {dossier_records[0]}")
-            if champ_records:
-                log_verbose(f"  Exemple de champ_record: {champ_records[0]}")
-            if annotation_records:
-                log_verbose(f"  Exemple d'annotation_record: {annotation_records[0]}")
-            
             # Effectuer les opérations d'upsert par lot
             if dossier_records:
                 log(f"  Upsert par lot de {len(dossier_records)} dossiers...")
@@ -2751,17 +2678,10 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                     total_success += len(champ_records)
                 else:
                     total_errors += len(champ_records)
-                    # Afficher les erreurs pour debug
-                    log_error("Détails des enregistrements de champs qui ont échoué:")
-                    log_error(f"Premier record échoué: {champ_records[0] if champ_records else 'aucun'}")
             
             if annotation_records:
                 log(f"  Upsert par lot de {len(annotation_records)} enregistrements d'annotations...")
                 success = client.upsert_multiple_dossiers_in_grist(table_ids["annotation_table_id"], annotation_records)
-                if not success:
-                    # Afficher les erreurs pour debug
-                    log_error("Détails des enregistrements d'annotations qui ont échoué:")
-                    log_error(f"Premier record échoué: {annotation_records[0] if annotation_records else 'aucun'}")
             
             # Traiter les blocs répétables si nécessaire
             if column_types.get("has_repetable_blocks", False) and table_ids.get("repetable_table_id") and "repetable_rows" in column_types:
@@ -2798,18 +2718,15 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
         log(f"Dossiers traités avec succès: {total_success}")
         if total_errors > 0:
             log(f"Dossiers en échec: {total_errors}")
-        
-        if total_dossiers_brut > 0 and total_dossiers < total_dossiers_brut:
-            log(f"Note: {total_dossiers_brut - total_dossiers} dossiers ont été exclus par les filtres")
                 
-        return total_success > 0 or schema_method_successful  # Succès si des dossiers ont été traités ou si les tables ont été créées
+        return total_success > 0 or schema_method_successful
         
     except Exception as e:
         log_error(f"Erreur lors du traitement de la démarche pour Grist: {e}")
         import traceback
         traceback.print_exc()
         return False
-
+    
 def main():
     load_dotenv()
 
@@ -2846,9 +2763,30 @@ def main():
     # Initialiser le client Grist
     client = GristClient(grist_base_url, grist_api_key, grist_doc_id)
 
+    # NOUVEAU : Récupérer les filtres optimisés depuis l'environnement
+    api_filters_json = os.getenv('API_FILTERS_JSON', '{}')
+    try:
+        api_filters = json_module.loads(api_filters_json)
+        if api_filters:
+            log(f"[FILTRAGE] Filtres optimisés détectés: {list(api_filters.keys())}")
+    except:
+        api_filters = {}
+        log("⚠️ Aucun filtre optimisé détecté, utilisation de l'ancienne méthode")
+
+    # Récupérer les autres paramètres
+    parallel = os.getenv('PARALLEL', 'true').lower() == 'true'
+    batch_size = int(os.getenv('BATCH_SIZE', '50'))
+    max_workers = int(os.getenv('MAX_WORKERS', '3'))
+
     # Traiter la démarche avec la fonction optimisée
-    # Vous pouvez ajuster les paramètres ici
-    if process_demarche_for_grist_optimized(client, demarche_number, parallel=True, batch_size=150):
+    if process_demarche_for_grist_optimized(
+        client, 
+        demarche_number, 
+        parallel=parallel, 
+        batch_size=batch_size, 
+        max_workers=max_workers,
+        api_filters=api_filters  # Passer les filtres optimisés
+    ):
         log(f"Traitement de la démarche {demarche_number} terminé avec succès")
         return 0
     else:

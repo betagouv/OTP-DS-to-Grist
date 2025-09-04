@@ -386,20 +386,13 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         # Filtrer les colonnes champs
         filtered_champ_columns = []
         for col in column_types.get("champs", []):
-            col_id = col.get("id", "").lower()
-            if any(keyword in col_id for keyword in ["header", "section", "explication", "title"]):
-                log(f"Colonne ignorée car potentiellement un HeaderSectionChamp ou ExplicationChamp: {col_id}")
-                continue
             filtered_champ_columns.append(col)
         column_types["champs"] = filtered_champ_columns
         
         # Filtrer les colonnes annotations
         filtered_annotation_columns = []
         for col in column_types.get("annotations", []):
-            col_id = col.get("id", "").lower()
-            if any(keyword in col_id for keyword in ["header", "section", "explication", "title"]):
-                log(f"Colonne d'annotation ignorée car problématique: {col_id}")
-                continue
+            
             filtered_annotation_columns.append(col)
         column_types["annotations"] = filtered_annotation_columns
         
@@ -464,10 +457,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             for col in all_columns:
                 if col["id"] not in existing_columns:
                     # Filtrage supplémentaire pour les colonnes problématiques
-                    col_id = col["id"].lower()
-                    if any(keyword in col_id for keyword in ["header", "section", "explication", "title"]):
-                        log(f"Colonne ignorée lors de l'ajout: {col_id}")
-                        continue
+                    
                     missing_columns.append(col)
             
             # Ajouter les colonnes manquantes

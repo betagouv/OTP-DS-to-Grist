@@ -126,6 +126,8 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
             values_list = champ.get("values", [])
             value = ", ".join(values_list) if values_list else None
             json_value = values_list
+        elif champ["__typename"] == "DropDownListChamp":
+            value = champ.get("stringValue")
         elif champ["__typename"] == "PieceJustificativeChamp":
             files = champ.get("files", [])
             value = ", ".join([f['filename'] for f in files]) if files else None

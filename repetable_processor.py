@@ -225,7 +225,10 @@ def extract_field_value(champ: Dict[str, Any]) -> Tuple[Any, Optional[Dict[str, 
         secondary = champ.get('secondaryValue', '')
         value = f"{primary} - {secondary}" if primary and secondary else primary or secondary
         json_value = {"primaryValue": primary, "secondaryValue": secondary}
-        
+    
+    elif typename == "DropDownListChamp":
+        value = champ.get("stringValue")
+
     elif typename == "MultipleDropDownListChamp":
         values_list = champ.get("values", [])
         value = ", ".join(values_list) if values_list else None
@@ -940,11 +943,6 @@ def process_repetables_batch(client, dossiers_data, table_id, column_types, prob
                             
                             field_label = field["label"]
                             normalized_label = normalize_column_name(field_label)
-                            
-                            # NOUVEAU : Dernière vérification de sécurité
-                            if normalized_label.lower() in ["attention", "titre", "explication", "header", "section"]:
-                                log_verbose(f"    Label normalisé ignoré: {normalized_label}")
-                                continue
 
 
                             # Extraire la valeur
@@ -1188,10 +1186,6 @@ def detect_repetable_columns_in_dossier(dossier_data):
                             field_label = field["label"]
                             normalized_label = normalize_column_name(field_label)
                             
-                            # NOUVEAU : Double vérification sur le label normalisé
-                            if normalized_label.lower() in ["attention", "titre", "explication", "header", "section"]:
-                                log_verbose(f"Label normalisé ignoré: {normalized_label}")
-                                continue
                             
                             # Déterminer le type de colonne
                             column_type = "Text"  # Type par défaut
@@ -1253,10 +1247,7 @@ def detect_repetable_columns_from_multiple_dossiers(dossiers_data):
             col_id = col["id"]
             col_type = col["type"]
             
-            # NOUVEAU : Ignorer les colonnes qui correspondent aux champs problématiques
-            if col_id.lower() in ["attention", "titre", "explication", "header", "section"]:
-                log_verbose(f"Colonne ignorée lors de la détection: {col_id}")
-                continue
+            
             
             if col_id in all_columns:
                 # Si le type est différent, prioriser certains types
