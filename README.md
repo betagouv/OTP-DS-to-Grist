@@ -26,23 +26,17 @@ git clone https://github.com/votre-organisation/one-trick-pony-ds-grist.git
 cd one-trick-pony-ds-grist
 ```
 
-### 2. Créer un environnement virtuel Python
+### 2. Utiliser l'environnement virtuel Python
 
 ```bash
-# Création de l'environnement virtuel
-python -m venv venv
-
-# Activation (Windows)
-venv\Scripts\activate
-
-# Activation (macOS/Linux)
-source venv/bin/activate
+# Création de l'environnement virtuel & activation (macOS/Linux)
+poetry env activate
 ```
 
 ### 3. Installer les dépendances
 
 ```bash
-pip install -r requirements.txt
+poetry install --no-root
 ```
 
 ### 4. Configuration des variables d'environnement
@@ -109,10 +103,10 @@ FLASK_SECRET_KEY='dev-key-change-in-production-2024'
 
 ```bash
 # Activer l'environnement virtuel si pas déjà fait
-source venv/bin/activate  # ou venv\Scripts\activate sur Windows
+poetry env activate
 
 # Lancer l'application
-python app.py
+poetry run python app.py
 ```
 
 L'application sera accessible sur : **http://localhost:5000**

@@ -1,0 +1,24 @@
+[project]
+name = "otp-ds-to-grist-flask-local"
+version = "0.1.0"
+description = "Ce projet permet de synchroniser plusieurs démarches Démarches Simplifiées vers différents documents Grist avec des paramètres de filtrage spécifiques à chaque démarche."
+authors = [
+    {name = "tarik.amar@multi.coop"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "flask (==2.3.3)",
+    "flask-socketio (==5.3.6)",
+    "python-dotenv (==1.0.0)",
+    "requests (==2.31.0)",
+    "python-socketio (==5.8.0)",
+    "eventlet (==0.33.3)",
+    "gevent (==25.8.2)",
+    "python-dateutil (==2.8.2)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
