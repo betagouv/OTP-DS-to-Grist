@@ -106,8 +106,8 @@ FLASK_SECRET_KEY='dev-key-change-in-production-2024'
 # Activer l'environnement virtuel si pas déjà fait
 poetry env activate
 
-# Lancer l'application
-poetry run python app.py
+# Lancer l'application de développement
+poe dev
 ```
 
 L'application sera accessible sur : **http://localhost:5000**
@@ -254,7 +254,7 @@ git pull origin main
 pip install -r requirements.txt --upgrade
 
 # Redémarrer l'application
-python app.py
+poe dev
 ```
 
 ### Sauvegarde de la configuration
