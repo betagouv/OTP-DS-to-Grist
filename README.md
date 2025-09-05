@@ -7,7 +7,7 @@ Ce guide détaille comment installer et utiliser **One Trick Pony DS to Grist** 
 ## 🎯 Prérequis
 
 ### Logiciels requis
-- **Python 3.9+** ([Télécharger Python](https://www.python.org/downloads/))
+- **Python 3.13+** ([Télécharger Python](https://www.python.org/downloads/))
 - **Git** ([Télécharger Git](https://git-scm.com/downloads/))
 - **Un éditeur de code** (VS Code, PyCharm, etc.)
 
@@ -37,6 +37,7 @@ poetry env activate
 
 ```bash
 poetry install --no-root
+poetry install --no-root --with dev # Pour profiter des outils de développement
 ```
 
 ### 4. Configuration des variables d'environnement
