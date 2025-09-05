@@ -14,6 +14,7 @@ requests==2.31.0
 # WebSocket support
 python-socketio==5.8.0
 eventlet==0.33.3
+gevent==25.8.2
 
 # Utilitaires pour les dates et JSON
 python-dateutil==2.8.2
