@@ -2921,8 +2921,9 @@ Cette documentation complète couvre tous les aspects techniques du projet "One 
 - **Évolutif** : Architecture permettant l'ajout de fonctionnalités
 - **Sécurisé** : Gestion appropriée des secrets, validation des données
 
-Le projet peut être déployé en production et s'adapter à différents volumes de données et cas d'usage.# 🦄 One Trick Pony DS to Grist - Documentation Technique
-# Partie 5 : Modules spécialisés et configuration
+Le projet peut être déployé en production et s'adapter à différents volumes de données et cas d'usage.
+
+# Partie 5 : Modules spécialisés et configuration complète
 
 ## 1. **`repetable_processor.py`** - Traitement des blocs répétables
 
@@ -3004,4 +3005,719 @@ def extract_repetable_blocks(dossier, problematic_ids=None):
                 }
                 
                 # Extraire tous les champs de la ligne
-                for fiel
+                for field in row.get("champs", []):
+                    if should_skip_field(field, problematic_ids):
+                        continue
+                    
+                    # Extraire la valeur selon le type de champ
+                    field_label = field.get("label", "")
+                    field_name = normalize_column_name(field_label)
+                    
+                    typename = field.get("__typename", "")
+                    
+                    # Extraction selon le type
+                    if typename == "CheckboxChamp":
+                        value = field.get("checked", False)
+                    elif typename == "DateChamp":
+                        value = field.get("date")
+                    elif typename == "DatetimeChamp":
+                        value = field.get("datetime")
+                    elif typename in ["DecimalNumberChamp", "IntegerNumberChamp"]:
+                        value = field.get("value")
+                    elif typename == "MultipleDropDownListChamp":
+                        values = field.get("values", [])
+                        value = ", ".join(values) if values else None
+                    elif typename == "LinkedDropDownListChamp":
+                        primary = field.get("primaryValue", "")
+                        secondary = field.get("secondaryValue", "")
+                        value = f"{primary} - {secondary}" if secondary else primary
+                    elif typename == "PieceJustificativeChamp":
+                        files = field.get("files", [])
+                        if files:
+                            value = json.dumps([{
+                                "filename": f.get("filename"),
+                                "url": f.get("url")
+                            } for f in files], ensure_ascii=False)
+                        else:
+                            value = None
+                    else:
+                        # Valeur par défaut
+                        value = field.get("stringValue") or field.get("value")
+                    
+                    row_data[field_name] = value
+                
+                repetable_rows.append(row_data)
+    
+    # Traiter aussi les annotations répétables si présentes
+    for annotation in dossier.get("annotations", []):
+        if annotation.get("__typename") == "RepetitionChamp":
+            block_label = annotation.get("label", "")
+            rows = annotation.get("rows", [])
+            
+            for row_index, row in enumerate(rows):
+                row_data = {
+                    "dossier_number": dossier_number,
+                    "block_label": f"[Annotation] {block_label}",
+                    "block_row_index": row_index,
+                    "block_row_id": row.get("id")
+                }
+                
+                for field in row.get("champs", []):
+                    if not should_skip_field(field, problematic_ids):
+                        field_name = normalize_column_name(field.get("label", ""))
+                        value = field.get("stringValue") or field.get("value")
+                        row_data[field_name] = value
+                
+                repetable_rows.append(row_data)
+    
+    return repetable_rows
+```
+
+### **Fonction `detect_repetable_columns_from_multiple_dossiers(dossiers_data)`**
+
+```python
+def detect_repetable_columns_from_multiple_dossiers(dossiers_data):
+    """
+    Analyse plusieurs dossiers pour détecter toutes les colonnes possibles
+    dans les blocs répétables.
+    """
+    # Colonnes de base toujours présentes
+    base_columns = [
+        {"id": "dossier_number", "type": "Int"},
+        {"id": "block_label", "type": "Text"},
+        {"id": "block_row_index", "type": "Int"},
+        {"id": "block_row_id", "type": "Text"}
+    ]
+    
+    # Dictionnaire pour collecter toutes les colonnes uniques
+    unique_columns = {}
+    
+    # Analyser chaque dossier
+    for dossier in dossiers_data[:5]:  # Limiter à 5 dossiers pour la performance
+        repetable_rows = extract_repetable_blocks(dossier)
+        
+        # Collecter toutes les clés uniques
+        for row in repetable_rows:
+            for key, value in row.items():
+                # Skip les colonnes de base
+                if key in ["dossier_number", "block_label", "block_row_index", "block_row_id"]:
+                    continue
+                
+                # Si on n'a pas encore vu cette colonne
+                if key not in unique_columns:
+                    # Détecter le type
+                    col_type = detect_value_type(value)
+                    unique_columns[key] = col_type
+    
+    # Construire la liste finale des colonnes
+    columns = base_columns.copy()
+    for col_name, col_type in unique_columns.items():
+        columns.append({
+            "id": col_name,
+            "type": col_type
+        })
+    
+    log(f"Détecté {len(unique_columns)} colonnes uniques dans les blocs répétables")
+    return columns
+
+def detect_value_type(value):
+    """Détecte le type Grist approprié pour une valeur."""
+    if value is None:
+        return "Text"
+    
+    # DateTime
+    if isinstance(value, str) and ("T" in value and ":" in value):
+        try:
+            datetime.strptime(value.split("T")[0], "%Y-%m-%d")
+            return "DateTime"
+        except:
+            pass
+    
+    # Boolean
+    if isinstance(value, bool) or value in ["true", "false", True, False]:
+        return "Bool"
+    
+    # Numeric
+    if isinstance(value, (int, float)):
+        if isinstance(value, int):
+            return "Int"
+        return "Numeric"
+    
+    # Essayer de parser en nombre
+    if isinstance(value, str):
+        try:
+            float_val = float(value)
+            if "." in value:
+                return "Numeric"
+            return "Int"
+        except:
+            pass
+    
+    return "Text"
+```
+
+### **Fonction `process_repetable_rows_for_grist(client, repetable_data, table_id, dossier_number)`**
+
+```python
+def process_repetable_rows_for_grist(client, repetable_data, table_id, dossier_number):
+    """
+    Traite et insère les données de blocs répétables dans Grist.
+    """
+    if not repetable_data:
+        log_verbose(f"Pas de données répétables pour le dossier {dossier_number}")
+        return True
+    
+    try:
+        # Vérifier que la table existe
+        if not client.table_exists(table_id):
+            log_error(f"Table {table_id} n'existe pas")
+            return False
+        
+        # Récupérer les colonnes existantes
+        existing_columns = client.get_columns(table_id)
+        required_columns = set()
+        
+        # Collecter toutes les colonnes nécessaires
+        for row in repetable_data:
+            required_columns.update(row.keys())
+        
+        # Identifier les colonnes manquantes
+        missing_columns = []
+        for col_name in required_columns:
+            if col_name not in existing_columns:
+                # Déterminer le type en analysant les valeurs
+                col_type = "Text"  # Défaut
+                for row in repetable_data:
+                    if col_name in row and row[col_name] is not None:
+                        col_type = detect_value_type(row[col_name])
+                        break
+                
+                missing_columns.append({
+                    "id": col_name,
+                    "type": col_type
+                })
+        
+        # Ajouter les colonnes manquantes
+        if missing_columns:
+            client.ensure_columns(table_id, missing_columns)
+            log(f"Ajouté {len(missing_columns)} colonnes à {table_id}")
+        
+        # Préparer les enregistrements pour Grist
+        records = []
+        for row_data in repetable_data:
+            # Convertir les valeurs selon leur type
+            record = {}
+            for key, value in row_data.items():
+                if value is not None:
+                    # Conversion selon le type de la colonne
+                    col_type = existing_columns.get(key, "Text")
+                    record[key] = format_value_for_grist(value, col_type)
+                else:
+                    record[key] = None
+            
+            records.append(record)
+        
+        # Insérer les enregistrements
+        if records:
+            added = client.add_records(table_id, records)
+            log_verbose(f"Ajouté {added} lignes répétables pour le dossier {dossier_number}")
+            return True
+        
+        return True
+        
+    except Exception as e:
+        log_error(f"Erreur traitement blocs répétables dossier {dossier_number}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+```
+
+---
+
+## 2. **`schema_utils.py`** - Gestion avancée des schémas
+
+**Rôle :** Récupération et création de schémas complets sans avoir besoin de données.
+
+### **Fonction `get_demarche_schema(demarche_number)`**
+
+```python
+def get_demarche_schema(demarche_number):
+    """
+    Récupère le schéma complet d'une démarche avec tous ses descripteurs de champs,
+    sans dépendre des dossiers existants.
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré")
+    
+    # Requête GraphQL spécifique pour récupérer les descripteurs
+    query = """
+    query getDemarcheSchema($demarcheNumber: Int!) {
+        demarche(number: $demarcheNumber) {
+            id
+            number
+            title
+            activeRevision {
+                id
+                champDescriptors {
+                    ...ChampDescriptorFragment
+                    ... on RepetitionChampDescriptor {
+                        champDescriptors {
+                            ...ChampDescriptorFragment
+                        }
+                    }
+                }
+                annotationDescriptors {
+                    ...ChampDescriptorFragment
+                    ... on RepetitionChampDescriptor {
+                        champDescriptors {
+                            ...ChampDescriptorFragment
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    fragment ChampDescriptorFragment on ChampDescriptor {
+        __typename
+        id
+        type
+        label
+        description
+        required
+        ... on DropDownListChampDescriptor {
+            options
+            otherOption
+        }
+        ... on MultipleDropDownListChampDescriptor {
+            options
+        }
+        ... on LinkedDropDownListChampDescriptor {
+            options
+        }
+        ... on PieceJustificativeChampDescriptor {
+            fileTemplate {
+                filename
+            }
+        }
+        ... on ExplicationChampDescriptor {
+            collapsibleExplanationEnabled
+            collapsibleExplanationText
+        }
+    }
+    """
+    
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    response = requests.post(
+        API_URL,
+        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
+        headers=headers
+    )
+    
+    response.raise_for_status()
+    result = response.json()
+    
+    # Vérifier les erreurs
+    if "errors" in result:
+        filtered_errors = []
+        for error in result["errors"]:
+            error_message = error.get("message", "")
+            if "permissions" not in error_message.lower():
+                filtered_errors.append(error_message)
+        
+        if filtered_errors:
+            raise Exception(f"GraphQL errors: {', '.join(filtered_errors)}")
+    
+    # Vérifier que les données sont présentes
+    if not result.get("data") or not result["data"].get("demarche"):
+        raise Exception(f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}")
+    
+    demarche = result["data"]["demarche"]
+    
+    # Vérifier que activeRevision existe
+    if not demarche.get("activeRevision"):
+        raise Exception(f"Aucune révision active trouvée pour la démarche {demarche_number}")
+    
+    return demarche
+```
+
+### **Fonction `get_problematic_descriptor_ids_from_schema(demarche_schema)`**
+
+```python
+def get_problematic_descriptor_ids_from_schema(demarche_schema):
+    """
+    Extrait les IDs des descripteurs problématiques (HeaderSection, Explication)
+    directement depuis le schéma de la démarche.
+    """
+    problematic_ids = set()
+    
+    # Fonction récursive pour explorer les descripteurs
+    def explore_descriptors(descriptors):
+        for descriptor in descriptors:
+            if descriptor.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"] or \
+               descriptor.get("type") in ["header_section", "explication"]:
+                problematic_ids.add(descriptor.get("id"))
+            
+            # Explorer les descripteurs dans les blocs répétables
+            if descriptor.get("__typename") == "RepetitionChampDescriptor" and "champDescriptors" in descriptor:
+                explore_descriptors(descriptor["champDescriptors"])
+    
+    # Explorer les descripteurs de champs et d'annotations
+    if demarche_schema.get("activeRevision"):
+        if "champDescriptors" in demarche_schema["activeRevision"]:
+            explore_descriptors(demarche_schema["activeRevision"]["champDescriptors"])
+        
+        if "annotationDescriptors" in demarche_schema["activeRevision"]:
+            explore_descriptors(demarche_schema["activeRevision"]["annotationDescriptors"])
+    
+    return problematic_ids
+```
+
+### **Fonction `create_columns_from_schema(demarche_schema)`**
+
+```python
+def create_columns_from_schema(demarche_schema):
+    """
+    Crée les définitions de colonnes à partir du schéma de la démarche,
+    en filtrant les champs problématiques.
+    """
+    # IMPORT LOCAL pour éviter la dépendance circulaire
+    from grist_processor_working_all import normalize_column_name, log, log_verbose, log_error
+    
+    # Récupérer les IDs des descripteurs problématiques à filtrer
+    problematic_ids = get_problematic_descriptor_ids_from_schema(demarche_schema)
+    log(f"Identificateurs de {len(problematic_ids)} descripteurs problématiques à filtrer")
+    
+    # Colonnes fixes pour la table des dossiers
+    dossier_columns = [
+        {"id": "dossier_id", "type": "Text"},
+        {"id": "number", "type": "Int"},
+        {"id": "state", "type": "Text"},
+        {"id": "date_depot", "type": "DateTime"},
+        {"id": "date_derniere_modification", "type": "DateTime"},
+        {"id": "date_traitement", "type": "DateTime"},
+        {"id": "demandeur_type", "type": "Text"},
+        {"id": "demandeur_civilite", "type": "Text"},
+        {"id": "demandeur_nom", "type": "Text"},
+        {"id": "demandeur_prenom", "type": "Text"},
+        {"id": "demandeur_email", "type": "Text"},
+        {"id": "demandeur_siret", "type": "Text"},
+        {"id": "entreprise_raison_sociale", "type": "Text"},
+        {"id": "usager_email", "type": "Text"},
+        {"id": "groupe_instructeur_id", "type": "Text"},
+        {"id": "groupe_instructeur_number", "type": "Int"},
+        {"id": "groupe_instructeur_label", "type": "Text"},
+        {"id": "supprime_par_usager", "type": "Bool"},
+        {"id": "date_suppression", "type": "DateTime"},
+        {"id": "prenom_mandataire", "type": "Text"},
+        {"id": "nom_mandataire", "type": "Text"},
+        {"id": "depose_par_un_tiers", "type": "Bool"},
+        {"id": "label_names", "type": "Text"},
+        {"id": "labels_json", "type": "Text"}
+    ]
+    
+    # Colonnes de base pour les autres tables
+    champ_columns = [
+        {"id": "dossier_number", "type": "Int"},
+        {"id": "champ_id", "type": "Text"},
+    ]
+    
+    annotation_columns = [
+        {"id": "dossier_number", "type": "Int"},
+    ]
+    
+    repetable_columns = [
+        {"id": "dossier_number", "type": "Int"},
+        {"id": "block_label", "type": "Text"},
+        {"id": "block_row_index", "type": "Int"},
+        {"id": "block_row_id", "type": "Text"},
+    ]
+    
+    # Variables pour suivre la présence de structures spéciales
+    has_repetable_blocks = False
+    has_carto_fields = False
+    
+    # Fonction pour mapper le type de descripteur vers le type Grist
+    def map_descriptor_type_to_grist(descriptor):
+        type_mapping = {
+            "text": "Text",
+            "textarea": "Text",
+            "email": "Text",
+            "phone": "Text",
+            "url": "Text",
+            "drop_down_list": "Text",
+            "multiple_drop_down_list": "Text",
+            "linked_drop_down_list": "Text",
+            "pays": "Text",
+            "regions": "Text",
+            "departements": "Text",
+            "communes": "Text",
+            "epci": "Text",
+            "address": "Text",
+            "carte": "Text",
+            "piece_justificative": "Text",
+            "siret": "Text",
+            "rna": "Text",
+            "rnf": "Text",
+            "integer_number": "Int",
+            "decimal_number": "Numeric",
+            "checkbox": "Bool",
+            "yes_no": "Bool",
+            "date": "DateTime",
+            "datetime": "DateTime",
+            "dossier_link": "Int",
+            "titre_identite": "Text",
+            "iban": "Text",
+            "civilite": "Text",
+            "engagement_juridique": "Text",
+            "cojo": "Text",
+            "expression_reguliere": "Text",
+            "mesri": "Text",
+            "pole_emploi": "Text",
+            "dgfip": "Text",
+            "cnaf": "Text",
+            "annuaire_education": "Text"
+        }
+        
+        descriptor_type = descriptor.get("type", "text")
+        return type_mapping.get(descriptor_type, "Text")
+    
+    # Fonction récursive pour traiter les descripteurs
+    def process_descriptors(descriptors, target_columns, is_repetable=False):
+        for descriptor in descriptors:
+            descriptor_id = descriptor.get("id")
+            
+            # Skip si c'est un descripteur problématique
+            if descriptor_id in problematic_ids:
+                continue
+            
+            typename = descriptor.get("__typename", "")
+            label = descriptor.get("label", "")
+            
+            # Si c'est un bloc répétable
+            if typename == "RepetitionChampDescriptor":
+                nonlocal has_repetable_blocks
+                has_repetable_blocks = True
+                
+                # Traiter les champs à l'intérieur du bloc répétable
+                if "champDescriptors" in descriptor:
+                    for child_descriptor in descriptor["champDescriptors"]:
+                        if child_descriptor.get("id") not in problematic_ids:
+                            child_label = child_descriptor.get("label", "")
+                            normalized_name = normalize_column_name(child_label)
+                            grist_type = map_descriptor_type_to_grist(child_descriptor)
+                            
+                            # Ajouter à la table des répétables
+                            if not any(col["id"] == normalized_name for col in repetable_columns):
+                                repetable_columns.append({
+                                    "id": normalized_name,
+                                    "type": grist_type
+                                })
+            
+            # Si c'est un champ cartographique
+            elif descriptor.get("type") == "carte":
+                nonlocal has_carto_fields
+                has_carto_fields = True
+                # Les champs carto sont stockés comme Text (JSON)
+                normalized_name = normalize_column_name(label)
+                if not any(col["id"] == normalized_name for col in target_columns):
+                    target_columns.append({
+                        "id": normalized_name,
+                        "type": "Text"
+                    })
+            
+            # Champ standard
+            else:
+                normalized_name = normalize_column_name(label)
+                grist_type = map_descriptor_type_to_grist(descriptor)
+                
+                # Ajouter à la liste cible si pas déjà présent
+                if not any(col["id"] == normalized_name for col in target_columns):
+                    target_columns.append({
+                        "id": normalized_name,
+                        "type": grist_type
+                    })
+    
+    # Traiter les descripteurs de champs
+    if demarche_schema.get("activeRevision"):
+        if "champDescriptors" in demarche_schema["activeRevision"]:
+            process_descriptors(
+                demarche_schema["activeRevision"]["champDescriptors"],
+                champ_columns
+            )
+        
+        # Traiter les descripteurs d'annotations
+        if "annotationDescriptors" in demarche_schema["activeRevision"]:
+            process_descriptors(
+                demarche_schema["activeRevision"]["annotationDescriptors"],
+                annotation_columns
+            )
+    
+    # Préparer le résultat
+    result = {
+        "dossier": dossier_columns,
+        "champs": champ_columns,
+        "annotations": annotation_columns,
+        "has_repetable_blocks": has_repetable_blocks,
+        "has_carto_fields": has_carto_fields
+    }
+    
+    if has_repetable_blocks:
+        result["repetable_rows"] = repetable_columns
+    
+    log(f"Structure détectée depuis le schéma:")
+    log(f"  - {len(champ_columns)} colonnes de champs")
+    log(f"  - {len(annotation_columns)} colonnes d'annotations")
+    if has_repetable_blocks:
+        log(f"  - {len(repetable_columns)} colonnes de blocs répétables")
+    
+    return result
+```
+
+### **Fonction `update_grist_tables_from_schema(client, demarche_schema)`**
+
+```python
+def update_grist_tables_from_schema(client, demarche_schema):
+    """
+    Met à jour ou crée les tables Grist basées sur le schéma de la démarche.
+    """
+    from grist_processor_working_all import log, log_error
+    
+    try:
+        # Générer les définitions de colonnes depuis le schéma
+        columns_def = create_columns_from_schema(demarche_schema)
+        
+        # Liste des tables à créer/mettre à jour
+        tables_to_update = [
+            ("dossiers", columns_def["dossier"]),
+            ("champs", columns_def["champs"]),
+            ("annotations", columns_def["annotations"])
+        ]
+        
+        # Ajouter la table des répétables si nécessaire
+        if columns_def.get("has_repetable_blocks") and columns_def.get("repetable_rows"):
+            tables_to_update.append(("repetable_rows", columns_def["repetable_rows"]))
+        
+        # Créer ou mettre à jour chaque table
+        for table_id, columns in tables_to_update:
+            if client.table_exists(table_id):
+                # La table existe, s'assurer que toutes les colonnes sont présentes
+                client.ensure_columns(table_id, columns)
+                log(f"Table {table_id} mise à jour avec {len(columns)} colonnes")
+            else:
+                # Créer la table
+                if client.create_table(table_id, columns):
+                    log(f"Table {table_id} créée avec {len(columns)} colonnes")
+                else:
+                    log_error(f"Échec de création de la table {table_id}")
+                    return False
+        
+        return True
+        
+    except Exception as e:
+        log_error(f"Erreur lors de la mise à jour des tables depuis le schéma: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+```
+
+---
+
+## 3. Configuration et déploiement
+
+### **`requirements.txt`** - Dépendances Python
+
+```
+# Framework web et communication temps réel
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+python-socketio==5.8.0
+eventlet==0.33.3
+
+# Gestion de l'environnement et configuration
+python-dotenv==1.0.0
+
+# Communication HTTP et APIs
+requests==2.31.0
+
+# Manipulation de dates
+python-dateutil==2.8.2
+
+# Modules Python standard utilisés (déjà inclus):
+# - concurrent.futures : Parallélisation
+# - threading : Gestion des threads
+# - queue : Files d'attente
+# - subprocess : Exécution de processus externes
+# - json : Manipulation JSON
+# - base64 : Encodage/décodage Base64
+# - hashlib : Génération de hash
+# - unicodedata : Normalisation de caractères
+# - re : Expressions régulières
+```
+
+### **Variables d'environnement (.env)**
+
+```bash
+# === Configuration API Démarches Simplifiées ===
+DEMARCHES_API_TOKEN=votre_token_ici
+DEMARCHES_API_URL=https://www.demarches-simplifiees.fr/api/v2/graphql
+DEMARCHE_NUMBER=12345
+
+# === Configuration API Grist ===
+GRIST_BASE_URL=https://grist.numerique.gouv.fr/api
+GRIST_API_KEY=votre_cle_api_grist
+GRIST_DOC_ID=id_du_document_grist
+
+# === Paramètres de traitement ===
+# Taille des lots pour le traitement (25-500)
+BATCH_SIZE=50
+
+# Nombre de workers pour le traitement parallèle (1-10)
+MAX_WORKERS=3
+
+# Activer le traitement parallèle (True/False)
+PARALLEL=True
+
+# Niveau de log (0=minimal, 1=normal, 2=verbose)
+LOG_LEVEL=1
+
+# === Filtres optionnels ===
+# Dates au format YYYY-MM-DD
+DATE_DEPOT_DEBUT=2024-01-01
+DATE_DEPOT_FIN=2024-12-31
+
+# Statuts séparés par des virgules
+# Valeurs possibles: en_construction, en_instruction, accepte, refuse, classe_sans_suite
+STATUTS_DOSSIERS=en_instruction,accepte
+
+# Numéros de groupes instructeurs séparés par des virgules
+GROUPES_INSTRUCTEURS=1,2,3
+
+# === Configuration Flask (production) ===
+FLASK_SECRET_KEY=generate-strong-random-key-here-for-production
+FLASK_ENV=production
+```
+
+---
+
+## 4. Gestion des erreurs et métriques
+
+### **Gestion des erreurs multi-niveaux**
+
+```python
+def make_graphql_request_with_retry(query, variables, max_retries=3):
+    """
+    Exécute une requête GraphQL avec retry automatique et backoff exponentiel.
+    """
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                API_URL,
+                json={"query": query, "variables": variables},
+                headers=HEADERS,
+                timeout=30
+            )
