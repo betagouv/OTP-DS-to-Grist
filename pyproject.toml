@@ -29,3 +29,7 @@ poethepoet = "^0.37.0"
 
 [tool.poe.tasks.dev]
 shell = "python app.py"
+
+[tool.poe.tasks.generate-secret]
+help = "Génère une clé secrète sécurisée pour Flask"
+shell = "python3 -c \"import secrets; print('FLASK_SECRET_KEY=' + secrets.token_hex(32))\""

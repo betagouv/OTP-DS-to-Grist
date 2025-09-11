@@ -73,8 +73,11 @@ STATUTS_DOSSIERS=
 GROUPES_INSTRUCTEURS=
 
 # Flask (développement local)
-FLASK_SECRET_KEY='dev-key-change-in-production-2024'
+FLASK_SECRET_KEY=…
 ```
+
+1. Générer un secret pour flask : `poe generate-secret`
+2. Copier coller le retour de la commande dans `.env`
 
 ## 🔑 Obtention des tokens API
 
