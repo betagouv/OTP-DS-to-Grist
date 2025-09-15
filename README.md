@@ -7,7 +7,7 @@ Ce guide détaille comment installer et utiliser **One Trick Pony DS to Grist** 
 ## 🎯 Prérequis
 
 ### Logiciels requis
-- **Python 3.9+** ([Télécharger Python](https://www.python.org/downloads/))
+- **Python 3.13+** ([Télécharger Python](https://www.python.org/downloads/))
 - **Git** ([Télécharger Git](https://git-scm.com/downloads/))
 - **Un éditeur de code** (VS Code, PyCharm, etc.)
 
@@ -26,23 +26,18 @@ git clone https://github.com/votre-organisation/one-trick-pony-ds-grist.git
 cd one-trick-pony-ds-grist
 ```
 
-### 2. Créer un environnement virtuel Python
+### 2. Utiliser l'environnement virtuel Python
 
 ```bash
-# Création de l'environnement virtuel
-python -m venv venv
-
-# Activation (Windows)
-venv\Scripts\activate
-
-# Activation (macOS/Linux)
-source venv/bin/activate
+# Création de l'environnement virtuel & activation (macOS/Linux)
+poetry env activate
 ```
 
 ### 3. Installer les dépendances
 
 ```bash
-pip install -r requirements.txt
+poetry install --no-root
+poetry install --no-root --with dev # Pour profiter des outils de développement
 ```
 
 ### 4. Configuration des variables d'environnement
@@ -78,8 +73,11 @@ STATUTS_DOSSIERS=
 GROUPES_INSTRUCTEURS=
 
 # Flask (développement local)
-FLASK_SECRET_KEY='dev-key-change-in-production-2024'
+FLASK_SECRET_KEY=…
 ```
+
+1. Générer un secret pour flask : `poe generate-secret`
+2. Copier coller le retour de la commande dans `.env`
 
 ## 🔑 Obtention des tokens API
 
@@ -109,10 +107,10 @@ FLASK_SECRET_KEY='dev-key-change-in-production-2024'
 
 ```bash
 # Activer l'environnement virtuel si pas déjà fait
-source venv/bin/activate  # ou venv\Scripts\activate sur Windows
+poetry env activate
 
-# Lancer l'application
-python app.py
+# Lancer l'application de développement
+poe dev
 ```
 
 L'application sera accessible sur : **http://localhost:5000**
@@ -259,7 +257,7 @@ git pull origin main
 pip install -r requirements.txt --upgrade
 
 # Redémarrer l'application
-python app.py
+poe dev
 ```
 
 ### Sauvegarde de la configuration
