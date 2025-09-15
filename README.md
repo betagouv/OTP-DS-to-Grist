@@ -359,7 +359,7 @@ sudo systemctl start ds-to-grist
 
 ### Communauté
 
-- **Code source** : DRAAF Occitanie - Licence ouverte avec citation
+- **Code source** : Projet démarré par DRAAF Occitanie
 
 ---
 
@@ -370,5 +370,3 @@ sudo systemctl start ds-to-grist
 4. Configurez des synchronisations automatiques
 
 ---
-
-*Développé par la DRAAF Occitanie - Version locale*
