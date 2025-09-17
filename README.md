@@ -36,8 +36,8 @@ poetry env activate
 ### 3. Installer les dépendances
 
 ```bash
-poetry install --no-root
-poetry install --no-root --with dev # Pour profiter des outils de développement
+poetry install
+poetry install --with dev # Pour profiter des outils de développement
 ```
 
 ### 4. Configuration des variables d'environnement
