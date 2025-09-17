@@ -76,6 +76,8 @@ GROUPES_INSTRUCTEURS=
 FLASK_SECRET_KEY=…
 ```
 
+#### FLASK_SECRET_KEY
+
 1. Générer un secret pour flask : `poe generate-secret`
 2. Copier coller le retour de la commande dans `.env`
 
@@ -95,11 +97,12 @@ FLASK_SECRET_KEY=…
 3. **Générez** une nouvelle clé API
 4. **Copiez** la clé générée (format : `17...`)
 
-### ID Document Grist
+### ID Document Grist & Base url
 
 1. **Ouvrez** votre document Grist de destination
-2. **Copiez l'ID** depuis l'URL : `https://grist.../doc/ID_DOCUMENT_ICI`
-3. L'ID ressemble à : `mYMMb...`
+2. **Copiez l'ID** se trouvant dans les paramètres du document, section `API`
+    - L'ID ressemble à : `mYMMb...`
+3. **Copiez** l'URL de base se trouvant dans le menu déroulant `API`
 
 ## ▶️ Lancement de l'application
 
@@ -292,7 +295,24 @@ one-trick-pony-ds-grist/
     └── debug.html                 # Page débogage
 ```
 
-## 🚀 Déploiement on-premise
+## 🚀 Déploiement
+
+### Sur scalingo
+
+1. Via git push
+    1. Avoir une [clé publique ssh](https://doc.scalingo.com/platform/getting-started/setup-ssh-linux) dans le [compte utilisateur scalingo](https://dashboard.scalingo.com/account/keys)
+    2. Ajouter la remote (ici nommé `scalingo`) : `git remote add scalingo <url-du-dépot-distant-de-scalingo>`
+    3. Pousser / déployer la référence locale : `git push scalingo <branch-local>:main`
+2. Via github : ❌ Pas les droits pour pointer la bonne organisation pour l'instant
+
+#### Debug
+
+Scalingo n'affiche que certaines informations par défaut. Pour avoir plus d'informations :
+1. Installer le paquet [scalingo-cli](https://doc.scalingo.com/tools/cli/start)
+2. Être authentifié via un token scalingo (configuration dans l'espace utilisateur) : `export SCALINGO_API_TOKEN=<le-token>`
+3. Puis afficher les derniers logs : `scalingo logs -a nom-de-lapp`
+
+Si nécessaire, *redémarrer* l'application par exemple après un changement d'environnement : `scalingo restart -a nom-de-lapp`
 
 ### Avec Docker (optionnel)
 
