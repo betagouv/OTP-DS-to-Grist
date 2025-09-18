@@ -1,5 +1,5 @@
 [project]
-name = "otp-ds-to-grist-flask-local"
+name = "otp-ds-to-grist"
 version = "0.1.0"
 description = "Ce projet permet de synchroniser plusieurs démarches Démarches Simplifiées vers différents documents Grist avec des paramètres de filtrage spécifiques à chaque démarche."
 authors = [
@@ -16,12 +16,16 @@ dependencies = [
     "eventlet (==0.33.3)",
     "gevent (==25.8.2)",
     "python-dateutil (==2.8.2)",
+    "gunicorn (>=23.0.0,<24.0.0)",
 ]
 
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
 
 [tool.poetry.group.dev.dependencies]
 commitizen = "^4.8.4"
