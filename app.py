@@ -16,6 +16,10 @@ from datetime import datetime
 from dotenv import load_dotenv, set_key
 import requests
 from werkzeug.serving import WSGIRequestHandler
+import psycopg2
+from cryptography.fernet import Fernet
+import base64
+import secrets
 
 # Configuration de l'application Flask
 app = Flask(__name__)
@@ -124,18 +128,129 @@ task_manager = TaskManager()
 
 class ConfigManager:
     """Gestionnaire de configuration optimisé avec sauvegarde robuste"""
-    
+
+    SENSITIVE_KEYS = ['ds_api_token', 'grist_api_key']
+
     @staticmethod
     def get_env_path():
         """Retourne le chemin vers le fichier .env"""
         return os.path.join(script_dir, '.env')
-    
+
+    @staticmethod
+    def get_encryption_key():
+        """Récupère ou génère la clé de chiffrement"""
+        key = os.getenv('ENCRYPTION_KEY')
+        if not key:
+            key = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+            os.environ['ENCRYPTION_KEY'] = key
+            # Sauvegarder dans .env pour persistance
+            set_key(ConfigManager.get_env_path(), 'ENCRYPTION_KEY', key)
+            logger.info("Nouvelle clé de chiffrement générée et sauvegardée")
+        return key
+
+    @staticmethod
+    def get_db_connection():
+        """Établit une connexion à la base de données PostgreSQL"""
+        db_url = os.getenv('DATABASE_URL')
+        if not db_url:
+            return None
+        logger.info(f"DATABASE_URL: {db_url}")
+        try:
+            return psycopg2.connect(db_url)
+        except Exception as e:
+            logger.error(f"Erreur de connexion à la base de données: {str(e)}")
+            return None
+
+    @staticmethod
+    def create_table_if_not_exists(conn):
+        """Crée la table otp_configurations si elle n'existe pas"""
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS otp_configurations (
+                    ds_api_token TEXT,
+                    demarche_number TEXT,
+                    grist_base_url TEXT,
+                    grist_api_key TEXT,
+                    grist_doc_id TEXT
+                )
+            """)
+            # Insérer une ligne vide si la table est vide
+            cursor.execute("SELECT COUNT(*) FROM otp_configurations")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO otp_configurations (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id)
+                    VALUES ('', '', 'https://grist.numerique.gouv.fr/api', '', '')
+                """)
+            conn.commit()
+
+    @staticmethod
+    def encrypt_value(value):
+        """Chiffre une valeur"""
+        if not value:
+            return value
+        key = ConfigManager.get_encryption_key()
+        f = Fernet(key.encode())
+        return f.encrypt(value.encode()).decode()
+
+    @staticmethod
+    def decrypt_value(value):
+        """Déchiffre une valeur"""
+        if not value:
+            return value
+        key = ConfigManager.get_encryption_key()
+        f = Fernet(key.encode())
+        return f.decrypt(value.encode()).decode()
+
     @staticmethod
     def load_config():
-        """Charge la configuration depuis le fichier .env"""
+        """Charge la configuration depuis la base de données ou le fichier .env"""
+        conn = ConfigManager.get_db_connection()
+        if conn:
+            try:
+                ConfigManager.create_table_if_not_exists(conn)
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id FROM otp_configurations LIMIT 1")
+                    row = cursor.fetchone()
+                    if row:
+                        config = {
+                            'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
+                            'demarche_number': row[1] or '',
+                            'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
+                            'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
+                            'grist_doc_id': row[4] or '',
+                        }
+                    else:
+                        config = {
+                            'ds_api_token': '',
+                            'demarche_number': '',
+                            'grist_base_url': 'https://grist.numerique.gouv.fr/api',
+                            'grist_api_key': '',
+                            'grist_doc_id': '',
+                        }
+            except Exception as e:
+                logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
+                conn.close()
+                return ConfigManager.load_config_fallback()
+            finally:
+                conn.close()
+        else:
+            return ConfigManager.load_config_fallback()
+
+        # Charger les autres valeurs depuis les variables d'environnement
+        config.update({
+            'ds_api_url': os.getenv('DEMARCHES_API_URL', 'https://www.demarches-simplifiees.fr/api/v2/graphql'),
+            'batch_size': int(os.getenv('BATCH_SIZE', '25')),
+            'max_workers': int(os.getenv('MAX_WORKERS', '2')),
+            'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
+        })
+        return config
+
+    @staticmethod
+    def load_config_fallback():
+        """Charge la configuration depuis le fichier .env (fallback)"""
         # Recharger le fichier .env pour avoir les dernières valeurs
         load_dotenv(ConfigManager.get_env_path(), override=True)
-        
+
         config = {
             'ds_api_token': os.getenv('DEMARCHES_API_TOKEN', ''),
             'ds_api_url': os.getenv('DEMARCHES_API_URL', 'https://www.demarches-simplifiees.fr/api/v2/graphql'),
@@ -151,14 +266,71 @@ class ConfigManager:
     
     @staticmethod
     def save_config(config):
-        """Sauvegarde la configuration dans le fichier .env"""
+        """Sauvegarde la configuration dans la base de données ou le fichier .env"""
+        conn = ConfigManager.get_db_connection()
+        if conn:
+            try:
+                ConfigManager.create_table_if_not_exists(conn)
+                with conn.cursor() as cursor:
+                    # Préparer les valeurs, chiffrer les sensibles
+                    values = {
+                        'ds_api_token': ConfigManager.encrypt_value(config.get('ds_api_token', '')),
+                        'demarche_number': config.get('demarche_number', ''),
+                        'grist_base_url': config.get('grist_base_url', 'https://grist.numerique.gouv.fr/api'),
+                        'grist_api_key': ConfigManager.encrypt_value(config.get('grist_api_key', '')),
+                        'grist_doc_id': config.get('grist_doc_id', ''),
+                    }
+                    cursor.execute("""
+                        UPDATE otp_configurations SET
+                        ds_api_token = %s,
+                        demarche_number = %s,
+                        grist_base_url = %s,
+                        grist_api_key = %s,
+                        grist_doc_id = %s
+                    """, (
+                        values['ds_api_token'],
+                        values['demarche_number'],
+                        values['grist_base_url'],
+                        values['grist_api_key'],
+                        values['grist_doc_id']
+                    ))
+                    conn.commit()
+                    logger.info("Configuration sauvegardée en base de données")
+            except Exception as e:
+                logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
+                conn.close()
+                return False
+            finally:
+                conn.close()
+        else:
+            # Fallback vers le fichier .env
+            return ConfigManager.save_config_fallback(config)
+
+        # Sauvegarder les autres valeurs dans les variables d'environnement
+        env_mapping = {
+            'ds_api_url': 'DEMARCHES_API_URL',
+            'batch_size': 'BATCH_SIZE',
+            'max_workers': 'MAX_WORKERS',
+            'parallel': 'PARALLEL'
+        }
+        for config_key, env_key in env_mapping.items():
+            if config_key in config and config[config_key] is not None:
+                value = str(config[config_key])
+                os.environ[env_key] = value
+                logger.info(f"Variable d'environnement {env_key} = {value}")
+
+        return True
+
+    @staticmethod
+    def save_config_fallback(config):
+        """Sauvegarde la configuration dans le fichier .env (fallback)"""
         env_path = ConfigManager.get_env_path()
-        
+
         try:
             # Mapping des clés pour le fichier .env
             env_mapping = {
                 'ds_api_token': 'DEMARCHES_API_TOKEN',
-                'ds_api_url': 'DEMARCHES_API_URL', 
+                'ds_api_url': 'DEMARCHES_API_URL',
                 'demarche_number': 'DEMARCHE_NUMBER',
                 'grist_base_url': 'GRIST_BASE_URL',
                 'grist_api_key': 'GRIST_API_KEY',
@@ -167,7 +339,7 @@ class ConfigManager:
                 'max_workers': 'MAX_WORKERS',
                 'parallel': 'PARALLEL'
             }
-            
+
             # Sauvegarder chaque valeur dans le fichier .env
             for config_key, env_key in env_mapping.items():
                 if config_key in config and config[config_key] is not None:
@@ -178,12 +350,12 @@ class ConfigManager:
                         # Mettre à jour aussi la variable d'environnement actuelle
                         os.environ[env_key] = value
                         logger.info(f"Sauvegardé {env_key} = {value[:10]}..." if 'token' in env_key.lower() or 'key' in env_key.lower() else f"Sauvegardé {env_key} = {value}")
-            
+
             # Recharger le fichier .env pour vérification
             load_dotenv(env_path, override=True)
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde de la configuration: {str(e)}")
             return False
