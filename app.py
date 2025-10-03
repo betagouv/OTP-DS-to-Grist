@@ -3,14 +3,12 @@ Application Flask optimisée pour la synchronisation Démarches Simplifiées ver
 Version corrigée avec sauvegarde et persistence des configurations
 """
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, Response
-from flask_socketio import SocketIO, emit
+from flask import Flask, render_template, request, jsonify
+from flask_socketio import SocketIO
 import os
 import sys
-import json
 import time
 import threading
-import queue
 import subprocess
 from datetime import datetime
 from dotenv import load_dotenv, set_key
@@ -163,7 +161,8 @@ class ConfigManager:
 
     @staticmethod
     def create_table_if_not_exists(conn):
-        """Crée la table otp_configurations si elle n'existe pas"""
+        """Crée la table otp_configurations
+        si elle n'existe pas et ajoute les colonnes manquantes"""
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS otp_configurations (
@@ -174,12 +173,18 @@ class ConfigManager:
                     grist_doc_id TEXT
                 )
             """)
+
+            cursor.execute("""
+                ALTER TABLE otp_configurations
+                ADD COLUMN IF NOT EXISTS grist_user_id TEXT DEFAULT ''
+            """)
+
             # Insérer une ligne vide si la table est vide
             cursor.execute("SELECT COUNT(*) FROM otp_configurations")
             if cursor.fetchone()[0] == 0:
                 cursor.execute("""
-                    INSERT INTO otp_configurations (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id)
-                    VALUES ('', '', 'https://grist.numerique.gouv.fr/api', '', '')
+                    INSERT INTO otp_configurations (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id)
+                    VALUES ('', '', 'https://grist.numerique.gouv.fr/api', '', '', '')
                 """)
             conn.commit()
 
@@ -209,7 +214,7 @@ class ConfigManager:
             try:
                 ConfigManager.create_table_if_not_exists(conn)
                 with conn.cursor() as cursor:
-                    cursor.execute("SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id FROM otp_configurations LIMIT 1")
+                    cursor.execute("SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id FROM otp_configurations LIMIT 1")
                     row = cursor.fetchone()
                     if row:
                         config = {
@@ -218,6 +223,7 @@ class ConfigManager:
                             'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
                             'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
                             'grist_doc_id': row[4] or '',
+                            'grist_user_id': row[5] or '',
                         }
                     else:
                         config = {
@@ -258,6 +264,7 @@ class ConfigManager:
             'grist_base_url': os.getenv('GRIST_BASE_URL', 'https://grist.numerique.gouv.fr/api'),
             'grist_api_key': os.getenv('GRIST_API_KEY', ''),
             'grist_doc_id': os.getenv('GRIST_DOC_ID', ''),
+            'grist_user_id': os.getenv('GRIST_USER_ID', ''),
             'batch_size': int(os.getenv('BATCH_SIZE', '25')),
             'max_workers': int(os.getenv('MAX_WORKERS', '2')),
             'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
@@ -279,6 +286,8 @@ class ConfigManager:
                         'grist_base_url': config.get('grist_base_url', 'https://grist.numerique.gouv.fr/api'),
                         'grist_api_key': ConfigManager.encrypt_value(config.get('grist_api_key', '')),
                         'grist_doc_id': config.get('grist_doc_id', ''),
+                        'grist_user_id': config.get('grist_user_id', ''),
+                        'grist_document_id': config.get('grist_document_id', ''),
                     }
                     cursor.execute("""
                         UPDATE otp_configurations SET
@@ -286,13 +295,15 @@ class ConfigManager:
                         demarche_number = %s,
                         grist_base_url = %s,
                         grist_api_key = %s,
-                        grist_doc_id = %s
+                        grist_doc_id = %s,
+                        grist_user_id = %s
                     """, (
                         values['ds_api_token'],
                         values['demarche_number'],
                         values['grist_base_url'],
                         values['grist_api_key'],
-                        values['grist_doc_id']
+                        values['grist_doc_id'],
+                        values['grist_user_id']
                     ))
                     conn.commit()
                     logger.info("Configuration sauvegardée en base de données")
@@ -335,6 +346,7 @@ class ConfigManager:
                 'grist_base_url': 'GRIST_BASE_URL',
                 'grist_api_key': 'GRIST_API_KEY',
                 'grist_doc_id': 'GRIST_DOC_ID',
+                'grist_user_id': 'GRIST_USER_ID',
                 'batch_size': 'BATCH_SIZE',
                 'max_workers': 'MAX_WORKERS',
                 'parallel': 'PARALLEL'
@@ -521,11 +533,12 @@ def run_synchronization_task(config, filters, progress_callback=None, log_callba
         # Mettre à jour les variables d'environnement avec la configuration
         env_mapping = {
             'ds_api_token': 'DEMARCHES_API_TOKEN',
-            'ds_api_url': 'DEMARCHES_API_URL', 
+            'ds_api_url': 'DEMARCHES_API_URL',
             'demarche_number': 'DEMARCHE_NUMBER',
             'grist_base_url': 'GRIST_BASE_URL',
             'grist_api_key': 'GRIST_API_KEY',
             'grist_doc_id': 'GRIST_DOC_ID',
+            'grist_user_id': 'GRIST_USER_ID',
             'batch_size': 'BATCH_SIZE',
             'max_workers': 'MAX_WORKERS',
             'parallel': 'PARALLEL'
@@ -666,21 +679,13 @@ def api_config():
     """API pour la gestion de la configuration"""
     if request.method == 'GET':
         config = ConfigManager.load_config()
-        # Pour l'affichage, masquer les informations sensibles mais garder un indicateur si elles existent
-        if config['ds_api_token']:
-            config['ds_api_token_masked'] = '***'
-            config['ds_api_token_exists'] = True
-        else:
-            config['ds_api_token_masked'] = ''
-            config['ds_api_token_exists'] = False
-            
-        if config['grist_api_key']:
-            config['grist_api_key_masked'] = '***'
-            config['grist_api_key_exists'] = True
-        else:
-            config['grist_api_key_masked'] = ''
-            config['grist_api_key_exists'] = False
-        
+
+        # Garder les vraies valeurs pour la logique côté client, masquer seulement pour affichage
+        config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
+        config['ds_api_token_exists'] = bool(config['ds_api_token'])
+        config['grist_api_key_masked'] = '***' if config['grist_api_key'] else ''
+        config['grist_api_key_exists'] = bool(config['grist_api_key'])
+
         return jsonify(config)
     
     elif request.method == 'POST':
@@ -688,8 +693,9 @@ def api_config():
             new_config = request.get_json()
             
             # Validation basique
-            required_fields = ['ds_api_token', 'ds_api_url', 'demarche_number', 
-                             'grist_base_url', 'grist_api_key', 'grist_doc_id']
+            required_fields = ['ds_api_token', 'ds_api_url', 'demarche_number',
+                                  'grist_base_url', 'grist_api_key', 'grist_doc_id',
+                                  'grist_user_id']
             
             for field in required_fields:
                 if not new_config.get(field):
@@ -752,9 +758,9 @@ def api_start_sync():
         filters = data.get('filters', {})
         
         # Validation simple de la configuration serveur
-        required_fields = ['ds_api_token', 'demarche_number', 'grist_api_key', 'grist_doc_id']
+        required_fields = ['ds_api_token', 'demarche_number', 'grist_api_key', 'grist_doc_id', 'grist_user_id']
         missing_fields = []
-        
+
         for field in required_fields:
             if not server_config.get(field):
                 missing_fields.append(field)
@@ -875,7 +881,8 @@ def debug():
         "DEMARCHE_NUMBER": os.getenv("DEMARCHE_NUMBER", "Non défini"),
         "GRIST_BASE_URL": os.getenv("GRIST_BASE_URL", "Non défini"),
         "GRIST_API_KEY": "***" if os.getenv("GRIST_API_KEY") else "Non défini",
-        "GRIST_DOC_ID": os.getenv("GRIST_DOC_ID", "Non défini")
+        "GRIST_DOC_ID": os.getenv("GRIST_DOC_ID", "Non défini"),
+        "GRIST_USER_ID": os.getenv("GRIST_USER_ID", "Non défini")
     }
     
     filter_vars = {
