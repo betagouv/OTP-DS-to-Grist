@@ -341,14 +341,33 @@
 
     async function checkConfiguration() {
         try {
-            const response = await fetch('/api/config');
+            // Récupérer le contexte Grist pour conditionner le chargement de la configuration
+            let gristParams = '';
+
+            if (typeof grist !== 'undefined') {
+                try {
+                    grist.ready();
+
+                    const tokenInfo = await grist.docApi.getAccessToken({readOnly: false});
+                    const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]));
+                    const {docId, userId} = payload;
+
+                    if (userId && docId) {
+                        gristParams = `?grist_user_id=${encodeURIComponent(userId)}&grist_doc_id=${encodeURIComponent(docId)}`;
+                    }
+                } catch (error) {
+                    console.warn('Contexte Grist non disponible ou erreur:', error);
+                }
+            }
+
+            const response = await fetch(`/api/config${gristParams}`);
             const config = await response.json();
             currentConfig = config;
 
             const resultDiv = document.getElementById('config_check_result');
             
             // Vérifier que tous les champs requis sont présents
-            const requiredFields = ['ds_api_token', 'ds_api_url', 'demarche_number', 
+            const requiredFields = ['ds_api_token', 'demarche_number', 
                                    'grist_base_url', 'grist_api_key', 'grist_doc_id'];
             
             const missingFields = requiredFields.filter(field => !config[field] || config[field] === '***');
