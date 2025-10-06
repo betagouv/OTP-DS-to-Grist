@@ -219,22 +219,62 @@
     });
 
     async function loadConfiguration() {
-        try {
-            const response = await fetch('/api/config');
+      try {
+            // Récupérer d'abord le contexte Grist pour conditionner le chargement de la configuration
+            let gristParams = '';
+            let gristUserId = '';
+            let gristDocId = '';
+
+            if (typeof grist !== 'undefined') {
+                try {
+                    grist.ready();
+
+                    const tokenInfo = await grist.docApi.getAccessToken({readOnly: false});
+                    const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]));
+                    const {docId, userId} = payload;
+
+                    if (userId && docId) {
+                        gristParams = `?grist_user_id=${encodeURIComponent(userId)}&grist_doc_id=${encodeURIComponent(docId)}`;
+                        gristUserId = userId;
+                        gristDocId = docId;
+                    }
+                } catch (error) {
+                    console.warn('Contexte Grist non disponible ou erreur:', error);
+                }
+            }
+
+            const response = await fetch(`/api/config${gristParams}`);
             const config = await response.json();
             currentConfig = config;
 
-            // Remplir les champs avec la configuration
-            document.getElementById('ds_api_token').value = '';
-            document.getElementById('ds_api_url').value = config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql';
-            document.getElementById('demarche_number').value = config.demarche_number || '';
-            document.getElementById('grist_base_url').value = config.grist_base_url || 'https://grist.numerique.gouv.fr/api';
-            document.getElementById('grist_api_key').value = '';
-            document.getElementById('grist_doc_id').value = config.grist_doc_id || '';
-            document.getElementById('grist_user_id').value = config.grist_user_id || '';
-            document.getElementById('batch_size').value = config.batch_size || 25;
-            document.getElementById('max_workers').value = config.max_workers || 2;
-            document.getElementById('parallel').value = config.parallel ? 'true' : 'false';
+            // Déterminer si une configuration a été trouvée pour ce contexte Grist
+            const hasConfig = gristUserId && gristDocId && config.ds_api_token;
+
+            // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
+            document.getElementById('grist_doc_id').value = gristDocId || '';
+            document.getElementById('grist_user_id').value = gristUserId || '';
+
+            // Remplir les autres champs seulement si une configuration a été trouvée
+            if (hasConfig) {
+                document.getElementById('ds_api_token').value = '';
+                document.getElementById('ds_api_url').value = config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql';
+                document.getElementById('demarche_number').value = config.demarche_number || '';
+                document.getElementById('grist_base_url').value = config.grist_base_url || 'https://grist.numerique.gouv.fr/api';
+                document.getElementById('grist_api_key').value = '';
+                document.getElementById('batch_size').value = config.batch_size || 25;
+                document.getElementById('max_workers').value = config.max_workers || 2;
+                document.getElementById('parallel').value = config.parallel ? 'true' : 'false';
+            } else {
+                // Aucune configuration trouvée, laisser tous les champs vides (sauf grist ids)
+                document.getElementById('ds_api_token').value = '';
+                document.getElementById('ds_api_url').value = 'https://www.demarches-simplifiees.fr/api/v2/graphql';
+                document.getElementById('demarche_number').value = '';
+                document.getElementById('grist_base_url').value = 'https://grist.numerique.gouv.fr/api';
+                document.getElementById('grist_api_key').value = '';
+                document.getElementById('batch_size').value = '25';
+                document.getElementById('max_workers').value = '2';
+                document.getElementById('parallel').value = 'true';
+            }
 
             // Mettre à jour les statuts initiaux
             updateDSTokenStatus();
@@ -243,9 +283,6 @@
             // Ajouter les listeners pour mise à jour en temps réel
             document.getElementById('ds_api_token').addEventListener('input', updateDSTokenStatus);
             document.getElementById('grist_api_key').addEventListener('input', updateGristKeyStatus);
-
-            // Essayer de récupérer automatiquement les IDs Grist si disponibles
-            await loadGristContext();
             
             // Afficher le statut des tokens
             if (config.ds_api_token) {
@@ -285,27 +322,7 @@
         }
     }
 
-    async function loadGristContext() {
-      if (typeof grist === 'undefined')
-        return
 
-      grist.ready();
-
-      try {
-          // Récupérer les informations utilisateur
-          const tokenInfo = await grist.docApi.getAccessToken({readOnly: false})
-          const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]))
-          const {docId, userId} = payload
-
-          if (userId)
-              document.getElementById('grist_user_id').value = userId;
-
-          if (docId)
-              document.getElementById('grist_doc_id').value = docId;
-      } catch (error) {
-          console.warn('Contexte Grist non disponible ou erreur:', error);
-      }
-    }
 
     function updateDSTokenStatus() {
         const value = document.getElementById('ds_api_token').value;

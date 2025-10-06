@@ -207,32 +207,63 @@ class ConfigManager:
         return f.decrypt(value.encode()).decode()
 
     @staticmethod
-    def load_config():
+    def load_config(grist_user_id=None, grist_doc_id=None):
         """Charge la configuration depuis la base de données ou le fichier .env"""
         conn = ConfigManager.get_db_connection()
         if conn:
             try:
                 ConfigManager.create_table_if_not_exists(conn)
                 with conn.cursor() as cursor:
-                    cursor.execute("SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id FROM otp_configurations LIMIT 1")
-                    row = cursor.fetchone()
-                    if row:
-                        config = {
-                            'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
-                            'demarche_number': row[1] or '',
-                            'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
-                            'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
-                            'grist_doc_id': row[4] or '',
-                            'grist_user_id': row[5] or '',
-                        }
+                    # Si grist_user_id et grist_doc_id sont fournis, chercher une configuration correspondante
+                    if grist_user_id and grist_doc_id:
+                        cursor.execute("""
+                            SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id
+                            FROM otp_configurations
+                            WHERE grist_user_id = %s AND grist_doc_id = %s
+                            LIMIT 1
+                        """, (grist_user_id, grist_doc_id))
+                        row = cursor.fetchone()
+                        if row:
+                            # Configuration trouvée pour ce contexte Grist
+                            config = {
+                                'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
+                                'demarche_number': row[1] or '',
+                                'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
+                                'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
+                                'grist_doc_id': row[4] or '',
+                                'grist_user_id': row[5] or '',
+                            }
+                        else:
+                            # Aucune configuration trouvée pour ce contexte Grist, retourner vide
+                            config = {
+                                'ds_api_token': '',
+                                'demarche_number': '',
+                                'grist_base_url': 'https://grist.numerique.gouv.fr/api',
+                                'grist_api_key': '',
+                                'grist_doc_id': '',
+                                'grist_user_id': '',
+                            }
                     else:
-                        config = {
-                            'ds_api_token': '',
-                            'demarche_number': '',
-                            'grist_base_url': 'https://grist.numerique.gouv.fr/api',
-                            'grist_api_key': '',
-                            'grist_doc_id': '',
-                        }
+                        # Pas de contexte Grist fourni, comportement par défaut (première ligne)
+                        cursor.execute("SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id FROM otp_configurations LIMIT 1")
+                        row = cursor.fetchone()
+                        if row:
+                            config = {
+                                'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
+                                'demarche_number': row[1] or '',
+                                'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
+                                'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
+                                'grist_doc_id': row[4] or '',
+                                'grist_user_id': row[5] or '',
+                            }
+                        else:
+                            config = {
+                                'ds_api_token': '',
+                                'demarche_number': '',
+                                'grist_base_url': 'https://grist.numerique.gouv.fr/api',
+                                'grist_api_key': '',
+                                'grist_doc_id': '',
+                            }
             except Exception as e:
                 logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
                 conn.close()
@@ -289,24 +320,79 @@ class ConfigManager:
                         'grist_user_id': config.get('grist_user_id', ''),
                         'grist_document_id': config.get('grist_document_id', ''),
                     }
-                    cursor.execute("""
-                        UPDATE otp_configurations SET
-                        ds_api_token = %s,
-                        demarche_number = %s,
-                        grist_base_url = %s,
-                        grist_api_key = %s,
-                        grist_doc_id = %s,
-                        grist_user_id = %s
-                    """, (
-                        values['ds_api_token'],
-                        values['demarche_number'],
-                        values['grist_base_url'],
-                        values['grist_api_key'],
-                        values['grist_doc_id'],
-                        values['grist_user_id']
-                    ))
+
+                    # Vérifier si une configuration existe déjà pour ce grist_user_id et grist_doc_id
+                    grist_user_id = config.get('grist_user_id', '')
+                    grist_doc_id = config.get('grist_doc_id', '')
+
+                    if grist_user_id and grist_doc_id:
+                        # Vérifier si la configuration existe
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM otp_configurations
+                            WHERE grist_user_id = %s AND grist_doc_id = %s
+                        """, (grist_user_id, grist_doc_id))
+
+                        result = cursor.fetchone()
+                        exists = result[0] > 0 if result else False
+
+                        if exists:
+                            # UPDATE : mettre à jour la configuration existante
+                            cursor.execute("""
+                                UPDATE otp_configurations SET
+                                ds_api_token = %s,
+                                demarche_number = %s,
+                                grist_base_url = %s,
+                                grist_api_key = %s,
+                                grist_doc_id = %s,
+                                grist_user_id = %s
+                                WHERE grist_user_id = %s AND grist_doc_id = %s
+                            """, (
+                                values['ds_api_token'],
+                                values['demarche_number'],
+                                values['grist_base_url'],
+                                values['grist_api_key'],
+                                values['grist_doc_id'],
+                                values['grist_user_id'],
+                                grist_user_id,
+                                grist_doc_id
+                            ))
+                            logger.info(f"Configuration mise à jour pour user_id={grist_user_id}, doc_id={grist_doc_id}")
+                        else:
+                            # INSERT : créer une nouvelle configuration
+                            cursor.execute("""
+                                INSERT INTO otp_configurations
+                                (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                            """, (
+                                values['ds_api_token'],
+                                values['demarche_number'],
+                                values['grist_base_url'],
+                                values['grist_api_key'],
+                                values['grist_doc_id'],
+                                values['grist_user_id']
+                            ))
+                            logger.info(f"Nouvelle configuration créée pour user_id={grist_user_id}, doc_id={grist_doc_id}")
+                    else:
+                        # Pas de contexte Grist, comportement par défaut (UPDATE de la première ligne)
+                        cursor.execute("""
+                            UPDATE otp_configurations SET
+                            ds_api_token = %s,
+                            demarche_number = %s,
+                            grist_base_url = %s,
+                            grist_api_key = %s,
+                            grist_doc_id = %s,
+                            grist_user_id = %s
+                        """, (
+                            values['ds_api_token'],
+                            values['demarche_number'],
+                            values['grist_base_url'],
+                            values['grist_api_key'],
+                            values['grist_doc_id'],
+                            values['grist_user_id']
+                        ))
+                        logger.info("Configuration sauvegardée (mode par défaut)")
+
                     conn.commit()
-                    logger.info("Configuration sauvegardée en base de données")
             except Exception as e:
                 logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
                 conn.close()
@@ -678,7 +764,11 @@ def index():
 def api_config():
     """API pour la gestion de la configuration"""
     if request.method == 'GET':
-        config = ConfigManager.load_config()
+        # Récupérer les paramètres de contexte Grist depuis la requête
+        grist_user_id = request.args.get('grist_user_id')
+        grist_doc_id = request.args.get('grist_doc_id')
+
+        config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
 
         # Garder les vraies valeurs pour la logique côté client, masquer seulement pour affichage
         config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
