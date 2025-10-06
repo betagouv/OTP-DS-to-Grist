@@ -843,8 +843,10 @@ def api_start_sync():
     try:
         data = request.get_json()
         
-        # Ignorer la config envoyée par le client, utiliser celle de Railway
-        server_config = ConfigManager.load_config()
+        # Utiliser la config du contexte Grist fourni
+        grist_user_id = str(data.get('grist_user_id', '')) if data.get('grist_user_id') is not None else None
+        grist_doc_id = str(data.get('grist_doc_id', '')) if data.get('grist_doc_id') is not None else None
+        server_config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
         filters = data.get('filters', {})
         
         # Validation simple de la configuration serveur

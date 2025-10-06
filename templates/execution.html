@@ -326,6 +326,8 @@
     let errorCount = 0;
     let successCount = 0;
     let totalDossiers = 0;
+    let gristUserId = '';
+    let gristDocId = '';
 
     document.addEventListener('DOMContentLoaded', function() {
         checkConfiguration();
@@ -354,6 +356,8 @@
 
                     if (userId && docId) {
                         gristParams = `?grist_user_id=${encodeURIComponent(userId)}&grist_doc_id=${encodeURIComponent(docId)}`;
+                        gristUserId = userId;
+                        gristDocId = docId;
                     }
                 } catch (error) {
                     console.warn('Contexte Grist non disponible ou erreur:', error);
@@ -532,7 +536,9 @@
                 },
                 body: JSON.stringify({
                     config: currentConfig,
-                    filters: filters
+                    filters: filters,
+                    grist_user_id: gristUserId,
+                    grist_doc_id: gristDocId
                 })
             });
             
