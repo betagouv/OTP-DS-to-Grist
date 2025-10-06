@@ -7,18 +7,24 @@
 ### Architecture générale
 
 ```
+                         ┌──────────────────┐                         
+                         │  Base de données │                         
+                         │     PostGresql   │                         
+                         └──────────────────┘                         
+                                  ▲
+                                  │
 ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
 │   Interface Web  │────▶│  Application     │────▶│     API DS       │
 │    Flask/DSFR    │     │     Flask        │     │    (GraphQL)     │
 └──────────────────┘     └──────────────────┘     └──────────────────┘
-                               │                            
-                               ▼                            
+                                  │                            
+                                  ▼                            
                         ┌──────────────────┐               
                         │   Processeur     │               
                         │     Python       │               
                         └──────────────────┘               
-                               │                            
-                               ▼                            
+                                  │                            
+                                  ▼                            
                         ┌──────────────────┐               
                         │    API Grist     │               
                         │   (REST API)     │               
@@ -54,6 +60,17 @@
 12. **`templates/index.html`** - Page de configuration
 13. **`templates/execution.html`** - Page d'exécution et monitoring
 14. **`templates/debug.html`** - Page de débogage
+
+---
+
+## 💽 Base de données
+
+Elle est utilisée pour stocker la configuration utilisateur.
+
+| ds_api_token | demarche_number | grist_base_url | grist_api_key | grist_doc_id | grist_user_id |
+|--------------|-----------------|----------------|---------------|--------------|---------------|
+
+Elle permet la persistence des données, qui sont chargées en fonction du `grist_doc_id` & du `grist_user_id` de l'utilisateur courant (nécessite un contexte grist / d'être dans un widget + autorisation complet au document).
 
 ---
 
