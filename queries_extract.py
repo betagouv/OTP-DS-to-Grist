@@ -71,7 +71,7 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
         Liste de dictionnaires contenant les valeurs extraites
     """
     # Ignorer immédiatement les types HeaderSectionChamp et ExplicationChamp
-    if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
+    if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
         return []
         
     result = []
@@ -91,7 +91,7 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
             # Pour chaque champ dans la rangée
             for row_champ in row.get("champs", []):
                 # Ignorer les types HeaderSectionChamp et ExplicationChamp dans les rangées
-                if row_champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
+                if row_champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
                     continue
                     
                 # Passage de l'ID du champ répétable comme contexte
@@ -131,7 +131,46 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
         elif champ["__typename"] == "PieceJustificativeChamp":
             files = champ.get("files", [])
             value = ", ".join([f['filename'] for f in files]) if files else None
-            json_value = files
+            json_value = None
+            # ✨ NOUVEAU : Extraire les colonnes (RIB, etc.) et les ajouter comme champs séparés
+            columns = champ.get("columns", [])
+            if columns:
+                # Traiter chaque colonne comme un champ séparé
+                for col in columns:
+                    col_typename = col.get("__typename")
+                    col_label = col.get("label", "")
+                    col_value = col.get("value")
+                    
+                    # Ignorer la colonne AttachmentsColumn (déjà dans files)
+                    if col_typename == "AttachmentsColumn":
+                        continue
+                    
+                    # Pour les TextColumn, créer un champ séparé
+                    if col_typename == "TextColumn" and col_value:
+                        # Extraire la partie après le tiret (ex: "Joindre votre RIB – IBAN" -> "IBAN")
+                        label_parts = col_label.split("–")
+                        if len(label_parts) > 1:
+                            sub_label = label_parts[-1].strip()
+                            # Créer un label complet pour le sous-champ
+                            full_label = f"{champ['label']} - {sub_label}"
+                        else:
+                            full_label = col_label
+                        
+                        # Ajouter ce sous-champ comme un résultat séparé
+                        result.append({
+                            "id": col.get("id"),
+                            "numeric_id": None,
+                            "descriptor_id": champ.get("champDescriptorId"),
+                            "decoded_descriptor_id": decoded_descriptor_id,
+                            "label": f"{prefix}{full_label}",
+                            "base_label": full_label,
+                            "type": "TextColumn",
+                            "value": col_value,
+                            "json_value": None,
+                            "updated_at": champ.get("updatedAt"),
+                            "prefilled": champ.get("prefilled", False),
+                            "row_id": original_id if original_id != champ["id"] else None
+                        })
         elif champ["__typename"] == "AddressChamp" and champ.get("address"):
             address = champ.get("address", {})
             value = f"{address.get('streetAddress', '')}, {address.get('postalCode', '')} {address.get('cityName', '')}"
@@ -236,22 +275,73 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
             value = f"{name} ({code})" if name and code else name or code
             json_value = departement
         elif champ["__typename"] == "CommuneChamp" and champ.get("commune"):
-            # Traitement pour les communes
             commune = champ.get("commune", {})
             name = commune.get("name", "")
-            code = commune.get("code", "")
+            code_insee = commune.get("code", "")
             postal_code = commune.get("postalCode", "")
-            value = f"{name} ({postal_code or code})" if name else ""
+            value = f"{name} ({postal_code or code_insee})" if name else ""
             
-            # Ajouter le département si disponible
             departement = champ.get("departement")
+            dept_code = None
             if departement:
                 dept_name = departement.get("name", "")
+                dept_code = departement.get("code", "")
                 value = f"{value}, {dept_name}" if value and dept_name else value or dept_name
                 
             json_value = {"commune": commune}
             if departement:
                 json_value["departement"] = departement
+            
+            # ✨ Ajouter le code postal comme champ séparé
+            if postal_code:
+                result.append({
+                    "id": champ.get("id") + "_code_postal",
+                    "numeric_id": None,
+                    "descriptor_id": champ.get("champDescriptorId"),
+                    "decoded_descriptor_id": decoded_descriptor_id,
+                    "label": f"{prefix}{champ['label']} - code postal",
+                    "base_label": f"{champ['label']} - code postal",
+                    "type": "TextColumn",
+                    "value": postal_code,
+                    "json_value": None,
+                    "updated_at": champ.get("updatedAt"),
+                    "prefilled": champ.get("prefilled", False),
+                    "row_id": original_id if original_id != champ["id"] else None
+                })
+            
+            # ✨ Ajouter le département comme champ séparé
+            if dept_code:
+                result.append({
+                    "id": champ.get("id") + "_departement",
+                    "numeric_id": None,
+                    "descriptor_id": champ.get("champDescriptorId"),
+                    "decoded_descriptor_id": decoded_descriptor_id,
+                    "label": f"{prefix}{champ['label']} - département",
+                    "base_label": f"{champ['label']} - département",
+                    "type": "TextColumn",
+                    "value": dept_code,
+                    "json_value": None,
+                    "updated_at": champ.get("updatedAt"),
+                    "prefilled": champ.get("prefilled", False),
+                    "row_id": original_id if original_id != champ["id"] else None
+                })
+            
+            # ✨ Ajouter le code INSEE comme champ séparé
+            if code_insee:
+                result.append({
+                    "id": champ.get("id") + "_code_insee",
+                    "numeric_id": None,
+                    "descriptor_id": champ.get("champDescriptorId"),
+                    "decoded_descriptor_id": decoded_descriptor_id,
+                    "label": f"{prefix}{champ['label']} - Code INSEE",
+                    "base_label": f"{champ['label']} - Code INSEE",
+                    "type": "TextColumn",
+                    "value": code_insee,
+                    "json_value": None,
+                    "updated_at": champ.get("updatedAt"),
+                    "prefilled": champ.get("prefilled", False),
+                    "row_id": original_id if original_id != champ["id"] else None
+                })
         elif champ["__typename"] == "EpciChamp" and champ.get("epci"):
             # Traitement pour les EPCI
             epci = champ.get("epci", {})
@@ -345,12 +435,13 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
     
     return result
 
-def extract_repetable_blocks(dossier_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+def extract_repetable_blocks(dossier_data: Dict[str, Any], problematic_ids=None) -> List[Dict[str, Any]]:
     """
     Extrait les données des blocs répétables dans un format de tableau.
     
     Args:
         dossier_data: Données du dossier récupérées via l'API
+        problematic_ids: Set des IDs de descripteurs problématiques à filtrer
         
     Returns:
         Liste de dictionnaires représentant chaque ligne de bloc répétable
@@ -372,6 +463,11 @@ def extract_repetable_blocks(dossier_data: Dict[str, Any]) -> List[Dict[str, Any
                 
                 # Traiter chaque champ dans la rangée
                 for row_champ in row.get("champs", []):
+                    # ✅ FIX : Filtrer les champs problématiques dans les blocs répétables
+                    if (row_champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"] or 
+                        (problematic_ids and row_champ.get("champDescriptorId") in problematic_ids)):
+                        continue
+                    
                     # Extraire les valeurs du champ
                     champ_values = extract_champ_values(row_champ, "", row.get("id"))
                     
@@ -403,6 +499,7 @@ def dossier_to_flat_data(dossier_data: Dict[str, Any], exclude_repetition_champs
     Args:
         dossier_data: Données du dossier récupérées via l'API
         exclude_repetition_champs: Si True, exclut les blocs répétables des champs standards
+        problematic_ids: Set des IDs de descripteurs problématiques à filtrer
         
     Returns:
         Dictionnaire avec les données du dossier en format plat
@@ -438,7 +535,6 @@ def dossier_to_flat_data(dossier_data: Dict[str, Any], exclude_repetition_champs
                 })
         
         if labels_with_colors:
-            import json
             flat_data["labels_json"] = json.dumps(labels_with_colors, ensure_ascii=False)
         else:
             flat_data["labels_json"] = ""
@@ -488,10 +584,13 @@ def dossier_to_flat_data(dossier_data: Dict[str, Any], exclude_repetition_champs
         # Ignorer les blocs répétables si exclude_repetition_champs est True
         if exclude_repetition_champs and champ["__typename"] == "RepetitionChamp":
             continue
-        # Ignorer les champs problématiques par type et par ID
-        if (champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or 
-            (problematic_ids and champ.get("id") in problematic_ids)):
+        
+        # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
+        # Ignorer les champs problématiques par type et par champDescriptorId
+        if (champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"] or 
+            (problematic_ids and champ.get("champDescriptorId") in problematic_ids)):
             continue
+            
         champ_values.extend(extract_champ_values(champ))
     
     # Ajouter les annotations, également en filtrant les blocs répétables si demandé
@@ -500,14 +599,18 @@ def dossier_to_flat_data(dossier_data: Dict[str, Any], exclude_repetition_champs
         # Ignorer les blocs répétables si exclude_repetition_champs est True
         if exclude_repetition_champs and annotation["__typename"] == "RepetitionChamp":
             continue
+        
+        # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
         # Ignorer explicitement les annotations de type HeaderSectionChamp et ExplicationChamp
-        if annotation["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
+        if (annotation["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"] or
+            (problematic_ids and annotation.get("champDescriptorId") in problematic_ids)):
             continue
+            
         annotation_values.extend(extract_champ_values(annotation, prefix="annotation_"))
     
-    # Extraction des blocs répétables - cette partie reste inchangée
-    # car nous aurons toujours besoin de ces données pour la table des blocs répétables
-    repetable_rows = extract_repetable_blocks(dossier_data)
+    # Extraction des blocs répétables
+    # ✅ FIX : Passer problematic_ids à extract_repetable_blocks
+    repetable_rows = extract_repetable_blocks(dossier_data, problematic_ids=problematic_ids)
     
     return {
         "dossier": flat_data,
