@@ -237,7 +237,7 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
         
         for champ in champs:
             # Ignorer les types HeaderSectionChamp et ExplicationChamp
-            if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
+            if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
                 continue
                 
             if champ["__typename"] == "RepetitionChamp":
@@ -247,7 +247,7 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
                     if "champs" in row:
                         for field in row["champs"]:
                             # Ignorer les types HeaderSectionChamp et ExplicationChamp dans les blocs répétables
-                            if field["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
+                            if field["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
                                 continue
                                 
                             if field["__typename"] == "CarteChamp":

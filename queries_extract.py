@@ -71,7 +71,7 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
         Liste de dictionnaires contenant les valeurs extraites
     """
     # Ignorer immédiatement les types HeaderSectionChamp et ExplicationChamp
-    if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
+    if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
         return []
         
     result = []
@@ -91,7 +91,7 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
             # Pour chaque champ dans la rangée
             for row_champ in row.get("champs", []):
                 # Ignorer les types HeaderSectionChamp et ExplicationChamp dans les rangées
-                if row_champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
+                if row_champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
                     continue
                     
                 # Passage de l'ID du champ répétable comme contexte
@@ -128,13 +128,21 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
             json_value = values_list
         elif champ["__typename"] == "DropDownListChamp":
             value = champ.get("stringValue")
+        # Correctif à apporter dans queries_extract.py
+        # Remplacer la section après "elif champ["__typename"] == "PieceJustificativeChamp":" 
+
         elif champ["__typename"] == "PieceJustificativeChamp":
             files = champ.get("files", [])
             value = ", ".join([f['filename'] for f in files]) if files else None
             json_value = None
-            # ✨ NOUVEAU : Extraire les colonnes (RIB, etc.) et les ajouter comme champs séparés
+            
+            # ✨ NOUVEAU : Extraire les colonnes (RIB, etc.)
+            # et les ajouter comme champs séparés
             columns = champ.get("columns", [])
             if columns:
+                # Vérifier si c'est un champ RIB en regardant le label
+                is_rib_field = "rib" in champ['label'].lower() or "iban" in champ['label'].lower()
+                
                 # Traiter chaque colonne comme un champ séparé
                 for col in columns:
                     col_typename = col.get("__typename")
@@ -151,10 +159,29 @@ def extract_champ_values(champ: Dict[str, Any], prefix: str = "", original_id: s
                         label_parts = col_label.split("–")
                         if len(label_parts) > 1:
                             sub_label = label_parts[-1].strip()
-                            # Créer un label complet pour le sous-champ
-                            full_label = f"{champ['label']} - {sub_label}"
                         else:
-                            full_label = col_label
+                            # Si pas de tiret, utiliser le label complet de la colonne
+                            sub_label = col_label.strip()
+                        
+                        # IMPORTANT : Pour les champs RIB, créer un label qui correspondra 
+                        # aux colonnes créées dans schema_utils.py après normalisation
+                        if is_rib_field:
+                            # Mapper les suffixes pour correspondre à ceux de schema_utils.py
+                            suffix_mapping = {
+                                "IBAN": "iban",
+                                "BIC": "bic", 
+                                "Titulaire": "titulaire",
+                                "Nom de la banque": "nom_de_la_banque"
+                            }
+                            
+                            # Trouver le suffixe normalisé
+                            normalized_suffix = suffix_mapping.get(sub_label, sub_label.lower().replace(" ", "_"))
+                            
+                            # Créer le label qui, une fois normalisé, correspondra à la colonne
+                            full_label = f"{champ['label']}_{normalized_suffix}"
+                        else:
+                            # Pour les non-RIB, utiliser l'ancien comportement
+                            full_label = f"{champ['label']} - {sub_label}"
                         
                         # Ajouter ce sous-champ comme un résultat séparé
                         result.append({
@@ -464,7 +491,7 @@ def extract_repetable_blocks(dossier_data: Dict[str, Any], problematic_ids=None)
                 # Traiter chaque champ dans la rangée
                 for row_champ in row.get("champs", []):
                     # ✅ FIX : Filtrer les champs problématiques dans les blocs répétables
-                    if (row_champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"] or 
+                    if (row_champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or 
                         (problematic_ids and row_champ.get("champDescriptorId") in problematic_ids)):
                         continue
                     
@@ -587,7 +614,7 @@ def dossier_to_flat_data(dossier_data: Dict[str, Any], exclude_repetition_champs
         
         # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
         # Ignorer les champs problématiques par type et par champDescriptorId
-        if (champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"] or 
+        if (champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or 
             (problematic_ids and champ.get("champDescriptorId") in problematic_ids)):
             continue
             
@@ -602,7 +629,7 @@ def dossier_to_flat_data(dossier_data: Dict[str, Any], exclude_repetition_champs
         
         # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
         # Ignorer explicitement les annotations de type HeaderSectionChamp et ExplicationChamp
-        if (annotation["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"] or
+        if (annotation["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or
             (problematic_ids and annotation.get("champDescriptorId") in problematic_ids)):
             continue
             

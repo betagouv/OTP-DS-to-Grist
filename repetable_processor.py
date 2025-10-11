@@ -253,8 +253,8 @@ def should_skip_field_unified(field, problematic_ids=None):
     Cette fonction remplace should_skip_field pour garantir la cohérence.
     """
     # Filtrage par typename (même logique que schema_utils)
-    if field.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor", "PieceJustificativeChampDescriptor",
-                                   "HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
+    if field.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor",
+                                   "HeaderSectionChamp", "ExplicationChamp"]:
         return True
     
     # Filtrage par type (même logique que schema_utils)  
@@ -1395,7 +1395,7 @@ def detect_repetable_columns_in_dossier(dossier_data):
         
         for champ in champs:
             # Ignorer les champs HeaderSectionChamp et ExplicationChamp
-            if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp", "PieceJustificativeChamp"]:
+            if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
                 continue
                 
             if champ["__typename"] == "RepetitionChamp":
