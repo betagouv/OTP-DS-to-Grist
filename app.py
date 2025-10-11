@@ -477,12 +477,6 @@ def run_synchronization_task(config, filters, progress_callback=None, log_callba
 
 # Routes Flask
 
-
-@app.context_processor
-def inject_build_time():
-    return dict(build_time=datetime.now())
-
-
 @app.route('/')
 def index():
     """Page d'accueil avec configuration"""
