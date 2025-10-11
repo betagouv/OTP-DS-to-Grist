@@ -187,6 +187,19 @@ fragment ChampFragment on Champ {
         files {
             ...FileFragment
         }
+        columns {
+            __typename
+            id
+            label
+            ... on TextColumn {
+                value
+            }
+            ... on AttachmentsColumn {
+                value {
+                    ...FileFragment
+                }
+            }
+        }
     }
     ... on AddressChamp {
         address {
@@ -720,25 +733,25 @@ def get_demarche_dossiers_filtered(
         if 'T' not in date_debut:
             date_debut += 'T00:00:00Z'
         server_filters['createdSince'] = date_debut
-        print(f"🗓️ Filtre serveur par date de début: {date_debut}")
+        print(f"Filtre serveur par date de début: {date_debut}")
     
     # ❌ FILTRES CÔTÉ CLIENT : Tout le reste
     if date_fin:
         client_filters['date_fin'] = date_fin
-        print(f"🗓️ Filtre client par date de fin: {date_fin}")
+        print(f"Filtre client par date de fin: {date_fin}")
     
     if groupes_instructeurs:
         client_filters['groupes_instructeurs'] = groupes_instructeurs
-        print(f"👥 Filtre client par groupes: {groupes_instructeurs}")
+        print(f"Filtre client par groupes: {groupes_instructeurs}")
     
     if statuts:
         client_filters['statuts'] = statuts
-        print(f"📋 Filtre client par statuts: {statuts}")
+        print(f"Filtre client par statuts: {statuts}")
     
     if server_filters:
         print(f"[FILTRAGE] Filtres côté serveur: {list(server_filters.keys())}")
     if client_filters:
-        print(f"💻 Filtres côté client: {list(client_filters.keys())}")
+        print(f"Filtres côté client: {list(client_filters.keys())}")
     
     # Variables pour la requête (SIMPLIFIÉES)
     variables = {
@@ -842,7 +855,7 @@ def get_demarche_dossiers_filtered(
     
     if "errors" in result:
         error_messages = [error.get("message", "Unknown error") for error in result["errors"]]
-        print(f"❌ Erreurs GraphQL: {error_messages}")
+        print(f"Erreurs GraphQL: {error_messages}")
         raise Exception(f"GraphQL errors: {', '.join(error_messages)}")
     
     # Récupération avec pagination
@@ -861,7 +874,7 @@ def get_demarche_dossiers_filtered(
         
         while has_next_page:
             page_num += 1
-            print(f"📄 Page {page_num}...")
+            print(f"Page {page_num}...")
             
             variables["afterCursor"] = cursor
             
@@ -875,7 +888,7 @@ def get_demarche_dossiers_filtered(
             next_result = next_response.json()
             
             if "errors" in next_result:
-                print(f"❌ Erreurs page {page_num}: {next_result['errors']}")
+                print(f"Erreurs page {page_num}: {next_result['errors']}")
                 break
             
             next_demarche = next_result["data"]["demarche"]
@@ -950,7 +963,7 @@ def get_demarche_dossiers_filtered(
     
     # Debug : Afficher quelques exemples
     if filtered_dossiers:
-        print(f"📊 Exemples de résultats finaux:")
+        print(f"Exemples de résultats finaux:")
         for i, dossier in enumerate(filtered_dossiers[:3]):
             groupe = dossier.get('groupeInstructeur', {})
             print(f"   {i+1}. Dossier {dossier['number']}: {dossier['dateDepot'][:10]} - {dossier['state']}")
@@ -1014,16 +1027,16 @@ def test_working_filter():
     if response.status_code == 200:
         result = response.json()
         if "errors" in result:
-            print(f"❌ Erreurs: {result['errors']}")
+            print(f"Erreurs: {result['errors']}")
         else:
             dossiers = result["data"]["demarche"]["dossiers"]["nodes"]
             print(f"[OK]SUCCESS! {len(dossiers)} dossiers après 2025-06-15")
             
             for dossier in dossiers:
                 groupe = dossier['groupeInstructeur']
-                print(f"   📁 {dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}")
+                print(f"{dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}")
     else:
-        print(f"❌ Erreur HTTP: {response.status_code}")
+        print(f"Erreur HTTP: {response.status_code}")
 
 
 if __name__ == "__main__":
@@ -1045,7 +1058,7 @@ if __name__ == "__main__":
 - groupeInstructeurNumber        # Groupe instructeur
 - states                         # Statuts des dossiers
 
-💻 SOLUTION HYBRIDE :
+SOLUTION HYBRIDE :
 1. Filtrer par date de début côté serveur (gain majeur)
 2. Filtrer le reste côté client sur le résultat réduit
 
