@@ -344,27 +344,8 @@
     async function checkConfiguration() {
         try {
             // Récupérer le contexte Grist pour conditionner le chargement de la configuration
-            let gristParams = '';
-
-            if (typeof grist !== 'undefined') {
-                try {
-                    grist.ready();
-
-                    const tokenInfo = await grist.docApi.getAccessToken({readOnly: false});
-                    const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]));
-                    const {docId, userId} = payload;
-
-                    if (userId && docId) {
-                        gristParams = `?grist_user_id=${encodeURIComponent(userId)}&grist_doc_id=${encodeURIComponent(docId)}`;
-                        gristUserId = userId;
-                        gristDocId = docId;
-                    }
-                } catch (error) {
-                    console.warn('Contexte Grist non disponible ou erreur:', error);
-                }
-            }
-
-            const response = await fetch(`/api/config${gristParams}`);
+            const gristContext = await getGristContext()
+            const response = await fetch(`/api/config${gristContext.params}`);
             const config = await response.json();
             currentConfig = config;
 
@@ -408,7 +389,8 @@
 
     async function loadGroupes() {
         try {
-            const response = await fetch('/api/groups');
+            const gristContext = await getGristContext()
+            const response = await fetch(`/api/groups${gristContext.params}`);
             const groups = await response.json();
             
             const container = document.getElementById('groupes_container');
@@ -527,6 +509,10 @@
             groupes_instructeurs: Array.from(document.querySelectorAll('input[name="groupes"]:checked'))
                                        .map(el => el.value).join(',')
         };
+
+        const gristContext = await getGristContext()
+        const gristDocId = gristContext.docId
+        const gristUserId = gristContext.userId
         
         try {
             const response = await fetch('/api/start-sync', {

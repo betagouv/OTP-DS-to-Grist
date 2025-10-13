@@ -207,71 +207,53 @@ class ConfigManager:
         return f.decrypt(value.encode()).decode()
 
     @staticmethod
-    def load_config(grist_user_id=None, grist_doc_id=None):
-        """Charge la configuration depuis la base de données ou le fichier .env"""
+    def load_config(grist_user_id, grist_doc_id):
+        """Charge la configuration depuis la base de données"""
         conn = ConfigManager.get_db_connection()
-        if conn:
-            try:
-                ConfigManager.create_table_if_not_exists(conn)
-                with conn.cursor() as cursor:
-                    # Si grist_user_id et grist_doc_id sont fournis, chercher une configuration correspondante
-                    if grist_user_id and grist_doc_id:
-                        cursor.execute("""
-                            SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id
-                            FROM otp_configurations
-                            WHERE grist_user_id = %s AND grist_doc_id = %s
-                            LIMIT 1
-                        """, (grist_user_id, grist_doc_id))
-                        row = cursor.fetchone()
-                        if row:
-                            # Configuration trouvée pour ce contexte Grist
-                            config = {
-                                'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
-                                'demarche_number': row[1] or '',
-                                'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
-                                'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
-                                'grist_doc_id': row[4] or '',
-                                'grist_user_id': row[5] or '',
-                            }
-                        else:
-                            # Aucune configuration trouvée pour ce contexte Grist, retourner vide
-                            config = {
-                                'ds_api_token': '',
-                                'demarche_number': '',
-                                'grist_base_url': 'https://grist.numerique.gouv.fr/api',
-                                'grist_api_key': '',
-                                'grist_doc_id': '',
-                                'grist_user_id': '',
-                            }
-                    else:
-                        # Pas de contexte Grist fourni, comportement par défaut (première ligne)
-                        cursor.execute("SELECT ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id FROM otp_configurations LIMIT 1")
-                        row = cursor.fetchone()
-                        if row:
-                            config = {
-                                'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
-                                'demarche_number': row[1] or '',
-                                'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
-                                'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
-                                'grist_doc_id': row[4] or '',
-                                'grist_user_id': row[5] or '',
-                            }
-                        else:
-                            config = {
-                                'ds_api_token': '',
-                                'demarche_number': '',
-                                'grist_base_url': 'https://grist.numerique.gouv.fr/api',
-                                'grist_api_key': '',
-                                'grist_doc_id': '',
-                            }
-            except Exception as e:
-                logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
-                conn.close()
-                return ConfigManager.load_config_fallback()
-            finally:
-                conn.close()
-        else:
-            return ConfigManager.load_config_fallback()
+
+        try:
+            ConfigManager.create_table_if_not_exists(conn)
+            with conn.cursor() as cursor:
+                if not grist_user_id or not grist_doc_id:
+                    raise Exception("No grist user id or doc id")
+
+                cursor.execute("""
+                    SELECT ds_api_token,
+                        demarche_number,
+                        grist_base_url,
+                        grist_api_key,
+                        grist_doc_id,
+                        grist_user_id
+                    FROM otp_configurations
+                    WHERE grist_user_id = %s AND grist_doc_id = %s
+                    LIMIT 1
+                """, (grist_user_id, grist_doc_id))
+                row = cursor.fetchone()
+
+                if row:
+                    config = {
+                        'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
+                        'demarche_number': row[1] or '',
+                        'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
+                        'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
+                        'grist_doc_id': row[4] or '',
+                        'grist_user_id': row[5] or '',
+                    }
+                else:
+                    config = {
+                        'ds_api_token': '',
+                        'demarche_number': '',
+                        'grist_base_url': 'https://grist.numerique.gouv.fr/api',
+                        'grist_api_key': '',
+                        'grist_doc_id': '',
+                        'grist_user_id': '',
+                    }
+
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
+            conn.close()
+        finally:
+            conn.close()
 
         # Charger les autres valeurs depuis les variables d'environnement
         config.update({
@@ -280,28 +262,9 @@ class ConfigManager:
             'max_workers': int(os.getenv('MAX_WORKERS', '2')),
             'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
         })
+
         return config
 
-    @staticmethod
-    def load_config_fallback():
-        """Charge la configuration depuis le fichier .env (fallback)"""
-        # Recharger le fichier .env pour avoir les dernières valeurs
-        load_dotenv(ConfigManager.get_env_path(), override=True)
-
-        config = {
-            'ds_api_token': os.getenv('DEMARCHES_API_TOKEN', ''),
-            'ds_api_url': os.getenv('DEMARCHES_API_URL', 'https://www.demarches-simplifiees.fr/api/v2/graphql'),
-            'demarche_number': os.getenv('DEMARCHE_NUMBER', ''),
-            'grist_base_url': os.getenv('GRIST_BASE_URL', 'https://grist.numerique.gouv.fr/api'),
-            'grist_api_key': os.getenv('GRIST_API_KEY', ''),
-            'grist_doc_id': os.getenv('GRIST_DOC_ID', ''),
-            'grist_user_id': os.getenv('GRIST_USER_ID', ''),
-            'batch_size': int(os.getenv('BATCH_SIZE', '25')),
-            'max_workers': int(os.getenv('MAX_WORKERS', '2')),
-            'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
-        }
-        return config
-    
     @staticmethod
     def save_config(config):
         """Sauvegarde la configuration dans la base de données ou le fichier .env"""
@@ -757,8 +720,7 @@ def inject_build_time():
 @app.route('/')
 def index():
     """Page d'accueil avec configuration"""
-    config = ConfigManager.load_config()
-    return render_template('index.html', config=config)
+    return render_template('index.html')
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def api_config():
@@ -829,7 +791,9 @@ def api_test_connection():
 @app.route('/api/groups')
 def api_groups():
     """API pour récupérer les groupes instructeurs"""
-    config = ConfigManager.load_config()
+    grist_user_id = request.args.get('grist_user_id')
+    grist_doc_id = request.args.get('grist_doc_id')
+    config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
     groups = get_available_groups(
         config['ds_api_token'],
         config['ds_api_url'],
