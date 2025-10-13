@@ -674,9 +674,15 @@ def api_config():
             new_config = request.get_json()
             
             # Validation basique
-            required_fields = ['ds_api_token', 'ds_api_url', 'demarche_number',
-                                  'grist_base_url', 'grist_api_key', 'grist_doc_id',
-                                  'grist_user_id']
+            required_fields = [
+                'ds_api_token',
+                'ds_api_url',
+                'demarche_number',
+                'grist_base_url',
+                'grist_api_key',
+                'grist_doc_id',
+                'grist_user_id'
+            ]
             
             for field in required_fields:
                 if not new_config.get(field):
@@ -722,12 +728,16 @@ def api_groups():
     """API pour récupérer les groupes instructeurs"""
     grist_user_id = request.args.get('grist_user_id')
     grist_doc_id = request.args.get('grist_doc_id')
-    config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
+    config = ConfigManager.load_config(
+        grist_user_id=grist_user_id,
+        grist_doc_id=grist_doc_id
+    )
     groups = get_available_groups(
         config['ds_api_token'],
         config['ds_api_url'],
         config['demarche_number']
     )
+
     return jsonify(groups)
 
 @app.route('/api/start-sync', methods=['POST'])
@@ -922,5 +932,8 @@ if __name__ == '__main__':
         app,
         host='0.0.0.0',
         port=5000,
-        debug=os.getenv('FLASK_DEBUG', 'False').lower() == 'true',
+        debug=os.getenv(
+            'FLASK_DEBUG',
+            'False'
+        ).lower() == 'true',
     )
