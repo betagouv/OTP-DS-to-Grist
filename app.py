@@ -267,159 +267,88 @@ class ConfigManager:
 
     @staticmethod
     def save_config(config):
-        """Sauvegarde la configuration dans la base de données ou le fichier .env"""
+        """Sauvegarde la configuration dans la base de données"""
         conn = ConfigManager.get_db_connection()
-        if conn:
-            try:
-                ConfigManager.create_table_if_not_exists(conn)
-                with conn.cursor() as cursor:
-                    # Préparer les valeurs, chiffrer les sensibles
-                    values = {
-                        'ds_api_token': ConfigManager.encrypt_value(config.get('ds_api_token', '')),
-                        'demarche_number': config.get('demarche_number', ''),
-                        'grist_base_url': config.get('grist_base_url', 'https://grist.numerique.gouv.fr/api'),
-                        'grist_api_key': ConfigManager.encrypt_value(config.get('grist_api_key', '')),
-                        'grist_doc_id': config.get('grist_doc_id', ''),
-                        'grist_user_id': config.get('grist_user_id', ''),
-                        'grist_document_id': config.get('grist_document_id', ''),
-                    }
 
-                    # Vérifier si une configuration existe déjà pour ce grist_user_id et grist_doc_id
-                    grist_user_id = config.get('grist_user_id', '')
-                    grist_doc_id = config.get('grist_doc_id', '')
+        try:
+            ConfigManager.create_table_if_not_exists(conn)
+            with conn.cursor() as cursor:
+                # Préparer les valeurs, chiffrer les sensibles
+                values = {
+                    'ds_api_token': ConfigManager.encrypt_value(config.get('ds_api_token', '')),
+                    'demarche_number': config.get('demarche_number', ''),
+                    'grist_base_url': config.get('grist_base_url', 'https://grist.numerique.gouv.fr/api'),
+                    'grist_api_key': ConfigManager.encrypt_value(config.get('grist_api_key', '')),
+                    'grist_doc_id': config.get('grist_doc_id', ''),
+                    'grist_user_id': config.get('grist_user_id', ''),
+                    'grist_document_id': config.get('grist_document_id', ''),
+                }
 
-                    if grist_user_id and grist_doc_id:
-                        # Vérifier si la configuration existe
-                        cursor.execute("""
-                            SELECT COUNT(*) FROM otp_configurations
-                            WHERE grist_user_id = %s AND grist_doc_id = %s
-                        """, (grist_user_id, grist_doc_id))
+                # Vérifier si une configuration existe déjà pour ce grist_user_id et grist_doc_id
+                grist_user_id = config.get('grist_user_id', '')
+                grist_doc_id = config.get('grist_doc_id', '')
 
-                        result = cursor.fetchone()
-                        exists = result[0] > 0 if result else False
+                if not grist_user_id or not grist_doc_id:
+                    raise Exception("No grist user id or doc id")
 
-                        if exists:
-                            # UPDATE : mettre à jour la configuration existante
-                            cursor.execute("""
-                                UPDATE otp_configurations SET
-                                ds_api_token = %s,
-                                demarche_number = %s,
-                                grist_base_url = %s,
-                                grist_api_key = %s,
-                                grist_doc_id = %s,
-                                grist_user_id = %s
-                                WHERE grist_user_id = %s AND grist_doc_id = %s
-                            """, (
-                                values['ds_api_token'],
-                                values['demarche_number'],
-                                values['grist_base_url'],
-                                values['grist_api_key'],
-                                values['grist_doc_id'],
-                                values['grist_user_id'],
-                                grist_user_id,
-                                grist_doc_id
-                            ))
-                            logger.info(f"Configuration mise à jour pour user_id={grist_user_id}, doc_id={grist_doc_id}")
-                        else:
-                            # INSERT : créer une nouvelle configuration
-                            cursor.execute("""
-                                INSERT INTO otp_configurations
-                                (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """, (
-                                values['ds_api_token'],
-                                values['demarche_number'],
-                                values['grist_base_url'],
-                                values['grist_api_key'],
-                                values['grist_doc_id'],
-                                values['grist_user_id']
-                            ))
-                            logger.info(f"Nouvelle configuration créée pour user_id={grist_user_id}, doc_id={grist_doc_id}")
-                    else:
-                        # Pas de contexte Grist, comportement par défaut (UPDATE de la première ligne)
-                        cursor.execute("""
-                            UPDATE otp_configurations SET
-                            ds_api_token = %s,
-                            demarche_number = %s,
-                            grist_base_url = %s,
-                            grist_api_key = %s,
-                            grist_doc_id = %s,
-                            grist_user_id = %s
-                        """, (
-                            values['ds_api_token'],
-                            values['demarche_number'],
-                            values['grist_base_url'],
-                            values['grist_api_key'],
-                            values['grist_doc_id'],
-                            values['grist_user_id']
-                        ))
-                        logger.info("Configuration sauvegardée (mode par défaut)")
+                # Vérifier si la configuration existe
+                cursor.execute("""
+                    SELECT COUNT(*) FROM otp_configurations
+                    WHERE grist_user_id = %s AND grist_doc_id = %s
+                """, (grist_user_id, grist_doc_id))
 
-                    conn.commit()
-            except Exception as e:
-                logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
-                conn.close()
-                return False
-            finally:
-                conn.close()
-        else:
-            # Fallback vers le fichier .env
-            return ConfigManager.save_config_fallback(config)
+                result = cursor.fetchone()
+                exists = result[0] > 0 if result else False
 
-        # Sauvegarder les autres valeurs dans les variables d'environnement
-        env_mapping = {
-            'ds_api_url': 'DEMARCHES_API_URL',
-            'batch_size': 'BATCH_SIZE',
-            'max_workers': 'MAX_WORKERS',
-            'parallel': 'PARALLEL'
-        }
-        for config_key, env_key in env_mapping.items():
-            if config_key in config and config[config_key] is not None:
-                value = str(config[config_key])
-                os.environ[env_key] = value
-                logger.info(f"Variable d'environnement {env_key} = {value}")
+                if exists:
+                    # UPDATE : mettre à jour la configuration existante
+                    cursor.execute("""
+                        UPDATE otp_configurations SET
+                        ds_api_token = %s,
+                        demarche_number = %s,
+                        grist_base_url = %s,
+                        grist_api_key = %s,
+                        grist_doc_id = %s,
+                        grist_user_id = %s
+                        WHERE grist_user_id = %s AND grist_doc_id = %s
+                    """, (
+                        values['ds_api_token'],
+                        values['demarche_number'],
+                        values['grist_base_url'],
+                        values['grist_api_key'],
+                        values['grist_doc_id'],
+                        values['grist_user_id'],
+                        grist_user_id,
+                        grist_doc_id
+                    ))
+                    logger.info(f"Configuration mise à jour pour user_id={grist_user_id}, doc_id={grist_doc_id}")
+                else:
+                    # INSERT : créer une nouvelle configuration
+                    cursor.execute("""
+                        INSERT INTO otp_configurations
+                        (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (
+                        values['ds_api_token'],
+                        values['demarche_number'],
+                        values['grist_base_url'],
+                        values['grist_api_key'],
+                        values['grist_doc_id'],
+                        values['grist_user_id']
+                    ))
+                    logger.info(f"Nouvelle configuration créée pour user_id={grist_user_id}, doc_id={grist_doc_id}")
+
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
+            conn.close()
+
+            return False
+        finally:
+            conn.close()
 
         return True
 
-    @staticmethod
-    def save_config_fallback(config):
-        """Sauvegarde la configuration dans le fichier .env (fallback)"""
-        env_path = ConfigManager.get_env_path()
-
-        try:
-            # Mapping des clés pour le fichier .env
-            env_mapping = {
-                'ds_api_token': 'DEMARCHES_API_TOKEN',
-                'ds_api_url': 'DEMARCHES_API_URL',
-                'demarche_number': 'DEMARCHE_NUMBER',
-                'grist_base_url': 'GRIST_BASE_URL',
-                'grist_api_key': 'GRIST_API_KEY',
-                'grist_doc_id': 'GRIST_DOC_ID',
-                'grist_user_id': 'GRIST_USER_ID',
-                'batch_size': 'BATCH_SIZE',
-                'max_workers': 'MAX_WORKERS',
-                'parallel': 'PARALLEL'
-            }
-
-            # Sauvegarder chaque valeur dans le fichier .env
-            for config_key, env_key in env_mapping.items():
-                if config_key in config and config[config_key] is not None:
-                    value = str(config[config_key])
-                    # Ne pas sauvegarder les valeurs vides ou masquées
-                    if value and value != '***':
-                        set_key(env_path, env_key, value)
-                        # Mettre à jour aussi la variable d'environnement actuelle
-                        os.environ[env_key] = value
-                        logger.info(f"Sauvegardé {env_key} = {value[:10]}..." if 'token' in env_key.lower() or 'key' in env_key.lower() else f"Sauvegardé {env_key} = {value}")
-
-            # Recharger le fichier .env pour vérification
-            load_dotenv(env_path, override=True)
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Erreur lors de la sauvegarde de la configuration: {str(e)}")
-            return False
 
 def test_demarches_api(api_token, api_url, demarche_number=None):
     """Teste la connexion à l'API Démarches Simplifiées"""
