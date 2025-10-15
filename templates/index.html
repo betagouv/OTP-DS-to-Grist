@@ -301,7 +301,7 @@
             
         } catch (error) {
             console.error('Erreur lors du chargement de la configuration:', error);
-            App.showNotification('Erreur lors du chargement de la configuration', 'error');
+            App.showNotification(`Erreur lors du chargement de la configuration : ${error.message}`, 'error');
         }
     }
 

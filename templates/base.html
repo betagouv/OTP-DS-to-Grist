@@ -96,6 +96,15 @@
         .fr-nav__link[aria-current="page"] {
             font-weight: bold;
         }
+
+        .fr-notice--error {
+          background-color: #ce0500;
+          color: white;
+        }
+
+        .fr-notice--error .fr-btn--close:before {
+          background-color: white;
+        }
     </style>
 </head>
 <body>
@@ -247,7 +256,7 @@
                     if (notification.parentNode) {
                         notification.remove();
                     }
-                }, 5000);
+                }, type === 'error' ? 10000 : 5000);
             },
             
             formatBytes: function(bytes, decimals = 2) {
