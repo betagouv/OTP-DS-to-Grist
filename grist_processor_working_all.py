@@ -2735,7 +2735,7 @@ def main():
     grist_doc_id = os.getenv("GRIST_DOC_ID")
 
     if not all([grist_base_url, grist_api_key, grist_doc_id]):
-        log_error("Configuration Grist incomplète dans le fichier .env")
+        log_error("Configuration Grist incomplète")
         log("Assurez-vous d'avoir défini GRIST_BASE_URL, GRIST_API_KEY et GRIST_DOC_ID")
         return 1
 
@@ -2749,7 +2749,7 @@ def main():
     # Récupérer le numéro de démarche
     demarche_number = os.getenv("DEMARCHE_NUMBER")
     if not demarche_number:
-        log_error("DEMARCHE_NUMBER non défini dans le fichier .env")
+        log_error("DEMARCHE_NUMBER non défini")
         return 1
 
     try:
