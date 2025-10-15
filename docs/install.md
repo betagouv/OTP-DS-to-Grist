@@ -43,19 +43,9 @@ Créez un fichier `.env` à la racine du projet :
 cp .env.example .env
 ```
 
-Éditez le fichier `.env` avec vos paramètres :
+Éditez le fichier `.env` avec vos paramètres.
 
 ```env
-# Configuration Démarches Simplifiées
-DEMARCHES_API_TOKEN='VOTRE_TOKEN_DS_ICI'
-DEMARCHES_API_URL='https://www.demarches-simplifiees.fr/api/v2/graphql'
-DEMARCHE_NUMBER='NUMERO_DE_VOTRE_DEMARCHE'
-
-# Configuration Grist
-GRIST_BASE_URL='https://grist.numerique.gouv.fr/api'
-GRIST_API_KEY='VOTRE_CLE_API_GRIST'
-GRIST_DOC_ID='ID_DE_VOTRE_DOCUMENT_GRIST'
-
 # Configuration avancée
 BATCH_SIZE='100'
 MAX_WORKERS='3'
@@ -66,9 +56,6 @@ DATE_DEPOT_DEBUT=
 DATE_DEPOT_FIN=
 STATUTS_DOSSIERS=
 GROUPES_INSTRUCTEURS=
-
-# Flask (développement local)
-FLASK_SECRET_KEY=…
 ```
 
 ### FLASK_SECRET_KEY

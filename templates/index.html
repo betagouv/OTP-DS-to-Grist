@@ -114,16 +114,28 @@
                     </div>
                 </div>
                 
-                <div class="fr-mt-3w">
-                    <div class="fr-input-group">
-                        <label class="fr-label" for="grist_doc_id">
-                            ID du document Grist
-                            <span class="fr-hint-text">Identifiant du document de destination</span>
-                        </label>
-                        <input class="fr-input" type="text" id="grist_doc_id" name="grist_doc_id" 
-                               style="max-width: 300px;">
-                    </div>
-                </div>
+                 <div class="fr-mt-3w">
+                     <div class="fr-grid-row fr-grid-row--gutters">
+                         <div class="fr-col-12 fr-col-md-6">
+                             <div class="fr-input-group">
+                                 <label class="fr-label" for="grist_doc_id">
+                                     ID du document Grist
+                                     <span class="fr-hint-text">Identifiant du document de destination</span>
+                                 </label>
+                                 <input class="fr-input" type="text" id="grist_doc_id" name="grist_doc_id">
+                             </div>
+                         </div>
+                         <div class="fr-col-12 fr-col-md-6">
+                             <div class="fr-input-group">
+                                 <label class="fr-label" for="grist_user_id">
+                                     ID utilisateur Grist
+                                     <span class="fr-hint-text">Identifiant de l'utilisateur (récupéré depuis Grist)</span>
+                                 </label>
+                                 <input class="fr-input" type="text" id="grist_user_id" name="grist_user_id">
+                             </div>
+                         </div>
+                     </div>
+                 </div>
                 
                 <div class="fr-mt-4w">
                     <button class="fr-btn" onclick="testGristConnection()" id="test_grist_btn">
@@ -207,24 +219,56 @@
     });
 
     async function loadConfiguration() {
-        try {
-            const response = await fetch('/api/config');
+      try {
+            // Récupérer d'abord le contexte Grist pour conditionner le chargement de la configuration
+            const gristContext = await getGristContext()
+            let gristParams = gristContext.params;
+            let gristUserId = gristContext.userId;
+            let gristDocId = gristContext.docId;
+
+            const response = await fetch(`/api/config${gristParams}`);
             const config = await response.json();
             currentConfig = config;
-            
-            // Remplir les champs avec la configuration
-            document.getElementById('ds_api_token').value = config.ds_api_token_exists ? '' : '';
-            document.getElementById('ds_api_url').value = config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql';
-            document.getElementById('demarche_number').value = config.demarche_number || '';
-            document.getElementById('grist_base_url').value = config.grist_base_url || 'https://grist.numerique.gouv.fr/api';
-            document.getElementById('grist_api_key').value = config.grist_api_key_exists ? '' : '';
-            document.getElementById('grist_doc_id').value = config.grist_doc_id || '';
-            document.getElementById('batch_size').value = config.batch_size || 25;
-            document.getElementById('max_workers').value = config.max_workers || 2;
-            document.getElementById('parallel').value = config.parallel ? 'true' : 'false';
+
+            // Déterminer si une configuration a été trouvée pour ce contexte Grist
+            const hasConfig = gristUserId && gristDocId && config.ds_api_token;
+
+            // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
+            document.getElementById('grist_doc_id').value = gristDocId || '';
+            document.getElementById('grist_user_id').value = gristUserId || '';
+
+            // Remplir les autres champs seulement si une configuration a été trouvée
+            if (hasConfig) {
+                document.getElementById('ds_api_token').value = '';
+                document.getElementById('ds_api_url').value = config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql';
+                document.getElementById('demarche_number').value = config.demarche_number || '';
+                document.getElementById('grist_base_url').value = config.grist_base_url || 'https://grist.numerique.gouv.fr/api';
+                document.getElementById('grist_api_key').value = '';
+                document.getElementById('batch_size').value = config.batch_size || 25;
+                document.getElementById('max_workers').value = config.max_workers || 2;
+                document.getElementById('parallel').value = config.parallel ? 'true' : 'false';
+            } else {
+                // Aucune configuration trouvée, laisser tous les champs vides (sauf grist ids)
+                document.getElementById('ds_api_token').value = '';
+                document.getElementById('ds_api_url').value = 'https://www.demarches-simplifiees.fr/api/v2/graphql';
+                document.getElementById('demarche_number').value = '';
+                document.getElementById('grist_base_url').value = 'https://grist.numerique.gouv.fr/api';
+                document.getElementById('grist_api_key').value = '';
+                document.getElementById('batch_size').value = '25';
+                document.getElementById('max_workers').value = '2';
+                document.getElementById('parallel').value = 'true';
+            }
+
+            // Mettre à jour les statuts initiaux
+            updateDSTokenStatus();
+            updateGristKeyStatus();
+
+            // Ajouter les listeners pour mise à jour en temps réel
+            document.getElementById('ds_api_token').addEventListener('input', updateDSTokenStatus);
+            document.getElementById('grist_api_key').addEventListener('input', updateGristKeyStatus);
             
             // Afficher le statut des tokens
-            if (config.ds_api_token_exists) {
+            if (config.ds_api_token) {
                 document.getElementById('ds_token_status').innerHTML = `
                     <span class="fr-badge fr-badge--success fr-badge--sm">
                         <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
@@ -237,9 +281,10 @@
                         <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
                     </span>
                 `;
+                document.getElementById('ds_api_token').placeholder = '';
             }
-            
-            if (config.grist_api_key_exists) {
+
+            if (config.grist_api_key) {
                 document.getElementById('grist_key_status').innerHTML = `
                     <span class="fr-badge fr-badge--success fr-badge--sm">
                         <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
@@ -256,7 +301,51 @@
             
         } catch (error) {
             console.error('Erreur lors du chargement de la configuration:', error);
-            App.showNotification('Erreur lors du chargement de la configuration', 'error');
+            App.showNotification(`Erreur lors du chargement de la configuration : ${error.message}`, 'error');
+        }
+    }
+
+
+
+    function updateDSTokenStatus() {
+        const value = document.getElementById('ds_api_token').value;
+        const input = document.getElementById('ds_api_token');
+
+        if (value || currentConfig.ds_api_token) {
+            document.getElementById('ds_token_status').innerHTML = `
+                <span class="fr-badge fr-badge--success fr-badge--sm">
+                    <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
+                </span>
+            `;
+            input.placeholder = 'Token déjà configuré (laissez vide pour conserver)';
+        } else {
+            document.getElementById('ds_token_status').innerHTML = `
+                <span class="fr-badge fr-badge--error fr-badge--sm">
+                    <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
+                </span>
+            `;
+            input.placeholder = '';
+        }
+    }
+
+    function updateGristKeyStatus() {
+        const value = document.getElementById('grist_api_key').value;
+        const input = document.getElementById('grist_api_key');
+
+        if (value || currentConfig.grist_api_key) {
+            document.getElementById('grist_key_status').innerHTML = `
+                <span class="fr-badge fr-badge--success fr-badge--sm">
+                    <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
+                </span>
+            `;
+            input.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)';
+        } else {
+            document.getElementById('grist_key_status').innerHTML = `
+                <span class="fr-badge fr-badge--error fr-badge--sm">
+                    <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
+                </span>
+            `;
+            input.placeholder = '';
         }
     }
 
@@ -271,6 +360,7 @@
             grist_base_url: document.getElementById('grist_base_url').value,
             grist_api_key: grist_key || currentConfig.grist_api_key || '',
             grist_doc_id: document.getElementById('grist_doc_id').value,
+            grist_user_id: document.getElementById('grist_user_id').value,
             batch_size: parseInt(document.getElementById('batch_size').value),
             max_workers: parseInt(document.getElementById('max_workers').value),
             parallel: document.getElementById('parallel').value === 'true'
@@ -283,7 +373,8 @@
             {key: 'demarche_number', name: 'Numéro de démarche'},
             {key: 'grist_base_url', name: 'URL de base Grist'},
             {key: 'grist_api_key', name: 'Clé API Grist'},
-            {key: 'grist_doc_id', name: 'ID du document Grist'}
+            {key: 'grist_doc_id', name: 'ID du document Grist'},
+            {key: 'grist_user_id', name: 'ID utilisateur Grist'}
         ];
         
         for (const field of requiredFields) {
@@ -312,6 +403,25 @@
 
             if (result.success) {
                 App.showNotification('Configuration sauvegardée avec succès', 'success');
+
+                // Mettre à jour immédiatement le statut des tokens si saisis
+                if (ds_token) {
+                    document.getElementById('ds_token_status').innerHTML = `
+                        <span class="fr-badge fr-badge--success fr-badge--sm">
+                            <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
+                        </span>
+                    `;
+                    document.getElementById('ds_api_token').placeholder = 'Token déjà configuré (laissez vide pour conserver)';
+                }
+
+                if (grist_key) {
+                    document.getElementById('grist_key_status').innerHTML = `
+                        <span class="fr-badge fr-badge--success fr-badge--sm">
+                            <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
+                        </span>
+                    `;
+                    document.getElementById('grist_api_key').placeholder = 'Clé API déjà configurée (laissez vide pour conserver)';
+                }
                 // Recharger la configuration pour mettre à jour les statuts
                 setTimeout(() => {
                     loadConfiguration();
@@ -351,7 +461,8 @@
             let ds_token = ds_token_input;
             if (!ds_token && currentConfig && currentConfig.ds_api_token_exists) {
                 try {
-                    const configResponse = await fetch('/api/config');
+                    const gristContext = await getGristContext()
+                    const configResponse = await fetch(`/api/config${gristContext.params}`);
                     if (configResponse.ok) {
                         const latestConfig = await configResponse.json();
                         ds_token = latestConfig.ds_api_token || '';
@@ -431,7 +542,8 @@
             let grist_key = grist_key_input;
             if (!grist_key && currentConfig.grist_api_key_exists) {
                 try {
-                    const configResponse = await fetch('/api/config');
+                    const gristContext = await getGristContext()
+                    const configResponse = await fetch(`/api/config${gristContext.params}`);
                     const latestConfig = await configResponse.json();
                     grist_key = latestConfig.grist_api_key;
                 } catch (e) {

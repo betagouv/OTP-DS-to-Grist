@@ -17,6 +17,12 @@ Voir [doc installation](./docs/install.md)
 3. **Générez** un nouveau token API dans la section "Jeton d'accès"
 4. **Copiez** le token généré (format : `MGQ...`)
 
+### Numéro de démarche
+
+1. **Connectez-vous** à votre compte DS administrateur
+2. **Accédez** à "Mes démarches"
+3. **Copiez** le numéro figurant dans la *carte* de la démarche N° xxx xxx (en haut à droite)
+
 ### Clé API Grist
 
 1. **Connectez-vous** à votre instance Grist
@@ -39,6 +45,8 @@ Voir [doc installation](./docs/install.md)
 - **Vérifiez** que tous les paramètres sont correctement affichés
 - **Testez** les connexions DS et Grist
 - **Modifiez** la configuration si nécessaire (mode local uniquement)
+
+⚠️ S'assurer de donner un accès complet au document Grist.
 
 ### 2. Page d'exécution (`/execution`)
 
