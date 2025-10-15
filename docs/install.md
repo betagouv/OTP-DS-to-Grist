@@ -45,6 +45,19 @@ cp .env.example .env
 
 Éditez le fichier `.env` avec vos paramètres.
 
+```env
+# Configuration avancée
+BATCH_SIZE='100'
+MAX_WORKERS='3'
+PARALLEL='True'
+
+# Filtres (optionnels)
+DATE_DEPOT_DEBUT=
+DATE_DEPOT_FIN=
+STATUTS_DOSSIERS=
+GROUPES_INSTRUCTEURS=
+```
+
 ### FLASK_SECRET_KEY
 
 1. Générer un secret pour flask : `poe generate-secret`
