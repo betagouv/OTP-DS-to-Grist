@@ -16,7 +16,7 @@ from schema_utils import (
 
 
 # Configuration du niveau de log
-LOG_LEVEL = 1  # 0=minimal, 1=normal, 2=verbose
+LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 
 def log(message, level=1):
     """Fonction de log conditionnelle selon le niveau défini"""

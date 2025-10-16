@@ -50,6 +50,8 @@ cp .env.example .env
 BATCH_SIZE='100'
 MAX_WORKERS='3'
 PARALLEL='True'
+# 0=minimal, 1=normal, 2=verbose
+LOG_LEVEL=1
 
 # Filtres (optionnels)
 DATE_DEPOT_DEBUT=
