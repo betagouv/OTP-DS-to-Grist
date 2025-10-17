@@ -56,11 +56,24 @@ DATE_DEPOT_DEBUT=
 DATE_DEPOT_FIN=
 STATUTS_DOSSIERS=
 GROUPES_INSTRUCTEURS=
+
+# Flask
+FLASK_SECRET_KEY=
+# True = dev, False = prod
+FLASK_DEBUG=False
+
+DATABASE_URL=postgresql://user:password@host:port/db_name
+ENCRYPTION_KEY='encrypt-key'
 ```
 
 ### FLASK_SECRET_KEY
 
 1. Générer un secret pour flask : `poe generate-secret`
+2. Copier coller le retour de la commande dans `.env`
+
+### ENCRYPTION_KEY
+
+1. Générer un secret pour flask : `poe generate-encryption-key`
 2. Copier coller le retour de la commande dans `.env`
 
 # ▶️ Lancement de l'application

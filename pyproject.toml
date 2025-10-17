@@ -39,3 +39,8 @@ shell = "python app.py"
 [tool.poe.tasks.generate-secret]
 help = "Génère une clé secrète sécurisée pour Flask"
 shell = "python3 -c \"import secrets; print('FLASK_SECRET_KEY=' + secrets.token_hex(32))\""
+
+[tool.poe.tasks.generate-encryption-key]
+help = "Génère une clé secrète de cryptage"
+shell = "python3 -c \"import secrets, base64; print('ENCRYPTION_KEY=' + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\""
+

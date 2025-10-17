@@ -137,13 +137,12 @@ class ConfigManager:
     @staticmethod
     def get_encryption_key():
         """Récupère ou génère la clé de chiffrement"""
+        logger.info("---get_encryption_key---")
         key = os.getenv('ENCRYPTION_KEY')
+
         if not key:
-            key = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
-            os.environ['ENCRYPTION_KEY'] = key
-            # Sauvegarder dans .env pour persistance
-            set_key(ConfigManager.get_env_path(), 'ENCRYPTION_KEY', key)
-            logger.info("Nouvelle clé de chiffrement générée et sauvegardée")
+            raise ValueError('"ENCRYPTION_KEY" non définie')
+
         return key
 
     @staticmethod
@@ -191,20 +190,38 @@ class ConfigManager:
     @staticmethod
     def encrypt_value(value):
         """Chiffre une valeur"""
-        if not value:
-            return value
-        key = ConfigManager.get_encryption_key()
-        f = Fernet(key.encode())
-        return f.encrypt(value.encode()).decode()
+        logger.info("---encrypt_value---")
+        try:
+            if not value:
+                return value
+
+            key = ConfigManager.get_encryption_key()
+            f = Fernet(key.encode())
+
+            return f.encrypt(value.encode()).decode()
+        except Exception as e:
+            raise ValueError(
+                f"Échec du chiffrement : {str(e)}. \
+                Vérifiez la clé de chiffrement ou la valeur fournie."
+            )
 
     @staticmethod
     def decrypt_value(value):
         """Déchiffre une valeur"""
-        if not value:
-            return value
-        key = ConfigManager.get_encryption_key()
-        f = Fernet(key.encode())
-        return f.decrypt(value.encode()).decode()
+        logger.info("---decrypt_value---")
+        try:
+            if not value:
+                return value
+
+            key = ConfigManager.get_encryption_key()
+            f = Fernet(key.encode())
+
+            return f.decrypt(value.encode()).decode()
+        except Exception as e:
+            raise ValueError(
+                f"Échec du déchiffrement : {str(e)}. \
+                Vérifiez la clé de chiffrement ou la valeur fournie."
+            )
 
     @staticmethod
     def load_config(grist_user_id, grist_doc_id):
@@ -213,6 +230,7 @@ class ConfigManager:
 
         try:
             ConfigManager.create_table_if_not_exists(conn)
+
             with conn.cursor() as cursor:
                 if not grist_user_id or not grist_doc_id:
                     raise Exception("No grist user id or doc id")
@@ -249,21 +267,23 @@ class ConfigManager:
                         'grist_user_id': '',
                     }
 
+                # Charger les autres valeurs depuis les variables d'environnement
+                config.update({
+                    'ds_api_url': os.getenv('DEMARCHES_API_URL', 'https://www.demarches-simplifiees.fr/api/v2/graphql'),
+                    'batch_size': int(os.getenv('BATCH_SIZE', '25')),
+                    'max_workers': int(os.getenv('MAX_WORKERS', '2')),
+                    'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
+                })
+
+                return config
+
         except Exception as e:
             logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
             conn.close()
+            raise Exception(str(e))
         finally:
             conn.close()
 
-        # Charger les autres valeurs depuis les variables d'environnement
-        config.update({
-            'ds_api_url': os.getenv('DEMARCHES_API_URL', 'https://www.demarches-simplifiees.fr/api/v2/graphql'),
-            'batch_size': int(os.getenv('BATCH_SIZE', '25')),
-            'max_workers': int(os.getenv('MAX_WORKERS', '2')),
-            'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
-        })
-
-        return config
 
     @staticmethod
     def save_config(config):
@@ -655,19 +675,22 @@ def index():
 def api_config():
     """API pour la gestion de la configuration"""
     if request.method == 'GET':
-        # Récupérer les paramètres de contexte Grist depuis la requête
-        grist_user_id = request.args.get('grist_user_id')
-        grist_doc_id = request.args.get('grist_doc_id')
+        try:
+            # Récupérer les paramètres de contexte Grist depuis la requête
+            grist_user_id = request.args.get('grist_user_id')
+            grist_doc_id = request.args.get('grist_doc_id')
 
-        config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
+            config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
 
-        # Garder les vraies valeurs pour la logique côté client, masquer seulement pour affichage
-        config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
-        config['ds_api_token_exists'] = bool(config['ds_api_token'])
-        config['grist_api_key_masked'] = '***' if config['grist_api_key'] else ''
-        config['grist_api_key_exists'] = bool(config['grist_api_key'])
+            # Garder les vraies valeurs pour la logique côté client, masquer seulement pour affichage
+            config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
+            config['ds_api_token_exists'] = bool(config['ds_api_token'])
+            config['grist_api_key_masked'] = '***' if config['grist_api_key'] else ''
+            config['grist_api_key_exists'] = bool(config['grist_api_key'])
 
-        return jsonify(config)
+            return jsonify(config)
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500
     
     elif request.method == 'POST':
         try:
