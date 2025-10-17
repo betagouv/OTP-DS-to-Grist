@@ -1343,7 +1343,6 @@ def process_repetables_batch(client, dossiers_data, table_id, column_types, prob
             if response.status_code in [200, 201]:
                 total_success += len(batch)
             else:
-                # AUTO-FIX pour colonnes manquantes
                 # AUTO-FIX pour colonnes manquantes (version améliorée)
                 if response.status_code == 400 and "Invalid column" in response.text:
                     log(f"    [AUTO-FIX] Erreur de colonne detectee, correction automatique...")
