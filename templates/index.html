@@ -228,6 +228,10 @@
 
             const response = await fetch(`/api/config${gristParams}`);
             const config = await response.json();
+
+            if (!response.ok)
+              throw new Error(config.message)
+
             currentConfig = config;
 
             // Déterminer si une configuration a été trouvée pour ce contexte Grist
