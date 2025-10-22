@@ -11,13 +11,13 @@ import time
 import threading
 import subprocess
 from datetime import datetime
-from dotenv import load_dotenv, set_key
+from dotenv import load_dotenv
 import requests
 from werkzeug.serving import WSGIRequestHandler
 import psycopg2
 from cryptography.fernet import Fernet
-import base64
-import secrets
+
+DEMARCHES_API_URL = "https://www.demarches-simplifiees.fr/api/v2/graphql"
 
 # Configuration de l'application Flask
 app = Flask(__name__)
@@ -269,7 +269,7 @@ class ConfigManager:
 
                 # Charger les autres valeurs depuis les variables d'environnement
                 config.update({
-                    'ds_api_url': os.getenv('DEMARCHES_API_URL', 'https://www.demarches-simplifiees.fr/api/v2/graphql'),
+                    'ds_api_url': DEMARCHES_API_URL,
                     'batch_size': int(os.getenv('BATCH_SIZE', '25')),
                     'max_workers': int(os.getenv('MAX_WORKERS', '2')),
                     'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
@@ -370,14 +370,14 @@ class ConfigManager:
         return True
 
 
-def test_demarches_api(api_token, api_url, demarche_number=None):
+def test_demarches_api(api_token, demarche_number=None):
     """Teste la connexion à l'API Démarches Simplifiées"""
     try:
         headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         }
-        
+
         if demarche_number:
             query = """
             query getDemarche($demarcheNumber: Int!) {
@@ -389,7 +389,16 @@ def test_demarches_api(api_token, api_url, demarche_number=None):
             }
             """
             variables = {"demarcheNumber": int(demarche_number)}
-            response = requests.post(api_url, json={"query": query, "variables": variables}, headers=headers, timeout=10)
+            response = requests.post(
+                DEMARCHES_API_URL,
+                json={
+                    "query": query,
+                    "variables": variables
+                },
+                headers=headers,
+                timeout=10,
+                verify=True
+            )
         else:
             query = """
             query {
@@ -401,8 +410,14 @@ def test_demarches_api(api_token, api_url, demarche_number=None):
                 }
             }
             """
-            response = requests.post(api_url, json={"query": query}, headers=headers, timeout=10)
-        
+            response = requests.post(
+                DEMARCHES_API_URL,
+                json={"query": query},
+                headers=headers,
+                timeout=10,
+                verify=True
+            )
+
         if response.status_code == 200:
             result = response.json()
             if "errors" in result:
@@ -449,9 +464,9 @@ def test_grist_api(base_url, api_key, doc_id):
     except Exception as e:
         return False, f"Erreur de connexion: {str(e)}"
 
-def get_available_groups(api_token, api_url, demarche_number):
+def get_available_groups(api_token, demarche_number):
     """Récupère les groupes instructeurs disponibles"""
-    if not all([api_token, api_url, demarche_number]):
+    if not all([api_token, demarche_number]):
         return []
     
     try:
@@ -473,7 +488,12 @@ def get_available_groups(api_token, api_url, demarche_number):
             "Content-Type": "application/json"
         }
         
-        response = requests.post(api_url, json={"query": query, "variables": variables}, headers=headers, timeout=10)
+        response = requests.post(
+            DEMARCHES_API_URL,
+            json={"query": query, "variables": variables},
+            headers=headers,
+            timeout=10
+        )
         
         if response.status_code != 200:
             return []
@@ -732,7 +752,6 @@ def api_test_connection():
     if connection_type == 'demarches':
         success, message = test_demarches_api(
             data.get('api_token'),
-            data.get('api_url'),
             data.get('demarche_number')
         )
     elif connection_type == 'grist':
@@ -757,7 +776,6 @@ def api_groups():
     )
     groups = get_available_groups(
         config['ds_api_token'],
-        config['ds_api_url'],
         config['demarche_number']
     )
 
