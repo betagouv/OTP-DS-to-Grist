@@ -1,3 +1,5 @@
+![CI](https://github.com/betagouv/OTP-DS-to-Grist/actions/workflows/ci.yml/badge.svg)
+
 # 🦄 One Trick Pony DS to Grist - Installation Locale
 
 One Trick Pony DS to Grist (OTP) est un gestionnaire de connecteur entre [Démarches Simplifiées](https://www.demarches-simplifiees.fr/admin/procedures) et [Grist](https://lasuite.numerique.gouv.fr/services/grist).

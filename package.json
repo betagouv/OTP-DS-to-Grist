@@ -1,0 +1,32 @@
+{
+  "name": "otp-ds-to-grist-flask-local",
+  "version": "1.0.0",
+  "description": "One Trick Pony DS to Grist (OTP) est un gestionnaire de connecteur entre [Démarches Simplifiées](https://www.demarches-simplifiees.fr/admin/procedures) et [Grist](https://lasuite.numerique.gouv.fr/services/grist).",
+  "homepage": "https://github.com/jlllyfish/OTP-DS-to-Grist-flask-local#readme",
+  "bugs": {
+    "url": "https://github.com/jlllyfish/OTP-DS-to-Grist-flask-local/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jlllyfish/OTP-DS-to-Grist-flask-local.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  }
+}
