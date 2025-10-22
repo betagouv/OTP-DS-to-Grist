@@ -27,3 +27,5 @@ async function getGristContext() {
 
   return { params: gristParams, userId: gristUserId, docId: gristDocId };
 }
+
+module.exports = { getGristContext }
