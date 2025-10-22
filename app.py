@@ -377,7 +377,7 @@ def test_demarches_api(api_token, api_url, demarche_number=None):
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         }
-        
+
         if demarche_number:
             query = """
             query getDemarche($demarcheNumber: Int!) {
@@ -389,7 +389,16 @@ def test_demarches_api(api_token, api_url, demarche_number=None):
             }
             """
             variables = {"demarcheNumber": int(demarche_number)}
-            response = requests.post(api_url, json={"query": query, "variables": variables}, headers=headers, timeout=10)
+            response = requests.post(
+                api_url,
+                json={
+                    "query": query,
+                    "variables": variables
+                },
+                headers=headers,
+                timeout=10,
+                verify=True
+            )
         else:
             query = """
             query {
@@ -401,8 +410,14 @@ def test_demarches_api(api_token, api_url, demarche_number=None):
                 }
             }
             """
-            response = requests.post(api_url, json={"query": query}, headers=headers, timeout=10)
-        
+            response = requests.post(
+                api_url,
+                json={"query": query},
+                headers=headers,
+                timeout=10,
+                verify=True
+            )
+
         if response.status_code == 200:
             result = response.json()
             if "errors" in result:
