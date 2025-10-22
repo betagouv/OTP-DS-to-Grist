@@ -1,19 +1,22 @@
-# -*- coding: utf-8 -*-
 import os
 import sys
-import re
 import json as json_module
 import requests
-import unicodedata
 import repetable_processor as rp
 from dotenv import load_dotenv
 from datetime import datetime
-from queries import get_demarche, get_dossier, get_demarche_dossiers, dossier_to_flat_data, format_complex_json_for_grist
+from queries import get_demarche, get_dossier, dossier_to_flat_data
 from queries_graphql import get_demarche_dossiers_filtered
+from schema_utils import (
+    get_demarche_schema,
+    create_columns_from_schema,
+    update_grist_tables_from_schema,
+    get_demarche_schema_enhanced
+)
 
 
 # Configuration du niveau de log
-LOG_LEVEL = 1  # 0=minimal, 1=normal, 2=verbose
+LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 
 def log(message, level=1):
     """Fonction de log conditionnelle selon le niveau défini"""
@@ -28,12 +31,31 @@ def log_error(message):
     """Log d'erreur (toujours affiché)"""
     print(f"ERREUR: {message}")
 
-# APRÈS avoir défini les fonctions de log, importez le module schema_utils
-try:
-    from schema_utils import get_demarche_schema, create_columns_from_schema, update_grist_tables_from_schema
-    log("Module schema_utils trouvé et chargé avec succès.")
-except ImportError:
-    log_error("Module schema_utils non trouvé. La création de schéma avancée ne sera pas disponible.")
+# Configuration : version optimisée stabilisée
+def get_optimized_schema(demarche_number):
+    """
+    Récupération optimisée du schéma avec fallback automatique.
+    """
+    try:
+        log("Récupération optimisée du schéma")
+        return get_demarche_schema_enhanced(demarche_number, prefer_robust=True)
+    except Exception as e:
+        log_error(f"Erreur version optimisée: {e}")
+        log("Fallback vers version classique")
+        return get_demarche_schema(demarche_number)
+
+# Configuration de migration progressive
+def log_schema_improvements(schema, demarche_number):
+    """Affiche les améliorations apportées par la nouvelle version"""
+    if schema.get("metadata", {}).get("optimized"):
+        log("AMÉLIORATIONS DÉTECTÉES:")
+        revision_id = schema.get("metadata", {}).get("revision_id", "N/A")
+        retrieved_at = schema.get("metadata", {}).get("retrieved_at", "N/A")
+        log(f"Révision active: {revision_id}")
+        log(f"Récupéré à: {retrieved_at}")
+        log("Filtrage automatique des champs problématiques activé")
+        log("Gestion robuste des erreurs activée")
+        log("Métadonnées enrichies disponibles")
 
 # Fonction pour supprimer les accents d'une chaîne de caractères
 def normalize_column_name(name, max_length=50):
@@ -134,101 +156,7 @@ def filter_record_to_existing_columns(client, table_id, record):
         log_error(f"Erreur lors du filtrage de l'enregistrement: {str(e)}")
         return record  # Retourner l'enregistrement tel quel en cas d'erreur
 
-def detect_column_types(dossier_data):
-    """
-    Détecte les types de colonnes pour les tables Grist à partir des données d'un dossier.
-    """
-    
-    flat_data = dossier_to_flat_data(dossier_data)
 
-    # Colonnes fixes pour la table des dossiers
-    dossier_columns = [
-        {"id": "dossier_id", "type": "Text"},
-        {"id": "number", "type": "Int"},
-        {"id": "state", "type": "Text"},
-        {"id": "date_depot", "type": "DateTime"},
-        {"id": "date_derniere_modification", "type": "DateTime"},
-        {"id": "date_traitement", "type": "DateTime"},
-        {"id": "demandeur_type", "type": "Text"},
-        {"id": "demandeur_civilite", "type": "Text"},
-        {"id": "demandeur_nom", "type": "Text"},
-        {"id": "demandeur_prenom", "type": "Text"},
-        {"id": "demandeur_email", "type": "Text"},
-        {"id": "demandeur_siret", "type": "Text"},
-        {"id": "entreprise_raison_sociale", "type": "Text"},
-        {"id": "usager_email", "type": "Text"},
-        {"id": "groupe_instructeur_id", "type": "Text"},
-        {"id": "groupe_instructeur_number", "type": "Int"},
-        {"id": "groupe_instructeur_label", "type": "Text"},
-        {"id": "supprime_par_usager", "type": "Bool"},
-        {"id": "date_suppression", "type": "DateTime"},
-        {"id": "prenom_mandataire", "type": "Text"},
-        {"id": "nom_mandataire", "type": "Text"},
-        {"id": "depose_par_un_tiers", "type": "Bool"},
-        {"id": "label_names", "type": "Text"},
-        {"id": "labels_json", "type": "Text"}
-    ]
-
-    champ_columns = [
-        {"id": "dossier_number", "type": "Int"},
-        {"id": "champ_id", "type": "Text"},
-    ]
-
-    unique_columns = {}
-
-    # Analyser tous les champs disponibles dans ce dossier
-    log_verbose("\nCHAMPS DISPONIBLES DANS LE DOSSIER:")
-    for champ in flat_data["champs"]:
-        champ_label = normalize_column_name(champ["label"])
-        champ_type = champ["type"]
-        log_verbose(f"  - Original: '{champ['label']}' → Normalisé: '{champ_label}' (Type: {champ['type']})")
-
-        if champ_label in unique_columns:
-            continue
-
-        column_type = "Text"
-        if champ_type in ["DateChamp", "DatetimeChamp"]:
-            column_type = "DateTime"
-        elif champ_type in ["DecimalNumberChamp"]:
-            column_type = "Numeric"
-        elif champ_type in ["IntegerNumberChamp"]:
-            column_type = "Int"
-        elif champ_type in ["CheckboxChamp", "YesNoChamp"]:
-            column_type = "Bool"
-
-        unique_columns[champ_label] = column_type
-
-    # Traiter aussi les annotations
-    for annotation in flat_data["annotations"]:
-        annotation_label = normalize_column_name(annotation["label"])
-        annotation_type = annotation["type"]
-        log_verbose(f"  - Annotation Original: '{annotation['label']}' → Normalisé: '{annotation_label}' (Type: {annotation['type']})")
-        
-        if annotation_label in unique_columns:
-            continue
-
-        column_type = "Text"
-        if annotation_type in ["DateChamp", "DatetimeChamp"]:
-            column_type = "DateTime"
-        elif annotation_type in ["DecimalNumberChamp"]:
-            column_type = "Numeric"
-        elif annotation_type in ["IntegerNumberChamp"]:
-            column_type = "Int"
-        elif annotation_type in ["CheckboxChamp", "YesNoChamp"]:
-            column_type = "Bool"
-
-        unique_columns[annotation_label] = column_type
-
-    for col_name, col_type in unique_columns.items():
-        champ_columns.append({
-            "id": col_name,
-            "type": col_type
-        })
-
-    return {
-        "dossier": dossier_columns,
-        "champs": champ_columns
-    }
 
 def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=None):
     """
@@ -415,12 +343,12 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
 def get_problematic_descriptor_ids(demarche_number):
     """
     Récupère les IDs des descripteurs de champs problématiques (HeaderSectionChamp et ExplicationChamp)
-    pour une démarche donnée.
+    pour une démarche donnée, y compris dans les blocs répétables.
     """
     from queries_config import API_TOKEN, API_URL
     import requests
     
-    # Requête GraphQL pour récupérer les descripteurs de champs
+    # ✅ REQUÊTE CORRIGÉE avec exploration des blocs répétables
     query = """
     query getDemarche($demarcheNumber: Int!) {
       demarche(number: $demarcheNumber) {
@@ -429,6 +357,13 @@ def get_problematic_descriptor_ids(demarche_number):
             __typename
             id
             type
+            ... on RepetitionChampDescriptor {
+              champDescriptors {
+                __typename
+                id
+                type
+              }
+            }
           }
         }
       }
@@ -456,16 +391,26 @@ def get_problematic_descriptor_ids(demarche_number):
         log_error(f"GraphQL errors: {', '.join([error.get('message', 'Unknown error') for error in result['errors']])}")
         return problematic_ids
     
+    # ✅ FONCTION RÉCURSIVE pour explorer tous les descripteurs
+    def explore_descriptors(descriptors):
+        for descriptor in descriptors:
+            # Ajouter si problématique
+            if (descriptor.get("type") in ["header_section", "explication", "piece_justificative"] or 
+                descriptor.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor", "PieceJustificativeChampDescriptor"]):
+                problematic_ids.add(descriptor.get("id"))
+            
+            # Explorer récursivement les blocs répétables
+            if (descriptor.get("__typename") == "RepetitionChampDescriptor" and 
+                "champDescriptors" in descriptor):
+                explore_descriptors(descriptor["champDescriptors"])
+    
     # Extraire les IDs des champs problématiques
     if (result.get("data") and result["data"].get("demarche") and 
         result["data"]["demarche"].get("activeRevision") and 
         result["data"]["demarche"]["activeRevision"].get("champDescriptors")):
         
         descriptors = result["data"]["demarche"]["activeRevision"]["champDescriptors"]
-        
-        for descriptor in descriptors:
-            if descriptor.get("type") in ["header_section", "explication"] or descriptor.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"]:
-                problematic_ids.add(descriptor.get("id"))
+        explore_descriptors(descriptors)
     
     log(f"Nombre de descripteurs problématiques identifiés: {len(problematic_ids)}")
     return problematic_ids
@@ -2275,7 +2220,8 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
         log(f"Récupération du schéma complet de la démarche {demarche_number}...")
         try:
             if 'get_demarche_schema' in globals() and 'create_columns_from_schema' in globals():
-                demarche_schema = get_demarche_schema(demarche_number)
+                demarche_schema = get_optimized_schema(demarche_number)
+                log_schema_improvements(demarche_schema, demarche_number)
                 log(f"Schéma récupéré avec succès pour la démarche: {demarche_schema['title']}")
                 
                 # Générer les définitions de colonnes à partir du schéma complet
@@ -2310,7 +2256,15 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
         try:
             if 'update_grist_tables_from_schema' in globals():
                 log("Mise à jour des tables Grist en préservant les données existantes...")
-                table_ids = update_grist_tables_from_schema(client, demarche_number, column_types if schema_method_successful else None, problematic_descriptor_ids)
+                table_result = update_grist_tables_from_schema(client, demarche_number, column_types if schema_method_successful else None, problematic_descriptor_ids)
+                
+                # Convertir le format de retour pour compatibilité
+                table_ids = {
+                    "dossier_table_id": table_result.get("dossiers"),
+                    "champ_table_id": table_result.get("champs"), 
+                    "annotation_table_id": table_result.get("annotations"),
+                    "repetable_table_id": table_result.get("repetable_rows")
+                }
             else:
                 # Méthode classique qui peut effacer des données
                 log("Utilisation de la méthode classique de création/modification de tables")
@@ -2771,7 +2725,7 @@ def main():
             log(f"[FILTRAGE] Filtres optimisés détectés: {list(api_filters.keys())}")
     except:
         api_filters = {}
-        log("⚠️ Aucun filtre optimisé détecté, utilisation de l'ancienne méthode")
+        log("Aucun filtre optimisé détecté, utilisation de l'ancienne méthode")
 
     # Récupérer les autres paramètres
     parallel = os.getenv('PARALLEL', 'true').lower() == 'true'

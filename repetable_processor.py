@@ -6,7 +6,7 @@ Ce module extrait, transforme et stocke les données des blocs répétables dans
 import json
 import requests
 import traceback
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional
 
 # Importer les fonctions de logging depuis le module principal
 try:
@@ -22,6 +22,205 @@ except ImportError:
     def log_error(message):
         print(f"ERREUR: {message}")
 
+
+def ensure_repetable_columns_exist(client, table_id, repetable_data):
+    """
+    S'assure que toutes les colonnes nécessaires existent dans la table des blocs répétables
+    avant d'insérer les données.
+    
+    Args:
+        client: Instance de GristClient
+        table_id: ID de la table des blocs répétables
+        repetable_data: Liste des données de blocs répétables à insérer
+    
+    Returns:
+        bool: True si toutes les colonnes sont présentes, False sinon
+    """
+    if not repetable_data:
+        return True
+    
+    try:
+        from grist_processor_working_all import log, log_error, log_verbose
+        
+        # 1. Récupérer les colonnes existantes
+        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
+        response = requests.get(url, headers=client.headers)
+        
+        if response.status_code != 200:
+            log_error(f"Erreur lors de la récupération des colonnes: {response.status_code}")
+            return False
+        
+        columns_data = response.json()
+        existing_columns = {col["id"] for col in columns_data.get("columns", [])}
+        
+        # 2. Identifier toutes les colonnes nécessaires à partir des données
+        required_columns = set()
+        for record in repetable_data:
+            required_columns.update(record.keys())
+        
+        # 3. Trouver les colonnes manquantes
+        missing_columns = required_columns - existing_columns
+        
+        if missing_columns:
+            log(f"  [CORRECTION] {len(missing_columns)} colonnes manquantes détectées dans la table {table_id}")
+            
+            # 4. Créer les colonnes manquantes
+            columns_to_add = []
+            for col_name in missing_columns:
+                # Déterminer le type de colonne (Text par défaut)
+                col_type = determine_column_type_from_data(repetable_data, col_name)
+                columns_to_add.append({
+                    "id": col_name,  # Utiliser le nom tel quel, déjà normalisé
+                    "type": col_type
+                })
+                log(f"    - {col_name} (type: {col_type})")
+            
+            # 5. Ajouter les colonnes manquantes
+            add_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
+            add_payload = {"columns": columns_to_add}
+            
+            add_response = requests.post(add_url, headers=client.headers, json=add_payload)
+            
+            if add_response.status_code == 200:
+                log(f"  [CORRECTION] ✅ {len(missing_columns)} colonnes ajoutées avec succès")
+                return True
+            else:
+                log_error(f"  [CORRECTION] ❌ Erreur lors de l'ajout des colonnes: {add_response.status_code} - {add_response.text}")
+                return False
+        else:
+            log_verbose(f"  [CORRECTION] ✅ Toutes les colonnes nécessaires sont présentes")
+            return True
+            
+    except Exception as e:
+        log_error(f"  [CORRECTION] Erreur lors de la vérification des colonnes: {str(e)}")
+        return False
+
+def determine_column_type_from_data(data_list, column_name):
+    """
+    Détermine le type de colonne approprié en analysant les données.
+    
+    Args:
+        data_list: Liste des enregistrements
+        column_name: Nom de la colonne à analyser
+    
+    Returns:
+        str: Type de colonne Grist approprié
+    """
+    sample_values = []
+    for record in data_list:
+        if column_name in record and record[column_name] is not None:
+            sample_values.append(record[column_name])
+            if len(sample_values) >= 5:  # Échantillon suffisant
+                break
+    
+    if not sample_values:
+        return "Text"
+    
+    # Analyser les types de valeurs
+    for value in sample_values:
+        if isinstance(value, bool):
+            return "Bool"
+        elif isinstance(value, int):
+            return "Int"
+        elif isinstance(value, float):
+            return "Numeric"
+        elif isinstance(value, str):
+            # Vérifier si c'est une date
+            try:
+                from datetime import datetime
+                datetime.fromisoformat(value.replace('Z', '+00:00'))
+                return "DateTime"
+            except:
+                pass
+    
+def auto_fix_missing_columns_optimized(client, table_id, records_payload):
+    """
+    Version unique et optimisée pour corriger automatiquement toutes les colonnes manquantes.
+    Remplace les 3 fonctions précédentes.
+    
+    Args:
+        client: Instance GristClient
+        table_id: ID de la table
+        records_payload: Payload original
+        
+    Returns:
+        tuple: (success: bool, response)
+    """
+    try:
+        # 1. Récupérer les colonnes existantes
+        columns_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
+        columns_response = requests.get(columns_url, headers=client.headers)
+        
+        if columns_response.status_code != 200:
+            log_error(f"    [AUTO-FIX] Impossible de recuperer les colonnes existantes")
+            return False, None
+        
+        existing_columns = {col["id"] for col in columns_response.json().get("columns", [])}
+        
+        # 2. Analyser toutes les colonnes nécessaires dans le payload
+        required_columns = set()
+        column_types = {}
+        
+        if "records" in records_payload:
+            for record in records_payload["records"]:
+                if "fields" in record:
+                    for field_name, value in record["fields"].items():
+                        required_columns.add(field_name)
+                        
+                        # Déterminer le type de colonne
+                        if field_name not in column_types:
+                            if isinstance(value, bool):
+                                column_types[field_name] = "Bool"
+                            elif isinstance(value, int):
+                                column_types[field_name] = "Int" 
+                            elif isinstance(value, float):
+                                column_types[field_name] = "Numeric"
+                            elif isinstance(value, str) and value:
+                                try:
+                                    from datetime import datetime
+                                    datetime.fromisoformat(value.replace('Z', '+00:00'))
+                                    column_types[field_name] = "DateTime"
+                                except:
+                                    column_types[field_name] = "Text"
+                            else:
+                                column_types[field_name] = "Text"
+        
+        # 3. Identifier les colonnes manquantes
+        missing_columns = required_columns - existing_columns
+        
+        # 4. Ajouter toutes les colonnes manquantes en une seule requête si nécessaire
+        if missing_columns:
+            log(f"    [AUTO-FIX] Ajout de {len(missing_columns)} colonnes: {list(missing_columns)}")
+            
+            columns_to_add = []
+            for col_name in missing_columns:
+                col_type = column_types.get(col_name, "Text")
+                columns_to_add.append({"id": col_name, "type": col_type})
+            
+            add_payload = {"columns": columns_to_add}
+            add_response = requests.post(columns_url, headers=client.headers, json=add_payload)
+            
+            if add_response.status_code != 200:
+                log_error(f"    [AUTO-FIX] ECHEC ajout colonnes: {add_response.text}")
+                return False, add_response
+            
+            log(f"    [AUTO-FIX] SUCCES: {len(missing_columns)} colonnes ajoutees")
+        
+        # 5. Tenter l'insertion des données
+        records_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
+        response = requests.post(records_url, headers=client.headers, json=records_payload)
+        
+        if response.status_code in [200, 201]:
+            log(f"    [AUTO-FIX] SUCCES: Donnees inserees")
+            return True, response
+        else:
+            log_error(f"    [AUTO-FIX] ECHEC insertion: {response.status_code} - {response.text}")
+            return False, response
+            
+    except Exception as e:
+        log_error(f"    [AUTO-FIX] Exception: {str(e)}")
+        return False, None
+    
 def should_skip_field(field, problematic_ids=None):
     """
     Détermine si un champ doit être ignoré.
@@ -46,6 +245,26 @@ def should_skip_field(field, problematic_ids=None):
     if field.get("type") in ["header_section", "explication"]:
         return True
     
+    return False
+
+def should_skip_field_unified(field, problematic_ids=None):
+    """
+    Version unifiée du filtrage qui respecte exactement la logique de schema_utils.
+    Cette fonction remplace should_skip_field pour garantir la cohérence.
+    """
+    # Filtrage par typename (même logique que schema_utils)
+    if field.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor",
+                                   "HeaderSectionChamp", "ExplicationChamp"]:
+        return True
+    
+    # Filtrage par type (même logique que schema_utils)  
+    if field.get("type") in ["header_section", "explication", "piece_justificative"]:
+        return True
+    
+    # Filtrage par ID problématique (transmission depuis schema_utils)
+    if problematic_ids and field.get("champDescriptorId") in problematic_ids:
+        return True
+        
     return False
 
 
@@ -192,7 +411,7 @@ def extract_field_value(champ: Dict[str, Any]) -> Tuple[Any, Optional[Dict[str, 
         tuple: (valeur texte, valeur JSON)
     """
     # Utiliser la fonction commune de filtrage
-    if should_skip_field(champ):
+    if should_skip_field_unified(champ):
         return None, None
     
     typename = champ["__typename"]
@@ -673,8 +892,7 @@ def process_repetables_for_grist(client, dossier_data, table_id, column_types, p
         
         for champ in champs:
             # Ignorer explicitement les champs HeaderSectionChamp et ExplicationChamp
-            if (champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or 
-                (problematic_ids and champ.get("id") in problematic_ids)):
+            if should_skip_field_unified(champ, problematic_ids):
                 log_verbose(f"  Ignoré: '{champ.get('label', '')}' (Type: {champ['__typename']})")
                 continue
                 
@@ -692,8 +910,8 @@ def process_repetables_for_grist(client, dossier_data, table_id, column_types, p
                         if "champs" in row:
                             for field in row["champs"]:
                                 # Ignorer les champs problématiques
-                                if field["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
-                                   continue
+                                if should_skip_field_unified(field, problematic_ids):
+                                    continue
                                    
                                 field_label = field["label"]
                                 normalized_label = normalize_column_name(field_label)
@@ -868,7 +1086,6 @@ def process_repetables_for_grist(client, dossier_data, table_id, column_types, p
                     except Exception as e:
                         repetable_errors += 1
                         log_error(f"    Exception lors du traitement de la ligne {row_index+1} du bloc {block_label}: {str(e)}")
-                        import traceback
                         traceback.print_exc()
     
     # Traiter les blocs répétables directement depuis les données brutes
@@ -908,7 +1125,7 @@ def process_repetables_batch(client, dossiers_data, table_id, column_types, prob
     total_errors = 0
     
     # Récupérer tous les enregistrements existants en une seule fois
-    existing_rows = get_existing_repetable_rows_improved_no_filter(client, table_id)
+    existing_rows = get_existing_repetable_rows_improved_no_filter(client, table_id)    
     log(f"  {len(existing_rows)} identifiants de lignes existantes récupérés pour tous les dossiers")
     
     # Collecter toutes les lignes à traiter
@@ -937,7 +1154,7 @@ def process_repetables_batch(client, dossiers_data, table_id, column_types, prob
                     if "champs" in row:
                         for field in row["champs"]:
                             # Utiliser la fonction commune de filtrage
-                            if should_skip_field(field, problematic_ids):
+                            if should_skip_field_unified(field, problematic_ids):
                                 log_verbose(f"    Champ ignoré: {field.get('label', 'sans label')} (type: {field.get('__typename', 'unknown')})")
                                 continue
                             
@@ -1045,7 +1262,7 @@ def process_repetables_batch(client, dossiers_data, table_id, column_types, prob
         # Explorer les champs du dossier
         for champ in dossier_data.get("champs", []):
             # Vérifier aussi l'ID du champ principal
-            if problematic_ids and champ.get("id") in problematic_ids:
+            if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
                 continue
             if champ["__typename"] == "RepetitionChamp":
                 process_repetable_field(champ)
@@ -1053,7 +1270,7 @@ def process_repetables_batch(client, dossiers_data, table_id, column_types, prob
         # Explorer les annotations (si présentes)
         for annotation in dossier_data.get("annotations", []):
             # Vérifier aussi l'ID de l'annotation
-            if problematic_ids and annotation.get("id") in problematic_ids:
+            if problematic_ids and annotation.get("champDescriptorId") in problematic_ids:
                 continue
             if annotation["__typename"] == "RepetitionChamp":
                 process_repetable_field(annotation, is_annotation=True)
@@ -1126,8 +1343,14 @@ def process_repetables_batch(client, dossiers_data, table_id, column_types, prob
             if response.status_code in [200, 201]:
                 total_success += len(batch)
             else:
-                log_error(f"  Erreur lors de la création par lot: {response.status_code} - {response.text}")
-                total_errors += len(batch)
+                # AUTO-FIX pour colonnes manquantes (version améliorée)
+                if response.status_code == 400 and "Invalid column" in response.text:
+                    log(f"    [AUTO-FIX] Erreur de colonne detectee, correction automatique...")
+                    success, final_response = auto_fix_missing_columns_optimized(client, table_id, create_payload)
+                    if success:
+                        total_success += len(batch)
+                    else:
+                        total_errors += len(batch)
     
     return total_success, total_errors
     
@@ -1179,7 +1402,7 @@ def detect_repetable_columns_in_dossier(dossier_data):
                     if "champs" in row:
                         for field in row["champs"]:
                             # NOUVEAU : Utiliser should_skip_field pour la cohérence
-                            if should_skip_field(field):
+                            if should_skip_field_unified(field):
                                 log_verbose(f"Champ ignoré dans la détection: {field.get('label', 'sans label')}")
                                 continue
                                 
