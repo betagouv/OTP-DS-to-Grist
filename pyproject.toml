@@ -32,9 +32,13 @@ package-mode = false
 [tool.poetry.group.dev.dependencies]
 commitizen = "^4.8.4"
 poethepoet = "^0.37.0"
+pytest = "^7.0.0"
 
 [tool.poe.tasks.dev]
 shell = "python app.py"
+
+[tool.poe.tasks.test]
+shell = "pytest"
 
 [tool.poe.tasks.generate-secret]
 help = "Génère une clé secrète sécurisée pour Flask"
