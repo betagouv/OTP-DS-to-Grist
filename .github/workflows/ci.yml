@@ -16,3 +16,13 @@ jobs:
                 node-version: '18'
             - run: npm install
             - run: npm test
+    test-python:
+         runs-on: ubuntu-latest
+         steps:
+             - uses: actions/checkout@v4
+             - uses: actions/setup-python@v4
+               with:
+                 python-version: '3.12'
+             - run: pip install poetry
+             - run: poetry install --with dev
+             - run: poetry run poe test
