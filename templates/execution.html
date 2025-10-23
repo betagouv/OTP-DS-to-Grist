@@ -469,7 +469,7 @@
         if (activeFilters.length > 0) {
             let filtersHtml = '<ul class="fr-list">';
             activeFilters.forEach(filter => {
-                filtersHtml += `<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>${filter}</li>`;
+              filtersHtml += `<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>${escapeHtml(filter)}</li>`;
             });
             filtersHtml += '</ul>';
             activeFiltersList.innerHTML = filtersHtml;
@@ -838,12 +838,6 @@ function extractStatsFromLog(message) {
     function formatDate(dateString) {
         const date = new Date(dateString);
         return date.toLocaleDateString('fr-FR');
-    }
-
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 </script>
 {% endblock %}
