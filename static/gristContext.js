@@ -7,7 +7,9 @@ async function getGristContext() {
     throw new Error('grist not available')
 
   try {
-    grist.ready()
+    grist.ready({
+      requiredAccess: 'full'
+    })
 
     const tokenInfo = await grist.docApi.getAccessToken({readOnly: false})
     const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]))
