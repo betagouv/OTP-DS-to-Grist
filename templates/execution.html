@@ -336,6 +336,7 @@
 
     // Socket.IO pour les mises à jour en temps réel
     socket.on('task_update', function(data) {
+        console.log('Socket -> task_update')
         if (data.task_id === currentTaskId) {
             updateTaskProgress(data.task);
         }
