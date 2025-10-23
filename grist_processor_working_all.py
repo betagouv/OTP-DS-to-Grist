@@ -395,8 +395,8 @@ def get_problematic_descriptor_ids(demarche_number):
     def explore_descriptors(descriptors):
         for descriptor in descriptors:
             # Ajouter si problématique
-            if (descriptor.get("type") in ["header_section", "explication", "piece_justificative"] or 
-                descriptor.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor", "PieceJustificativeChampDescriptor"]):
+            if (descriptor.get("type") in ["header_section", "explication"] or 
+                descriptor.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"]):
                 problematic_ids.add(descriptor.get("id"))
             
             # Explorer récursivement les blocs répétables
