@@ -1,3 +1,9 @@
+if (typeof formatDate === 'undefined')
+  ({ formatDate } = require('./utils.js'))
+
+if (typeof escapeHtml === 'undefined')
+  ({ escapeHtml } = require('./utils.js'))
+
 const resetFilters = () => {
   // Réinitialiser tous les champs de filtre
   document.getElementById('date_debut').value = ''
@@ -12,6 +18,59 @@ const resetFilters = () => {
   App.showNotification('Filtres réinitialisés', 'info')
 }
 
+const applyFilters = () => {
+  const activeFilters = []
+
+  // Collecter les filtres de date
+  const dateDebut = document.getElementById('date_debut').value
+  const dateFin = document.getElementById('date_fin').value
+
+  if (dateDebut)
+    activeFilters.push(`Date de début: ${formatDate(dateDebut)}`)
+
+  if (dateFin)
+    activeFilters.push(`Date de fin: ${formatDate(dateFin)}`)
+
+  // Collecter les statuts sélectionnés
+  const statutsSelected = Array.from(
+    document.querySelectorAll('input[name="statuts"]:checked')
+  ).map(el => el.value)
+
+  if (statutsSelected.length > 0)
+    activeFilters.push(`Statuts: ${statutsSelected.join(', ')}`)
+
+  // Collecter les groupes sélectionnés
+  const groupesSelected = Array.from(
+    document.querySelectorAll('input[name="groupes"]:checked')
+  ).map(el => el.value)
+
+  if (groupesSelected.length > 0) {
+    const groupeLabels = groupesSelected.map(num => {
+      const checkbox = document.querySelector(`input[name="groupes"][value="${num}"]`)
+      return checkbox ? checkbox.nextElementSibling.textContent : `Groupe #${num}`
+    })
+    activeFilters.push(`Groupes: ${groupeLabels.join(', ')}`)
+  }
+
+  // Afficher les filtres actifs
+  const activeFiltersDiv = document.getElementById('active_filters')
+  const activeFiltersList = document.getElementById('active_filters_list')
+
+  if (activeFilters.length > 0) {
+    let filtersHtml = '<ul class="fr-list">'
+    activeFilters.forEach(filter => {
+      filtersHtml += `<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>${escapeHtml(filter)}</li>`
+    })
+    filtersHtml += '</ul>'
+    activeFiltersList.innerHTML = filtersHtml
+    activeFiltersDiv.style.display = 'block'
+  } else {
+    activeFiltersDiv.style.display = 'none'
+  }
+
+  App.showNotification('Filtres appliqués avec succès', 'success')
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { resetFilters }
+  module.exports = { resetFilters, applyFilters }
 }
