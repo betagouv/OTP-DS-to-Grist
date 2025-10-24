@@ -5,6 +5,11 @@ const escapeHtml = text => {
   return div.innerHTML
 }
 
+const formatDate = dateString => (new Date(dateString)).toLocaleDateString('fr-FR')
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { escapeHtml }
+  module.exports = { 
+    escapeHtml,
+    formatDate
+  }
 }
