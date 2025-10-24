@@ -296,7 +296,7 @@
 
                 <!-- Logs en temps réel -->
                 <div class="fr-mb-4w">
-                    <button class="fr-btn fr-btn--tertiary-no-outline" onclick="toggleLogs()">
+                    <button class="fr-btn fr-btn--tertiary-no-outline" onclick="logsVisible = toggleLogs(logsVisible)">
                         <i id="logs_toggle_icon" class="fas fa-chevron-down fr-mr-1w" aria-hidden="true"></i>
                         <span id="logs_toggle_text">Afficher les logs</span>
                         (<span id="logs_count">0</span>)
@@ -812,27 +812,5 @@ function extractStatsFromLog(message) {
         console.log(`Erreur individuelle détectée, total erreurs: ${errorCount}`);
     }
 }
-    function toggleLogs() {
-        const container = document.getElementById('logs_container');
-        const icon = document.getElementById('logs_toggle_icon');
-        const text = document.getElementById('logs_toggle_text');
-        
-        logsVisible = !logsVisible;
-        
-        if (logsVisible) {
-            container.style.display = 'block';
-            icon.className = 'fas fa-chevron-up fr-mr-1w';
-            text.textContent = 'Masquer les logs';
-            
-            // Auto-scroll vers le bas
-            setTimeout(() => {
-                container.scrollTop = container.scrollHeight;
-            }, 100);
-        } else {
-            container.style.display = 'none';
-            icon.className = 'fas fa-chevron-down fr-mr-1w';
-            text.textContent = 'Afficher les logs';
-        }
-    }
 </script>
 {% endblock %}
