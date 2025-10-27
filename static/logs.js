@@ -25,6 +25,8 @@ const toggleLogs = (logsVisible) => {
 }
 
 const extractStatsFromLog = (message) => {
+  const processedCountElement = document.getElementById('processed_count')
+
   // Extraire le nombre total de dossiers
   let totalMatch = message.match(/Nombre total de dossiers trouvés:\s*(\d+)/i);
 
@@ -56,7 +58,7 @@ const extractStatsFromLog = (message) => {
     if (lotMatch) {
       const lotSuccess = parseInt(lotMatch[1]);
       successCount += lotSuccess; // Additionner au lieu de remplacer
-      document.getElementById('processed_count').textContent = successCount;
+      processedCountElement.textContent = successCount;
       console.log(`Dossiers du lot ajoutés: +${lotSuccess}, total: ${successCount}`);
     }
   }
@@ -68,7 +70,7 @@ const extractStatsFromLog = (message) => {
     if (upsertMatch && !message.includes('ERREUR')) {
       const upsertSuccess = parseInt(upsertMatch[1]);
       successCount = Math.max(successCount, upsertSuccess);
-      document.getElementById('processed_count').textContent = successCount;
+      processedCountElement.textContent = successCount;
       console.log(`Upsert dossiers détecté: ${upsertSuccess}`);
     }
   }
@@ -79,7 +81,7 @@ const extractStatsFromLog = (message) => {
     if (createMatch) {
       const createSuccess = parseInt(createMatch[1]);
       successCount += createSuccess; // Additionner
-      document.getElementById('processed_count').textContent = successCount;
+      processedCountElement.textContent = successCount;
       console.log(`Créations ajoutées: +${createSuccess}, total: ${successCount}`);
     }
   }
@@ -90,7 +92,7 @@ const extractStatsFromLog = (message) => {
     if (updateMatch) {
       const updateSuccess = parseInt(updateMatch[1]);
       successCount += updateSuccess; // Additionner
-      document.getElementById('processed_count').textContent = successCount;
+      processedCountElement.textContent = successCount;
       console.log(`Mises à jour ajoutées: +${updateSuccess}, total: ${successCount}`);
     }
   }
@@ -99,7 +101,7 @@ const extractStatsFromLog = (message) => {
   if (successMatch) {
     const newSuccess = parseInt(successMatch[1]);
     successCount = newSuccess; // Utiliser la valeur finale
-    document.getElementById('processed_count').textContent = successCount;
+    processedCountElement.textContent = successCount;
     console.log(`Succès final: ${successCount}`);
   }
 

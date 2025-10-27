@@ -62,7 +62,7 @@ describe(
   () => {
     beforeEach(() => {
       // Setup DOM simulé pour les éléments utilisés par extractStatsFromLog
-      document.body.innerHTML = ` <div id="processed_count">0</div>`;
+      document.body.innerHTML = ` <div id="processed_count">0</div>`
 
       // Reset des variables globales
       global.totalDossiers = 0
@@ -70,6 +70,10 @@ describe(
       global.errorCount = 0
 
       consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {}) // Supprime console.log
+
+      document.body.innerHTML = `
+        <div id="processed_count">0</div>
+        <div id="logs_count">0</div>`
     })
 
     afterEach(() => {
@@ -110,10 +114,11 @@ describe(
 
         extractStatsFromLog(message)
 
-        expect(global.successCount).toBe(75)
+        expect(global.successCount).toBe(nbDossiers)
         expect(global.totalDossiers).toBe(0)
         expect(global.errorCount).toBe(0)
         expect(consoleLogSpy).toHaveBeenCalledWith(`Succès final: ${nbDossiers}`)
+        expect(document.getElementById('processed_count').textContent).toBe(nbDossiers.toString())
       }
     )
 
