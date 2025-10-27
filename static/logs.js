@@ -25,8 +25,6 @@ const toggleLogs = (logsVisible) => {
 }
 
 const extractStatsFromLog = (message) => {
-  console.group('extractStatsFromLog')
-
   // Extraire le nombre total de dossiers
   let totalMatch = message.match(/Nombre total de dossiers trouvés:\s*(\d+)/i);
 
@@ -150,7 +148,6 @@ const extractStatsFromLog = (message) => {
     errorCount++;
     console.log(`Erreur individuelle détectée, total erreurs: ${errorCount}`);
   }
-  console.groupEnd()
 }
 
 if (typeof module !== 'undefined' && module.exports) {
