@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { startSync } = require('../../static/sync.js')
+const { startSync, updateTaskProgress } = require('../../static/sync.js')
 
 describe('startSync', () => {
   beforeEach(() => {
@@ -118,4 +118,70 @@ describe('startSync', () => {
       expect(App.showNotification).toHaveBeenCalledWith('Synchronisation démarrée', 'success')
     }
   )
+})
+
+describe('updateTaskProgress', () => {
+  it(
+    'update progress and status with a valid task',
+    () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `<div id="progress_bar" style="width: 0%;"></div>
+        <div id="progress_percentage">0%</div>
+        <div id="current_status">Initialisation...</div>
+        <div id="elapsed_time">0s</div>
+        <div id="processed_count">0</div>
+        <div id="processing_speed">-</div>
+        <div id="eta">-</div>`
+
+      // Mock startTime globale
+      global.startTime = Date.now() - 10000 // 10 secondes écoulées
+
+      // Mock App.formatDuration
+      global.App = { formatDuration: jest.fn(seconds => `${seconds}s`) }
+
+      // Objet tâche simulé
+      const mockTask = { progress: 50, message: 'Traitement en cours...' }
+
+      // Appel de la fonction
+      updateTaskProgress(mockTask)
+
+      // Vérifications
+      expect(document.getElementById('progress_bar').style.width).toBe('50%')
+      expect(document.getElementById('progress_percentage').textContent).toBe('50%')
+      expect(document.getElementById('current_status').textContent).toBe('Traitement en cours...')
+      expect(App.formatDuration).toHaveBeenCalledWith(expect.closeTo(10, 0.1)) // Temps écoulé
+  })
+
+  it(
+    'gère la fin de la tâche et met à jour l\'interface finale', () => {
+    // Setup DOM simulé
+    document.body.innerHTML = ` <div id="sync_progress" style="display: block;"></div>
+      <div id="sync_controls" style="display: none;"></div>
+      <div id="sync_result" style="display: none;"></div>
+      <div id="result_content"></div>
+      <div id="progress_bar" style="width: 0%;"></div>
+      <div id="progress_percentage">0%</div>
+      <div id="current_status">Initialisation...</div>
+      <div id="elapsed_time">0s</div>
+      <div id="processing_speed">-</div>
+      <div id="eta">-</div>`
+
+    // Mock App.showNotification
+    global.App = {
+        showNotification: jest.fn(),
+        formatDuration: jest.fn(seconds => `${seconds}s`)
+      }
+
+    // Objet tâche simulé (complétée)
+    const mockTask = { status: 'completed', message: 'Sync terminée', progress: 100 }
+
+    // Appel de la fonction
+    updateTaskProgress(mockTask)
+
+    // Vérifications
+    expect(document.getElementById('sync_controls').style.display).toBe('block')
+    expect(document.getElementById('sync_result').style.display).toBe('block')
+    expect(document.getElementById('result_content').innerHTML).toContain('Synchronisation terminée avec succès')
+    expect(App.showNotification).toHaveBeenCalledWith('Synchronisation terminée avec succès!', 'success')
+  })
 })
