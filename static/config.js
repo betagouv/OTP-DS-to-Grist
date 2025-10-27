@@ -8,7 +8,6 @@ const checkConfiguration = async () => {
     const gristContext = await getGristContext()
     const response = await fetch(`/api/config${gristContext.params}`)
     const config = await response.json()
-    currentConfig = config
 
     // Vérifier que tous les champs requis sont présents
     const requiredFields = [
@@ -36,6 +35,7 @@ const checkConfiguration = async () => {
       </div>`
     syncBtn.disabled = false
 
+    return config
   } catch (error) {
     console.error('Erreur lors de la vérification de la configuration:', error)
     syncBtn.disabled = true
