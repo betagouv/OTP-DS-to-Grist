@@ -71,6 +71,42 @@ const applyFilters = () => {
   App.showNotification('Filtres appliqués avec succès', 'success')
 }
 
+const loadGroupes = async () => {
+  const container = document.getElementById('groupes_container')
+
+  try {
+    const gristContext = await getGristContext()
+    const response = await fetch(`/api/groups${gristContext.params}`)
+    const groups = await response.json()
+
+
+    if (groups.length === 0)
+      return container.innerHTML = `<div class="fr-alert fr-alert--info">
+        <p>Aucun groupe instructeur disponible ou connexion non établie</p>
+      </div>`
+
+    let html = '<div class="fr-grid-row fr-grid-row--gutters">'
+    groups.forEach(([number, label]) => {
+      html += `<div class="fr-col-12 fr-col-md-6 fr-col-lg-4">
+        <div class="fr-checkbox-group">
+          <input type="checkbox" id="groupe_${number}" name="groupes" value="${number}">
+          <label class="fr-label" for="groupe_${number}">${label} (#${number})</label>
+        </div>
+      </div>`
+    })
+    html += '</div>'
+
+    container.innerHTML = html
+
+  } catch (error) {
+    console.error('Erreur lors du chargement des groupes:', error)
+    container.innerHTML = `<div class="fr-alert fr-alert--error">
+      <p>Erreur lors du chargement des groupes instructeurs</p>
+    </div>
+    `
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { resetFilters, applyFilters }
+  module.exports = { resetFilters, applyFilters, loadGroupes }
 }

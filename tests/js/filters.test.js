@@ -4,7 +4,7 @@ jest.mock('../../static/utils.js', () => ({
   escapeHtml: jest.fn(text => text)
 }))
 
-const { resetFilters, applyFilters } = require('../../static/filters.js')
+const { resetFilters, applyFilters, loadGroupes } = require('../../static/filters.js')
 const { formatDate } = require('../../static/utils.js')
 
 describe('resetFilters', () => {
@@ -107,6 +107,92 @@ describe('applyFilters', () => {
       applyFilters()
 
       expect(document.getElementById('active_filters').style.display).toBe('none')
+    }
+  )
+})
+
+describe('loadGroupes', () => {
+  it(
+    'load and display groups',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = '<div id="groupes_container"></div>'
+
+      // Mock getGristContext
+      global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+
+      // Mock fetch avec données de groupes
+      global.fetch = jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue([
+          [1, 'Groupe A'],
+          [2, 'Groupe B']
+        ])
+      })
+
+      // Mock console.error pour éviter les logs en test
+      global.console.error = jest.fn()
+
+      // Appel de la fonction
+      await loadGroupes()
+
+      // Vérifications
+      const container = document.getElementById('groupes_container')
+      expect(container.innerHTML).toContain('Groupe A')
+      expect(container.innerHTML).toContain('Groupe B')
+      expect(container.innerHTML).toContain('<input type="checkbox" id="groupe_1"')
+      expect(console.error).not.toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'display message if no group found',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `<div id="groupes_container"></div>`
+
+      // Mock getGristContext
+      global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+
+      // Mock fetch avec liste vide
+      global.fetch = jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue([])  // Aucun groupe
+      })
+
+      // Mock console.error
+      global.console.error = jest.fn()
+
+      // Appel de la fonction
+      await loadGroupes()
+
+      // Vérifications
+      const container = document.getElementById('groupes_container')
+      expect(container.innerHTML).toContain('Aucun groupe instructeur disponible')
+      expect(console.error).not.toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'handle errors and display message',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `<div id="groupes_container"></div>`
+
+      // Mock getGristContext
+      global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+
+      // Mock fetch pour lever une erreur
+      global.fetch = jest.fn().mockRejectedValue(new Error('Network error'))
+
+      // Mock console.error
+      global.console.error = jest.fn()
+
+      // Appel de la fonction
+      await loadGroupes()
+
+      // Vérifications
+      const container = document.getElementById('groupes_container')
+      expect(container.innerHTML).toContain('Erreur lors du chargement des groupes instructeurs')
+      expect(console.error).toHaveBeenCalledWith('Erreur lors du chargement des groupes:', expect.any(Error))
     }
   )
 })
