@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-const { checkConfiguration } = require('../../static/config.js')
+const { checkConfiguration } = require('../../static/js/config.js')
 
 describe('checkConfiguration', () => {
   beforeEach(() => {

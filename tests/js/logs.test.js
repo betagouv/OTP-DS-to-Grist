@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */  
-const { toggleLogs, extractStatsFromLog }  = require('../../static/logs.js')
+const { toggleLogs, extractStatsFromLog }  = require('../../static/js/logs.js')
 
 describe(
   'toggleLogs',

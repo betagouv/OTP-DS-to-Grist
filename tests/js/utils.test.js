@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */  
-const { escapeHtml, formatDate }  = require('../../static/utils.js')
+const { escapeHtml, formatDate }  = require('../../static/js/utils.js')
 
 describe('escapeHtml', () => {
   it(

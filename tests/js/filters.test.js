@@ -1,11 +1,11 @@
 /** @jest-environment jsdom */  
-jest.mock('../../static/utils.js', () => ({
+jest.mock('../../static/js/utils.js', () => ({
   formatDate: jest.fn(date => '01/10/2023'),
   escapeHtml: jest.fn(text => text)
 }))
 
-const { resetFilters, applyFilters, loadGroupes } = require('../../static/filters.js')
-const { formatDate } = require('../../static/utils.js')
+const { resetFilters, applyFilters, loadGroupes } = require('../../static/js/filters.js')
+const { formatDate } = require('../../static/js/utils.js')
 
 describe('resetFilters', () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { startSync, updateTaskProgress } = require('../../static/sync.js')
+const { startSync, updateTaskProgress } = require('../../static/js/sync.js')
 
 describe('startSync', () => {
   beforeEach(() => {
