@@ -136,7 +136,7 @@ const updateTaskProgress = (task) => {
         message.toLowerCase().includes('échec') ||
         message.toLowerCase().includes('failed')
 
-      const logStyle = isError ? 'color: #ce0500 font-weight: bold;' : ''
+      const logStyle = isError ? 'color: #ce0500; font-weight: bold;' : ''
 
       logsContent.innerHTML += `<div style="color: #666; font-size: 0.8rem;">
         [${logTime}]</div><div style="margin-bottom: 0.5rem; ${logStyle}">${escapeHtml(message)}
