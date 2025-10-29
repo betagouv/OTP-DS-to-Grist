@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-const { checkConfiguration, loadConfiguration } = require('../../static/js/config.js')
+const { checkConfiguration, loadConfiguration, saveConfiguration } = require('../../static/js/config.js')
 
 describe('checkConfiguration', () => {
   beforeEach(() => {
@@ -203,6 +203,72 @@ describe('loadConfiguration', () => {
       expect(updateGristKeyStatus).not.toHaveBeenCalled()
 
       consoleErrorSpy.mockRestore()
+  })
+})
+
+describe('saveConfiguration', () => {
+  it('cas nominal : sauvegarde la configuration avec succès', async () => {
+    // Setup DOM simulé
+    document.body.innerHTML = `
+      <input id="ds_api_token" value="new_token">
+      <input id="ds_api_url" value="https://api.example.com">
+      <input id="demarche_number" value="123">
+      <input id="grist_base_url" value="https://grist.example.com">
+      <input id="grist_api_key" value="new_key">
+      <input id="grist_doc_id" value="doc123">
+      <input id="grist_user_id" value="5">
+      <input id="batch_size" value="25">
+      <input id="max_workers" value="2">
+      <input id="parallel" value="true">
+      <button onclick="saveConfiguration()">Save</button>
+      <div id="ds_token_status"></div>
+      <div id="grist_key_status"></div>`
+
+    // Mock currentConfig
+    window.currentConfig = {
+      ds_api_token: 'old_token',
+      grist_api_key: 'old_key'
     }
-  )
+
+    // Mock fetch
+    global.fetch = jest.fn().mockResolvedValue({
+      json: jest.fn().mockResolvedValue({ success: true })
+    })
+
+    // Mock App
+    global.App = { showNotification: jest.fn() }
+
+    // Mock loadConfiguration
+    const mockLoadConfiguration = jest.fn()
+    global.loadConfiguration = mockLoadConfiguration
+
+    // Mock setTimeout
+    jest.useFakeTimers()
+
+    // Appel
+    await saveConfiguration()
+
+    // Vérifications
+    expect(fetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }))
+
+    const callArgs = fetch.mock.calls[0][1]
+    const body = JSON.parse(callArgs.body)
+    expect(body).toEqual({
+      ds_api_token: 'new_token',
+      ds_api_url: 'https://api.example.com',
+      demarche_number: '123',
+      grist_base_url: 'https://grist.example.com',
+      grist_api_key: 'new_key',
+      grist_doc_id: 'doc123',
+      grist_user_id: '5',
+      batch_size: 25,
+      max_workers: 2,
+      parallel: true
+    })
+
+    expect(App.showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+  })
 })

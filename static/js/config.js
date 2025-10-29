@@ -141,7 +141,108 @@ const loadConfiguration = async () => {
   }
 }
 
+const saveConfiguration = async () => {
+  const dsApiTokenElement = document.getElementById('ds_api_token')
+  const dsToken = dsApiTokenElement.value
+  const gristKeyElement = document.getElementById('grist_api_key')
+  const grist_key = gristKeyElement.value
+
+  const config = {
+    ds_api_token: dsToken || currentConfig.ds_api_token || '',
+    ds_api_url: document.getElementById('ds_api_url').value,
+    demarche_number: document.getElementById('demarche_number').value,
+    grist_base_url: document.getElementById('grist_base_url').value,
+    grist_api_key: grist_key || currentConfig.grist_api_key || '',
+    grist_doc_id: document.getElementById('grist_doc_id').value,
+    grist_user_id: document.getElementById('grist_user_id').value,
+    batch_size: parseInt(document.getElementById('batch_size').value),
+    max_workers: parseInt(document.getElementById('max_workers').value),
+    parallel: document.getElementById('parallel').value === 'true'
+  }
+
+  // Validation basique
+  const requiredFields = [
+    {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
+    {key: 'ds_api_url', name: 'URL API Démarches Simplifiées'},
+    {key: 'demarche_number', name: 'Numéro de démarche'},
+    {key: 'grist_base_url', name: 'URL de base Grist'},
+    {key: 'grist_api_key', name: 'Clé API Grist'},
+    {key: 'grist_doc_id', name: 'ID du document Grist'},
+    {key: 'grist_user_id', name: 'ID utilisateur Grist'}
+  ]
+
+  for (const field of requiredFields) {
+    if (!config[field.key]) {
+      App.showNotification(`Le champ "${field.name}" est requis`, 'error')
+      return
+    }
+  }
+
+  try {
+    // Afficher un indicateur de chargement
+    const saveButton = document.querySelector('button[onclick="saveConfiguration()"]')
+    const originalText = saveButton.innerHTML
+    saveButton.disabled = true
+    saveButton.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Sauvegarde...'
+
+    const response = await fetch('/api/config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config)
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      App.showNotification('Configuration sauvegardée avec succès', 'success')
+
+      // Mettre à jour immédiatement le statut des tokens si saisis
+      if (dsToken) {
+        document.getElementById('ds_token_status').innerHTML = `
+<span class="fr-badge fr-badge--success fr-badge--sm">
+  <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
+</span>
+`
+        dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
+      }
+
+      if (grist_key) {
+        document.getElementById('grist_key_status').innerHTML = `
+<span class="fr-badge fr-badge--success fr-badge--sm">
+  <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
+</span>
+`
+        gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
+      }
+      // Recharger la configuration pour mettre à jour les statuts
+      setTimeout(async () => {
+        currentConfig = await loadConfiguration()
+      }, 500)
+    } else {
+      App.showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
+    }
+
+    // Restaurer le bouton
+    saveButton.disabled = false
+    saveButton.innerHTML = originalText
+
+  } catch (error) {
+    console.error('Erreur:', error)
+    App.showNotification('Erreur lors de la sauvegarde', 'error')
+
+    // Restaurer le bouton en cas d'erreur
+    const saveButton = document.querySelector('button[onclick="saveConfiguration()"]')
+    saveButton.disabled = false
+    saveButton.innerHTML = '<i class="fas fa-save fr-mr-1w" aria-hidden="true"></i>Sauvegarder la configuration'
+  }
+}
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { checkConfiguration, loadConfiguration }
+  module.exports = {
+    checkConfiguration,
+    loadConfiguration,
+    saveConfiguration
+  }
 }
