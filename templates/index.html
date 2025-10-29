@@ -214,103 +214,9 @@
     let currentConfig = {};
     
     // Charger la configuration au démarrage
-    document.addEventListener('DOMContentLoaded', function() {
-        loadConfiguration();
+    document.addEventListener('DOMContentLoaded', async function() {
+        currentConfig = await loadConfiguration()
     });
-
-    async function loadConfiguration() {
-      try {
-            // Récupérer d'abord le contexte Grist pour conditionner le chargement de la configuration
-            const gristContext = await getGristContext()
-            let gristParams = gristContext.params;
-            let gristUserId = gristContext.userId;
-            let gristDocId = gristContext.docId;
-            let gristBaseUrl = gristContext.baseUrl;
-
-            const response = await fetch(`/api/config${gristParams}`);
-            const config = await response.json();
-
-            if (!response.ok)
-              throw new Error(config.message)
-
-            currentConfig = config;
-
-            // Déterminer si une configuration a été trouvée pour ce contexte Grist
-            const hasConfig = gristUserId && gristDocId && config.ds_api_token;
-
-            // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
-            document.getElementById('grist_doc_id').value = gristDocId || '';
-            document.getElementById('grist_user_id').value = gristUserId || '';
-            document.getElementById('grist_base_url').value = gristBaseUrl || '';
-
-            // Remplir les autres champs seulement si une configuration a été trouvée
-            if (hasConfig) {
-                document.getElementById('ds_api_token').value = '';
-                document.getElementById('ds_api_url').value = config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql';
-                document.getElementById('demarche_number').value = config.demarche_number || '';
-                document.getElementById('grist_base_url').value = config.grist_base_url || 'https://grist.numerique.gouv.fr/api';
-                document.getElementById('grist_api_key').value = '';
-                document.getElementById('batch_size').value = config.batch_size || 25;
-                document.getElementById('max_workers').value = config.max_workers || 2;
-                document.getElementById('parallel').value = config.parallel ? 'true' : 'false';
-            } else {
-                // Aucune configuration trouvée, laisser tous les champs vides (sauf grist ids)
-                document.getElementById('ds_api_token').value = '';
-                document.getElementById('ds_api_url').value = 'https://www.demarches-simplifiees.fr/api/v2/graphql';
-                document.getElementById('demarche_number').value = '';
-                document.getElementById('grist_api_key').value = '';
-                document.getElementById('batch_size').value = '25';
-                document.getElementById('max_workers').value = '2';
-                document.getElementById('parallel').value = 'true';
-            }
-
-            // Mettre à jour les statuts initiaux
-            updateDSTokenStatus();
-            updateGristKeyStatus();
-
-            // Ajouter les listeners pour mise à jour en temps réel
-            document.getElementById('ds_api_token').addEventListener('input', updateDSTokenStatus);
-            document.getElementById('grist_api_key').addEventListener('input', updateGristKeyStatus);
-            
-            // Afficher le statut des tokens
-            if (config.ds_api_token) {
-                document.getElementById('ds_token_status').innerHTML = `
-                    <span class="fr-badge fr-badge--success fr-badge--sm">
-                        <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
-                    </span>
-                `;
-                document.getElementById('ds_api_token').placeholder = 'Token déjà configuré (laissez vide pour conserver)';
-            } else {
-                document.getElementById('ds_token_status').innerHTML = `
-                    <span class="fr-badge fr-badge--error fr-badge--sm">
-                        <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
-                    </span>
-                `;
-                document.getElementById('ds_api_token').placeholder = '';
-            }
-
-            if (config.grist_api_key) {
-                document.getElementById('grist_key_status').innerHTML = `
-                    <span class="fr-badge fr-badge--success fr-badge--sm">
-                        <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
-                    </span>
-                `;
-                document.getElementById('grist_api_key').placeholder = 'Clé API déjà configurée (laissez vide pour conserver)';
-            } else {
-                document.getElementById('grist_key_status').innerHTML = `
-                    <span class="fr-badge fr-badge--error fr-badge--sm">
-                        <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
-                    </span>
-                `;
-            }
-            
-        } catch (error) {
-            console.error('Erreur lors du chargement de la configuration:', error);
-            App.showNotification(`Erreur lors du chargement de la configuration : ${error.message}`, 'error');
-        }
-    }
-
-
 
     function updateDSTokenStatus() {
         const value = document.getElementById('ds_api_token').value;
@@ -428,8 +334,8 @@
                     document.getElementById('grist_api_key').placeholder = 'Clé API déjà configurée (laissez vide pour conserver)';
                 }
                 // Recharger la configuration pour mettre à jour les statuts
-                setTimeout(() => {
-                    loadConfiguration();
+                setTimeout(async () => {
+                    currentConfig = await loadConfiguration()
                 }, 500);
             } else {
                 App.showNotification(result.message || 'Erreur lors de la sauvegarde', 'error');

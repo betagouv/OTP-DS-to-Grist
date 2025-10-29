@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-const { checkConfiguration } = require('../../static/js/config.js')
+const { checkConfiguration, loadConfiguration } = require('../../static/js/config.js')
 
 describe('checkConfiguration', () => {
   beforeEach(() => {
@@ -93,6 +93,116 @@ describe('checkConfiguration', () => {
       expect(document.getElementById('start_sync_btn').disabled).toBe(true)
       expect(App.showNotification).not.toHaveBeenCalled() // Erreur gérée dans le DOM
       expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la vérification de la configuration:', error)
+    }
+  )
+})
+
+describe('loadConfiguration', () => {
+  beforeEach(() => {
+    // Setup DOM simulé pour les champs du formulaire
+    document.body.innerHTML = `
+      <input id="grist_doc_id">
+      <input id="grist_user_id">
+      <input id="grist_base_url">
+      <input id="ds_api_token">
+      <input id="ds_api_url">
+      <input id="demarche_number">
+      <input id="grist_api_key">
+      <input id="batch_size">
+      <input id="max_workers">
+      <input id="parallel">
+      <div id="ds_token_status"></div>
+      <div id="grist_key_status"></div>`
+
+    // Mocks
+    global.getGristContext = jest.fn()
+    global.fetch = jest.fn()
+    global.updateDSTokenStatus = jest.fn()
+    global.updateGristKeyStatus = jest.fn()
+  })
+
+  it(
+    'prefill all inputs with config',
+    async () => {
+      // Mock getGristContext
+      getGristContext.mockResolvedValue({
+        params: '?grist_user_id=5&grist_doc_id=doc123',
+        userId: 5,
+        docId: 'doc123',
+        baseUrl: '/'
+      })
+
+      // Mock fetch avec config complète
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          ds_api_token: 'ds_token',
+          ds_api_url: 'https://api.example.com',
+          demarche_number: 123,
+          grist_base_url: 'x/xx/x',
+          grist_api_key: 'grist_key',
+          grist_doc_id: 'doc123',
+          batch_size: 50,
+          max_workers: 4,
+          parallel: true
+        })
+      })
+
+      // Appel de la fonction
+      await loadConfiguration()
+
+      // Vérifications des champs pré-remplis depuis le contexte
+      expect(document.getElementById('grist_doc_id').value).toBe('doc123')
+      expect(document.getElementById('grist_user_id').value).toBe('5')
+      expect(document.getElementById('grist_base_url').value).toBe('x/xx/x')
+
+      // Vérifications des champs remplis depuis la config (car hasConfig = true)
+      expect(document.getElementById('ds_api_token').value).toBe('')
+      expect(document.getElementById('ds_api_url').value).toBe('https://api.example.com')
+      expect(document.getElementById('demarche_number').value).toBe('123')
+      expect(document.getElementById('grist_api_key').value).toBe('')
+      expect(document.getElementById('batch_size').value).toBe('50')
+      expect(document.getElementById('max_workers').value).toBe('4')
+      expect(document.getElementById('parallel').value).toBe('true')
+
+      // Vérifications des appels de fonctions
+      expect(updateDSTokenStatus).toHaveBeenCalled()
+      expect(updateGristKeyStatus).toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'handle errors from fetch',
+    async () => {
+      // Mock getGristContext
+      getGristContext.mockResolvedValue({
+        params: '?grist_user_id=5&grist_doc_id=doc123',
+        userId: 5,
+        docId: 'doc123',
+        baseUrl: 'http://localhost:8484/o/docs/api'
+      })
+
+      // Mock fetch pour lever une erreur
+      const error = new Error('Network error')
+      fetch.mockRejectedValue(error)
+
+      // Mock console.error
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+      // Appel de la fonction
+      await loadConfiguration()
+
+      // Vérifications : les champs restent vides ou par défaut
+      expect(document.getElementById('grist_doc_id').value).toBe('')
+      expect(document.getElementById('grist_user_id').value).toBe('')
+      expect(document.getElementById('grist_base_url').value).toBe('')
+
+      // Vérifications des appels
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors du chargement de la configuration:', error)
+      expect(updateDSTokenStatus).not.toHaveBeenCalled()
+      expect(updateGristKeyStatus).not.toHaveBeenCalled()
+
+      consoleErrorSpy.mockRestore()
     }
   )
 })
