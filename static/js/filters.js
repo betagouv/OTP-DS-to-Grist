@@ -79,7 +79,6 @@ const loadGroupes = async () => {
     const response = await fetch(`/api/groups${gristContext.params}`)
     const groups = await response.json()
 
-
     if (groups.length === 0)
       return container.innerHTML = `<div class="fr-alert fr-alert--info">
         <p>Aucun groupe instructeur disponible ou connexion non établie</p>

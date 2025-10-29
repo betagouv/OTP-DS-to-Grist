@@ -19,8 +19,15 @@
     <!-- Font Awesome pour les icônes -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
+    <!-- Scripts DSFR -->
+    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.module.min.js" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.nomodule.min.js" nomodule></script>
+
     <!-- Grist Plugin API pour les widgets -->
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+
+    <!-- Socket.IO -->
+    <script src="static/js/socket.io.js"></script>
 
     <script src="static/js/gristContext.js"></script>
     <script src="static/js/utils.js"></script>
@@ -204,13 +211,6 @@
             </div>
         </div>
     </footer>
-
-    <!-- Scripts DSFR -->
-    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.module.min.js" type="module"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.nomodule.min.js" nomodule></script>
-    
-    <!-- Socket.IO -->
-    <script src="static/socket.io.js"></script>
     
     <script>
         // Initialisation de Socket.IO

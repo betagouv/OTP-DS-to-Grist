@@ -318,7 +318,8 @@
 
 {% block scripts %}
 <script>
-    let logsVisible = false;
+    let logsVisible = false
+    let currentConfig = null
 
     document.addEventListener(
       'DOMContentLoaded',
@@ -331,9 +332,9 @@
     // Socket.IO pour les mises à jour en temps réel
     socket.on('task_update', function(data) {
         console.log('Socket -> task_update')
-        if (data.task_id === currentTaskId) {
-            updateTaskProgress(data.task);
-        }
-    });
+        if (data.task_id === currentTaskId)
+          updateTaskProgress(data.task)
+
+    })
 </script>
 {% endblock %}
