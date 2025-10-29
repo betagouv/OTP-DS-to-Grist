@@ -100,7 +100,7 @@ describe('startSync', () => {
       global.App = { showNotification: jest.fn() }
 
       // Appel de la fonction
-      await startSync(mockConfig)
+      const taskId = await startSync(mockConfig)
 
       // Vérifications des éléments HTML modifiés
       expect(document.getElementById('sync_controls').style.display).toBe('none')  // Masqué
@@ -115,6 +115,7 @@ describe('startSync', () => {
       expect(document.getElementById('eta').textContent).toBe('-')               // Reset
       expect(document.getElementById('logs_count').textContent).toBe('0')        // Reset
       expect(document.getElementById('logs_content').innerHTML).toBe('')         // Vidé
+      expect(taskId).toBe('task123')
       expect(App.showNotification).toHaveBeenCalledWith('Synchronisation démarrée', 'success')
     }
   )
