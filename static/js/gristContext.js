@@ -1,33 +1,38 @@
-async function getGristContext() {
-  let gristParams = ''
-  let gristUserId = ''
-  let gristDocId = ''
-
+const getGristContext = async () => {
   if (typeof grist === 'undefined')
     throw new Error('grist not available')
 
   try {
-    grist.ready()
+    grist.ready({requiredAccess: 'full'})
 
     const tokenInfo = await grist.docApi.getAccessToken({readOnly: false})
+    const docBaseUrl = tokenInfo.baseUrl
     const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]))
     const {docId, userId} = payload
+    const baseUrl = getApiBaseUrlFromDocBaseUrl(docBaseUrl)
 
-    if (userId && docId) {
-      gristParams = `?grist_user_id=${encodeURIComponent(userId)}&grist_doc_id=${encodeURIComponent(docId)}`
-      gristUserId = userId
-      gristDocId = docId
-    } else {
+    if (!userId || !docId)
       throw new Error('Impossible de récupérer le user id ou le doc id')
+
+    const params = `?grist_user_id=${
+                      encodeURIComponent(userId)
+                    }&grist_doc_id=${
+                      encodeURIComponent(docId)
+                    }`
+    return {
+      params,
+      userId,
+      docId,
+      baseUrl: baseUrl
     }
   } catch (error) {
     console.warn('Contexte Grist non disponible ou erreur :', error)
     throw new Error('Veuillez donner au widget l’accès complet au document')
   }
-
-  return { params: gristParams, userId: gristUserId, docId: gristDocId }
 }
 
+const getApiBaseUrlFromDocBaseUrl = (docBaseUrl) => docBaseUrl.match(/^(.+?\/api)/)?.[1]
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { getGristContext }
+  module.exports = { getGristContext, getApiBaseUrlFromDocBaseUrl }
 }

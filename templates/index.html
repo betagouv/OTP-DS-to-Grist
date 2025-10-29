@@ -225,6 +225,7 @@
             let gristParams = gristContext.params;
             let gristUserId = gristContext.userId;
             let gristDocId = gristContext.docId;
+            let gristBaseUrl = gristContext.baseUrl;
 
             const response = await fetch(`/api/config${gristParams}`);
             const config = await response.json();
@@ -240,6 +241,7 @@
             // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
             document.getElementById('grist_doc_id').value = gristDocId || '';
             document.getElementById('grist_user_id').value = gristUserId || '';
+            document.getElementById('grist_base_url').value = gristBaseUrl || '';
 
             // Remplir les autres champs seulement si une configuration a été trouvée
             if (hasConfig) {
@@ -256,7 +258,6 @@
                 document.getElementById('ds_api_token').value = '';
                 document.getElementById('ds_api_url').value = 'https://www.demarches-simplifiees.fr/api/v2/graphql';
                 document.getElementById('demarche_number').value = '';
-                document.getElementById('grist_base_url').value = 'https://grist.numerique.gouv.fr/api';
                 document.getElementById('grist_api_key').value = '';
                 document.getElementById('batch_size').value = '25';
                 document.getElementById('max_workers').value = '2';
