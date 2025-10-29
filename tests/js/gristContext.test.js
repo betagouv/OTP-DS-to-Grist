@@ -1,8 +1,8 @@
-const { getGristContext }  = require('../../static/gristContext.js')
+const { getGristContext }  = require('../../static/js/gristContext.js')
 
 beforeEach(() => {
   consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {}) // Supprime console.warn
-})  
+})
 
  afterEach(() => {
   consoleWarnSpy.mockRestore() // Restaure console.warn
