@@ -461,7 +461,12 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         has_repetable_blocks = column_types.get("has_repetable_blocks", False)
 
         # Récupérer toutes les tables existantes
-        tables = client.list_tables()
+        tables_response = client.list_tables()
+        # S'assurer que c'est une liste
+        if isinstance(tables_response, dict) and 'tables' in tables_response:
+            tables = tables_response['tables']
+        else:
+            tables = tables_response if isinstance(tables_response, list) else []
 
         # Trouver les tables existantes
         dossier_table = None
@@ -469,7 +474,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         annotation_table = None
         repetable_table = None
 
-        for table in tables.get('tables', []):
+        for table in tables:
             table_id = table.get('id', '').lower()
             if table_id == dossier_table_id.lower():
                 dossier_table = table
@@ -506,7 +511,10 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
 
             if "columns" in columns_data:
                 for col in columns_data["columns"]:
-                    existing_columns.add(col.get("id"))
+                    if isinstance(col, dict):
+                        existing_columns.add(col.get("id"))
+                    else:
+                        existing_columns.add(col)  # col est déjà un string (ID)
 
             # Trouver les colonnes manquantes
             missing_columns = []
