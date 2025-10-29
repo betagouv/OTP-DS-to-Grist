@@ -190,7 +190,7 @@
             </h2>
             
             <div id="sync_controls" class="fr-mt-4w">
-                <button class="fr-btn fr-btn--lg" onclick="startSync(currentConfig)" id="start_sync_btn">
+                <button class="fr-btn fr-btn--lg" onclick="startSyncAction()" id="start_sync_btn">
                     <i class="fas fa-play fr-mr-1w" aria-hidden="true"></i>
                     Lancer la synchronisation
                 </button>
@@ -318,23 +318,28 @@
 
 {% block scripts %}
 <script>
-    let logsVisible = false
-    let currentConfig = null
+let logsVisible = false
+let currentConfig = null
+let currentTaskId = null
 
-    document.addEventListener(
-      'DOMContentLoaded',
-      async () => {
-        currentConfig = await checkConfiguration()
-        loadGroupes()
-      }
-    )
+const startSyncAction = async () => currentTaskId = await startSync(currentConfig)
 
-    // Socket.IO pour les mises à jour en temps réel
-    socket.on('task_update', function(data) {
-        console.log('Socket -> task_update')
-        if (data.task_id === currentTaskId)
-          updateTaskProgress(data.task)
+document.addEventListener(
+  'DOMContentLoaded',
+  async () => {
+    currentConfig = await checkConfiguration()
+    loadGroupes()
+  }
+)
 
-    })
+// Socket.IO pour les mises à jour en temps réel
+socket.on('task_update', function(data) {
+  if (data.task_id === currentTaskId) {
+    updateTaskProgress(data.task)
+    if (data.task.status === 'completed' || data.task.status === 'error') {
+      currentTaskId = null;
+    }
+  }
+})
 </script>
 {% endblock %}

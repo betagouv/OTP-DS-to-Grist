@@ -37,7 +37,6 @@ const startSync = async (config) => {
     if (!result.success)
       return App.showNotification(result.message, 'error')
 
-    currentTaskId = result.task_id
     startTime = Date.now()
 
     // Réinitialiser les compteurs
@@ -66,6 +65,7 @@ const startSync = async (config) => {
 
     App.showNotification('Synchronisation démarrée', 'success')
 
+    return result.task_id
   } catch (error) {
     console.error('Erreur:', error)
     App.showNotification('Erreur lors du démarrage de la synchronisation', 'error')
@@ -191,7 +191,6 @@ const updateTaskProgress = (task) => {
       App.showNotification('Erreur lors de la synchronisation', 'error')
     }
 
-    currentTaskId = null
   }
 }
 
