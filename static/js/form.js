@@ -16,6 +16,23 @@ const updateDSTokenStatus = (config) => {
   }
 }
 
+const updateGristKeyStatus = (config) => {
+  const gristKeyElement = document.getElementById('grist_api_key');
+  const gristKeyElementValue = gristKeyElement.value;
+
+  if (gristKeyElementValue || config.grist_api_key) {
+    document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
+      <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
+    </span>`
+    gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
+  } else {
+    document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
+      <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
+    </span>`
+    gristKeyElement.placeholder = ''
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { updateDSTokenStatus }
+  module.exports = { updateDSTokenStatus, updateGristKeyStatus }
 }

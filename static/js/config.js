@@ -104,7 +104,7 @@ const loadConfiguration = async () => {
 
     // Mettre à jour les statuts initiaux
     updateDSTokenStatus(config)
-    updateGristKeyStatus()
+    updateGristKeyStatus(config)
 
     // Ajouter les listeners pour mise à jour en temps réel
     dsApiTokenElement.addEventListener('input', updateDSTokenStatus)

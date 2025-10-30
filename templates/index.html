@@ -218,27 +218,6 @@
         currentConfig = await loadConfiguration()
     });
 
-    function updateGristKeyStatus() {
-        const value = document.getElementById('grist_api_key').value;
-        const input = document.getElementById('grist_api_key');
-
-        if (value || currentConfig.grist_api_key) {
-            document.getElementById('grist_key_status').innerHTML = `
-                <span class="fr-badge fr-badge--success fr-badge--sm">
-                    <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
-                </span>
-            `;
-            input.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)';
-        } else {
-            document.getElementById('grist_key_status').innerHTML = `
-                <span class="fr-badge fr-badge--error fr-badge--sm">
-                    <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
-                </span>
-            `;
-            input.placeholder = '';
-        }
-    }
-
     async function testDemarchesConnection() {
         const button = document.getElementById('test_ds_btn');
         const resultDiv = document.getElementById('ds_test_result');
