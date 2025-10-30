@@ -1,8 +1,4 @@
-{% extends "base.html" %}
 
-{% block title %}Exécution - 🦄 One Trick Pony DS to Grist{% endblock %}
-
-{% block content %}
 <style>
     /* Force l'ordre d'affichage des titres de cartes */
     .fr-card__title {
@@ -314,32 +310,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-let logsVisible = false
-let currentConfig = null
-let currentTaskId = null
-
-const startSyncAction = async () => currentTaskId = await startSync(currentConfig)
-
-document.addEventListener(
-  'DOMContentLoaded',
-  async () => {
-    currentConfig = await checkConfiguration()
-    loadGroupes()
-  }
-)
-
-// Socket.IO pour les mises à jour en temps réel
-socket.on('task_update', function(data) {
-  if (data.task_id === currentTaskId) {
-    updateTaskProgress(data.task)
-    if (data.task.status === 'completed' || data.task.status === 'error') {
-      currentTaskId = null;
-    }
-  }
-})
-</script>
-{% endblock %}
