@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.1.0...v0.2.0) (2025-10-29)
+
+
+### Features
+
+* **Config:** Small refactor ([729dd85](https://github.com/betagouv/OTP-DS-to-Grist/commit/729dd85b857d9f7928641893333d80163f0a400d))
+* **Logs:** Small refactoring ([854b114](https://github.com/betagouv/OTP-DS-to-Grist/commit/854b114cae30345db0306bb49a54506aef696c09))
+
+
+### Bug Fixes
+
+* **JS:** Extract applyFilters to filters.js file ([5355d02](https://github.com/betagouv/OTP-DS-to-Grist/commit/5355d024e1c56e94ef7f4d9f7ce1fde7de573600))
+* **JS:** Extract checkConfiguration function to a dedicated file ([d51caba](https://github.com/betagouv/OTP-DS-to-Grist/commit/d51cabaf516d882f419d33b20ee738d92c21ba03))
+* **JS:** Extract extractStatsFromLog to logs.js file ([0bb6d2f](https://github.com/betagouv/OTP-DS-to-Grist/commit/0bb6d2f652a3b307b42bc28d1049153d620918e7))
+* **JS:** Extract formatDate to utils.js file ([54e48c8](https://github.com/betagouv/OTP-DS-to-Grist/commit/54e48c85486ed8f0735165c9f2ee2642a66876de))
+* **JS:** Extract load loadGroupes function to filter.js file ([5edb22d](https://github.com/betagouv/OTP-DS-to-Grist/commit/5edb22d139a43de113dbdfb531f70a7fc112487b))
+* **JS:** Extract resetFilters to filters.js file ([4dcaaf7](https://github.com/betagouv/OTP-DS-to-Grist/commit/4dcaaf74860df4784208867b1bac191d4341ae25))
+* **JS:** Extract startSync function to sync.js file ([a1e9290](https://github.com/betagouv/OTP-DS-to-Grist/commit/a1e9290ecd8163ffe12e90194a4c2acbc1c06742))
+* **JS:** Extract toggleLogs to logs.js file ([4c3bb24](https://github.com/betagouv/OTP-DS-to-Grist/commit/4c3bb24d69210559708d4bb8b51a4bcf53b94613))
+* **JS:** Extract updateTaskProgress function to sync.js file ([75f41c7](https://github.com/betagouv/OTP-DS-to-Grist/commit/75f41c7da50d5fd6834d824016f97dc34de7453c))
+* **Logs:** Correction du numéro de tâche en cours perdu ([28ec77b](https://github.com/betagouv/OTP-DS-to-Grist/commit/28ec77be3cc462f701f60b519ed33ee54f7cd36e))
+* **Logs:** Correction du style des messages en erreur (ou pas) ([eb9bf10](https://github.com/betagouv/OTP-DS-to-Grist/commit/eb9bf10de58f06e144c40be441713bb6ab8da5bf))
+
 ## 0.1.0 (2025-10-23)
 
 

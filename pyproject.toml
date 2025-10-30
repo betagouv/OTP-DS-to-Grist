@@ -1,6 +1,6 @@
 [project]
 name = "otp-ds-to-grist"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ce projet permet de synchroniser plusieurs démarches Démarches Simplifiées vers différents documents Grist avec des paramètres de filtrage spécifiques à chaque démarche."
 authors = [
     {name = "tarik.amar@multi.coop"}
