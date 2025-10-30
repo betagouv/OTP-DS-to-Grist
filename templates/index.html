@@ -218,27 +218,6 @@
         currentConfig = await loadConfiguration()
     });
 
-    function updateDSTokenStatus() {
-        const value = document.getElementById('ds_api_token').value;
-        const input = document.getElementById('ds_api_token');
-
-        if (value || currentConfig.ds_api_token) {
-            document.getElementById('ds_token_status').innerHTML = `
-                <span class="fr-badge fr-badge--success fr-badge--sm">
-                    <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
-                </span>
-            `;
-            input.placeholder = 'Token déjà configuré (laissez vide pour conserver)';
-        } else {
-            document.getElementById('ds_token_status').innerHTML = `
-                <span class="fr-badge fr-badge--error fr-badge--sm">
-                    <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
-                </span>
-            `;
-            input.placeholder = '';
-        }
-    }
-
     function updateGristKeyStatus() {
         const value = document.getElementById('grist_api_key').value;
         const input = document.getElementById('grist_api_key');

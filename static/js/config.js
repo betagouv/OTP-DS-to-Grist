@@ -103,7 +103,7 @@ const loadConfiguration = async () => {
     }
 
     // Mettre à jour les statuts initiaux
-    updateDSTokenStatus()
+    updateDSTokenStatus(config)
     updateGristKeyStatus()
 
     // Ajouter les listeners pour mise à jour en temps réel
