@@ -211,11 +211,11 @@
 
 {% block scripts %}
 <script>
-    let currentConfig = {};
+    let currentConfig = {}
     
     // Charger la configuration au démarrage
-    document.addEventListener('DOMContentLoaded', async function() {
+    document.addEventListener('DOMContentLoaded', async () => {
         currentConfig = await loadConfiguration()
-    });
+    })
 </script>
 {% endblock %}

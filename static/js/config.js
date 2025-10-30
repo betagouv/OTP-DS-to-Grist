@@ -67,40 +67,27 @@ const loadConfiguration = async () => {
     // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
     document.getElementById('grist_doc_id').value = gristDocId || ''
     document.getElementById('grist_user_id').value = gristUserId || ''
-    const gristApiKeyElement = document.getElementById('grist_api_key')
-    const gristKeyStatus = document.getElementById('grist_key_status')
+
+    const gristApiKeyElement  = document.getElementById('grist_api_key')
+    const gristKeyStatus      = document.getElementById('grist_key_status')
     const gristBaseUrlElement = document.getElementById('grist_base_url')
-    gristBaseUrlElement.value = gristBaseUrl || ''
-
-
-    const dsApiTokenElement = document.getElementById('ds_api_token')
-    const dsTokenStatus = document.getElementById('ds_token_status')
-    const dsApiUrlElement = document.getElementById('ds_api_url')
-    const dsNumberElement = document.getElementById('demarche_number')
-    const batchSizeElement = document.getElementById('batch_size')
-    const maxWorkersElement = document.getElementById('max_workers')
-    const parallelElement = document.getElementById('parallel')
+    const dsApiTokenElement   = document.getElementById('ds_api_token')
+    const dsTokenStatus       = document.getElementById('ds_token_status')
+    const dsApiUrlElement     = document.getElementById('ds_api_url')
+    const dsNumberElement     = document.getElementById('demarche_number')
+    const batchSizeElement    = document.getElementById('batch_size')
+    const maxWorkersElement   = document.getElementById('max_workers')
+    const parallelElement     = document.getElementById('parallel')
 
     // Remplir les autres champs seulement si une configuration a été trouvée
-    if (hasConfig) {
-      dsApiTokenElement.value = ''
-      dsApiUrlElement.value = config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql'
-      dsNumberElement.value = config.demarche_number || ''
-      gristBaseUrlElement.value = config.grist_base_url || 'https://grist.numerique.gouv.fr/api'
-      gristApiKeyElement.value = ''
-      batchSizeElement.value = config.batch_size || 25
-      maxWorkersElement.value = config.max_workers || 2
-      parallelElement.value = config.parallel ? 'true' : 'false'
-    } else {
-      // Aucune configuration trouvée, laisser tous les champs vides (sauf grist ids)
-      dsApiTokenElement.value = ''
-      dsApiUrlElement.value = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
-      dsNumberElement.value = ''
-      gristApiKeyElement.value = ''
-      batchSizeElement.value = '25'
-      maxWorkersElement.value = '2'
-      parallelElement.value = 'true'
-    }
+    dsApiTokenElement.value   = ''
+    dsApiUrlElement.value     = hasConfig && config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql' 
+    dsNumberElement.value     = hasConfig && config.demarche_number || ''
+    gristBaseUrlElement.value = hasConfig && config.grist_base_url || (gristBaseUrl || 'https://grist.numerique.gouv.fr/api')
+    gristApiKeyElement.value  = ''
+    batchSizeElement.value    = hasConfig && config.batch_size || 25
+    maxWorkersElement.value   = hasConfig && config.max_workers || 2
+    parallelElement.value     = hasConfig && config.parallel ? 'true' : 'false'
 
     // Mettre à jour les statuts initiaux
     updateDSTokenStatus(config)
@@ -200,20 +187,16 @@ const saveConfiguration = async () => {
 
       // Mettre à jour immédiatement le statut des tokens si saisis
       if (dsToken) {
-        document.getElementById('ds_token_status').innerHTML = `
-<span class="fr-badge fr-badge--success fr-badge--sm">
-  <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
-</span>
-`
+        document.getElementById('ds_token_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
+            <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
+          </span>`
         dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
       }
 
       if (grist_key) {
-        document.getElementById('grist_key_status').innerHTML = `
-<span class="fr-badge fr-badge--success fr-badge--sm">
-  <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
-</span>
-`
+        document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
+            <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
+          </span>`
         gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
       }
       // Recharger la configuration pour mettre à jour les statuts
