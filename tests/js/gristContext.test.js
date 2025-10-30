@@ -61,7 +61,7 @@ it(
   () => {
     expect(
       getApiBaseUrlFromDocBaseUrl(
-        'https://grist.numerique.gouv.fr/o/docs/api/docs/95tJUFWsbqhDHvB1t86RWF'
+        'https://grist.numerique.gouv.fr/o/docs/api/docs/xxxxxxxxxxxxxxxxxxxxxx'
       )
     ).toBe('https://grist.numerique.gouv.fr/o/docs/api')
   }
