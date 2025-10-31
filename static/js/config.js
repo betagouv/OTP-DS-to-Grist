@@ -15,7 +15,6 @@ const checkConfiguration = async () => {
       'demarche_number', 
       'grist_base_url',
       'grist_api_key',
-      'grist_doc_id'
     ]
 
     const missingFields = requiredFields.filter(field => !config[field] || config[field] === '***')
