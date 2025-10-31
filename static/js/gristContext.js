@@ -19,12 +19,8 @@ const getGristContext = async () => {
                     }&grist_doc_id=${
                       encodeURIComponent(docId)
                     }`
-    return {
-      params,
-      userId,
-      docId,
-      baseUrl: baseUrl
-    }
+
+    return { params, userId, docId, baseUrl }
   } catch (error) {
     console.warn('Contexte Grist non disponible ou erreur :', error)
     throw new Error('Veuillez donner au widget l’accès complet au document')
