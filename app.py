@@ -691,6 +691,7 @@ def index():
     """Page d'accueil avec configuration"""
     return render_template('index.html')
 
+
 @app.route('/api/config', methods=['GET', 'POST'])
 def api_config():
     """API pour la gestion de la configuration"""
@@ -743,6 +744,7 @@ def api_config():
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
             return jsonify({"success": False, "message": f"Erreur: {str(e)}"}), 500
 
+
 @app.route('/api/test-connection', methods=['POST'])
 def api_test_connection():
     """API pour tester les connexions"""
@@ -765,6 +767,7 @@ def api_test_connection():
     
     return jsonify({"success": success, "message": message})
 
+
 @app.route('/api/groups')
 def api_groups():
     """API pour récupérer les groupes instructeurs"""
@@ -780,6 +783,7 @@ def api_groups():
     )
 
     return jsonify(groups)
+
 
 @app.route('/api/start-sync', methods=['POST'])
 def api_start_sync():
@@ -871,6 +875,7 @@ def api_start_sync():
         logger.error(f"Erreur lors du démarrage de la synchronisation: {str(e)}")
         return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
 
+
 @app.route('/api/task/<task_id>')
 def api_task_status(task_id):
     """API pour récupérer le statut d'une tâche"""
@@ -880,10 +885,12 @@ def api_task_status(task_id):
     else:
         return jsonify({"error": "Tâche non trouvée"}), 404
 
+
 @app.route('/execution')
 def execution():
     """Page d'exécution et de suivi"""
     return render_template('execution.html')
+
 
 @app.route('/debug')
 def debug():
@@ -898,18 +905,18 @@ def debug():
         "queries_util.py",
         "repetable_processor.py"
     ]
-    
+
     file_status = {}
     for file in required_files:
         file_path = os.path.join(script_dir, file)
         file_status[file] = os.path.exists(file_path)
-    
+
     # Lister tous les fichiers du répertoire
     try:
         all_files = sorted(os.listdir(script_dir))
     except Exception as e:
         all_files = [f"Erreur: {str(e)}"]
-    
+
     # Variables d'environnement (masquées pour la sécurité)
     env_vars = {
         "DEMARCHES_API_TOKEN": "***" if os.getenv("DEMARCHES_API_TOKEN") else "Non défini",
@@ -920,7 +927,7 @@ def debug():
         "GRIST_DOC_ID": os.getenv("GRIST_DOC_ID", "Non défini"),
         "GRIST_USER_ID": os.getenv("GRIST_USER_ID", "Non défini")
     }
-    
+
     filter_vars = {
         "DATE_DEPOT_DEBUT": os.getenv("DATE_DEPOT_DEBUT", "Non défini"),
         "DATE_DEPOT_FIN": os.getenv("DATE_DEPOT_FIN", "Non défini"),
@@ -930,13 +937,22 @@ def debug():
         "MAX_WORKERS": os.getenv("MAX_WORKERS", "2"),
         "PARALLEL": os.getenv("PARALLEL", "True")
     }
-    
-    return render_template('debug.html', 
-                          file_status=file_status,
-                          all_files=all_files,
-                          env_vars=env_vars,
-                          filter_vars=filter_vars,
-                          script_dir=script_dir)
+
+    return render_template(
+        'debug.html',
+        file_status=file_status,
+        all_files=all_files,
+        env_vars=env_vars,
+        filter_vars=filter_vars,
+        script_dir=script_dir
+    )
+
+
+@app.route('/utiliser-le-connecteur')
+def use_otp():
+    return render_template(
+        'use-otp.html'
+    )
 
 # WebSocket events
 
