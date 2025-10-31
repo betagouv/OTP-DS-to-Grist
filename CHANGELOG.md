@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.2.0...v0.3.0) (2025-10-31)
+
+
+### Features
+
+* **Layout:** Cartes sur fond gris et ajout de séparateurs ([800fc9f](https://github.com/betagouv/OTP-DS-to-Grist/commit/800fc9f41fd038860aea35f335f85a79a419d0dc))
+* **Layout:** Fusion de la partie configuration et exécution ([bfa8240](https://github.com/betagouv/OTP-DS-to-Grist/commit/bfa8240e2e236ea6aaf4a2f9548e46fe9c9cba99))
+* **Layout:** Maj du statut de la configuration après la sauvegarde ([bdd519d](https://github.com/betagouv/OTP-DS-to-Grist/commit/bdd519d9283ee632825f9243ce793f7902c7b2ad))
+* **Layout:** Masquage de certains champs ([ca5f3ab](https://github.com/betagouv/OTP-DS-to-Grist/commit/ca5f3abf22bbaf31814c1ffd191413d3a8ccd0a4))
+* **Layout:** Style du haut de la page ([39aff88](https://github.com/betagouv/OTP-DS-to-Grist/commit/39aff88b3a6e58bf321f5858fd22703002d13928))
+* **Layout:** Suppression de la couleur et des pictos des sous-titres ([76a3f16](https://github.com/betagouv/OTP-DS-to-Grist/commit/76a3f16eb5140f3a56be44a843d1a79720a5bf4f))
+* **Layout:** Suppression des pictos sur les boutons ([660ffe3](https://github.com/betagouv/OTP-DS-to-Grist/commit/660ffe3e9287fab134f8acbab915506883611e0a))
+
+
+### Bug Fixes
+
+* **Tests:** Prise en compte de `checkConfiguration` dans les tests de `saveConfiguration` ([ef368e5](https://github.com/betagouv/OTP-DS-to-Grist/commit/ef368e5a368b69d3aa9df059f54f4d9996a1f9aa))
+
 ## [0.2.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.1.0...v0.2.0) (2025-10-29)
 
 
