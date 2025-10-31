@@ -119,6 +119,38 @@
         .fr-notice--error .fr-btn--close:before {
           background-color: white;
         }
+
+        /* Utilitaires de bordure manquants dans DSFR */
+        .fr-border-bottom {
+          border-bottom: 1px solid var(--border-default-grey);
+        }
+
+        .fr-border-grey {
+          border-color: var(--border-default-grey) !important;
+        }
+
+        .fr-border-blue-france {
+          border-color: var(--blue-france-sun-113) !important;
+        }
+
+        /* Force l'ordre d'affichage des titres de cartes */
+        .fr-card__title {
+          order: -1 !important;
+          margin-bottom: 1rem !important;
+        }
+
+        .fr-card__content {
+          display: flex !important;
+          flex-direction: column !important;
+        }
+
+        .fr-card--light-grey {
+          background-color: var(--grey-975-100) !important; /* Gris très clair DSFR */
+        }
+
+        .fr-card--no-border {
+          border: none !important;
+        }
     </style>
 </head>
 <body>
@@ -162,17 +194,12 @@
                     <ul class="fr-nav__list">
                         <li class="fr-nav__item">
                             <a class="fr-nav__link" href="/">
-                                <i class="fas fa-cog fr-mr-1w"></i>Configuration
-                            </a>
-                        </li>
-                        <li class="fr-nav__item">
-                            <a class="fr-nav__link" href="/execution">
-                                <i class="fas fa-play fr-mr-1w"></i>Exécution
+                                Configuration
                             </a>
                         </li>
                         <li class="fr-nav__item">
                             <a class="fr-nav__link" href="/debug">
-                                <i class="fas fa-bug fr-mr-1w"></i>Débogage
+                                Débogage
                             </a>
                         </li>
                     </ul>

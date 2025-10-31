@@ -1,212 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Configuration - 🦄 One Trick Pony DS to Grist{% endblock %}
+{% block title %}Accueil - 🦄 One Trick Pony DS to Grist{% endblock %}
 
 {% block content %}
-<style>
-    /* Force l'ordre d'affichage des titres de cartes */
-    .fr-card__title {
-        order: -1 !important;
-        margin-bottom: 1rem !important;
-    }
-    
-    .fr-card__content {
-        display: flex !important;
-        flex-direction: column !important;
-    }
-</style>
-
-<!-- En-tête de page -->
-<div class="fr-mb-4w">
-    <h1 class="fr-h1">
-        <i class="fas fa-cog fr-mr-2w" style="color: #000091;" aria-hidden="true"></i>
-        <span style="color: #000091;">Configuration des connexions</span>
-    </h1>
-    <p class="fr-text--lead">Configurez vos connexions aux APIs Démarches Simplifiées et Grist</p>
-</div>
-
-<!-- Configuration Démarches Simplifiées -->
-<div class="fr-card fr-mb-4w">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-file-alt fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">API Démarches Simplifiées</span>
-            </h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-grid-row fr-grid-row--gutters">
-                    <div class="fr-col-12 fr-col-md-6">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="ds_api_token">
-                                Token API
-                                <span class="fr-hint-text">Votre token d'accès personnel à l'API</span>
-                            </label>
-                            <input class="fr-input" type="password" id="ds_api_token" name="ds_api_token">
-                            <div id="ds_token_status" class="fr-mt-1v"></div>
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-6">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="ds_api_url">
-                                URL de l'API
-                                <span class="fr-hint-text">Point d'entrée GraphQL de l'API</span>
-                            </label>
-                            <input class="fr-input" type="url" id="ds_api_url" name="ds_api_url" 
-                                   value="https://www.demarches-simplifiees.fr/api/v2/graphql">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="fr-mt-3w">
-                    <div class="fr-input-group">
-                        <label class="fr-label" for="demarche_number">
-                            Numéro de démarche
-                            <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
-                        </label>
-                        <input class="fr-input" type="number" id="demarche_number" name="demarche_number" 
-                               placeholder="Ex: 12345" style="max-width: 200px;">
-                    </div>
-                </div>
-                
-                <div class="fr-mt-4w">
-                    <button class="fr-btn" onclick="testDemarchesConnection()" id="test_ds_btn">
-                        <i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>
-                        Tester la connexion
-                    </button>
-                    <div id="ds_test_result" class="fr-mt-2w"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Configuration Grist -->
-<div class="fr-card fr-mb-4w">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-table fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">API Grist</span>
-            </h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-grid-row fr-grid-row--gutters">
-                    <div class="fr-col-12 fr-col-md-6">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="grist_base_url">
-                                URL de base Grist
-                                <span class="fr-hint-text">URL de votre instance Grist</span>
-                            </label>
-                            <input class="fr-input" type="url" id="grist_base_url" name="grist_base_url" 
-                                   value="https://grist.numerique.gouv.fr/api">
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-6">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="grist_api_key">
-                                Clé API Grist
-                                <span class="fr-hint-text">Clé d'accès à votre document Grist</span>
-                            </label>
-                            <input class="fr-input" type="password" id="grist_api_key" name="grist_api_key">
-                            <div id="grist_key_status" class="fr-mt-1v"></div>
-                        </div>
-                    </div>
-                </div>
-                
-                 <div class="fr-mt-3w">
-                     <div class="fr-grid-row fr-grid-row--gutters">
-                         <div class="fr-col-12 fr-col-md-6">
-                             <div class="fr-input-group">
-                                 <label class="fr-label" for="grist_doc_id">
-                                     ID du document Grist
-                                     <span class="fr-hint-text">Identifiant du document de destination</span>
-                                 </label>
-                                 <input class="fr-input" type="text" id="grist_doc_id" name="grist_doc_id">
-                             </div>
-                         </div>
-                         <div class="fr-col-12 fr-col-md-6">
-                             <div class="fr-input-group">
-                                 <label class="fr-label" for="grist_user_id">
-                                     ID utilisateur Grist
-                                     <span class="fr-hint-text">Identifiant de l'utilisateur (récupéré depuis Grist)</span>
-                                 </label>
-                                 <input class="fr-input" type="text" id="grist_user_id" name="grist_user_id">
-                             </div>
-                         </div>
-                     </div>
-                 </div>
-                
-                <div class="fr-mt-4w">
-                    <button class="fr-btn" onclick="testGristConnection()" id="test_grist_btn">
-                        <i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>
-                        Tester la connexion
-                    </button>
-                    <div id="grist_test_result" class="fr-mt-2w"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Configuration avancée -->
-<div class="fr-card fr-mb-4w">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-cogs fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Configuration avancée</span>
-            </h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-grid-row fr-grid-row--gutters">
-                    <div class="fr-col-12 fr-col-md-4">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="batch_size">
-                                Taille des lots
-                                <span class="fr-hint-text">Nombre de dossiers traités par lot (1-100)</span>
-                            </label>
-                            <input class="fr-input" type="number" id="batch_size" name="batch_size" 
-                                   value="25" min="1" max="100">
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-4">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="max_workers">
-                                Workers parallèles
-                                <span class="fr-hint-text">Nombre de threads pour le traitement parallèle (1-10)</span>
-                            </label>
-                            <input class="fr-input" type="number" id="max_workers" name="max_workers" 
-                                   value="2" min="1" max="10">
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-4">
-                        <div class="fr-select-group">
-                            <label class="fr-label" for="parallel">
-                                Traitement parallèle
-                                <span class="fr-hint-text">Active/désactive le traitement parallèle</span>
-                            </label>
-                            <select class="fr-select" id="parallel" name="parallel">
-                                <option value="true">Activé</option>
-                                <option value="false">Désactivé</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Bouton de sauvegarde -->
-<div class="fr-grid-row fr-grid-row--right">
-    <div class="fr-col-auto">
-        <button class="fr-btn fr-btn--lg" onclick="saveConfiguration()">
-            <i class="fas fa-save fr-mr-1w" aria-hidden="true"></i>
-            Sauvegarder la configuration
-        </button>
-    </div>
-</div>
+{% include 'configuration.html' %}
+{% include 'execution.html' %}
 {% endblock %}
 
 {% block scripts %}
@@ -217,5 +15,30 @@
     document.addEventListener('DOMContentLoaded', async () => {
         currentConfig = await loadConfiguration()
     })
+</script>
+<script>
+let logsVisible = false
+let currentConfigExec = null
+let currentTaskId = null
+
+const startSyncAction = async () => currentTaskId = await startSync(currentConfigExec)
+
+document.addEventListener(
+  'DOMContentLoaded',
+  async () => {
+    currentConfigExec = await checkConfiguration()
+    loadGroupes()
+  }
+)
+
+// Socket.IO pour les mises à jour en temps réel
+socket.on('task_update', function(data) {
+  if (data.task_id === currentTaskId) {
+    updateTaskProgress(data.task)
+    if (data.task.status === 'completed' || data.task.status === 'error') {
+      currentTaskId = null;
+    }
+  }
+})
 </script>
 {% endblock %}

@@ -222,7 +222,9 @@ describe('saveConfiguration', () => {
       <input id="parallel" value="true">
       <button onclick="saveConfiguration()">Save</button>
       <div id="ds_token_status"></div>
-      <div id="grist_key_status"></div>`
+      <div id="grist_key_status"></div>
+      <div id="config_check_result"></div>
+      <button id="start_sync_btn"></button>`
 
     // Mock currentConfig
     window.currentConfig = {

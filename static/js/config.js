@@ -129,6 +129,7 @@ const loadConfiguration = async () => {
 }
 
 const saveConfiguration = async () => {
+  checkConfiguration()
   const dsApiTokenElement = document.getElementById('ds_api_token')
   const dsToken = dsApiTokenElement.value
   const gristKeyElement = document.getElementById('grist_api_key')

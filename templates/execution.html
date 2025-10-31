@@ -1,37 +1,8 @@
-{% extends "base.html" %}
-
-{% block title %}Exécution - 🦄 One Trick Pony DS to Grist{% endblock %}
-
-{% block content %}
-<style>
-    /* Force l'ordre d'affichage des titres de cartes */
-    .fr-card__title {
-        order: -1 !important;
-        margin-bottom: 1rem !important;
-    }
-    
-    .fr-card__content {
-        display: flex !important;
-        flex-direction: column !important;
-    }
-</style>
-<!-- En-tête de page -->
-<div class="fr-mb-4w">
-    <h1 class="fr-h1">
-        <i class="fas fa-play fr-mr-2w" style="color: #000091;" aria-hidden="true"></i>
-        <span style="color: #000091;">Exécution de la synchronisation</span>
-    </h1>
-    <p class="fr-text--lead">Configurez les filtres et lancez la synchronisation</p>
-</div>
-
 <!-- Statut de la configuration -->
-<div class="fr-card fr-mb-4w">
+<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
     <div class="fr-card__body">
         <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-info-circle fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Statut de la configuration</span>
-            </h2>
+            <h2 class="fr-card__title">Statut de la configuration</h2>
             <div id="config_check_result" class="fr-mt-2w">
                 <div class="fr-alert fr-alert--info">
                     <p>Vérification de la configuration en cours...</p>
@@ -41,14 +12,13 @@
     </div>
 </div>
 
+<hr class="fr-my-2w"/>
+
 <!-- Filtres de données -->
-<div class="fr-card fr-mb-4w">
+<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
     <div class="fr-card__body">
         <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-filter fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Filtres de données</span>
-            </h2>
+            <h2 class="fr-card__title">Filtres de données</h2>
             
             <!-- Filtres par date -->
             <div class="fr-mt-4w">
@@ -151,13 +121,11 @@
                 <ul class="fr-btns-group">
                     <li>
                         <button class="fr-btn" onclick="applyFilters()">
-                            <i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>
                             Appliquer les filtres
                         </button>
                     </li>
                     <li>
                         <button class="fr-btn fr-btn--secondary" onclick="resetFilters()">
-                            <i class="fas fa-undo fr-mr-1w" aria-hidden="true"></i>
                             Réinitialiser
                         </button>
                     </li>
@@ -167,31 +135,26 @@
     </div>
 </div>
 
+<hr class="fr-my-2w"/>
+
 <!-- Filtres actifs -->
-<div id="active_filters" class="fr-card fr-mb-4w" style="display: none;">
+<div id="active_filters" class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border" style="display: none;">
     <div class="fr-card__body">
         <div class="fr-card__content">
-            <h3 class="fr-card__title">
-                <i class="fas fa-check fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Filtres actifs</span>
-            </h3>
+            <h3 class="fr-card__title">Filtres actifs</h3>
             <div id="active_filters_list" class="fr-mt-2w"></div>
         </div>
     </div>
 </div>
 
 <!-- Zone d'exécution -->
-<div class="fr-card">
+<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
     <div class="fr-card__body">
         <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-play fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Synchronisation</span>
-            </h2>
+            <h2 class="fr-card__title">Synchronisation</h2>
             
             <div id="sync_controls" class="fr-mt-4w">
                 <button class="fr-btn fr-btn--lg" onclick="startSyncAction()" id="start_sync_btn">
-                    <i class="fas fa-play fr-mr-1w" aria-hidden="true"></i>
                     Lancer la synchronisation
                 </button>
             </div>
@@ -297,7 +260,6 @@
                 <!-- Logs en temps réel -->
                 <div class="fr-mb-4w">
                     <button class="fr-btn fr-btn--tertiary-no-outline" onclick="logsVisible = toggleLogs(logsVisible)">
-                        <i id="logs_toggle_icon" class="fas fa-chevron-down fr-mr-1w" aria-hidden="true"></i>
                         <span id="logs_toggle_text">Afficher les logs</span>
                         (<span id="logs_count">0</span>)
                     </button>
@@ -314,32 +276,3 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-let logsVisible = false
-let currentConfig = null
-let currentTaskId = null
-
-const startSyncAction = async () => currentTaskId = await startSync(currentConfig)
-
-document.addEventListener(
-  'DOMContentLoaded',
-  async () => {
-    currentConfig = await checkConfiguration()
-    loadGroupes()
-  }
-)
-
-// Socket.IO pour les mises à jour en temps réel
-socket.on('task_update', function(data) {
-  if (data.task_id === currentTaskId) {
-    updateTaskProgress(data.task)
-    if (data.task.status === 'completed' || data.task.status === 'error') {
-      currentTaskId = null;
-    }
-  }
-})
-</script>
-{% endblock %}
