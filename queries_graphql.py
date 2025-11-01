@@ -300,6 +300,7 @@ fragment DossierFragment on Dossier {
     dateTraitement
     dateExpiration
     dateSuppressionParUsager
+    dateDerniereCorrectionEnAttente
     dateDerniereModificationChamps
     dateDerniereModificationAnnotations
     motivation
@@ -456,6 +457,11 @@ fragment DossierFragment on Dossier {
     datePassageEnConstruction
     datePassageEnInstruction
     dateTraitement
+    dateSuppressionParUsager
+    dateDerniereCorrectionEnAttente
+    dateDerniereModificationChamps
+    dateDerniereModificationAnnotations
+    motivation
     usager {
         email
     }
