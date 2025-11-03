@@ -27,13 +27,14 @@
     <h1 id="help-ds" class="fr-border-bottom fr-border-grey fr-pb-2w">Guide pas à pas pour récupérer votre clé API Démarches Simplifiées</h1>
     <h2 class="fr-mb-6w">Créer et récupérer votre jeton API Démarches Simplifiées</h2>
 
-    <h2 class="fr-text-title--blue-france">1) Ouvrir votre profil Démarches Simplifiées</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">1) Ouvrir votre profil Démarches Simplifiées</h2>
     <ul class="fr-ml-2w">
       <li>Connectez-vous à démarches-simplifiees.fr avec votre compte agent.</li>
       <li>Ouvrez le menu de votre compte en haut à droite, puis cliquez sur “Voir mon profil”.</li>
     </ul>
+    <img src="{{ url_for('static', filename='img/Profil.png') }}" />
 
-    <h2 class="fr-text-title--blue-france">2) Accéder aux jetons API (tokens)</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">2) Accéder aux jetons API (tokens)</h2>
     <ul class="fr-ml-2w">
       <li>Sur la page Profil, descendez jusqu’à la section “Jetons d’identification de l’API (token)”.
         <ul>
@@ -42,8 +43,9 @@
       </li>
       <li>Astuce: vous verrez la liste de vos jetons existants et leur statut/validité.</li>
     </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP.png') }}" />
 
-    <h2 class="fr-text-title--blue-france">3) Nommer le jeton</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">3) Nommer le jeton</h2>
     <ul class="fr-ml-2w">
       <li>Saisissez un nom clair et contextualisé
         <ul>
@@ -52,8 +54,9 @@
       </li>
       <li>Cliquez sur “Continuer”.</li>
     </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 2.png') }}" />
 
-    <h2 class="fr-text-title--blue-france">4) Définir la portée et les droits</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">4) Définir la portée et les droits</h2>
     <ul class="fr-ml-2w">
       <li>Accès aux démarches :
         <ul>
@@ -67,8 +70,9 @@
         </ul>
       </li>
     </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 3.png') }}" />
 
-    <h2 class="fr-text-title--blue-france">5) Paramétrer la sécurité</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">5) Paramétrer la sécurité</h2>
     <ul class="fr-ml-2w">
       <li>Filtrage réseau :
         <ul>
@@ -84,8 +88,9 @@
       </li>
       <li>Cliquez sur “Créer le jeton”.</li>
     </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 4.png') }}" />
 
-    <h2 class="fr-text-title--blue-france">6) Récupérer le jeton et tester</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">6) Récupérer le jeton et tester</h2>
     <ul class="fr-ml-2w">
       <li>La page “Votre jeton est prêt” affiche votre token une seule fois.
         <ul>
@@ -96,20 +101,23 @@
       <li>Un exemple curl/GraphQL est fourni pour tester l’accès à une démarche.</li>
       <li>Résumé affiché: nom, portée, démarche(s), réseau autorisé, date d’expiration.</li>
     </ul>
-
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 5.png') }}" />
 
     <h1 id="help-grist" class="fr-border-bottom fr-border-grey fr-pb-2w fr-mt-6w">Guide pas à pas pour récupérer votre clé API Grist</h1>
     <h2 class="fr-mb-6w">Créer et récupérer votre jeton API Démarches Simplifiées</h2>
-    <h2 class="fr-text-title--blue-france">1) Vérifier que vous êtes dans la bonne organisation / espace</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">1) Vérifier que vous êtes dans la bonne organisation / espace</h2>
     <ul class="fr-ml-2w">
       <li>Dans Grist, ouvrez le menu de votre compte en haut à droite.</li>
       <li>Vérifiez l’organisation sélectionnée (ex: “DRAAF Occitanie”, “One trick pony”, etc.). Changez si besoin.</li>
     </ul>
-    <h2 class="fr-text-title--blue-france">2) Ouvrir les paramètres de compte</h2>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 6.png') }}" />
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">2) Ouvrir les paramètres de compte</h2>
     <ul class="fr-ml-2w">
       <li>Cliquez sur “Paramètres du compte”.</li>
       <li>Repérez la section “API”.</li>
     </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 7.png') }}" />
   </div>
 </div>
 {% endblock %}
