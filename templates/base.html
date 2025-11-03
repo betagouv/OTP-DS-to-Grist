@@ -151,9 +151,29 @@
         .fr-card--no-border {
           border: none !important;
         }
+
+        .fr-notice--warning {
+          background-color: var(--background-contrast-warning);
+          color: var(--text-default-warning);
+          text-align: center;
+        }
+        .fr-notice--warning .fr-notice__title:before {
+          content: "⚠️";
+          margin-right: 1rem;
+        }
     </style>
 </head>
 <body>
+    <div class="fr-notice fr-notice--warning">
+      <div class="fr-container">
+        <div class="fr-notice__body">
+          <p>
+            <span class="fr-notice__title">Ce site est nouveau service</span> toujours en expérimentation. N'hésitez pas à nous contacter pour toutes questions
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- En-tête avec logo Marianne -->
     <header class="fr-header">
         <div class="fr-header__body">
@@ -194,7 +214,7 @@
                     <ul class="fr-nav__list">
                         <li class="fr-nav__item">
                             <a class="fr-nav__link" href="/">
-                                Configuration
+                                Synchroniser le connecteur
                             </a>
                         </li>
                         <li class="fr-nav__item">
