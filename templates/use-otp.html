@@ -8,8 +8,8 @@
         <button class="fr-sidemenu__btn" aria-controls="fr-sidemenu-wrapper" aria-expanded="false">Dans cette rubrique</button>
         <div class="fr-collapse" id="fr-sidemenu-wrapper">
           <ul class="fr-sidemenu__list">
-            <li class="fr-sidemenu__item fr-sidemenu__item--active">
-              <a class="fr-sidemenu__link" href="#help-ds" target="_self" aria-current="page">API Démarches Simplifiées</a>
+            <li class="fr-sidemenu__item">
+              <a class="fr-sidemenu__link" href="#help-ds" target="_self">API Démarches Simplifiées</a>
             </li>
             <li class="fr-sidemenu__item">
               <a class="fr-sidemenu__link" href="#help-grist" target="_self">Api Grist</a>
@@ -120,4 +120,21 @@
     <img src="{{ url_for('static', filename='img/Cadrage OTP 7.png') }}" />
   </div>
 </div>
+<script>
+  const updateCurrentSideNav = (navLinks) => {
+    const currentHash = window.location.hash
+
+    navLinks.forEach(link => {
+      link.removeAttribute('aria-current')
+      if (link.getAttribute('href') === currentHash)
+        link.setAttribute('aria-current', 'page')
+    })
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const navLinks = document.querySelectorAll('.fr-sidemenu__link')
+    updateCurrentSideNav(navLinks)
+    window.addEventListener('hashchange', () => updateCurrentSideNav(navLinks))
+  })
+</script>
 {% endblock %}
