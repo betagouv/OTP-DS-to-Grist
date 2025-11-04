@@ -8,7 +8,7 @@
 
 ## Accès API requis
 - **Compte Démarches Simplifiées** avec droits d'accès API
-- **Instance Grist** accessible (grist.numerique.gouv.fr ou auto-hébergée)
+- **Instance Grist** accessible (grist.numerique.gouv.fr si vous êtes agent public, ou auto-hébergée)
 - **Token API Démarches Simplifiées** valide
 - **Clé API Grist** avec droits d'écriture
 
