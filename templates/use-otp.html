@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="fr-grid-row fr-grid-row--gutters">
+  <div class="fr-col-4">
+    <nav class="fr-sidemenu fr-sidemenu--sticky" aria-labelledby="fr-sidemenu-title">
+      <div class="fr-sidemenu__inner">
+        <button class="fr-sidemenu__btn" aria-controls="fr-sidemenu-wrapper" aria-expanded="false">Dans cette rubrique</button>
+        <div class="fr-collapse" id="fr-sidemenu-wrapper">
+          <ul class="fr-sidemenu__list">
+            <li class="fr-sidemenu__item">
+              <a class="fr-sidemenu__link" href="#help-ds" target="_self">API Démarches Simplifiées</a>
+            </li>
+            <li class="fr-sidemenu__item">
+              <a class="fr-sidemenu__link" href="#help-grist" target="_self">Api Grist</a>
+            </li>
+            <li class="fr-sidemenu__item">
+              <a class="fr-sidemenu__link" href="#" target="_self">FAQ</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <div class="fr-col-8">
+    <h1 id="help-ds" class="fr-border-bottom fr-border-grey fr-pb-2w">Guide pas à pas pour récupérer votre clé API Démarches Simplifiées</h1>
+    <h2 class="fr-mb-6w">Créer et récupérer votre jeton API Démarches Simplifiées</h2>
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">1) Ouvrir votre profil Démarches Simplifiées</h2>
+    <ul class="fr-ml-2w">
+      <li>Connectez-vous à démarches-simplifiees.fr avec votre compte agent.</li>
+      <li>Ouvrez le menu de votre compte en haut à droite, puis cliquez sur “Voir mon profil”.</li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Profil.png') }}" />
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">2) Accéder aux jetons API (tokens)</h2>
+    <ul class="fr-ml-2w">
+      <li>Sur la page Profil, descendez jusqu’à la section “Jetons d’identification de l’API (token)”.
+        <ul>
+          <li>Cliquez sur “Créer un nouveau jeton”.</li>
+        </ul>
+      </li>
+      <li>Astuce: vous verrez la liste de vos jetons existants et leur statut/validité.</li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP.png') }}" />
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">3) Nommer le jeton</h2>
+    <ul class="fr-ml-2w">
+      <li>Saisissez un nom clair et contextualisé
+        <ul>
+          <li>Exemples: “OTP — lecture”, “OTP — connecteur DRx — prod”.</li>
+        </ul>
+      </li>
+      <li>Cliquez sur “Continuer”.</li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 2.png') }}" />
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">4) Définir la portée et les droits</h2>
+    <ul class="fr-ml-2w">
+      <li>Accès aux démarches :
+        <ul>
+          <li>Recommandé: “certaines de mes démarches” puis sélectionnez précisément les numéros de démarches à exposer au connecteur.</li>
+          <li>Évitez “toutes mes démarches” sauf besoin explicite.</li>
+        </ul>
+      </li>
+      <li>Permissions :
+        <ul>
+          <li>Recommandé pour l’intégration: “de lire uniquement”…</li>
+        </ul>
+      </li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 3.png') }}" />
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">5) Paramétrer la sécurité</h2>
+    <ul class="fr-ml-2w">
+      <li>Filtrage réseau :
+        <ul>
+          <li>Si votre DSI fournit des IP fixes pour le connecteur, choisissez “Je veux spécifier les réseaux autorisés” et renseignez les adresses (meilleure pratique).</li>
+          <li>À défaut, “Mon jeton peut être utilisé depuis n’importe quelle adresse IP” (moins sécurisé, à éviter si possible).</li>
+        </ul>
+      </li>
+      <li>Durée de vie :
+        <ul>
+          <li>Choisissez une durée adaptée (ex: 3 à 6 mois) et planifiez le renouvellement.</li>
+          <li>“Infini” n’est autorisé que si le filtrage réseau est activé.</li>
+        </ul>
+      </li>
+      <li>Cliquez sur “Créer le jeton”.</li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 4.png') }}" />
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">6) Récupérer le jeton et tester</h2>
+    <ul class="fr-ml-2w">
+      <li>La page “Votre jeton est prêt” affiche votre token une seule fois.
+        <ul>
+          <li>Copiez-le et stockez-le dans un coffre sécurisé (gestionnaire de secrets).</li>
+          <li>Vous ne pourrez plus l’afficher après avoir quitté la page.</li>
+        </ul>
+      </li>
+      <li>Un exemple curl/GraphQL est fourni pour tester l’accès à une démarche.</li>
+      <li>Résumé affiché: nom, portée, démarche(s), réseau autorisé, date d’expiration.</li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 5.png') }}" />
+
+    <h1 id="help-grist" class="fr-border-bottom fr-border-grey fr-pb-2w fr-mt-6w">Guide pas à pas pour récupérer votre clé API Grist</h1>
+    <h2 class="fr-mb-6w">Créer et récupérer votre jeton API Démarches Simplifiées</h2>
+    <h2 class="fr-text-title--blue-france fr-mt-8w">1) Vérifier que vous êtes dans la bonne organisation / espace</h2>
+    <ul class="fr-ml-2w">
+      <li>Dans Grist, ouvrez le menu de votre compte en haut à droite.</li>
+      <li>Vérifiez l’organisation sélectionnée (ex: “DRAAF Occitanie”, “One trick pony”, etc.). Changez si besoin.</li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 6.png') }}" />
+
+    <h2 class="fr-text-title--blue-france fr-mt-8w">2) Ouvrir les paramètres de compte</h2>
+    <ul class="fr-ml-2w">
+      <li>Cliquez sur “Paramètres du compte”.</li>
+      <li>Repérez la section “API”.</li>
+    </ul>
+    <img src="{{ url_for('static', filename='img/Cadrage OTP 7.png') }}" />
+  </div>
+</div>
+<script>
+  const updateCurrentSideNav = (navLinks) => {
+    const currentHash = window.location.hash
+
+    navLinks.forEach(link => {
+      link.removeAttribute('aria-current')
+      if (link.getAttribute('href') === currentHash)
+        link.setAttribute('aria-current', 'page')
+    })
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const navLinks = document.querySelectorAll('.fr-sidemenu__link')
+    updateCurrentSideNav(navLinks)
+    window.addEventListener('hashchange', () => updateCurrentSideNav(navLinks))
+  })
+</script>
+{% endblock %}
