@@ -1,9 +1,12 @@
 if (typeof formatDuration === 'undefined')
   ({ formatDuration } = require('./utils.js'))
 
+if (typeof showNotification === 'undefined')
+  ({ showNotification } = require('./notifications.js'))
+
 const startSync = async (config) => {
   if (!config)
-    return App.showNotification('Configuration non chargée', 'error')
+    return showNotification('Configuration non chargée', 'error')
 
   // Collecter les filtres
   const filters = {
@@ -38,7 +41,7 @@ const startSync = async (config) => {
     const result = await response.json()
 
     if (!result.success)
-      return App.showNotification(result.message, 'error')
+      return showNotification(result.message, 'error')
 
     startTime = Date.now()
 
@@ -66,12 +69,12 @@ const startSync = async (config) => {
     document.getElementById('processing_speed').textContent = '-'
     document.getElementById('eta').textContent = '-'
 
-    App.showNotification('Synchronisation démarrée', 'success')
+    showNotification('Synchronisation démarrée', 'success')
 
     return result.task_id
   } catch (error) {
     console.error('Erreur:', error)
-    App.showNotification('Erreur lors du démarrage de la synchronisation', 'error')
+    showNotification('Erreur lors du démarrage de la synchronisation', 'error')
   }
 }
 
@@ -175,7 +178,7 @@ const updateTaskProgress = (task) => {
         <p><strong>${successCount}</strong> dossiers traités avec succès</p>
       </div>`
 
-      App.showNotification('Synchronisation terminée avec succès!', 'success')
+      showNotification('Synchronisation terminée avec succès!', 'success')
     } else if (task.status === 'completed' && hasSignificantErrors && successCount > 0) {
       resultContent.innerHTML = ` <div class="fr-alert fr-alert--warning">
         <h3 class="fr-alert__title">Synchronisation terminée avec des erreurs</h3>
@@ -183,7 +186,7 @@ const updateTaskProgress = (task) => {
         <p><strong>${successCount}</strong> dossiers traités avec succès, <strong>${errorCount}</strong> en échec</p>
         <p>Taux de réussite: ${successRate.toFixed(1)}%</p>
       </div>`
-      App.showNotification('Synchronisation terminée avec des erreurs', 'warning')
+      showNotification('Synchronisation terminée avec des erreurs', 'warning')
     } else {
       resultContent.innerHTML = `<div class="fr-alert fr-alert--error">
         <h3 class="fr-alert__title">Erreur lors de la synchronisation</h3>
@@ -191,7 +194,7 @@ const updateTaskProgress = (task) => {
         ${errorCount > 0 ? `<p><strong>${errorCount}</strong> erreurs détectées</p>` : ''}
       </div>
       `
-      App.showNotification('Erreur lors de la synchronisation', 'error')
+      showNotification('Erreur lors de la synchronisation', 'error')
     }
 
   }

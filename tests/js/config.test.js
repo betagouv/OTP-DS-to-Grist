@@ -1,5 +1,10 @@
 /** @jest-environment jsdom */
 const { checkConfiguration, loadConfiguration, saveConfiguration } = require('../../static/js/config.js')
+const { showNotification } = require('../../static/js/notifications.js')
+
+jest.mock('../../static/js/notifications.js', () => ({
+  showNotification: jest.fn()
+}))
 
 describe('checkConfiguration', () => {
   beforeEach(() => {
@@ -13,9 +18,6 @@ describe('checkConfiguration', () => {
 
     // Mock fetch
     global.fetch = jest.fn()
-
-    // Mock App.showNotification
-    global.App = { showNotification: jest.fn() }
 
     // Mock console.error
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
@@ -45,7 +47,7 @@ describe('checkConfiguration', () => {
       const resultDiv = document.getElementById('config_check_result')
       expect(resultDiv.innerHTML).toContain('Configuration complète')
       expect(document.getElementById('start_sync_btn').disabled).toBe(false)
-      expect(App.showNotification).not.toHaveBeenCalled() // Pas d'erreur
+      expect(showNotification).not.toHaveBeenCalled() // Pas d'erreur
       expect(consoleErrorSpy).not.toHaveBeenCalled()
     }
   )
@@ -72,7 +74,7 @@ describe('checkConfiguration', () => {
       expect(resultDiv.innerHTML).toContain('Configuration incomplète')
       expect(resultDiv.innerHTML).toContain('grist_base_url') // Champ manquant listé
       expect(document.getElementById('start_sync_btn').disabled).toBe(true)
-      expect(App.showNotification).not.toHaveBeenCalled() // Erreur affichée dans le DOM
+      expect(showNotification).not.toHaveBeenCalled() // Erreur affichée dans le DOM
       expect(consoleErrorSpy).not.toHaveBeenCalled()
     }
   )
@@ -91,7 +93,7 @@ describe('checkConfiguration', () => {
       const resultDiv = document.getElementById('config_check_result')
       expect(resultDiv.innerHTML).toContain('Erreur lors de la vérification')
       expect(document.getElementById('start_sync_btn').disabled).toBe(true)
-      expect(App.showNotification).not.toHaveBeenCalled() // Erreur gérée dans le DOM
+      expect(showNotification).not.toHaveBeenCalled() // Erreur gérée dans le DOM
       expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la vérification de la configuration:', error)
     }
   )
@@ -271,6 +273,6 @@ describe('saveConfiguration', () => {
       parallel: true
     })
 
-    expect(App.showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+    expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
   })
 })

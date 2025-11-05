@@ -4,6 +4,10 @@ jest.mock('../../static/js/utils.js', () => ({
   escapeHtml: jest.fn(text => text)
 }))
 
+jest.mock('../../static/js/notifications.js', () => ({
+  showNotification: jest.fn()
+}))
+
 const { resetFilters, applyFilters, loadGroupes } = require('../../static/js/filters.js')
 const { formatDate } = require('../../static/js/utils.js')
 
@@ -18,9 +22,6 @@ describe('resetFilters', () => {
       <input type="checkbox" name="groupes" checked>
       <div id="active_filters" style="display: block;"></div>
       `
-
-    // Mock App.showNotification
-    global.App = { showNotification: jest.fn() }
   })
 
   it(
@@ -44,7 +45,7 @@ describe('resetFilters', () => {
       expect(document.getElementById('active_filters').style.display).toBe('none')
 
       // Check notification
-      expect(global.App.showNotification).toHaveBeenCalledWith('Filtres réinitialisés', 'info')
+      expect(showNotification).toHaveBeenCalledWith('Filtres réinitialisés', 'info')
     })
 })
 
@@ -61,9 +62,6 @@ describe('applyFilters', () => {
       <div id="active_filters" style="display: none;"></div>
       <div id="active_filters_list"></div>
     `
-
-    // Mock App.showNotification
-    global.App = { showNotification: jest.fn() }
 
     formatDate.mockImplementation(date => {
       if (date === '2023-10-01') return '01/10/2023'
@@ -92,7 +90,7 @@ describe('applyFilters', () => {
       expect(activeFiltersList.innerHTML).toBe(expectedHtml)
 
       // Vérifier la notification
-      expect(global.App.showNotification).toHaveBeenCalledWith('Filtres appliqués avec succès', 'success')
+      expect(showNotification).toHaveBeenCalledWith('Filtres appliqués avec succès', 'success')
     }
   )
 

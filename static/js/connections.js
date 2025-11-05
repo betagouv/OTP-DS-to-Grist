@@ -1,3 +1,6 @@
+if (typeof showNotification === 'undefined')
+  ({ showNotification } = require('./notifications.js'))
+
 const testDemarchesConnection = async () => {
   const button = document.getElementById('test_ds_btn')
   const resultDiv = document.getElementById('ds_test_result')
@@ -50,20 +53,20 @@ const testDemarchesConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      return App.showNotification(result.message, 'success')
+      return showNotification(result.message, 'success')
     }
 
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>${result.message}</p>
     </div>`
-    App.showNotification(result.message, 'error')
+    showNotification(result.message, 'error')
 
   } catch (error) {
     console.error('Erreur lors du test DS:', error)
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
-    App.showNotification('Erreur lors du test de connexion', 'error')
+    showNotification('Erreur lors du test de connexion', 'error')
   } finally {
     button.disabled = false
     button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'
@@ -130,21 +133,21 @@ const testGristConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      return App.showNotification(result.message, 'success')
+      return showNotification(result.message, 'success')
     }
 
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>${result.message}</p>
     </div>`
 
-    App.showNotification(result.message, 'error')
+    showNotification(result.message, 'error')
 
   } catch (error) {
     console.error('Erreur lors du test Grist:', error)
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
-    App.showNotification('Erreur lors du test de connexion', 'error')
+    showNotification('Erreur lors du test de connexion', 'error')
   } finally {
     button.disabled = false
     button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'

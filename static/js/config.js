@@ -1,3 +1,6 @@
+if (typeof showNotification === 'undefined')
+  ({ showNotification } = require('./notifications.js'))
+
 const checkConfiguration = async () => {
   const resultDiv = document.getElementById('config_check_result')
   const syncBtn   = document.getElementById('start_sync_btn')
@@ -123,7 +126,7 @@ const loadConfiguration = async () => {
     return config
   } catch (error) {
     console.error('Erreur lors du chargement de la configuration:', error)
-    App.showNotification(`Erreur lors du chargement de la configuration : ${error.message}`, 'error')
+    showNotification(`Erreur lors du chargement de la configuration : ${error.message}`, 'error')
   }
 }
 
@@ -160,7 +163,7 @@ const saveConfiguration = async () => {
 
   for (const field of requiredFields) {
     if (!config[field.key]) {
-      App.showNotification(`Le champ "${field.name}" est requis`, 'error')
+      showNotification(`Le champ "${field.name}" est requis`, 'error')
       return
     }
   }
@@ -183,7 +186,7 @@ const saveConfiguration = async () => {
     const result = await response.json()
 
     if (result.success) {
-      App.showNotification('Configuration sauvegardée avec succès', 'success')
+      showNotification('Configuration sauvegardée avec succès', 'success')
 
       // Mettre à jour immédiatement le statut des tokens si saisis
       if (dsToken) {
@@ -204,7 +207,7 @@ const saveConfiguration = async () => {
         currentConfig = await loadConfiguration()
       }, 500)
     } else {
-      App.showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
+      showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
     }
 
     // Restaurer le bouton
@@ -213,7 +216,7 @@ const saveConfiguration = async () => {
 
   } catch (error) {
     console.error('Erreur:', error)
-    App.showNotification('Erreur lors de la sauvegarde', 'error')
+    showNotification('Erreur lors de la sauvegarde', 'error')
 
     // Restaurer le bouton en cas d'erreur
     const saveButton = document.querySelector('button[onclick="saveConfiguration()"]')

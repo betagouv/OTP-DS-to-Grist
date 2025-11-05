@@ -398,7 +398,7 @@
                 </div>
             `;
             
-            App.showNotification('WebSocket connecté', 'success');
+            showNotification('WebSocket connecté', 'success');
             testSocket.disconnect();
         });
         
@@ -412,7 +412,7 @@
                 </div>
             `;
             
-            App.showNotification('Erreur WebSocket', 'error');
+            showNotification('Erreur WebSocket', 'error');
         });
         
         // Timeout après 5 secondes
@@ -425,7 +425,7 @@
                     </div>
                 `;
                 
-                App.showNotification('Timeout WebSocket', 'warning');
+                showNotification('Timeout WebSocket', 'warning');
                 testSocket.disconnect();
             }
         }, 5000);
@@ -531,9 +531,9 @@
             const totalCount = results.length;
             
             if (successCount === totalCount) {
-                App.showNotification(`Tous les tests de connexion réussis (${successCount}/${totalCount})`, 'success');
+                showNotification(`Tous les tests de connexion réussis (${successCount}/${totalCount})`, 'success');
             } else {
-                App.showNotification(`${successCount}/${totalCount} connexions réussies`, 'warning');
+                showNotification(`${successCount}/${totalCount} connexions réussies`, 'warning');
             }
             
         } catch (error) {
@@ -544,7 +544,7 @@
                     <p>${error.message}</p>
                 </div>
             `;
-            App.showNotification('Erreur lors des tests de connexion', 'error');
+            showNotification('Erreur lors des tests de connexion', 'error');
         }
     }
 </script>

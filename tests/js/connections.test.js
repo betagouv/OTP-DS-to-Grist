@@ -1,5 +1,9 @@
 const { testDemarchesConnection, testGristConnection } = require('../../static/js/connections.js')
 
+jest.mock('../../static/js/notifications.js', () => ({
+  showNotification: jest.fn()
+}))
+
 describe('testDemarchesConnection', () => {
   let mockButton, mockResultDiv, mockTokenInput, mockUrlInput, mockDemarcheInput
 
@@ -35,7 +39,6 @@ describe('testDemarchesConnection', () => {
     // Mock global variables
     global.currentConfig = { ds_api_token_exists: true }
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
-    global.App = { showNotification: jest.fn() }
     global.console.error = jest.fn()
   })
 
@@ -69,7 +72,7 @@ describe('testDemarchesConnection', () => {
       }))
       expect(mockResultDiv.innerHTML).toContain('Connexion réussie')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Connexion réussie', 'success')
+      expect(showNotification).toHaveBeenCalledWith('Connexion réussie', 'success')
       expect(mockButton.disabled).toBe(false)
       expect(mockButton.innerHTML).toContain('Tester la connexion')
       expect(global.console.error).not.toHaveBeenCalled()
@@ -91,7 +94,7 @@ describe('testDemarchesConnection', () => {
 
       expect(mockResultDiv.innerHTML).toContain('Erreur de connexion')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur de connexion', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur de connexion', 'error')
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -152,7 +155,7 @@ describe('testDemarchesConnection', () => {
       await testDemarchesConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Erreur de connexion: Network error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test DS:', expect.any(Error))
     }
   )
@@ -193,7 +196,6 @@ describe('testGristConnection', () => {
     // Mock global variables
     global.currentConfig = { grist_api_key_exists: true }
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
-    global.App = { showNotification: jest.fn() }
     global.console.error = jest.fn()
   })
 
@@ -226,7 +228,7 @@ describe('testGristConnection', () => {
       }))
       expect(mockResultDiv.innerHTML).toContain('Connexion Grist réussie')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Connexion Grist réussie', 'success')
+      expect(showNotification).toHaveBeenCalledWith('Connexion Grist réussie', 'success')
       expect(mockButton.disabled).toBe(false)
       expect(mockButton.innerHTML).toContain('Tester la connexion')
       expect(global.console.error).not.toHaveBeenCalled()
@@ -249,7 +251,7 @@ describe('testGristConnection', () => {
 
       expect(mockResultDiv.innerHTML).toContain('Erreur Grist')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur Grist', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur Grist', 'error')
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -341,7 +343,7 @@ describe('testGristConnection', () => {
       await testGristConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Erreur de connexion: Network error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test Grist:', expect.any(Error))
     }
   )

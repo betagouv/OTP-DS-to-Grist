@@ -4,6 +4,9 @@ if (typeof formatDate === 'undefined')
 if (typeof escapeHtml === 'undefined')
   ({ escapeHtml } = require('./utils.js'))
 
+if (typeof showNotification === 'undefined')
+  ({ showNotification } = require('./notifications.js'))
+
 const resetFilters = () => {
   // Réinitialiser tous les champs de filtre
   document.getElementById('date_debut').value = ''
@@ -15,7 +18,7 @@ const resetFilters = () => {
   // Masquer les filtres actifs
   document.getElementById('active_filters').style.display = 'none'
 
-  App.showNotification('Filtres réinitialisés', 'info')
+  showNotification('Filtres réinitialisés', 'info')
 }
 
 const applyFilters = () => {
@@ -68,7 +71,7 @@ const applyFilters = () => {
     activeFiltersDiv.style.display = 'none'
   }
 
-  App.showNotification('Filtres appliqués avec succès', 'success')
+  showNotification('Filtres appliqués avec succès', 'success')
 }
 
 const loadGroupes = async () => {
