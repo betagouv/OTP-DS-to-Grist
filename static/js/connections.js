@@ -274,14 +274,14 @@ const testExternalConnections = async () => {
         const success = result.value.success
         const message = result.value.message
 
-        html += `<div class="fr-col-12 fr-col-md-6">
+        html += `<div class="fr-col-12">
           <div class="fr-alert ${success ? 'fr-alert--success' : 'fr-alert--error'}">
             <h4 class="fr-alert__title">${testName}</h4>
             <p>${message}</p>
           </div>
         </div>`
       } else {
-        html += `<div class="fr-col-12 fr-col-md-6">
+        html += `<div class="fr-col-12">
           <div class="fr-alert fr-alert--error">
             <h4 class="fr-alert__title">${testName}</h4>
             <p>Erreur de test de connexion</p>
