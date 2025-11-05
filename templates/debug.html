@@ -227,73 +227,6 @@
     </div>
 </div>
 
-<!-- Liste des fichiers -->
-<div class="fr-card fr-mb-4w">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-folder-open fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Contenu du répertoire</span>
-            </h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-search-bar" role="search">
-                    <label class="fr-label" for="file_search">Rechercher un fichier</label>
-                    <input class="fr-input" placeholder="Tapez le nom du fichier..." type="search" id="file_search" name="file_search">
-                    <button class="fr-btn" title="Rechercher">Rechercher</button>
-                </div>
-                
-                <div class="fr-mt-4w" style="max-height: 400px; overflow-y: auto;">
-                    <div class="fr-grid-row fr-grid-row--gutters" id="files_grid">
-                        {% for file in all_files %}
-                        <div class="fr-col-12 fr-col-md-6 fr-col-lg-4 fr-col-xl-3 file-item">
-                            <div class="fr-card fr-card--grey fr-card--sm">
-                                <div class="fr-card__body">
-                                    <div class="fr-card__content">
-                                        <div class="fr-grid-row fr-grid-row--middle">
-                                            <div class="fr-col-auto fr-mr-2w">
-                                                {% if file.endswith('.py') %}
-                                                <i class="fab fa-python" style="color: #3776ab;" aria-hidden="true"></i>
-                                                {% elif file.endswith('.html') %}
-                                                <i class="fab fa-html5" style="color: #e34f26;" aria-hidden="true"></i>
-                                                {% elif file.endswith('.js') %}
-                                                <i class="fab fa-js-square" style="color: #f7df1e;" aria-hidden="true"></i>
-                                                {% elif file.endswith('.css') %}
-                                                <i class="fab fa-css3-alt" style="color: #1572b6;" aria-hidden="true"></i>
-                                                {% elif file.endswith('.json') %}
-                                                <i class="fas fa-code" style="color: #666;" aria-hidden="true"></i>
-                                                {% elif file.endswith('.env') %}
-                                                <i class="fas fa-cog" style="color: #28a745;" aria-hidden="true"></i>
-                                                {% elif file.endswith('.md') %}
-                                                <i class="fab fa-markdown" style="color: #000;" aria-hidden="true"></i>
-                                                {% else %}
-                                                <i class="fas fa-file" style="color: #6c757d;" aria-hidden="true"></i>
-                                                {% endif %}
-                                            </div>
-                                            <div class="fr-col">
-                                                <p class="fr-text--xs fr-mb-0">
-                                                    <code>{{ file }}</code>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                
-                <div class="fr-mt-2w">
-                    <p class="fr-text--sm">
-                        Total: <span id="files_count" class="fr-text--bold">{{ all_files | length }}</span> fichiers
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Test de connectivité -->
 <div class="fr-card">
     <div class="fr-card__body">
@@ -335,42 +268,11 @@
 
 {% block scripts %}
 <script>
-    let wsTestTimeout;
+    let wsTestTimeout
     
     document.addEventListener('DOMContentLoaded', function() {
-        // Afficher le répertoire de travail actuel
-        document.getElementById('current_dir').textContent = window.location.origin;
-        
-        // Initialiser la recherche de fichiers
-        initFileSearch();
-        
         // Tester automatiquement WebSocket au chargement
-        setTimeout(testWebSocket, 1000);
-    });
-
-    function initFileSearch() {
-        const searchInput = document.getElementById('file_search');
-        const filesGrid = document.getElementById('files_grid');
-        const filesCount = document.getElementById('files_count');
-        const allFiles = Array.from(filesGrid.querySelectorAll('.file-item'));
-        
-        searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase();
-            let visibleCount = 0;
-            
-            allFiles.forEach(fileItem => {
-                const fileName = fileItem.textContent.toLowerCase();
-                if (fileName.includes(searchTerm)) {
-                    fileItem.style.display = 'block';
-                    visibleCount++;
-                } else {
-                    fileItem.style.display = 'none';
-                }
-            });
-            
-            filesCount.textContent = visibleCount;
-        });
-    }
-
+        setTimeout(testWebSocket, 1000)
+    })
 </script>
 {% endblock %}
