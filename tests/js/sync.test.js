@@ -1,4 +1,7 @@
 /** @jest-environment jsdom */
+jest.mock('../../static/js/utils.js', () => ({
+  formatDuration: jest.fn(seconds => `${seconds}s`)
+}))
 
 const { startSync, updateTaskProgress } = require('../../static/js/sync.js')
 
@@ -137,9 +140,6 @@ describe('updateTaskProgress', () => {
       // Mock startTime globale
       global.startTime = Date.now() - 10000 // 10 secondes écoulées
 
-      // Mock App.formatDuration
-      global.App = { formatDuration: jest.fn(seconds => `${seconds}s`) }
-
       // Objet tâche simulé
       const mockTask = { progress: 50, message: 'Traitement en cours...' }
 
@@ -150,7 +150,7 @@ describe('updateTaskProgress', () => {
       expect(document.getElementById('progress_bar').style.width).toBe('50%')
       expect(document.getElementById('progress_percentage').textContent).toBe('50%')
       expect(document.getElementById('current_status').textContent).toBe('Traitement en cours...')
-      expect(App.formatDuration).toHaveBeenCalledWith(expect.closeTo(10, 0.1)) // Temps écoulé
+      expect(formatDuration).toHaveBeenCalledWith(expect.closeTo(10, 0.1)) // Temps écoulé
   })
 
   it(
@@ -169,8 +169,7 @@ describe('updateTaskProgress', () => {
 
     // Mock App.showNotification
     global.App = {
-        showNotification: jest.fn(),
-        formatDuration: jest.fn(seconds => `${seconds}s`)
+        showNotification: jest.fn()
       }
 
     // Objet tâche simulé (complétée)

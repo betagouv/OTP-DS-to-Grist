@@ -1,3 +1,6 @@
+if (typeof formatDuration === 'undefined')
+  ({ formatDuration } = require('./utils.js'))
+
 const startSync = async (config) => {
   if (!config)
     return App.showNotification('Configuration non chargée', 'error')
@@ -89,7 +92,7 @@ const updateTaskProgress = (task) => {
   // Mettre à jour le temps écoulé
   if (startTime) {
     const elapsed = (Date.now() - startTime) / 1000
-    document.getElementById('elapsed_time').textContent = App.formatDuration(elapsed)
+    document.getElementById('elapsed_time').textContent = formatDuration(elapsed)
 
     // Calculer la vitesse en dossiers/s et l'ETA seulement si on a des données valides
     if (elapsed > 10 && successCount > 0) { // Attendre au moins 10 secondes pour un calcul stable
@@ -103,7 +106,7 @@ const updateTaskProgress = (task) => {
         const remainingTime = remainingProgress / progressRate
 
         if (remainingTime > 0 && remainingTime < 86400) { // Limiter à 24h max
-          etaElement.textContent = App.formatDuration(remainingTime)
+          etaElement.textContent = formatDuration(remainingTime)
         } else {
           etaElement.textContent = '-'
         }
