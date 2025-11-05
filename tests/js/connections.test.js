@@ -1,4 +1,13 @@
-const { testDemarchesConnection, testGristConnection } = require('../../static/js/connections.js')
+const {
+  testDemarchesConnection,
+  testGristConnection,
+  testWebSocket,
+  testExternalConnections
+} = require('../../static/js/connections.js')
+
+jest.mock('../../static/js/notifications.js', () => ({
+  showNotification: jest.fn()
+}))
 
 describe('testDemarchesConnection', () => {
   let mockButton, mockResultDiv, mockTokenInput, mockUrlInput, mockDemarcheInput
@@ -35,7 +44,6 @@ describe('testDemarchesConnection', () => {
     // Mock global variables
     global.currentConfig = { ds_api_token_exists: true }
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
-    global.App = { showNotification: jest.fn() }
     global.console.error = jest.fn()
   })
 
@@ -69,7 +77,7 @@ describe('testDemarchesConnection', () => {
       }))
       expect(mockResultDiv.innerHTML).toContain('Connexion réussie')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Connexion réussie', 'success')
+      expect(showNotification).toHaveBeenCalledWith('Connexion réussie', 'success')
       expect(mockButton.disabled).toBe(false)
       expect(mockButton.innerHTML).toContain('Tester la connexion')
       expect(global.console.error).not.toHaveBeenCalled()
@@ -91,7 +99,7 @@ describe('testDemarchesConnection', () => {
 
       expect(mockResultDiv.innerHTML).toContain('Erreur de connexion')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur de connexion', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur de connexion', 'error')
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -152,7 +160,7 @@ describe('testDemarchesConnection', () => {
       await testDemarchesConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Erreur de connexion: Network error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test DS:', expect.any(Error))
     }
   )
@@ -193,7 +201,6 @@ describe('testGristConnection', () => {
     // Mock global variables
     global.currentConfig = { grist_api_key_exists: true }
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
-    global.App = { showNotification: jest.fn() }
     global.console.error = jest.fn()
   })
 
@@ -226,7 +233,7 @@ describe('testGristConnection', () => {
       }))
       expect(mockResultDiv.innerHTML).toContain('Connexion Grist réussie')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Connexion Grist réussie', 'success')
+      expect(showNotification).toHaveBeenCalledWith('Connexion Grist réussie', 'success')
       expect(mockButton.disabled).toBe(false)
       expect(mockButton.innerHTML).toContain('Tester la connexion')
       expect(global.console.error).not.toHaveBeenCalled()
@@ -249,7 +256,7 @@ describe('testGristConnection', () => {
 
       expect(mockResultDiv.innerHTML).toContain('Erreur Grist')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur Grist', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur Grist', 'error')
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -341,8 +348,234 @@ describe('testGristConnection', () => {
       await testGristConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Erreur de connexion: Network error')
-      expect(global.App.showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test Grist:', expect.any(Error))
+    }
+  )
+})
+
+describe('testWebSocket', () => {
+  let mockStatusDiv, mockSocket
+
+  beforeEach(() => {
+    // Mock DOM
+    mockStatusDiv = { innerHTML: '' }
+    document.getElementById = jest.fn().mockReturnValue(mockStatusDiv)
+
+    // Mock Socket.IO
+    mockSocket = {
+      on: jest.fn(),
+      disconnect: jest.fn(),
+      id: 'test-socket-id'
+    }
+    global.io = jest.fn().mockReturnValue(mockSocket)
+
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+    jest.clearAllMocks()
+  })
+
+  it(
+    'displays success message on WebSocket connect',
+    () => {
+      testWebSocket()
+
+      // Trigger connect event
+      const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
+      connectCallback()
+
+      expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
+      expect(mockStatusDiv.innerHTML).toContain('test-socket-id')
+      expect(mockSocket.disconnect).toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'displays error message on WebSocket connect_error',
+    () => {
+      const mockError = { message: 'Connection failed' }
+      testWebSocket()
+
+      // Trigger connect_error event
+      const errorCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect_error')[1]
+      errorCallback(mockError)
+
+      expect(mockStatusDiv.innerHTML).toContain('Erreur de connexion WebSocket')
+      expect(mockStatusDiv.innerHTML).toContain('Connection failed')
+    }
+  )
+
+  it(
+    'displays timeout warning when connection takes too long',
+    () => {
+      testWebSocket()
+
+      // Advance time past timeout
+      jest.advanceTimersByTime(5000)
+
+      expect(mockStatusDiv.innerHTML).toContain('Timeout de connexion WebSocket')
+      expect(mockSocket.disconnect).toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'clears timeout on successful connection',
+    () => {
+      testWebSocket()
+
+      // Trigger connect before timeout
+      const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
+      connectCallback()
+
+      // Timeout should be cleared, so advancing time shouldn't trigger timeout
+      jest.advanceTimersByTime(5000)
+
+      expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
+    }
+  )
+})
+
+describe('testExternalConnections', () => {
+  let mockResultDiv
+
+  beforeEach(() => {
+    mockResultDiv = { innerHTML: '' }
+    document.getElementById = jest.fn().mockReturnValue(mockResultDiv)
+    global.fetch = jest.fn()
+  })
+
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it(
+    'shows warning when no APIs are configured',
+    async () => {
+      fetch.mockResolvedValueOnce({
+        json: () => Promise.resolve({
+          ds_api_token: '***',
+          grist_api_key: '***'
+        })
+      })
+
+      await testExternalConnections()
+
+      expect(mockResultDiv.innerHTML).toContain('Aucune API configurée pour le test')
+    }
+  )
+
+  it(
+    'tests DS connection successfully',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            ds_api_token: 'valid-token',
+            ds_api_url: 'https://api.example.com',
+            demarche_number: '123'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+        })
+
+      await testExternalConnections()
+
+      expect(mockResultDiv.innerHTML).toContain('Démarches Simplifiées')
+      expect(mockResultDiv.innerHTML).toContain('DS OK')
+      expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
+    }
+  )
+
+  it(
+    'tests Grist connection with failure',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            grist_api_key: 'valid-key',
+            grist_base_url: 'https://grist.example.com',
+            grist_doc_id: 'doc123'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: false, message: 'Grist failed' })
+        })
+
+      await testExternalConnections()
+
+      expect(mockResultDiv.innerHTML).toContain('Grist')
+      expect(mockResultDiv.innerHTML).toContain('Grist failed')
+      expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
+    }
+  )
+
+  it(
+    'handles fetch errors gracefully',
+    async () => {
+      fetch.mockRejectedValueOnce(new Error('Network error'))
+
+      await testExternalConnections()
+
+      expect(mockResultDiv.innerHTML).toContain('Erreur lors des tests')
+      expect(mockResultDiv.innerHTML).toContain('Network error')
+    }
+  )
+
+  it(
+    'shows success notification for all successful tests',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            ds_api_token: 'token',
+            ds_api_url: 'url',
+            demarche_number: '123',
+            grist_api_key: 'key',
+            grist_base_url: 'base',
+            grist_doc_id: 'doc'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'Grist OK' })
+        })
+
+      await testExternalConnections()
+
+      expect(showNotification).toHaveBeenCalledWith('Tous les tests de connexion réussis (2/2)', 'success')
+    }
+  )
+
+  it(
+    'shows warning notification for partial success',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            ds_api_token: 'token',
+            ds_api_url: 'url',
+            demarche_number: '123',
+            grist_api_key: 'key',
+            grist_base_url: 'base',
+            grist_doc_id: 'doc'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: false, message: 'Grist failed' })
+        })
+
+      await testExternalConnections()
+
+      expect(showNotification).toHaveBeenCalledWith('1/2 connexions réussies', 'warning')
     }
   )
 })

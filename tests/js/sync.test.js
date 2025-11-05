@@ -1,4 +1,11 @@
 /** @jest-environment jsdom */
+jest.mock('../../static/js/utils.js', () => ({
+  formatDuration: jest.fn(seconds => `${seconds}s`)
+}))
+
+jest.mock('../../static/js/notifications.js', () => ({
+  showNotification: jest.fn()
+}))
 
 const { startSync, updateTaskProgress } = require('../../static/js/sync.js')
 
@@ -27,14 +34,12 @@ describe('startSync', () => {
   it(
     'display error if falsy config',
     async () => {
-      // Mock App.showNotification
-      global.App = { showNotification: jest.fn() }
 
       // Appel de la fonction avec config falsy
       await startSync(null)  // Ou undefined, etc.
 
       // Vérifications
-      expect(App.showNotification).toHaveBeenCalledWith('Configuration non chargée', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Configuration non chargée', 'error')
       // Pas d'autres appels (pas de fetch, etc.)
       expect(consoleErrorSpy).not.toHaveBeenCalled()
     }
@@ -54,15 +59,12 @@ describe('startSync', () => {
       // Mock fetch pour lever une erreur
       global.fetch = jest.fn().mockRejectedValue(error)
 
-      // Mock App.showNotification
-      global.App = { showNotification: jest.fn() }
-
       // Appel de la fonction
       await startSync(mockConfig)
 
       // Vérifications
       expect(fetch).toHaveBeenCalled()  // Fetch a été tenté
-      expect(App.showNotification).toHaveBeenCalledWith('Erreur lors du démarrage de la synchronisation', 'error')
+      expect(showNotification).toHaveBeenCalledWith('Erreur lors du démarrage de la synchronisation', 'error')
       expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur:', error)
     }
   )
@@ -96,9 +98,6 @@ describe('startSync', () => {
         json: jest.fn().mockResolvedValue({ success: true, task_id: 'task123' })
       })
 
-      // Mock App.showNotification
-      global.App = { showNotification: jest.fn() }
-
       // Appel de la fonction
       const taskId = await startSync(mockConfig)
 
@@ -116,7 +115,7 @@ describe('startSync', () => {
       expect(document.getElementById('logs_count').textContent).toBe('0')        // Reset
       expect(document.getElementById('logs_content').innerHTML).toBe('')         // Vidé
       expect(taskId).toBe('task123')
-      expect(App.showNotification).toHaveBeenCalledWith('Synchronisation démarrée', 'success')
+      expect(showNotification).toHaveBeenCalledWith('Synchronisation démarrée', 'success')
     }
   )
 })
@@ -137,9 +136,6 @@ describe('updateTaskProgress', () => {
       // Mock startTime globale
       global.startTime = Date.now() - 10000 // 10 secondes écoulées
 
-      // Mock App.formatDuration
-      global.App = { formatDuration: jest.fn(seconds => `${seconds}s`) }
-
       // Objet tâche simulé
       const mockTask = { progress: 50, message: 'Traitement en cours...' }
 
@@ -150,7 +146,7 @@ describe('updateTaskProgress', () => {
       expect(document.getElementById('progress_bar').style.width).toBe('50%')
       expect(document.getElementById('progress_percentage').textContent).toBe('50%')
       expect(document.getElementById('current_status').textContent).toBe('Traitement en cours...')
-      expect(App.formatDuration).toHaveBeenCalledWith(expect.closeTo(10, 0.1)) // Temps écoulé
+      expect(formatDuration).toHaveBeenCalledWith(expect.closeTo(10, 0.1)) // Temps écoulé
   })
 
   it(
@@ -167,12 +163,6 @@ describe('updateTaskProgress', () => {
       <div id="processing_speed">-</div>
       <div id="eta">-</div>`
 
-    // Mock App.showNotification
-    global.App = {
-        showNotification: jest.fn(),
-        formatDuration: jest.fn(seconds => `${seconds}s`)
-      }
-
     // Objet tâche simulé (complétée)
     const mockTask = { status: 'completed', message: 'Sync terminée', progress: 100 }
 
@@ -183,6 +173,6 @@ describe('updateTaskProgress', () => {
     expect(document.getElementById('sync_controls').style.display).toBe('block')
     expect(document.getElementById('sync_result').style.display).toBe('block')
     expect(document.getElementById('result_content').innerHTML).toContain('Synchronisation terminée avec succès')
-    expect(App.showNotification).toHaveBeenCalledWith('Synchronisation terminée avec succès!', 'success')
+    expect(showNotification).toHaveBeenCalledWith('Synchronisation terminée avec succès!', 'success')
   })
 })

@@ -29,6 +29,7 @@
     <!-- Socket.IO -->
     <script src="static/js/socket.io.js"></script>
 
+    <script src="static/js/notifications.js"></script>
     <script src="static/js/gristContext.js"></script>
     <script src="static/js/utils.js"></script>
     <script src="static/js/logs.js"></script>
@@ -157,9 +158,14 @@
           color: var(--text-default-warning);
           text-align: center;
         }
+
         .fr-notice--warning .fr-notice__title:before {
           content: "⚠️";
           margin-right: 1rem;
+        }
+
+        .fr-table {
+          width: 100%;
         }
     </style>
 </head>
@@ -256,6 +262,9 @@
                     <li class="fr-footer__bottom-item">
                         <span class="fr-footer__bottom-link">Version Flask optimisée - {{build_time}}</span>
                     </li>
+                    <li class="fr-footer__bottom-item">
+                        <a class="fr-footer__bottom-link" href="/debug">debug</a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -263,89 +272,30 @@
     
     <script>
         // Initialisation de Socket.IO
-        const socket = io();
+        const socket = io()
         
         // Marquer la page active dans la navigation
         document.addEventListener('DOMContentLoaded', function() {
-            const currentPath = window.location.pathname;
-            const navLinks = document.querySelectorAll('.fr-nav__link');
+            const currentPath = window.location.pathname
+            const navLinks = document.querySelectorAll('.fr-nav__link')
             
             navLinks.forEach(link => {
                 if (link.getAttribute('href') === currentPath || 
                     (currentPath === '/' && link.getAttribute('href') === '/')) {
-                    link.setAttribute('aria-current', 'page');
+                    link.setAttribute('aria-current', 'page')
                 }
-            });
-        });
-        
-        // Utilitaires globaux
-        window.App = {
-            showNotification: function(message, type = 'info') {
-                const typeMap = {
-                    success: 'fr-notice--success',
-                    error: 'fr-notice--error',
-                    warning: 'fr-notice--warning',
-                    info: 'fr-notice--info'
-                };
-                
-                const notification = document.createElement('div');
-                notification.className = `fr-notice ${typeMap[type]} notification fade-in`;
-                notification.innerHTML = `
-                    <div class="fr-container">
-                        <div class="fr-notice__body">
-                            <p class="fr-notice__title">
-                                ${message}
-                            </p>
-                            <button class="fr-btn--close fr-btn" title="Masquer le message" onclick="this.closest('.fr-notice').remove()">
-                                Masquer le message
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
-                document.body.appendChild(notification);
-                
-                // Auto-remove après 5 secondes
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.remove();
-                    }
-                }, type === 'error' ? 10000 : 5000);
-            },
-            
-            formatBytes: function(bytes, decimals = 2) {
-                if (bytes === 0) return '0 Bytes';
-                const k = 1024;
-                const dm = decimals < 0 ? 0 : decimals;
-                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-            },
-            
-            formatDuration: function(seconds) {
-                const hours = Math.floor(seconds / 3600);
-                const minutes = Math.floor((seconds % 3600) / 60);
-                const secs = Math.floor(seconds % 60);
-                
-                if (hours > 0) {
-                    return `${hours}h ${minutes}m ${secs}s`;
-                } else if (minutes > 0) {
-                    return `${minutes}m ${secs}s`;
-                } else {
-                    return `${secs}s`;
-                }
-            }
-        };
+            })
+        })
         
         // Gestion des erreurs Socket.IO
         socket.on('connect_error', function(error) {
-            console.error('Erreur de connexion Socket.IO:', error);
-            App.showNotification('Erreur de connexion en temps réel', 'error');
-        });
+            console.error('Erreur de connexion Socket.IO:', error)
+            showNotification('Erreur de connexion en temps réel', 'error')
+        })
         
         socket.on('connect', function() {
-            console.log('Connecté au serveur via Socket.IO');
-        });
+            console.log('Connecté au serveur via Socket.IO')
+        })
     </script>
     
     {% block scripts %}{% endblock %}

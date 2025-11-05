@@ -1,6 +1,12 @@
+if (typeof formatDuration === 'undefined')
+  ({ formatDuration } = require('./utils.js'))
+
+if (typeof showNotification === 'undefined')
+  ({ showNotification } = require('./notifications.js'))
+
 const startSync = async (config) => {
   if (!config)
-    return App.showNotification('Configuration non chargée', 'error')
+    return showNotification('Configuration non chargée', 'error')
 
   // Collecter les filtres
   const filters = {
@@ -35,7 +41,7 @@ const startSync = async (config) => {
     const result = await response.json()
 
     if (!result.success)
-      return App.showNotification(result.message, 'error')
+      return showNotification(result.message, 'error')
 
     startTime = Date.now()
 
@@ -63,12 +69,12 @@ const startSync = async (config) => {
     document.getElementById('processing_speed').textContent = '-'
     document.getElementById('eta').textContent = '-'
 
-    App.showNotification('Synchronisation démarrée', 'success')
+    showNotification('Synchronisation démarrée', 'success')
 
     return result.task_id
   } catch (error) {
     console.error('Erreur:', error)
-    App.showNotification('Erreur lors du démarrage de la synchronisation', 'error')
+    showNotification('Erreur lors du démarrage de la synchronisation', 'error')
   }
 }
 
@@ -89,7 +95,7 @@ const updateTaskProgress = (task) => {
   // Mettre à jour le temps écoulé
   if (startTime) {
     const elapsed = (Date.now() - startTime) / 1000
-    document.getElementById('elapsed_time').textContent = App.formatDuration(elapsed)
+    document.getElementById('elapsed_time').textContent = formatDuration(elapsed)
 
     // Calculer la vitesse en dossiers/s et l'ETA seulement si on a des données valides
     if (elapsed > 10 && successCount > 0) { // Attendre au moins 10 secondes pour un calcul stable
@@ -103,7 +109,7 @@ const updateTaskProgress = (task) => {
         const remainingTime = remainingProgress / progressRate
 
         if (remainingTime > 0 && remainingTime < 86400) { // Limiter à 24h max
-          etaElement.textContent = App.formatDuration(remainingTime)
+          etaElement.textContent = formatDuration(remainingTime)
         } else {
           etaElement.textContent = '-'
         }
@@ -172,7 +178,7 @@ const updateTaskProgress = (task) => {
         <p><strong>${successCount}</strong> dossiers traités avec succès</p>
       </div>`
 
-      App.showNotification('Synchronisation terminée avec succès!', 'success')
+      showNotification('Synchronisation terminée avec succès!', 'success')
     } else if (task.status === 'completed' && hasSignificantErrors && successCount > 0) {
       resultContent.innerHTML = ` <div class="fr-alert fr-alert--warning">
         <h3 class="fr-alert__title">Synchronisation terminée avec des erreurs</h3>
@@ -180,7 +186,7 @@ const updateTaskProgress = (task) => {
         <p><strong>${successCount}</strong> dossiers traités avec succès, <strong>${errorCount}</strong> en échec</p>
         <p>Taux de réussite: ${successRate.toFixed(1)}%</p>
       </div>`
-      App.showNotification('Synchronisation terminée avec des erreurs', 'warning')
+      showNotification('Synchronisation terminée avec des erreurs', 'warning')
     } else {
       resultContent.innerHTML = `<div class="fr-alert fr-alert--error">
         <h3 class="fr-alert__title">Erreur lors de la synchronisation</h3>
@@ -188,7 +194,7 @@ const updateTaskProgress = (task) => {
         ${errorCount > 0 ? `<p><strong>${errorCount}</strong> erreurs détectées</p>` : ''}
       </div>
       `
-      App.showNotification('Erreur lors de la synchronisation', 'error')
+      showNotification('Erreur lors de la synchronisation', 'error')
     }
 
   }

@@ -1,3 +1,6 @@
+if (typeof showNotification === 'undefined')
+  ({ showNotification } = require('./notifications.js'))
+
 const testDemarchesConnection = async () => {
   const button = document.getElementById('test_ds_btn')
   const resultDiv = document.getElementById('ds_test_result')
@@ -50,20 +53,20 @@ const testDemarchesConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      return App.showNotification(result.message, 'success')
+      return showNotification(result.message, 'success')
     }
 
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>${result.message}</p>
     </div>`
-    App.showNotification(result.message, 'error')
+    showNotification(result.message, 'error')
 
   } catch (error) {
     console.error('Erreur lors du test DS:', error)
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
-    App.showNotification('Erreur lors du test de connexion', 'error')
+    showNotification('Erreur lors du test de connexion', 'error')
   } finally {
     button.disabled = false
     button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'
@@ -130,27 +133,191 @@ const testGristConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      return App.showNotification(result.message, 'success')
+      return showNotification(result.message, 'success')
     }
 
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>${result.message}</p>
     </div>`
 
-    App.showNotification(result.message, 'error')
+    showNotification(result.message, 'error')
 
   } catch (error) {
     console.error('Erreur lors du test Grist:', error)
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
-    App.showNotification('Erreur lors du test de connexion', 'error')
+    showNotification('Erreur lors du test de connexion', 'error')
   } finally {
     button.disabled = false
     button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'
   }
 }
 
+function testWebSocket() {
+  const statusDiv = document.getElementById('websocket_status')
+
+  // Réinitialiser l'état
+  statusDiv.innerHTML = `<div class="fr-alert fr-alert--info">
+    <p>Test de connexion WebSocket en cours...</p>
+  </div>`
+
+  // Tester la connexion WebSocket
+  let wsConnected = false
+
+  const testSocket = io()
+
+  testSocket.on('connect', () => {
+    wsConnected = true
+    clearTimeout(wsTestTimeout)
+
+    statusDiv.innerHTML = `<div class="fr-alert fr-alert--success">
+      <h3 class="fr-alert__title">WebSocket connecté avec succès</h3>
+      <p>ID de connexion: ${testSocket.id}</p>
+    </div>`
+
+    showNotification('WebSocket connecté', 'success')
+    testSocket.disconnect()
+  })
+
+  testSocket.on('connect_error', (error) => {
+    clearTimeout(wsTestTimeout)
+
+    statusDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+      <h3 class="fr-alert__title">Erreur de connexion WebSocket</h3>
+      <p>Erreur: ${error.message || 'Connexion impossible'}</p>
+    </div>`
+
+    showNotification('Erreur WebSocket', 'error')
+  })
+
+  // Timeout après 5 secondes
+  wsTestTimeout = setTimeout(
+    () => {
+      if (!wsConnected) {
+        statusDiv.innerHTML = `<div class="fr-alert fr-alert--warning">
+          <h3 class="fr-alert__title">Timeout de connexion WebSocket</h3>
+          <p>La connexion a pris trop de temps</p>
+        </div>`
+
+        showNotification('Timeout WebSocket', 'warning')
+        testSocket.disconnect()
+      }
+    },
+    5000
+  )
+}
+
+const testExternalConnections = async () => {
+  const resultDiv = document.getElementById('external_tests_result')
+
+  resultDiv.innerHTML = `<div class="fr-alert fr-alert--info">
+    <p>Test des connexions externes en cours...</p>
+  </div>`
+
+  try {
+    // Charger la configuration actuelle
+    const gristContext   = await getGristContext()
+    const configResponse = await fetch(`/api/config${gristContext.params}`)
+    const config         = await configResponse.json()
+    const tests          = []
+
+    // Test Démarches Simplifiées si configuré
+    if (config.ds_api_token && config.ds_api_token !== '***' && config.ds_api_url) {
+      tests.push({
+        name: 'Démarches Simplifiées',
+        test: fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'demarches',
+            api_token: config.ds_api_token,
+            api_url: config.ds_api_url,
+            demarche_number: config.demarche_number
+          })
+        }).then(r => r.json())
+      })
+    }
+
+    // Test Grist si configuré
+    if (config.grist_api_key && config.grist_api_key !== '***' && config.grist_base_url && config.grist_doc_id) {
+      tests.push({
+        name: 'Grist',
+        test: fetch('/api/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'grist',
+            base_url: config.grist_base_url,
+            api_key: config.grist_api_key,
+            doc_id: config.grist_doc_id
+          })
+        }).then(r => r.json())
+      })
+    }
+
+    if (tests.length === 0)
+      return resultDiv.innerHTML = `<div class="fr-alert fr-alert--warning">
+        <h3 class="fr-alert__title">Aucune API configurée pour le test</h3>
+        <p>Configurez d'abord vos connexions dans l'onglet Configuration</p>
+      </div>`
+
+    // Exécuter tous les tests en parallèle
+    const results = await Promise.allSettled(tests.map(t => t.test))
+
+    let html = '<div class="fr-grid-row fr-grid-row--gutters">'
+
+    results.forEach((result, index) => {
+      const testName = tests[index].name
+
+      if (result.status === 'fulfilled' && result.value) {
+        const success = result.value.success
+        const message = result.value.message
+
+        html += `<div class="fr-col-12">
+          <div class="fr-alert ${success ? 'fr-alert--success' : 'fr-alert--error'}">
+            <h4 class="fr-alert__title">${testName}</h4>
+            <p>${message}</p>
+          </div>
+        </div>`
+      } else {
+        html += `<div class="fr-col-12">
+          <div class="fr-alert fr-alert--error">
+            <h4 class="fr-alert__title">${testName}</h4>
+            <p>Erreur de test de connexion</p>
+          </div>
+        </div>`
+      }
+    })
+
+    html += '</div>'
+    resultDiv.innerHTML = html
+
+    // Notification globale
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value && r.value.success).length
+    const totalCount = results.length
+
+    if (successCount === totalCount) 
+      return showNotification(`Tous les tests de connexion réussis (${successCount}/${totalCount})`, 'success')
+
+    showNotification(`${successCount}/${totalCount} connexions réussies`, 'warning')
+
+  } catch (error) {
+    console.error('Erreur lors des tests de connexion:', error)
+    resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+      <h3 class="fr-alert__title">Erreur lors des tests</h3>
+      <p>${error.message}</p>
+    </div>`
+
+    showNotification('Erreur lors des tests de connexion', 'error')
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { testDemarchesConnection, testGristConnection}
+  module.exports = {
+    testDemarchesConnection,
+    testGristConnection,
+    testWebSocket,
+    testExternalConnections
+  }
 }
