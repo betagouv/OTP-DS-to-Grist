@@ -154,6 +154,64 @@ const testGristConnection = async () => {
   }
 }
 
+function testWebSocket() {
+  const statusDiv = document.getElementById('websocket_status')
+
+  // Réinitialiser l'état
+  statusDiv.innerHTML = `<div class="fr-alert fr-alert--info">
+    <p>Test de connexion WebSocket en cours...</p>
+  </div>`
+
+  // Tester la connexion WebSocket
+  let wsConnected = false
+
+  const testSocket = io()
+
+  testSocket.on('connect', () => {
+    wsConnected = true
+    clearTimeout(wsTestTimeout)
+
+    statusDiv.innerHTML = `<div class="fr-alert fr-alert--success">
+      <h3 class="fr-alert__title">WebSocket connecté avec succès</h3>
+      <p>ID de connexion: ${testSocket.id}</p>
+    </div>`
+
+    showNotification('WebSocket connecté', 'success')
+    testSocket.disconnect()
+  })
+
+  testSocket.on('connect_error', (error) => {
+    clearTimeout(wsTestTimeout)
+
+    statusDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+      <h3 class="fr-alert__title">Erreur de connexion WebSocket</h3>
+      <p>Erreur: ${error.message || 'Connexion impossible'}</p>
+    </div>`
+
+    showNotification('Erreur WebSocket', 'error')
+  })
+
+  // Timeout après 5 secondes
+  wsTestTimeout = setTimeout(
+    () => {
+      if (!wsConnected) {
+        statusDiv.innerHTML = `<div class="fr-alert fr-alert--warning">
+          <h3 class="fr-alert__title">Timeout de connexion WebSocket</h3>
+          <p>La connexion a pris trop de temps</p>
+        </div>`
+
+        showNotification('Timeout WebSocket', 'warning')
+        testSocket.disconnect()
+      }
+    },
+    5000
+  )
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { testDemarchesConnection, testGristConnection}
+  module.exports = {
+    testDemarchesConnection,
+    testGristConnection,
+    testWebSocket
+  }
 }

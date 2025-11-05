@@ -1,4 +1,8 @@
-const { testDemarchesConnection, testGristConnection } = require('../../static/js/connections.js')
+const {
+  testDemarchesConnection,
+  testGristConnection,
+  testWebSocket
+} = require('../../static/js/connections.js')
 
 jest.mock('../../static/js/notifications.js', () => ({
   showNotification: jest.fn()
@@ -347,4 +351,76 @@ describe('testGristConnection', () => {
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test Grist:', expect.any(Error))
     }
   )
+})
+
+describe('testWebSocket', () => {
+  let mockStatusDiv, mockSocket
+
+  beforeEach(() => {
+    // Mock DOM
+    mockStatusDiv = { innerHTML: '' }
+    document.getElementById = jest.fn().mockReturnValue(mockStatusDiv)
+
+    // Mock Socket.IO
+    mockSocket = {
+      on: jest.fn(),
+      disconnect: jest.fn(),
+      id: 'test-socket-id'
+    }
+    global.io = jest.fn().mockReturnValue(mockSocket)
+
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+    jest.clearAllMocks()
+  })
+
+  it('displays success message on WebSocket connect', () => {
+    testWebSocket()
+
+    // Trigger connect event
+    const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
+    connectCallback()
+
+    expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
+    expect(mockStatusDiv.innerHTML).toContain('test-socket-id')
+    expect(mockSocket.disconnect).toHaveBeenCalled()
+  })
+
+  it('displays error message on WebSocket connect_error', () => {
+    const mockError = { message: 'Connection failed' }
+    testWebSocket()
+
+    // Trigger connect_error event
+    const errorCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect_error')[1]
+    errorCallback(mockError)
+
+    expect(mockStatusDiv.innerHTML).toContain('Erreur de connexion WebSocket')
+    expect(mockStatusDiv.innerHTML).toContain('Connection failed')
+  })
+
+  it('displays timeout warning when connection takes too long', () => {
+    testWebSocket()
+
+    // Advance time past timeout
+    jest.advanceTimersByTime(5000)
+
+    expect(mockStatusDiv.innerHTML).toContain('Timeout de connexion WebSocket')
+    expect(mockSocket.disconnect).toHaveBeenCalled()
+  })
+
+  it('clears timeout on successful connection', () => {
+    testWebSocket()
+
+    // Trigger connect before timeout
+    const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
+    connectCallback()
+
+    // Timeout should be cleared, so advancing time shouldn't trigger timeout
+    jest.advanceTimersByTime(5000)
+
+    expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
+  })
 })
