@@ -1,7 +1,8 @@
 const {
   testDemarchesConnection,
   testGristConnection,
-  testWebSocket
+  testWebSocket,
+  testExternalConnections
 } = require('../../static/js/connections.js')
 
 jest.mock('../../static/js/notifications.js', () => ({
@@ -377,50 +378,204 @@ describe('testWebSocket', () => {
     jest.clearAllMocks()
   })
 
-  it('displays success message on WebSocket connect', () => {
-    testWebSocket()
+  it(
+    'displays success message on WebSocket connect',
+    () => {
+      testWebSocket()
 
-    // Trigger connect event
-    const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
-    connectCallback()
+      // Trigger connect event
+      const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
+      connectCallback()
 
-    expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
-    expect(mockStatusDiv.innerHTML).toContain('test-socket-id')
-    expect(mockSocket.disconnect).toHaveBeenCalled()
+      expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
+      expect(mockStatusDiv.innerHTML).toContain('test-socket-id')
+      expect(mockSocket.disconnect).toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'displays error message on WebSocket connect_error',
+    () => {
+      const mockError = { message: 'Connection failed' }
+      testWebSocket()
+
+      // Trigger connect_error event
+      const errorCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect_error')[1]
+      errorCallback(mockError)
+
+      expect(mockStatusDiv.innerHTML).toContain('Erreur de connexion WebSocket')
+      expect(mockStatusDiv.innerHTML).toContain('Connection failed')
+    }
+  )
+
+  it(
+    'displays timeout warning when connection takes too long',
+    () => {
+      testWebSocket()
+
+      // Advance time past timeout
+      jest.advanceTimersByTime(5000)
+
+      expect(mockStatusDiv.innerHTML).toContain('Timeout de connexion WebSocket')
+      expect(mockSocket.disconnect).toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'clears timeout on successful connection',
+    () => {
+      testWebSocket()
+
+      // Trigger connect before timeout
+      const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
+      connectCallback()
+
+      // Timeout should be cleared, so advancing time shouldn't trigger timeout
+      jest.advanceTimersByTime(5000)
+
+      expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
+    }
+  )
+})
+
+describe('testExternalConnections', () => {
+  let mockResultDiv
+
+  beforeEach(() => {
+    mockResultDiv = { innerHTML: '' }
+    document.getElementById = jest.fn().mockReturnValue(mockResultDiv)
+    global.fetch = jest.fn()
   })
 
-  it('displays error message on WebSocket connect_error', () => {
-    const mockError = { message: 'Connection failed' }
-    testWebSocket()
-
-    // Trigger connect_error event
-    const errorCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect_error')[1]
-    errorCallback(mockError)
-
-    expect(mockStatusDiv.innerHTML).toContain('Erreur de connexion WebSocket')
-    expect(mockStatusDiv.innerHTML).toContain('Connection failed')
+  afterEach(() => {
+    jest.clearAllMocks()
   })
 
-  it('displays timeout warning when connection takes too long', () => {
-    testWebSocket()
+  it(
+    'shows warning when no APIs are configured',
+    async () => {
+      fetch.mockResolvedValueOnce({
+        json: () => Promise.resolve({
+          ds_api_token: '***',
+          grist_api_key: '***'
+        })
+      })
 
-    // Advance time past timeout
-    jest.advanceTimersByTime(5000)
+      await testExternalConnections()
 
-    expect(mockStatusDiv.innerHTML).toContain('Timeout de connexion WebSocket')
-    expect(mockSocket.disconnect).toHaveBeenCalled()
-  })
+      expect(mockResultDiv.innerHTML).toContain('Aucune API configurée pour le test')
+    }
+  )
 
-  it('clears timeout on successful connection', () => {
-    testWebSocket()
+  it(
+    'tests DS connection successfully',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            ds_api_token: 'valid-token',
+            ds_api_url: 'https://api.example.com',
+            demarche_number: '123'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+        })
 
-    // Trigger connect before timeout
-    const connectCallback = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1]
-    connectCallback()
+      await testExternalConnections()
 
-    // Timeout should be cleared, so advancing time shouldn't trigger timeout
-    jest.advanceTimersByTime(5000)
+      expect(mockResultDiv.innerHTML).toContain('Démarches Simplifiées')
+      expect(mockResultDiv.innerHTML).toContain('DS OK')
+      expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
+    }
+  )
 
-    expect(mockStatusDiv.innerHTML).toContain('WebSocket connecté avec succès')
-  })
+  it(
+    'tests Grist connection with failure',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            grist_api_key: 'valid-key',
+            grist_base_url: 'https://grist.example.com',
+            grist_doc_id: 'doc123'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: false, message: 'Grist failed' })
+        })
+
+      await testExternalConnections()
+
+      expect(mockResultDiv.innerHTML).toContain('Grist')
+      expect(mockResultDiv.innerHTML).toContain('Grist failed')
+      expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
+    }
+  )
+
+  it(
+    'handles fetch errors gracefully',
+    async () => {
+      fetch.mockRejectedValueOnce(new Error('Network error'))
+
+      await testExternalConnections()
+
+      expect(mockResultDiv.innerHTML).toContain('Erreur lors des tests')
+      expect(mockResultDiv.innerHTML).toContain('Network error')
+    }
+  )
+
+  it(
+    'shows success notification for all successful tests',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            ds_api_token: 'token',
+            ds_api_url: 'url',
+            demarche_number: '123',
+            grist_api_key: 'key',
+            grist_base_url: 'base',
+            grist_doc_id: 'doc'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'Grist OK' })
+        })
+
+      await testExternalConnections()
+
+      expect(showNotification).toHaveBeenCalledWith('Tous les tests de connexion réussis (2/2)', 'success')
+    }
+  )
+
+  it(
+    'shows warning notification for partial success',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({
+            ds_api_token: 'token',
+            ds_api_url: 'url',
+            demarche_number: '123',
+            grist_api_key: 'key',
+            grist_base_url: 'base',
+            grist_doc_id: 'doc'
+          })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: false, message: 'Grist failed' })
+        })
+
+      await testExternalConnections()
+
+      expect(showNotification).toHaveBeenCalledWith('1/2 connexions réussies', 'warning')
+    }
+  )
 })
