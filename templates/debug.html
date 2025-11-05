@@ -25,37 +25,37 @@
     <p class="fr-text--lead">Informations système et diagnostics</p>
 </div>
 
-<!-- Informations système -->
-<div class="fr-card fr-mb-4w">
+<!-- Test de connectivité -->
+<div class="fr-card">
     <div class="fr-card__body">
         <div class="fr-card__content">
             <h2 class="fr-card__title">
-                <i class="fas fa-info-circle fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Informations système</span>
+                <i class="fas fa-network-wired fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Test de connectivité</span>
             </h2>
             
             <div class="fr-mt-4w">
                 <div class="fr-grid-row fr-grid-row--gutters">
                     <div class="fr-col-12 fr-col-md-6">
-                        <h3 class="fr-h6">Application</h3>
-                        <div class="fr-table fr-table--no-caption">
-                            <table>
-                                <tbody>
-                                    <tr>
-                                        <td class="fr-text--bold">Version</td>
-                                        <td>Flask optimisée</td>
-                                    </tr>
-                                    <tr>
-                                        <td class="fr-text--bold">WebSocket</td>
-                                        <td>
-                                            <span class="fr-badge fr-badge--success fr-badge--sm">
-                                                <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Activé
-                                            </span>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <h3 class="fr-h6">WebSocket</h3>
+                        <div id="websocket_status" class="fr-mb-3w">
+                            <div class="fr-alert fr-alert--info">
+                                <p>Test de connexion WebSocket...</p>
+                            </div>
                         </div>
+                        <button class="fr-btn fr-btn--secondary" onclick="testWebSocket()">
+                            <i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>
+                            Tester WebSocket
+                        </button>
+                    </div>
+                    
+                    <div class="fr-col-12 fr-col-md-6">
+                        <h3 class="fr-h6">APIs externes</h3>
+                        <button class="fr-btn" onclick="testExternalConnections()">
+                            <i class="fas fa-satellite-dish fr-mr-1w" aria-hidden="true"></i>
+                            Tester les connexions externes
+                        </button>
+                        <div id="external_tests_result" class="fr-mt-3w"></div>
                     </div>
                 </div>
             </div>
@@ -114,43 +114,6 @@
     </div>
 </div>
 
-<!-- Test de connectivité -->
-<div class="fr-card">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">
-                <i class="fas fa-network-wired fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
-                <span style="color: #000091;">Test de connectivité</span>
-            </h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-grid-row fr-grid-row--gutters">
-                    <div class="fr-col-12 fr-col-md-6">
-                        <h3 class="fr-h6">WebSocket</h3>
-                        <div id="websocket_status" class="fr-mb-3w">
-                            <div class="fr-alert fr-alert--info">
-                                <p>Test de connexion WebSocket...</p>
-                            </div>
-                        </div>
-                        <button class="fr-btn fr-btn--secondary" onclick="testWebSocket()">
-                            <i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>
-                            Tester WebSocket
-                        </button>
-                    </div>
-                    
-                    <div class="fr-col-12 fr-col-md-6">
-                        <h3 class="fr-h6">APIs externes</h3>
-                        <button class="fr-btn" onclick="testExternalConnections()">
-                            <i class="fas fa-satellite-dish fr-mr-1w" aria-hidden="true"></i>
-                            Tester les connexions externes
-                        </button>
-                        <div id="external_tests_result" class="fr-mt-3w"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
