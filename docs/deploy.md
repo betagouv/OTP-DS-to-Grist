@@ -41,34 +41,3 @@ Build et run :
 docker build -t ds-to-grist .
 docker run -p 5000:5000 --env-file .env ds-to-grist
 ```
-
-## Avec systemd (Linux)
-
-Créez un service systemd :
-
-```ini
-# /etc/systemd/system/ds-to-grist.service
-[Unit]
-Description=DS to Grist Sync Service
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/path/to/one-trick-pony-ds-grist
-Environment=PATH=/path/to/one-trick-pony-ds-grist/venv/bin
-EnvironmentFile=/path/to/one-trick-pony-ds-grist/.env
-ExecStart=/path/to/one-trick-pony-ds-grist/venv/bin/gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Activation :
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable ds-to-grist
-sudo systemctl start ds-to-grist
-```
