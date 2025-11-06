@@ -33,6 +33,7 @@ package-mode = false
 commitizen = "^4.8.4"
 poethepoet = "^0.37.0"
 pytest = "^7.0.0"
+pytest-cov = "^4.0.0"
 
 [tool.poe.tasks.dev]
 shell = "python app.py"
@@ -48,3 +49,6 @@ shell = "python3 -c \"import secrets; print('FLASK_SECRET_KEY=' + secrets.token_
 help = "Génère une clé secrète de cryptage"
 shell = "python3 -c \"import secrets, base64; print('ENCRYPTION_KEY=' + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\""
 
+[tool.poe.tasks.test-coverage]
+help = "Lance les tests avec rapport de couverture"
+shell = "pytest --cov=. --cov-report=term"
