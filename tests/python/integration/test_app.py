@@ -276,3 +276,227 @@ class TestEndpoints:
 
         data = json.loads(response.data)
         assert 'non trouvée' in data['error']
+
+
+class TestErrorHandling:
+    """Tests d'intégration pour la gestion d'erreurs"""
+
+    @patch('app.test_demarches_api')
+    def test_api_test_connection_demarches_timeout(self, mock_test, client):
+        """Test timeout API Démarches"""
+        mock_test.return_value = (
+            False,
+            "Timeout: L'API met trop de temps à répondre"
+        )
+
+        test_data = {
+            'type': 'demarches',
+            'api_token': 'token',
+            'demarche_number': '123'
+        }
+
+        response = client.post(
+            '/api/test-connection',
+            data=json.dumps(test_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'Timeout' in data['message']
+
+    @patch('app.test_demarches_api')
+    def test_api_test_connection_demarches_invalid_token(
+            self,
+            mock_test,
+            client
+    ):
+        """Test token invalide Démarches"""
+        mock_test.return_value = (False, "Erreur API: Unauthorized")
+
+        test_data = {
+            'type': 'demarches',
+            'api_token': 'invalid-token',
+            'demarche_number': '123'
+        }
+
+        response = client.post(
+            '/api/test-connection',
+            data=json.dumps(test_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'Unauthorized' in data['message']
+
+    @patch('app.test_grist_api')
+    def test_api_test_connection_grist_network_error(self, mock_test, client):
+        """Test erreur réseau Grist"""
+        mock_test.return_value = (
+            False,
+            "Erreur de connexion: Network is unreachable"
+        )
+
+        test_data = {
+            'type': 'grist',
+            'base_url': 'https://grist.test.com',
+            'api_key': 'key',
+            'doc_id': 'doc123'
+        }
+
+        response = client.post(
+            '/api/test-connection',
+            data=json.dumps(test_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'Network' in data['message']
+
+    @patch('app.test_grist_api')
+    def test_api_test_connection_grist_invalid_key(self, mock_test, client):
+        """Test clé API invalide Grist"""
+        mock_test.return_value = (
+            False,
+            "Erreur de connexion à Grist: 401 - Unauthorized"
+        )
+
+        test_data = {
+            'type': 'grist',
+            'base_url': 'https://grist.test.com',
+            'api_key': 'invalid-key',
+            'doc_id': 'doc123'
+        }
+
+        response = client.post(
+            '/api/test-connection',
+            data=json.dumps(test_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert '401' in data['message']
+
+    @patch.object(ConfigManager, 'load_config')
+    def test_api_start_sync_missing_demarche_token(self, mock_load, client):
+        """Test démarrage sync avec token manquant"""
+        mock_load.return_value = {
+            'ds_api_token': '',  # Manquant
+            'demarche_number': '123',
+            'grist_api_key': 'key',
+            'grist_doc_id': 'doc',
+            'grist_user_id': 'user'
+        }
+
+        sync_data = {
+            'grist_user_id': 'user',
+            'grist_doc_id': 'doc',
+            'filters': {}
+        }
+
+        response = client.post(
+            '/api/start-sync',
+            data=json.dumps(sync_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'manquants' in data['message']
+        assert 'ds_api_token' in data['missing_fields']
+
+    @patch.object(ConfigManager, 'load_config')
+    def test_api_start_sync_missing_demarche_number(self, mock_load, client):
+        """Test démarrage sync avec numéro démarche manquant"""
+        mock_load.return_value = {
+            'ds_api_token': 'token',
+            'demarche_number': '',  # Manquant
+            'grist_api_key': 'key',
+            'grist_doc_id': 'doc',
+            'grist_user_id': 'user'
+        }
+
+        sync_data = {
+            'grist_user_id': 'user',
+            'grist_doc_id': 'doc',
+            'filters': {}
+        }
+
+        response = client.post(
+            '/api/start-sync',
+            data=json.dumps(sync_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'manquants' in data['message']
+        assert 'demarche_number' in data['missing_fields']
+
+    @patch('app.run_synchronization_task')
+    @patch.object(ConfigManager, 'load_config')
+    def test_api_start_sync_task_failure(self, mock_load, mock_run, client):
+        """Test échec de tâche de synchronisation"""
+        mock_load.return_value = {
+            'ds_api_token': 'token',
+            'demarche_number': '123',
+            'grist_api_key': 'key',
+            'grist_doc_id': 'doc',
+            'grist_user_id': 'user'
+        }
+        mock_run.return_value = {
+            "success": False,
+            "message": "Erreur lors du traitement"
+        }
+
+        sync_data = {
+            'grist_user_id': 'user',
+            'grist_doc_id': 'doc',
+            'filters': {}
+        }
+
+        response = client.post(
+            '/api/start-sync',
+            data=json.dumps(sync_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True  # Tâche démarrée, même si elle échoue
+        assert 'task_id' in data
+
+    @patch.object(ConfigManager, 'save_config')
+    def test_api_config_post_save_failure(self, mock_save, client):
+        """Test échec de sauvegarde configuration"""
+        mock_save.return_value = False
+
+        config_data = {
+            'ds_api_token': 'token',
+            'ds_api_url': 'url',
+            'demarche_number': '123',
+            'grist_base_url': 'base',
+            'grist_api_key': 'key',
+            'grist_doc_id': 'doc',
+            'grist_user_id': 'user'
+        }
+
+        response = client.post(
+            '/api/config',
+            data=json.dumps(config_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 500
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'Erreur lors de la sauvegarde' in data['message']
