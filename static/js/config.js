@@ -77,9 +77,6 @@ const loadConfiguration = async () => {
     const dsTokenStatus       = document.getElementById('ds_token_status')
     const dsApiUrlElement     = document.getElementById('ds_api_url')
     const dsNumberElement     = document.getElementById('demarche_number')
-    const batchSizeElement    = document.getElementById('batch_size')
-    const maxWorkersElement   = document.getElementById('max_workers')
-    const parallelElement     = document.getElementById('parallel')
 
     // Remplir les autres champs seulement si une configuration a été trouvée
     dsApiTokenElement.value   = ''
@@ -87,9 +84,6 @@ const loadConfiguration = async () => {
     dsNumberElement.value     = hasConfig && config.demarche_number || ''
     gristBaseUrlElement.value = hasConfig && config.grist_base_url || (gristBaseUrl || 'https://grist.numerique.gouv.fr/api')
     gristApiKeyElement.value  = ''
-    batchSizeElement.value    = hasConfig && config.batch_size || 25
-    maxWorkersElement.value   = hasConfig && config.max_workers || 2
-    parallelElement.value     = hasConfig && config.parallel ? 'true' : 'false'
 
     // Mettre à jour les statuts initiaux
     updateDSTokenStatus(config)
@@ -145,9 +139,6 @@ const saveConfiguration = async () => {
     grist_api_key: grist_key || currentConfig.grist_api_key || '',
     grist_doc_id: document.getElementById('grist_doc_id').value,
     grist_user_id: document.getElementById('grist_user_id').value,
-    batch_size: parseInt(document.getElementById('batch_size').value),
-    max_workers: parseInt(document.getElementById('max_workers').value),
-    parallel: document.getElementById('parallel').value === 'true'
   }
 
   // Validation basique
