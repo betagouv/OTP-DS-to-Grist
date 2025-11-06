@@ -123,52 +123,6 @@
 
 <hr class="fr-my-2w"/>
 
-<!-- Configuration avancée -->
-<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">Configuration avancée</h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-grid-row fr-grid-row--gutters">
-                    <div class="fr-col-12 fr-col-md-4">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="batch_size">
-                                Taille des lots
-                                <span class="fr-hint-text">Nombre de dossiers traités par lot (1-100)</span>
-                            </label>
-                            <input class="fr-input" type="number" id="batch_size" name="batch_size" 
-                                   value="25" min="1" max="100">
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-4">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="max_workers">
-                                Workers parallèles
-                                <span class="fr-hint-text">Nombre de threads pour le traitement parallèle (1-10)</span>
-                            </label>
-                            <input class="fr-input" type="number" id="max_workers" name="max_workers" 
-                                   value="2" min="1" max="10">
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-4">
-                        <div class="fr-select-group">
-                            <label class="fr-label" for="parallel">
-                                Traitement parallèle
-                                <span class="fr-hint-text">Active/désactive le traitement parallèle</span>
-                            </label>
-                            <select class="fr-select" id="parallel" name="parallel">
-                                <option value="true">Activé</option>
-                                <option value="false">Désactivé</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Bouton de sauvegarde -->
 <div class="fr-my-4w">
     <div class="fr-col-auto">

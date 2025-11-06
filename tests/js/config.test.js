@@ -110,9 +110,6 @@ describe('loadConfiguration', () => {
       <input id="ds_api_url">
       <input id="demarche_number">
       <input id="grist_api_key">
-      <input id="batch_size">
-      <input id="max_workers">
-      <input id="parallel">
       <div id="ds_token_status"></div>
       <div id="grist_key_status"></div>`
 
@@ -163,9 +160,6 @@ describe('loadConfiguration', () => {
       expect(document.getElementById('ds_api_url').value).toBe('https://api.example.com')
       expect(document.getElementById('demarche_number').value).toBe('123')
       expect(document.getElementById('grist_api_key').value).toBe('')
-      expect(document.getElementById('batch_size').value).toBe('50')
-      expect(document.getElementById('max_workers').value).toBe('4')
-      expect(document.getElementById('parallel').value).toBe('true')
 
       // Vérifications des appels de fonctions
       expect(updateDSTokenStatus).toHaveBeenCalled()
@@ -219,9 +213,6 @@ describe('saveConfiguration', () => {
       <input id="grist_api_key" value="new_key">
       <input id="grist_doc_id" value="doc123">
       <input id="grist_user_id" value="5">
-      <input id="batch_size" value="25">
-      <input id="max_workers" value="2">
-      <input id="parallel" value="true">
       <button onclick="saveConfiguration()">Save</button>
       <div id="ds_token_status"></div>
       <div id="grist_key_status"></div>
@@ -267,10 +258,7 @@ describe('saveConfiguration', () => {
       grist_base_url: 'https://grist.example.com',
       grist_api_key: 'new_key',
       grist_doc_id: 'doc123',
-      grist_user_id: '5',
-      batch_size: 25,
-      max_workers: 2,
-      parallel: true
+      grist_user_id: '5'
     })
 
     expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
