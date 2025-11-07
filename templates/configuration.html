@@ -54,73 +54,68 @@
   </div>
 </section>
 
-<hr class="fr-my-2w"/>
-
 <!-- Configuration Grist -->
-<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">API Grist</h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-grid-row fr-grid-row--gutters">
-                    <div class="fr-col-12 fr-col-md-6 fr-hidden">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="grist_base_url">
-                                URL de base Grist
-                                <span class="fr-hint-text">URL de votre instance Grist</span>
-                            </label>
-                            <input class="fr-input" type="url" id="grist_base_url" name="grist_base_url" 
-                                   value="https://grist.numerique.gouv.fr/api">
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-6">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="grist_api_key">
-                                Clé API Grist
-                                <span class="fr-hint-text">Clé d'accès à votre document Grist</span>
-                            </label>
-                            <input class="fr-input" type="password" id="grist_api_key" name="grist_api_key">
-                            <div id="grist_key_status" class="fr-mt-1v"></div>
-                        </div>
-                    </div>
-                </div>
-                
-                 <div class="fr-mt-3w fr-hidden">
-                     <div class="fr-grid-row fr-grid-row--gutters">
-                         <div class="fr-col-12 fr-col-md-6">
-                             <div class="fr-input-group">
-                                 <label class="fr-label" for="grist_doc_id">
-                                     ID du document Grist
-                                     <span class="fr-hint-text">Identifiant du document de destination</span>
-                                 </label>
-                                 <input class="fr-input" type="text" id="grist_doc_id" name="grist_doc_id">
-                             </div>
-                         </div>
-                         <div class="fr-col-12 fr-col-md-6">
-                             <div class="fr-input-group">
-                                 <label class="fr-label" for="grist_user_id">
-                                     ID utilisateur Grist
-                                     <span class="fr-hint-text">Identifiant de l'utilisateur (récupéré depuis Grist)</span>
-                                 </label>
-                                 <input class="fr-input" type="text" id="grist_user_id" name="grist_user_id">
-                             </div>
-                         </div>
-                     </div>
-                 </div>
-                
-                <div class="fr-mt-4w">
-                    <button class="fr-btn" onclick="testGristConnection()" id="test_grist_btn">
-                        Tester la connexion
-                    </button>
-                    <div id="grist_test_result" class="fr-mt-2w"></div>
-                </div>
-            </div>
+<section class="fr-accordion">
+  <h2 class="fr-accordion__title">
+    <button type="button" id="accordion-grist" class="fr-accordion__btn" aria-expanded="false" aria-controls="accordion-2">API Grist</button>
+  </h2>
+  <div id="accordion-2" class="fr-collapse fr-accordion--light-grey">
+    <div class="fr-mt-4w">
+      <div class="fr-grid-row fr-grid-row--gutters">
+        <div class="fr-col-12 fr-col-md-6 fr-hidden">
+          <div class="fr-input-group">
+            <label class="fr-label" for="grist_base_url">
+              URL de base Grist
+              <span class="fr-hint-text">URL de votre instance Grist</span>
+            </label>
+            <input class="fr-input" type="url" id="grist_base_url" name="grist_base_url" 
+              value="https://grist.numerique.gouv.fr/api">
+          </div>
         </div>
-    </div>
-</div>
+        <div class="fr-col-12 fr-col-md-6">
+          <div class="fr-input-group">
+            <label class="fr-label" for="grist_api_key">
+              Clé API Grist
+              <span class="fr-hint-text">Clé d'accès à votre document Grist</span>
+            </label>
+            <input class="fr-input" type="password" id="grist_api_key" name="grist_api_key">
+            <div id="grist_key_status" class="fr-mt-1v"></div>
+          </div>
+        </div>
+      </div>
 
-<hr class="fr-my-2w"/>
+      <div class="fr-mt-3w fr-hidden">
+        <div class="fr-grid-row fr-grid-row--gutters">
+          <div class="fr-col-12 fr-col-md-6">
+            <div class="fr-input-group">
+              <label class="fr-label" for="grist_doc_id">
+                ID du document Grist
+                <span class="fr-hint-text">Identifiant du document de destination</span>
+              </label>
+              <input class="fr-input" type="text" id="grist_doc_id" name="grist_doc_id">
+            </div>
+          </div>
+          <div class="fr-col-12 fr-col-md-6">
+            <div class="fr-input-group">
+              <label class="fr-label" for="grist_user_id">
+                ID utilisateur Grist
+                <span class="fr-hint-text">Identifiant de l'utilisateur (récupéré depuis Grist)</span>
+              </label>
+              <input class="fr-input" type="text" id="grist_user_id" name="grist_user_id">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fr-mt-4w">
+        <button class="fr-btn" onclick="testGristConnection()" id="test_grist_btn">
+          Tester la connexion
+        </button>
+        <div id="grist_test_result" class="fr-mt-2w"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- Bouton de sauvegarde -->
 <div class="fr-my-4w">
