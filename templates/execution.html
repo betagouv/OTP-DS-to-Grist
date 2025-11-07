@@ -28,146 +28,141 @@
 
 <hr class="fr-my-2w"/>
 
-<!-- Filtres de données -->
-<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-             <h2 class="fr-card__title">3. Paramètres</h2>
-            
-            <!-- Filtres par date -->
-            <div class="fr-mt-4w">
-                <fieldset class="fr-fieldset" aria-labelledby="date-filter-legend">
-                    <legend class="fr-fieldset__legend" id="date-filter-legend">
-                        Filtrer par date de dépôt
-                        <span class="fr-hint-text">Sélectionnez une période pour limiter les dossiers à synchroniser</span>
-                    </legend>
-                    
-                    <div class="fr-fieldset__content">
-                        <div class="fr-grid-row fr-grid-row--gutters">
-                            <div class="fr-col-12 fr-col-md-6">
-                                <div class="fr-input-group">
-                                    <label class="fr-label" for="date_debut">
-                                        Date de début
-                                        <span class="fr-hint-text">Dossiers déposés à partir de cette date (inclus)</span>
-                                    </label>
-                                    <input class="fr-input" type="date" id="date_debut" name="date_debut">
-                                </div>
-                            </div>
-                            <div class="fr-col-12 fr-col-md-6">
-                                <div class="fr-input-group">
-                                    <label class="fr-label" for="date_fin">
-                                        Date de fin
-                                        <span class="fr-hint-text">Dossiers déposés jusqu'à cette date (inclus)</span>
-                                    </label>
-                                    <input class="fr-input" type="date" id="date_fin" name="date_fin">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </fieldset>
+<section class="fr-accordion">
+  <h2 class="fr-accordion__title">
+    <button type="button" id="accordion-settings" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-3">3. Paramètres</button>
+  </h2>
+  <div id="accordion-3" class="fr-collapse fr-accordion--light-grey">
+    <div class="fr-mt-4w">
+      <fieldset class="fr-fieldset" aria-labelledby="date-filter-legend">
+        <legend class="fr-fieldset__legend" id="date-filter-legend">
+          Filtrer par date de dépôt
+          <span class="fr-hint-text">Sélectionnez une période pour limiter les dossiers à synchroniser</span>
+        </legend>
+
+        <div class="fr-fieldset__content">
+          <div class="fr-grid-row fr-grid-row--gutters">
+            <div class="fr-col-12 fr-col-md-6">
+              <div class="fr-input-group">
+                <label class="fr-label" for="date_debut">
+                  Date de début
+                  <span class="fr-hint-text">Dossiers déposés à partir de cette date (inclus)</span>
+                </label>
+                <input class="fr-input" type="date" id="date_debut" name="date_debut">
+              </div>
             </div>
 
-            <!-- Filtres par statut -->
-            <div class="fr-mt-4w">
-                <fieldset class="fr-fieldset" aria-labelledby="status-filter-legend">
-                    <legend class="fr-fieldset__legend" id="status-filter-legend">
-                        Filtrer par statut
-                        <span class="fr-hint-text">Aucune sélection = tous les statuts</span>
-                    </legend>
-                    
-                    <div class="fr-fieldset__content">
-                        <div class="fr-grid-row fr-grid-row--gutters">
-                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
-                                <div class="fr-checkbox-group">
-                                    <input type="checkbox" id="statut_construction" name="statuts" value="en_construction">
-                                    <label class="fr-label" for="statut_construction">En construction</label>
-                                </div>
-                            </div>
-                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
-                                <div class="fr-checkbox-group">
-                                    <input type="checkbox" id="statut_instruction" name="statuts" value="en_instruction">
-                                    <label class="fr-label" for="statut_instruction">En instruction</label>
-                                </div>
-                            </div>
-                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
-                                <div class="fr-checkbox-group">
-                                    <input type="checkbox" id="statut_accepte" name="statuts" value="accepte">
-                                    <label class="fr-label" for="statut_accepte">Accepté</label>
-                                </div>
-                            </div>
-                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
-                                <div class="fr-checkbox-group">
-                                    <input type="checkbox" id="statut_refuse" name="statuts" value="refuse">
-                                    <label class="fr-label" for="statut_refuse">Refusé</label>
-                                </div>
-                            </div>
-                            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
-                                <div class="fr-checkbox-group">
-                                    <input type="checkbox" id="statut_sans_suite" name="statuts" value="sans_suite">
-                                    <label class="fr-label" for="statut_sans_suite">Sans suite</label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </fieldset>
+            <div class="fr-col-12 fr-col-md-6">
+              <div class="fr-input-group">
+                <label class="fr-label" for="date_fin">
+                  Date de fin
+                  <span class="fr-hint-text">Dossiers déposés jusqu'à cette date (inclus)</span>
+                </label>
+                <input class="fr-input" type="date" id="date_fin" name="date_fin">
+              </div>
             </div>
-
-            <!-- Filtres par groupe instructeur -->
-            <div class="fr-mt-4w">
-                <fieldset class="fr-fieldset" aria-labelledby="group-filter-legend">
-                    <legend class="fr-fieldset__legend" id="group-filter-legend">
-                        Filtrer par groupe instructeur
-                        <span class="fr-hint-text">Aucune sélection = tous les groupes</span>
-                    </legend>
-                    
-                    <div class="fr-fieldset__content">
-                        <div id="groupes_container">
-                            <div class="fr-alert fr-alert--info">
-                                <p>Chargement des groupes instructeurs...</p>
-                            </div>
-                        </div>
-                    </div>
-                </fieldset>
-             </div>
-
-             <!-- Synchronisation automatique -->
-             <div class="fr-mt-4w">
-                 <fieldset class="fr-fieldset" aria-labelledby="auto-sync-legend">
-                     <legend class="fr-fieldset__legend" id="auto-sync-legend">
-                         Synchronisation automatique
-                         <span class="fr-hint-text">Activez pour synchroniser automatiquement les données chaque jour à minuit</span>
-                     </legend>
-
-                     <div class="fr-fieldset__content">
-                         <div class="fr-checkbox-group">
-                             <input type="checkbox" id="auto_sync_enabled" name="auto_sync_enabled" onchange="toggleAutoSync(this.checked)">
-                             <label class="fr-label" for="auto_sync_enabled">Activer la synchronisation automatique</label>
-                         </div>
-                         <div id="last_sync_status" class="fr-mt-2w" style="display: none;"></div>
-                     </div>
-                 </fieldset>
-             </div>
-
-             <!-- Boutons d'action pour les filtres -->
-            <div class="fr-mt-4w">
-                <ul class="fr-btns-group">
-                    <li>
-                        <button class="fr-btn" onclick="applyFilters()">
-                            Appliquer les filtres
-                        </button>
-                    </li>
-                    <li>
-                        <button class="fr-btn fr-btn--secondary" onclick="resetFilters()">
-                            Réinitialiser
-                        </button>
-                    </li>
-                </ul>
-            </div>
+          </div>
         </div>
+      </fieldset>
     </div>
-</div>
 
-<hr class="fr-my-2w"/>
+    <!-- Filtres par statut -->
+    <div class="fr-mt-4w">
+      <fieldset class="fr-fieldset" aria-labelledby="status-filter-legend">
+        <legend class="fr-fieldset__legend" id="status-filter-legend">
+          Filtrer par statut
+          <span class="fr-hint-text">Aucune sélection = tous les statuts</span>
+        </legend>
+
+        <div class="fr-fieldset__content">
+          <div class="fr-grid-row fr-grid-row--gutters">
+            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+              <div class="fr-checkbox-group">
+                <input type="checkbox" id="statut_construction" name="statuts" value="en_construction">
+                <label class="fr-label" for="statut_construction">En construction</label>
+              </div>
+            </div>
+            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+              <div class="fr-checkbox-group">
+                <input type="checkbox" id="statut_instruction" name="statuts" value="en_instruction">
+                <label class="fr-label" for="statut_instruction">En instruction</label>
+              </div>
+            </div>
+            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+              <div class="fr-checkbox-group">
+                <input type="checkbox" id="statut_accepte" name="statuts" value="accepte">
+                <label class="fr-label" for="statut_accepte">Accepté</label>
+              </div>
+            </div>
+            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+              <div class="fr-checkbox-group">
+                <input type="checkbox" id="statut_refuse" name="statuts" value="refuse">
+                <label class="fr-label" for="statut_refuse">Refusé</label>
+              </div>
+            </div>
+            <div class="fr-col-6 fr-col-md-4 fr-col-lg-2">
+              <div class="fr-checkbox-group">
+                <input type="checkbox" id="statut_sans_suite" name="statuts" value="sans_suite">
+                <label class="fr-label" for="statut_sans_suite">Sans suite</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- Filtres par groupe instructeur -->
+    <div class="fr-mt-4w">
+      <fieldset class="fr-fieldset" aria-labelledby="group-filter-legend">
+        <legend class="fr-fieldset__legend" id="group-filter-legend">
+          Filtrer par groupe instructeur
+          <span class="fr-hint-text">Aucune sélection = tous les groupes</span>
+        </legend>
+
+        <div class="fr-fieldset__content">
+          <div id="groupes_container">
+            <div class="fr-alert fr-alert--info">
+              <p>Chargement des groupes instructeurs...</p>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="fr-mt-4w">
+      <fieldset class="fr-fieldset" aria-labelledby="auto-sync-legend">
+        <legend class="fr-fieldset__legend" id="auto-sync-legend">
+          Synchronisation automatique
+          <span class="fr-hint-text">Activez pour synchroniser automatiquement les données chaque jour à minuit</span>
+        </legend>
+
+        <div class="fr-fieldset__content">
+          <div class="fr-checkbox-group">
+            <input type="checkbox" id="auto_sync_enabled" name="auto_sync_enabled" onchange="toggleAutoSync(this.checked)">
+            <label class="fr-label" for="auto_sync_enabled">Activer la synchronisation automatique</label>
+          </div>
+          <div id="last_sync_status" class="fr-mt-2w" style="display: none;"></div>
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- Boutons d'action pour les filtres -->
+    <div class="fr-mt-4w">
+      <ul class="fr-btns-group">
+        <li>
+          <button class="fr-btn" onclick="applyFilters()">
+            Appliquer les filtres
+          </button>
+        </li>
+        <li>
+          <button class="fr-btn fr-btn--secondary" onclick="resetFilters()">
+            Réinitialiser
+          </button>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
 
 <!-- Filtres actifs -->
 <div id="active_filters" class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border" style="display: none;">
