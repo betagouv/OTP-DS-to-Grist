@@ -129,7 +129,6 @@ const loadConfiguration = async () => {
 }
 
 const saveConfiguration = async () => {
-  checkConfiguration()
   const dsApiTokenElement = document.getElementById('ds_api_token')
   const dsToken = dsApiTokenElement.value
   const gristKeyElement = document.getElementById('grist_api_key')
@@ -164,12 +163,6 @@ const saveConfiguration = async () => {
   }
 
   try {
-    // Afficher un indicateur de chargement
-    const saveButton = document.querySelector('button[onclick="saveConfiguration()"]')
-    const originalText = saveButton.innerHTML
-    saveButton.disabled = true
-    saveButton.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Sauvegarde...'
-
     const response = await fetch('/api/config', {
       method: 'POST',
       headers: {
@@ -205,19 +198,9 @@ const saveConfiguration = async () => {
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
     }
-
-    // Restaurer le bouton
-    saveButton.disabled = false
-    saveButton.innerHTML = originalText
-
   } catch (error) {
     console.error('Erreur:', error)
     showNotification('Erreur lors de la sauvegarde', 'error')
-
-    // Restaurer le bouton en cas d'erreur
-    const saveButton = document.querySelector('button[onclick="saveConfiguration()"]')
-    saveButton.disabled = false
-    saveButton.innerHTML = '<i class="fas fa-save fr-mr-1w" aria-hidden="true"></i>Sauvegarder la configuration'
   }
 }
 

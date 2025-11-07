@@ -284,17 +284,20 @@
         const socket = io()
         
         // Marquer la page active dans la navigation
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener(
+          'DOMContentLoaded',
+          () => {
             const currentPath = window.location.pathname
             const navLinks = document.querySelectorAll('.fr-nav__link')
-            
+
             navLinks.forEach(link => {
-                if (link.getAttribute('href') === currentPath || 
-                    (currentPath === '/' && link.getAttribute('href') === '/')) {
-                    link.setAttribute('aria-current', 'page')
-                }
+              if (link.getAttribute('href') === currentPath || 
+                (currentPath === '/' && link.getAttribute('href') === '/')) {
+                link.setAttribute('aria-current', 'page')
+              }
             })
-        })
+          }
+        )
         
         // Gestion des erreurs Socket.IO
         socket.on('connect_error', function(error) {
@@ -305,6 +308,19 @@
         socket.on('connect', function() {
             console.log('Connecté au serveur via Socket.IO')
         })
+
+        const inputsConfig = document.querySelectorAll('.input-config')
+        inputsConfig.forEach(input => input.addEventListener(
+          'blur',
+          async () => {
+            const allFilled = Array.from(inputsConfig).every(input => !!input.value)
+
+            if (allFilled)
+              await saveConfiguration()
+
+            checkConfiguration()
+          }
+        ))
     </script>
     
     {% block scripts %}{% endblock %}
