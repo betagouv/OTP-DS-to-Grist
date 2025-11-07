@@ -99,11 +99,13 @@ const loadConfiguration = async () => {
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
         </span>`
       dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
+      document.querySelector('#accordion-ds').setAttribute('aria-expanded', false)
     } else {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
         </span>`
       dsApiTokenElement.placeholder = ''
+      document.querySelector('#accordion-ds').setAttribute('aria-expanded', true)
     }
 
     if (config.grist_api_key) {
