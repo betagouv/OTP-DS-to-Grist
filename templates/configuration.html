@@ -17,7 +17,7 @@
               Token API
               <span class="fr-hint-text">Votre token d'accès personnel à l'API</span>
             </label>
-            <input class="fr-input" type="password" id="ds_api_token" name="ds_api_token">
+            <input class="fr-input input-config" type="password" id="ds_api_token" name="ds_api_token">
             <div id="ds_token_status" class="fr-mt-1v"></div>
           </div>
         </div>
@@ -27,7 +27,7 @@
               URL de l'API
               <span class="fr-hint-text">Point d'entrée GraphQL de l'API</span>
             </label>
-            <input class="fr-input" type="url" id="ds_api_url" name="ds_api_url" 
+            <input class="fr-input input-config" type="url" id="ds_api_url" name="ds_api_url" 
               value="https://www.demarches-simplifiees.fr/api/v2/graphql">
           </div>
         </div>
@@ -39,7 +39,7 @@
             Numéro de démarche
             <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
           </label>
-          <input class="fr-input" type="number" id="demarche_number" name="demarche_number" 
+          <input class="fr-input input-config" type="number" id="demarche_number" name="demarche_number" 
             placeholder="Ex: 12345" style="max-width: 200px;">
         </div>
       </div>
@@ -68,7 +68,7 @@
               URL de base Grist
               <span class="fr-hint-text">URL de votre instance Grist</span>
             </label>
-            <input class="fr-input" type="url" id="grist_base_url" name="grist_base_url" 
+            <input class="fr-input input-config" type="url" id="grist_base_url" name="grist_base_url" 
               value="https://grist.numerique.gouv.fr/api">
           </div>
         </div>
@@ -78,7 +78,7 @@
               Clé API Grist
               <span class="fr-hint-text">Clé d'accès à votre document Grist</span>
             </label>
-            <input class="fr-input" type="password" id="grist_api_key" name="grist_api_key">
+            <input class="fr-input input-config" type="password" id="grist_api_key" name="grist_api_key">
             <div id="grist_key_status" class="fr-mt-1v"></div>
           </div>
         </div>
@@ -92,7 +92,7 @@
                 ID du document Grist
                 <span class="fr-hint-text">Identifiant du document de destination</span>
               </label>
-              <input class="fr-input" type="text" id="grist_doc_id" name="grist_doc_id">
+              <input class="fr-input input-config" type="text" id="grist_doc_id" name="grist_doc_id">
             </div>
           </div>
           <div class="fr-col-12 fr-col-md-6">
@@ -101,7 +101,7 @@
                 ID utilisateur Grist
                 <span class="fr-hint-text">Identifiant de l'utilisateur (récupéré depuis Grist)</span>
               </label>
-              <input class="fr-input" type="text" id="grist_user_id" name="grist_user_id">
+              <input class="fr-input input-config" type="text" id="grist_user_id" name="grist_user_id">
             </div>
           </div>
         </div>
@@ -116,12 +116,3 @@
     </div>
   </div>
 </section>
-
-<!-- Bouton de sauvegarde -->
-<div class="fr-my-4w">
-    <div class="fr-col-auto">
-        <button class="fr-btn fr-btn--lg" onclick="saveConfiguration()">
-            Sauvegarder la configuration
-        </button>
-    </div>
-</div>
