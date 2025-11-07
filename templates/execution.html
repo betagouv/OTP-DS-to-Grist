@@ -1,32 +1,14 @@
-<!-- Statut de la configuration -->
-<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">Statut de la configuration</h2>
-            <div id="config_check_result" class="fr-mt-2w">
-                <div class="fr-alert fr-alert--info">
-                    <p>Vérification de la configuration en cours...</p>
-        </div>
-    </div>
-</div>
-
 <script>
     // Initialisation de la page d'exécution
     document.addEventListener('DOMContentLoaded', async function() {
         // Vérifier la configuration
         const config = await checkConfiguration()
 
-        if (config) {
+        if (config)
             // Charger l'état de la synchronisation automatique
             await loadAutoSyncState()
-        }
     })
 </script>
-
-    </div>
-</div>
-
-<hr class="fr-my-2w"/>
 
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
