@@ -4,56 +4,55 @@
 </div>
 
 <!-- Configuration Démarches Simplifiées -->
-<div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">API Démarches Simplifiées</h2>
-            
-            <div class="fr-mt-4w">
-                <div class="fr-grid-row fr-grid-row--gutters">
-                    <div class="fr-col-12 fr-col-md-6">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="ds_api_token">
-                                Token API
-                                <span class="fr-hint-text">Votre jeton d'identification à l'API</span>
-                            </label>
-                            <input class="fr-input" type="password" id="ds_api_token" name="ds_api_token">
-                            <div id="ds_token_status" class="fr-mt-1v"></div>
-                        </div>
-                    </div>
-                    <div class="fr-col-12 fr-col-md-6 fr-hidden">
-                        <div class="fr-input-group">
-                            <label class="fr-label" for="ds_api_url">
-                                URL de l'API
-                                <span class="fr-hint-text">Point d'entrée GraphQL de l'API</span>
-                            </label>
-                            <input class="fr-input" type="url" id="ds_api_url" name="ds_api_url" 
-                                   value="https://www.demarches-simplifiees.fr/api/v2/graphql">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="fr-mt-3w">
-                    <div class="fr-input-group">
-                        <label class="fr-label" for="demarche_number">
-                            Numéro de démarche
-                            <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
-                        </label>
-                        <input class="fr-input" type="number" id="demarche_number" name="demarche_number" 
-                               placeholder="Ex: 12345" style="max-width: 200px;">
-                    </div>
-                </div>
-                
-                <div class="fr-mt-4w">
-                    <button class="fr-btn" onclick="testDemarchesConnection()" id="test_ds_btn">
-                        Tester la connexion
-                    </button>
-                    <div id="ds_test_result" class="fr-mt-2w"></div>
-                </div>
-            </div>
+<section class="fr-accordion">
+  <h2 class="fr-accordion__title">
+    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="false" aria-controls="accordion-1">API Démarches Simplifiées</button>
+  </h2>
+  <div id="accordion-1" class="fr-collapse fr-accordion--light-grey">
+    <div class="fr-mt-2w fr-px-2w">
+      <div class="fr-grid-row fr-grid-row--gutters">
+        <div class="fr-col-12 fr-col-md-6">
+          <div class="fr-input-group">
+            <label class="fr-label" for="ds_api_token">
+              Token API
+              <span class="fr-hint-text">Votre token d'accès personnel à l'API</span>
+            </label>
+            <input class="fr-input" type="password" id="ds_api_token" name="ds_api_token">
+            <div id="ds_token_status" class="fr-mt-1v"></div>
+          </div>
         </div>
+        <div class="fr-col-12 fr-col-md-6 fr-hidden">
+          <div class="fr-input-group">
+            <label class="fr-label" for="ds_api_url">
+              URL de l'API
+              <span class="fr-hint-text">Point d'entrée GraphQL de l'API</span>
+            </label>
+            <input class="fr-input" type="url" id="ds_api_url" name="ds_api_url" 
+              value="https://www.demarches-simplifiees.fr/api/v2/graphql">
+          </div>
+        </div>
+      </div>
+
+      <div class="fr-mt-3w">
+        <div class="fr-input-group">
+          <label class="fr-label" for="demarche_number">
+            Numéro de démarche
+            <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
+          </label>
+          <input class="fr-input" type="number" id="demarche_number" name="demarche_number" 
+            placeholder="Ex: 12345" style="max-width: 200px;">
+        </div>
+      </div>
+
+      <div class="fr-mt-4w">
+        <button class="fr-btn" onclick="testDemarchesConnection()" id="test_ds_btn">
+          Tester la connexion
+        </button>
+        <div id="ds_test_result" class="fr-mt-2w"></div>
+      </div>
     </div>
-</div>
+  </div>
+</section>
 
 <hr class="fr-my-2w"/>
 
