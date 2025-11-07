@@ -113,10 +113,12 @@ const loadConfiguration = async () => {
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
         </span>`
       gristApiKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
+      document.querySelector('#accordion-grist').setAttribute('aria-expanded', false)
     } else {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
         </span>`
+      document.querySelector('#accordion-grist').setAttribute('aria-expanded', true)
     }
 
     return config
