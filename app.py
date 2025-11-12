@@ -165,6 +165,7 @@ class ConfigManager:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS otp_configurations (
+                    id SERIAL PRIMARY KEY,
                     ds_api_token TEXT,
                     demarche_number TEXT,
                     grist_base_url TEXT,
@@ -176,6 +177,35 @@ class ConfigManager:
             cursor.execute("""
                 ALTER TABLE otp_configurations
                 ADD COLUMN IF NOT EXISTS grist_user_id TEXT DEFAULT ''
+            """)
+
+            cursor.execute("""
+                ALTER TABLE otp_configurations
+                ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY
+            """)
+
+            # Créer table user_schedules
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_schedules (
+                    id SERIAL PRIMARY KEY,
+                    otp_config_id INTEGER REFERENCES otp_configurations(id) ON DELETE SET NULL,
+                    frequency TEXT DEFAULT 'daily',
+                    enabled BOOLEAN DEFAULT FALSE,
+                    last_run TIMESTAMP,
+                    next_run TIMESTAMP
+                )
+            """)
+
+            # Créer table sync_logs
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sync_logs (
+                    id SERIAL PRIMARY KEY,
+                    grist_user_id TEXT,
+                    grist_doc_id TEXT,
+                    status TEXT,
+                    message TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
             """)
 
             # Insérer une ligne vide si la table est vide
