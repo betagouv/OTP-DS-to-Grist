@@ -31,6 +31,17 @@ from sqlalchemy.orm import sessionmaker
 Base = declarative_base()
 
 
+class OtpConfiguration(Base):
+    __tablename__ = 'otp_configurations'
+    id = Column(Integer, primary_key=True)
+    ds_api_token = Column(String)
+    demarche_number = Column(String)
+    grist_base_url = Column(String)
+    grist_api_key = Column(String)
+    grist_doc_id = Column(String)
+    grist_user_id = Column(String)
+
+
 class UserSchedule(Base):
     __tablename__ = 'user_schedules'
     id = Column(Integer, primary_key=True)
@@ -783,9 +794,25 @@ def api_config():
             grist_user_id = request.args.get('grist_user_id')
             grist_doc_id = request.args.get('grist_doc_id')
 
-            config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
+            config = ConfigManager.load_config(
+                grist_user_id=grist_user_id,
+                grist_doc_id=grist_doc_id
+            )
 
-            # Garder les vraies valeurs pour la logique côté client, masquer seulement pour affichage
+            # Ajouter l'id de la configuration
+            db = SessionLocal()
+            try:
+                otp_config = db.query(OtpConfiguration).filter_by(
+                    grist_user_id=grist_user_id,
+                    grist_doc_id=grist_doc_id
+                ).first()
+                if otp_config:
+                    config['otp_config_id'] = otp_config.id
+            finally:
+                db.close()
+
+            # Garder les vraies valeurs pour la logique côté client,
+            # masquer seulement pour affichage
             config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
             config['ds_api_token_exists'] = bool(config['ds_api_token'])
             config['grist_api_key_masked'] = '***' if config['grist_api_key'] else ''
@@ -794,7 +821,7 @@ def api_config():
             return jsonify(config)
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
-    
+
     elif request.method == 'POST':
         try:
             new_config = request.get_json()
@@ -816,15 +843,99 @@ def api_config():
             
             # Sauvegarder la configuration
             success = ConfigManager.save_config(new_config)
-            
+
             if success:
-                return jsonify({"success": True, "message": "Configuration sauvegardée avec succès"})
+                # Récupérer l'ID de la configuration sauvegardée
+                db = SessionLocal()
+                try:
+                    otp_config = db.query(OtpConfiguration).filter_by(
+                        grist_user_id=new_config.get('grist_user_id'),
+                        grist_doc_id=new_config.get('grist_doc_id')
+                    ).first()
+                    otp_config_id = otp_config.id if otp_config else None
+                finally:
+                    db.close()
+
+                return jsonify({
+                    "success": True,
+                    "message": "Configuration sauvegardée avec succès",
+                    "otp_config_id": otp_config_id
+                })
             else:
-                return jsonify({"success": False, "message": "Erreur lors de la sauvegarde"}), 500
-                
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "Erreur lors de la sauvegarde"
+                    }
+                ), 500
+
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
-            return jsonify({"success": False, "message": f"Erreur: {str(e)}"}), 500
+            return jsonify(
+                {"success": False, "message": f"Erreur: {str(e)}"}
+            ), 500
+
+
+@app.route('/api/schedule', methods=['POST', 'DELETE'])
+def api_schedule():
+    """API pour gérer les plannings de synchronisation"""
+    data = request.get_json()
+    otp_config_id = data.get('otp_config_id')
+
+    if not otp_config_id:
+        return jsonify(
+            {"success": False, "message": "otp_config_id is required"}
+        ), 400
+
+    db = SessionLocal()
+
+    try:
+        # Trouver la configuration
+        otp_config = db.query(OtpConfiguration).filter_by(
+            id=otp_config_id
+        ).first()
+
+        if not otp_config:
+            return jsonify(
+                {"success": False, "message": "Configuration not found"}
+            ), 404
+
+        if request.method == 'POST':
+            # Activer le planning
+            schedule = db.query(UserSchedule).filter_by(
+                otp_config_id=otp_config.id
+            ).first()
+
+            if schedule:
+                schedule.enabled = True
+            else:
+                schedule = UserSchedule(
+                    otp_config_id=otp_config.id,
+                    enabled=True
+                )
+                db.add(schedule)
+            db.commit()
+
+            return jsonify({"success": True, "message": "Schedule enabled"})
+
+        elif request.method == 'DELETE':
+            # Désactiver le planning
+            schedule = db.query(UserSchedule).filter_by(
+                otp_config_id=otp_config.id
+            ).first()
+
+            if schedule:
+                schedule.enabled = False
+                db.commit()
+
+            return jsonify({"success": True, "message": "Schedule disabled"})
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erreur dans api_schedule: {str(e)}")
+        return jsonify({"success": False, "message": f"Erreur: {str(e)}"}), 500
+    finally:
+        db.close()
 
 
 @app.route('/api/test-connection', methods=['POST'])
@@ -832,7 +943,7 @@ def api_test_connection():
     """API pour tester les connexions"""
     data = request.get_json()
     connection_type = data.get('type')
-    
+
     if connection_type == 'demarches':
         success, message = test_demarches_api(
             data.get('api_token'),
