@@ -25,7 +25,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey
 )
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
@@ -75,14 +75,14 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv()
 
 DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required for database operations"
+    )
 
 # SQLAlchemy setup
-if DATABASE_URL:
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-else:
-    engine = None
-    SessionLocal = None
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class TaskManager:
@@ -203,8 +203,6 @@ class ConfigManager:
     @staticmethod
     def get_db_connection():
         """Établit une connexion à la base de données PostgreSQL"""
-        if not DATABASE_URL:
-            return None
         logger.info(f"DATABASE_URL: {DATABASE_URL}")
         try:
             return psycopg2.connect(DATABASE_URL)

@@ -1,6 +1,11 @@
 import pytest
 import json
 from unittest.mock import patch
+import os
+
+# Mock DATABASE_URL for tests
+os.environ['DATABASE_URL'] = 'postgresql://test:test@localhost/testdb'
+
 from app import app, ConfigManager, task_manager
 
 
