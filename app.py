@@ -1,6 +1,5 @@
 """
-Application Flask optimisée pour la synchronisation Démarches Simplifiées vers Grist
-Version corrigée avec sauvegarde et persistence des configurations
+Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
 from flask import Flask, render_template, request, jsonify
@@ -10,22 +9,62 @@ import sys
 import time
 import threading
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 import requests
 from werkzeug.serving import WSGIRequestHandler
 import psycopg2
 from cryptography.fernet import Fernet
+import logging
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Boolean,
+    DateTime,
+    ForeignKey
+)
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+Base = declarative_base()
+
+
+class UserSchedule(Base):
+    __tablename__ = 'user_schedules'
+    id = Column(Integer, primary_key=True)
+    otp_config_id = Column(
+        Integer,
+        ForeignKey('otp_configurations.id', ondelete='SET NULL')
+    )
+    frequency = Column(String, default='daily')
+    enabled = Column(Boolean, default=False)
+    last_run = Column(DateTime)
+    next_run = Column(DateTime)
+
+
+class SyncLog(Base):
+    __tablename__ = 'sync_logs'
+    id = Column(Integer, primary_key=True)
+    grist_user_id = Column(String)
+    grist_doc_id = Column(String)
+    status = Column(String)
+    message = Column(String)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 
 DEMARCHES_API_URL = "https://www.demarches-simplifiees.fr/api/v2/graphql"
 
 # Configuration de l'application Flask
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-in-production-2024')
+app.secret_key = os.environ.get(
+    'FLASK_SECRET_KEY',
+    'dev-key-change-in-production-2024'
+)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 # Configuration du logging pour Flask
-import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -35,9 +74,23 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 # Chargement des variables d'environnement
 load_dotenv()
 
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+# SQLAlchemy setup
+if DATABASE_URL:
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+else:
+    engine = None
+    SessionLocal = None
+
+
 class TaskManager:
-    """Gestionnaire de tâches asynchrones avec WebSocket pour les mises à jour en temps réel"""
-    
+    """
+    Gestionnaire de tâches asynchrones avec WebSocket
+    pour les mises à jour en temps réel
+    """
+
     def __init__(self):
         self.tasks = {}
         self.task_counter = 0
@@ -116,13 +169,15 @@ class TaskManager:
             'task_id': task_id,
             'task': self.tasks[task_id]
         })
-    
+
     def get_task(self, task_id):
         """Récupère les informations d'une tâche"""
         return self.tasks.get(task_id)
 
+
 # Instance globale du gestionnaire de tâches
 task_manager = TaskManager()
+
 
 class ConfigManager:
     """Gestionnaire de configuration optimisé avec sauvegarde robuste"""
@@ -148,12 +203,11 @@ class ConfigManager:
     @staticmethod
     def get_db_connection():
         """Établit une connexion à la base de données PostgreSQL"""
-        db_url = os.getenv('DATABASE_URL')
-        if not db_url:
+        if not DATABASE_URL:
             return None
-        logger.info(f"DATABASE_URL: {db_url}")
+        logger.info(f"DATABASE_URL: {DATABASE_URL}")
         try:
-            return psycopg2.connect(db_url)
+            return psycopg2.connect(DATABASE_URL)
         except Exception as e:
             logger.error(f"Erreur de connexion à la base de données: {str(e)}")
             return None
