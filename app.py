@@ -9,13 +9,14 @@ import sys
 import time
 import threading
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import requests
 from werkzeug.serving import WSGIRequestHandler
 import psycopg2
 from cryptography.fernet import Fernet
 import logging
+import atexit
 from sqlalchemy import (
     create_engine,
     Column,
@@ -25,10 +26,164 @@ from sqlalchemy import (
     DateTime,
     ForeignKey
 )
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 Base = declarative_base()
+
+# Instance globale du scheduler APScheduler
+scheduler = BackgroundScheduler()
+
+
+def scheduled_sync_job(otp_config_id):
+    """
+    Job exécuté automatiquement par le scheduler pour une configuration donnée.
+    Exécute la synchronisation et log les résultats.
+    """
+    logger.info(f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}")
+
+    db = SessionLocal()
+
+    try:
+        # Récupérer la configuration OTP
+        otp_config = db.query(OtpConfiguration).filter_by(
+            id=otp_config_id
+        ).first()
+
+        if not otp_config:
+            logger.error(f"Configuration OTP non trouvée: {otp_config_id}")
+            return
+
+        # Charger la configuration complète
+        config = ConfigManager.load_config(
+            grist_user_id=otp_config.grist_user_id,
+            grist_doc_id=otp_config.grist_doc_id
+        )
+
+        if not config:
+            logger.error(f"Impossible de charger la configuration pour {otp_config_id}")
+            return
+
+        # Mettre à jour last_run
+        user_schedule = db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
+        if user_schedule:
+            user_schedule.last_run = datetime.now(timezone.utc)
+            db.commit()
+
+        # Exécuter la synchronisation (sans callbacks WebSocket)
+        result = run_synchronization_task(config, {})
+
+        # Calculer next_run (prochaine exécution à minuit)
+        now = datetime.now(timezone.utc)
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if now.hour >= 0:  # Si on est déjà passé minuit, programmer pour demain
+            next_run = next_run + timedelta(days=1)
+
+        # Mettre à jour next_run
+        if user_schedule:
+            user_schedule.next_run = next_run
+            db.commit()
+
+        # Logger le résultat
+        status = "success" if result.get("success") else "error"
+        message = result.get("message", "Synchronisation terminée")
+
+        sync_log = SyncLog(
+            grist_user_id=otp_config.grist_user_id,
+            grist_doc_id=otp_config.grist_doc_id,
+            status=status,
+            message=message
+        )
+        db.add(sync_log)
+        db.commit()
+
+        logger.info(f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}")
+
+        # En cas d'erreur, émettre une notification WebSocket
+        if not result.get("success"):
+            socketio.emit('sync_error', {
+                'grist_user_id': otp_config.grist_user_id,
+                'grist_doc_id': otp_config.grist_doc_id,
+                'message': message,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}")
+
+        # Logger l'erreur
+        try:
+            otp_config = db.query(OtpConfiguration).filter_by(
+                id=otp_config_id
+            ).first()
+
+            if otp_config:
+                sync_log = SyncLog(
+                    grist_user_id=otp_config.grist_user_id,
+                    grist_doc_id=otp_config.grist_doc_id,
+                    status="error",
+                    message=f"Erreur scheduler: {str(e)}"
+                )
+                db.add(sync_log)
+                db.commit()
+
+                # Émettre notification d'erreur
+                socketio.emit('sync_error', {
+                    'grist_user_id': otp_config.grist_user_id,
+                    'grist_doc_id': otp_config.grist_doc_id,
+                    'message': f"Erreur de synchronisation planifiée: {str(e)}",
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                })
+        except Exception as log_error:
+            logger.error(f"Erreur lors du logging de l'erreur scheduler: {str(log_error)}")
+
+    finally:
+        db.close()
+
+
+def reload_scheduler_jobs():
+    """
+    Recharge tous les jobs actifs du scheduler selon les plannings activés.
+    """
+    logger.info("Rechargement des jobs du scheduler...")
+
+    try:
+        # Supprimer tous les jobs existants
+        scheduler.remove_all_jobs()
+
+        # Récupérer tous les plannings activés
+        db = SessionLocal()
+        try:
+            active_schedules = db.query(UserSchedule).filter_by(enabled=True).all()
+
+            for schedule in active_schedules:
+                # Vérifier que la configuration existe encore
+                otp_config = db.query(OtpConfiguration).filter_by(id=schedule.otp_config_id).first()
+                if not otp_config:
+                    logger.warning(f"Configuration manquante pour schedule {schedule.id}, skipping")
+                    continue
+
+                # Ajouter le job pour minuit
+                job_id = f"scheduled_sync_{schedule.otp_config_id}"
+                scheduler.add_job(
+                    func=scheduled_sync_job,
+                    trigger=CronTrigger(hour=0, minute=0),  # Tous les jours à minuit
+                    args=[schedule.otp_config_id],
+                    id=job_id,
+                    name=f"Sync planifiée pour config {schedule.otp_config_id}",
+                    replace_existing=True
+                )
+
+                logger.info(f"Job ajouté pour config {schedule.otp_config_id} (minuit quotidien)")
+
+        finally:
+            db.close()
+
+        logger.info(f"Scheduler rechargé avec {len(scheduler.get_jobs())} jobs actifs")
+
+    except Exception as e:
+        logger.error(f"Erreur lors du rechargement des jobs scheduler: {str(e)}")
 
 
 class OtpConfiguration(Base):
@@ -279,6 +434,15 @@ class ConfigManager:
                     VALUES ('', '', 'https://grist.numerique.gouv.fr/api', '', '', '')
                 """)
             conn.commit()
+
+            # Démarrer le scheduler APScheduler après création des tables
+            if not scheduler.running:
+                scheduler.start()
+                reload_scheduler_jobs()
+                logger.info("Scheduler APScheduler démarré avec rechargement des jobs")
+
+                # Enregistrer l'arrêt propre du scheduler
+                atexit.register(lambda: scheduler.shutdown(wait=True))
 
     @staticmethod
     def encrypt_value(value):
@@ -916,6 +1080,9 @@ def api_schedule():
                 db.add(schedule)
             db.commit()
 
+            # Recharger les jobs du scheduler
+            reload_scheduler_jobs()
+
             return jsonify({"success": True, "message": "Schedule enabled"})
 
         elif request.method == 'DELETE':
@@ -927,6 +1094,9 @@ def api_schedule():
             if schedule:
                 schedule.enabled = False
                 db.commit()
+
+            # Recharger les jobs du scheduler
+            reload_scheduler_jobs()
 
             return jsonify({"success": True, "message": "Schedule disabled"})
 
