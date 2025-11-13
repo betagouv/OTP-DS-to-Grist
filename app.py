@@ -29,12 +29,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.executors.gevent import GeventExecutor
 
 Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
-scheduler = BackgroundScheduler(executors={'default': GeventExecutor()})
+scheduler = BackgroundScheduler()
 
 
 def scheduled_sync_job(otp_config_id):
@@ -175,7 +174,8 @@ def reload_scheduler_jobs():
                     args=[schedule.otp_config_id],
                     id=job_id,
                     name=f"Sync planifiée pour config {schedule.otp_config_id}",
-                    replace_existing=True
+                    replace_existing=True,
+                    max_instances=2
                 )
 
                 logger.info(f"Job ajouté pour config {schedule.otp_config_id} (minuit quotidien)")
