@@ -398,24 +398,6 @@ class ConfigManager:
             """)
 
             cursor.execute("""
-                ALTER TABLE otp_configurations
-                ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY
-            """)
-
-            # Créer table user_schedules
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS user_schedules (
-                    id SERIAL PRIMARY KEY,
-                    otp_config_id INTEGER REFERENCES otp_configurations(id) ON DELETE SET NULL,
-                    frequency TEXT DEFAULT 'daily',
-                    enabled BOOLEAN DEFAULT FALSE,
-                    last_run TIMESTAMP,
-                    next_run TIMESTAMP
-                )
-            """)
-
-            # Créer table sync_logs
-            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sync_logs (
                     id SERIAL PRIMARY KEY,
                     grist_user_id TEXT,
@@ -435,14 +417,18 @@ class ConfigManager:
                 """)
             conn.commit()
 
-            # Démarrer le scheduler APScheduler après création des tables
-            if not scheduler.running:
-                scheduler.start()
-                reload_scheduler_jobs()
-                logger.info("Scheduler APScheduler démarré avec rechargement des jobs")
-
-                # Enregistrer l'arrêt propre du scheduler
-                atexit.register(lambda: scheduler.shutdown(wait=True))
+    @staticmethod
+    def init_db():
+        """Initialise la base de données en créant les tables si nécessaire"""
+        conn = ConfigManager.get_db_connection()
+        if conn:
+            try:
+                ConfigManager.create_table_if_not_exists(conn)
+                logger.info("Tables de base de données initialisées")
+            finally:
+                conn.close()
+        else:
+            logger.error("Impossible de se connecter à la base de données pour l'initialisation")
 
     @staticmethod
     def encrypt_value(value):
@@ -486,8 +472,6 @@ class ConfigManager:
         conn = ConfigManager.get_db_connection()
 
         try:
-            ConfigManager.create_table_if_not_exists(conn)
-
             with conn.cursor() as cursor:
                 if not grist_user_id or not grist_doc_id:
                     raise Exception("No grist user id or doc id")
@@ -548,7 +532,6 @@ class ConfigManager:
         conn = ConfigManager.get_db_connection()
 
         try:
-            ConfigManager.create_table_if_not_exists(conn)
             with conn.cursor() as cursor:
                 # Préparer les valeurs, chiffrer les sensibles
                 values = {
@@ -1337,16 +1320,28 @@ class QuietWSGIRequestHandler(WSGIRequestHandler):
             super().log_request(code, size)
 
 if __name__ == '__main__':
+    # Initialiser la base de données
+    ConfigManager.init_db()
+
+    # Démarrer le scheduler APScheduler
+    if not scheduler.running:
+        scheduler.start()
+        reload_scheduler_jobs()
+        logger.info("Scheduler APScheduler démarré avec rechargement des jobs")
+
+        # Enregistrer l'arrêt propre du scheduler
+        atexit.register(lambda: scheduler.shutdown(wait=True))
+
     # Désactiver les logs de werkzeug pour les requêtes statiques
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.setLevel(logging.ERROR)
-    
+
     print("🦄 One Trick Pony DS to Grist - Version Flask")
     print(f"📁 Répertoire de travail: {script_dir}")
     print("🌐 Application disponible sur: http://localhost:5000")
     print("🔌 WebSocket activé pour les mises à jour en temps réel")
     print("💾 Gestion améliorée de la sauvegarde des configurations")
-    
+
     # Démarrer l'application
     socketio.run(
         app,
