@@ -29,11 +29,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.executors.gevent import GeventExecutor
 
 Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(executors={'default': GeventExecutor()})
 
 
 def scheduled_sync_job(otp_config_id):
@@ -42,6 +43,7 @@ def scheduled_sync_job(otp_config_id):
     Exécute la synchronisation et log les résultats.
     """
     logger.info(f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}")
+    logger.info(f"Scheduler running: {scheduler.running}, jobs count: {len(scheduler.get_jobs())}")
 
     db = SessionLocal()
 
@@ -99,6 +101,7 @@ def scheduled_sync_job(otp_config_id):
         db.commit()
 
         logger.info(f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}")
+        logger.info(f"next_run DB mis à jour: {next_run}")
 
         # En cas d'erreur, émettre une notification WebSocket
         if not result.get("success"):
@@ -1350,5 +1353,5 @@ if __name__ == '__main__':
         debug=os.getenv(
             'FLASK_DEBUG',
             'False'
-        ).lower() == 'true',
+        ).lower() == 'true'
     )
