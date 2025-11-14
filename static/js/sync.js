@@ -249,10 +249,12 @@ const loadAutoSyncState = async () => {
     const config = await configResponse.json()
 
     const checkbox = document.getElementById('auto_sync_enabled')
+    const statusDiv = document.getElementById('last_sync_status')
 
     if (!config.otp_config_id) {
       checkbox.disabled = true
       checkbox.checked = false
+      statusDiv.style.display = 'none'
       return
     }
 
@@ -263,6 +265,23 @@ const loadAutoSyncState = async () => {
     const result = await response.json()
 
     checkbox.checked = result.enabled || false
+
+    // Afficher le statut de la dernière synchronisation si activé
+    if (result.enabled && result.last_run) {
+      const lastRunDate = new Date(result.last_run).toLocaleString('fr-FR')
+      const statusClass = result.last_status === 'success' ? 'fr-alert--success' : 'fr-alert--error'
+      const statusText = result.last_status === 'success' ? 'Succès' : 'Échec'
+      const icon = result.last_status === 'success' ? 'check-circle' : 'exclamation-triangle'
+
+      statusDiv.innerHTML = `
+        <div class="fr-alert ${statusClass} fr-alert--sm">
+          <p><i class="fas fa-${icon} fr-mr-1v" aria-hidden="true"></i>
+          Dernière synchronisation automatique : ${statusText} (${lastRunDate})</p>
+        </div>`
+      statusDiv.style.display = 'block'
+    } else {
+      statusDiv.style.display = 'none'
+    }
   } catch (error) {
     console.error('Erreur lors du chargement de l\'état auto sync:', error)
   }

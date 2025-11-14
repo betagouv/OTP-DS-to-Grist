@@ -91,6 +91,11 @@ def scheduled_sync_job(otp_config_id):
         status = "success" if result.get("success") else "error"
         message = result.get("message", "Synchronisation terminée")
 
+        # Mettre à jour le statut de la dernière exécution
+        if user_schedule:
+            user_schedule.last_status = status
+            db.commit()
+
         sync_log = SyncLog(
             grist_user_id=otp_config.grist_user_id,
             grist_doc_id=otp_config.grist_doc_id,
@@ -233,6 +238,7 @@ class UserSchedule(Base):
     enabled = Column(Boolean, default=False)
     last_run = Column(DateTime)
     next_run = Column(DateTime)
+    last_status = Column(String)
 
 
 class SyncLog(Base):
@@ -431,6 +437,12 @@ class ConfigManager:
                     message TEXT,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+
+            # Ajouter les colonnes manquantes aux tables existantes
+            cursor.execute("""
+                ALTER TABLE user_schedules
+                ADD COLUMN IF NOT EXISTS last_status TEXT
             """)
 
             # Insérer une ligne vide si la table est vide
@@ -1076,7 +1088,12 @@ def api_schedule():
                 otp_config_id=otp_config.id
             ).first()
 
-            return jsonify({"success": True, "enabled": schedule.enabled if schedule else False})
+            return jsonify({
+                "success": True,
+                "enabled": schedule.enabled if schedule else False,
+                "last_run": schedule.last_run.isoformat() if schedule and schedule.last_run else None,
+                "last_status": schedule.last_status if schedule else None
+            })
 
         data = request.get_json()
         otp_config_id = data.get('otp_config_id')
