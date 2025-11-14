@@ -29,7 +29,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from collections import defaultdict
 
 Base = declarative_base()
@@ -176,34 +175,32 @@ def reload_scheduler_jobs():
                 if len(schedule_list) > 1:
                     # Plusieurs tâches sur le même document : espacer de 15 min
                     for i, (schedule, otp_config) in enumerate(sorted(schedule_list, key=lambda x: x[0].otp_config_id)):
-                        offset_minutes = i * 15
+                        minute = i * 15
                         job_id = f"scheduled_sync_{schedule.otp_config_id}"
-                        start_date = datetime.now() + timedelta(minutes=offset_minutes)
                         scheduler.add_job(
                             func=scheduled_sync_job,
-                            trigger=IntervalTrigger(minutes=2, start_date=start_date),
+                            trigger=CronTrigger(hour=0, minute=minute),
                             args=[schedule.otp_config_id],
                             id=job_id,
                             name=f"Sync planifiée pour config {schedule.otp_config_id}",
                             replace_existing=True,
                             max_instances=1
                         )
-                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} avec décalage {offset_minutes} min (document {doc_id})")
+                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} à 00:{minute:02d} (document {doc_id})")
                 else:
-                    # Une seule tâche : pas de décalage
+                    # Une seule tâche : à minuit
                     schedule, otp_config = schedule_list[0]
                     job_id = f"scheduled_sync_{schedule.otp_config_id}"
-                    start_date = datetime.now()
                     scheduler.add_job(
                         func=scheduled_sync_job,
-                        trigger=IntervalTrigger(minutes=2, start_date=start_date),
+                        trigger=CronTrigger(hour=0, minute=0),
                         args=[schedule.otp_config_id],
                         id=job_id,
                         name=f"Sync planifiée pour config {schedule.otp_config_id}",
                         replace_existing=True,
                         max_instances=1
                     )
-                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} sans décalage (document {doc_id})")
+                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} à 00:00 (document {doc_id})")
 
         finally:
             db.close()
