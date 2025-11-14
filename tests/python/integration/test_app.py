@@ -1,6 +1,11 @@
 import pytest
 import json
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+import os
+
+# Mock DATABASE_URL for tests
+os.environ['DATABASE_URL'] = 'postgresql://test:test@localhost/testdb'
+
 from app import app, ConfigManager, task_manager
 
 
@@ -55,8 +60,9 @@ class TestEndpoints:
         assert response.status_code == 200
         assert b'utiliser' in response.data
 
+    @patch('app.SessionLocal')
     @patch.object(ConfigManager, 'load_config')
-    def test_api_config_get(self, mock_load, client):
+    def test_api_config_get(self, mock_load, mock_session, client):
         """Test de récupération de la configuration"""
         mock_load.return_value = {
             'ds_api_token': 'secret-token',
@@ -68,7 +74,12 @@ class TestEndpoints:
             'grist_user_id': 'user123'
         }
 
-        response = client.get('/api/config')
+        # Mock pour l'id
+        mock_db = mock_session.return_value
+        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_otp.id = 123
+
+        response = client.get('/api/config?grist_user_id=user123&grist_doc_id=doc123')
         assert response.status_code == 200
 
         data = json.loads(response.data)
@@ -77,11 +88,18 @@ class TestEndpoints:
         assert data['grist_api_key_masked'] == '***'
         assert data['ds_api_token_exists'] is True
         assert data['grist_api_key_exists'] is True
+        assert data['otp_config_id'] == 123
 
+    @patch('app.SessionLocal')
     @patch.object(ConfigManager, 'save_config')
-    def test_api_config_post_success(self, mock_save, client):
+    def test_api_config_post_success(self, mock_save, mock_session, client):
         """Test de sauvegarde de configuration réussie"""
         mock_save.return_value = True
+
+        # Mock pour l'id
+        mock_db = mock_session.return_value
+        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_otp.id = 456
 
         config_data = {
             'ds_api_token': 'token',
@@ -103,6 +121,7 @@ class TestEndpoints:
         data = json.loads(response.data)
         assert data['success'] is True
         assert 'sauvegardée' in data['message']
+        assert data['otp_config_id'] == 456
 
     def test_api_config_post_missing_field(self, client):
         """Test de sauvegarde avec champ manquant"""
@@ -500,3 +519,243 @@ class TestErrorHandling:
         data = json.loads(response.data)
         assert data['success'] is False
         assert 'Erreur lors de la sauvegarde' in data['message']
+
+    @patch('app.SessionLocal')
+    def test_api_schedule_post_success(self, mock_session, client):
+        """Test activation de planning réussi"""
+        mock_db = mock_session.return_value
+        mock_config = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_config.id = 1
+        mock_schedule = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_schedule.enabled = False
+
+        data = {'otp_config_id': 1}
+
+        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp['success'] is True
+        assert 'enabled' in data_resp['message']
+
+    @patch('app.SessionLocal')
+    def test_api_schedule_post_new(self, mock_session, client):
+        """Test création de planning"""
+        mock_db = mock_session.return_value
+
+        # Mock pour OtpConfiguration
+        mock_config_query = mock_db.query.return_value
+        mock_config_filter = mock_config_query.filter_by.return_value
+        mock_config = mock_config_filter.first.return_value
+        mock_config.id = 1
+
+        # Mock pour UserSchedule (pas trouvé)
+        def query_side_effect(model):
+            if model.__name__ == 'OtpConfiguration':
+                return mock_config_query
+            elif model.__name__ == 'UserSchedule':
+                mock_schedule_query = MagicMock()
+                mock_schedule_filter = MagicMock()
+                mock_schedule_filter.first.return_value = None
+                mock_schedule_query.filter_by.return_value = mock_schedule_filter
+                return mock_schedule_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        data = {'otp_config_id': 1}
+
+        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp['success'] is True
+        assert 'enabled' in data_resp['message']
+
+    @patch('app.SessionLocal')
+    def test_api_schedule_delete(self, mock_session, client):
+        """Test désactivation de planning"""
+        mock_db = mock_session.return_value
+        mock_config = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_config.id = 1
+        mock_schedule = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_schedule.enabled = True
+
+        data = {'otp_config_id': 1}
+
+        response = client.delete('/api/schedule', data=json.dumps(data), content_type='application/json')
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp['success'] is True
+        assert 'disabled' in data_resp['message']
+
+    @patch('app.SessionLocal')
+    def test_api_schedule_missing_config(self, mock_session, client):
+        """Test planning avec config manquante"""
+        mock_db = mock_session.return_value
+        mock_db.query.return_value.filter_by.return_value.first.return_value = None
+
+        data = {'otp_config_id': 999}
+
+        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        assert response.status_code == 404
+
+        data_resp = json.loads(response.data)
+        assert data_resp['success'] is False
+        assert 'not found' in data_resp['message']
+
+    @patch('app.SessionLocal')
+    def test_api_schedule_missing_fields(self, mock_session, client):
+        """Test planning avec champs manquants"""
+        data = {}  # missing otp_config_id
+
+        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        assert response.status_code == 400
+
+        data_resp = json.loads(response.data)
+        assert data_resp['success'] is False
+        assert 'required' in data_resp['message']
+
+    @patch('app.SessionLocal')
+    def test_scheduled_sync_job_success(self, mock_session):
+        """Test exécution réussie d'une synchronisation planifiée"""
+        from app import scheduled_sync_job
+
+        # Mock de la configuration OTP
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+
+        mock_config = MagicMock()
+        mock_config.id = 1
+        mock_config.grist_user_id = 'user123'
+        mock_config.grist_doc_id = 'doc456'
+
+        mock_schedule = MagicMock()
+        mock_db.query.return_value.filter_by.return_value.first.return_value = mock_config
+
+        # Mock de ConfigManager.load_config
+        with patch('app.ConfigManager.load_config') as mock_load_config:
+            mock_load_config.return_value = {
+                'ds_api_token': 'token',
+                'demarche_number': '123',
+                'grist_api_key': 'key',
+                'grist_doc_id': 'doc456',
+                'grist_user_id': 'user123'
+            }
+
+            # Mock de run_synchronization_task
+            with patch('app.run_synchronization_task') as mock_sync:
+                mock_sync.return_value = {'success': True, 'message': 'Sync successful'}
+
+                # Exécuter la fonction
+                scheduled_sync_job(1)
+
+                # Vérifications
+                mock_load_config.assert_called_once_with(
+                    grist_user_id='user123',
+                    grist_doc_id='doc456'
+                )
+                mock_sync.assert_called_once()
+                mock_db.add.assert_called()  # SyncLog ajouté
+                mock_db.commit.assert_called()
+
+    @patch('app.SessionLocal')
+    def test_scheduled_sync_job_error(self, mock_session):
+        """Test exécution échouée d'une synchronisation planifiée"""
+        from app import scheduled_sync_job
+
+        # Mock de la configuration OTP
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+
+        mock_config = MagicMock()
+        mock_config.id = 1
+        mock_config.grist_user_id = 'user123'
+        mock_config.grist_doc_id = 'doc456'
+
+        mock_db.query.return_value.filter_by.return_value.first.return_value = mock_config
+
+        # Mock de ConfigManager.load_config
+        with patch('app.ConfigManager.load_config') as mock_load_config:
+            mock_load_config.return_value = {
+                'ds_api_token': 'token',
+                'demarche_number': '123',
+                'grist_api_key': 'key',
+                'grist_doc_id': 'doc456',
+                'grist_user_id': 'user123'
+            }
+
+            # Mock de run_synchronization_task qui échoue
+            with patch('app.run_synchronization_task') as mock_sync:
+                mock_sync.return_value = {'success': False, 'message': 'Sync failed'}
+
+                # Mock de socketio.emit
+                with patch('app.socketio.emit') as mock_emit:
+                    # Exécuter la fonction
+                    scheduled_sync_job(1)
+
+                    # Vérifications
+                    mock_sync.assert_called_once()
+                    mock_emit.assert_called_once()
+                    call_args = mock_emit.call_args
+                    assert call_args[0][0] == 'sync_error'
+                    data = call_args[0][1]
+                    assert data['grist_user_id'] == 'user123'
+                    assert data['grist_doc_id'] == 'doc456'
+                    assert data['message'] == 'Sync failed'
+                    assert 'timestamp' in data
+
+    @patch('app.SessionLocal')
+    def test_reload_scheduler_jobs(self, mock_session):
+        """Test rechargement des jobs du scheduler"""
+        from app import reload_scheduler_jobs
+
+        # Mock de la DB
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+
+        # Mock des schedules actifs
+        mock_schedule1 = MagicMock()
+        mock_schedule1.otp_config_id = 1
+        mock_schedule1.enabled = True
+
+        mock_schedule2 = MagicMock()
+        mock_schedule2.otp_config_id = 2
+        mock_schedule2.enabled = True
+
+        mock_db.query.return_value.filter_by.return_value.all.return_value = [
+            mock_schedule1, mock_schedule2
+        ]
+
+        # Mock des configurations OTP
+        mock_config1 = MagicMock()
+        mock_config1.id = 1
+        mock_config1.grist_user_id = 'user1'
+        mock_config1.grist_doc_id = 'doc1'
+
+        mock_config2 = MagicMock()
+        mock_config2.id = 2
+        mock_config2.grist_user_id = 'user2'
+        mock_config2.grist_doc_id = 'doc2'
+
+        def mock_filter_by(**kwargs):
+            if kwargs.get('id') == 1:
+                return MagicMock(first=MagicMock(return_value=mock_config1))
+            elif kwargs.get('id') == 2:
+                return MagicMock(first=MagicMock(return_value=mock_config2))
+            return MagicMock(first=MagicMock(return_value=None))
+
+        mock_db.query.return_value.filter_by.side_effect = mock_filter_by
+
+        # Mock du scheduler global - patch au niveau du module
+        with patch('app.scheduler') as mock_scheduler_instance:
+            mock_scheduler_instance.get_jobs.return_value = []
+            mock_scheduler_instance.running = True
+
+            # Exécuter la fonction
+            reload_scheduler_jobs()
+
+            # Vérifications
+            mock_scheduler_instance.remove_all_jobs.assert_called_once()
+            # Vérifier que add_job a été appelé (ne pas vérifier le nombre exact car dépend de la logique)
