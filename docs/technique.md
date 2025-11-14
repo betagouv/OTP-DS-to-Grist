@@ -33,6 +33,67 @@
 
 ---
 
+## 🔄 Synchronisation Automatique
+
+### **Vue d'ensemble**
+La synchronisation automatique utilise **APScheduler** pour exécuter les synchronisations selon un planning prédéfini. Elle permet de maintenir les données Grist à jour sans intervention manuelle.
+
+### **Architecture du Scheduler**
+
+```
+[Interface Web Flask]
+        ↓
+[Activation Planning] → [Base de données: user_schedules]
+        ↓
+[APScheduler Background]
+        ↓
+[Job: scheduled_sync_job()]
+        ↓
+[Subprocess: grist_processor]
+        ↓
+[Mise à jour Grist + Logs]
+```
+
+### **Composants Clés**
+
+1. **APScheduler** : Planificateur en arrière-plan intégré à Flask
+2. **Base de données** : Table `user_schedules` pour persister les plannings
+3. **Job automatique** : `scheduled_sync_job()` exécute la synchronisation
+4. **Logs de suivi** : Table `sync_logs` pour historiser les exécutions
+
+### **Flux d'Exécution**
+
+```
+Activation Planning
+        ↓
+reload_scheduler_jobs() → APScheduler.add_job()
+        ↓
+Minuit (CronTrigger) → scheduled_sync_job(config_id)
+        ↓
+Chargement config DB → run_synchronization_task()
+        ↓
+Subprocess grist_processor → Mise à jour Grist
+        ↓
+Logs + Notifications → Interface Web
+```
+
+### **Gestion des Conflits**
+
+- **Décalage temporel** : +15 minutes entre jobs sur le même document
+- **Verrouillage** : Un job par configuration simultanément
+- **Idempotence** : Les synchronisations peuvent être relancées sans duplication
+
+### **Configuration**
+
+| Paramètre | Valeur par défaut | Description                           |
+|-----------|-------------------|---------------------------------------|
+| Fréquence | Quotidienne       | Minuit chaque jour                    |
+| Décalage  | 15 minutes        | Entre configurations du même document |
+| Timeout   | 2 heures          | Durée maximale d'une synchronisation  |
+| Retry     | Automatique       | En cas d'échec réseau                 |
+
+---
+
 ## 📁 Structure des fichiers du projet
 
 ### **Fichiers principaux de l'application**
