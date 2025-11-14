@@ -1152,7 +1152,7 @@ def api_schedule():
     except Exception as e:
         db.rollback()
         logger.error(f"Erreur dans api_schedule: {str(e)}")
-        return jsonify({"success": False, "message": f"Erreur: {str(e)}"}), 500
+        return jsonify({"success": False, "message": "Une erreur interne est survenue."}), 500
     finally:
         db.close()
 
