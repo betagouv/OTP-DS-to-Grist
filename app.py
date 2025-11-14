@@ -1056,7 +1056,7 @@ def api_config():
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
             return jsonify(
-                {"success": False, "message": f"Erreur: {str(e)}"}
+                {"success": False, "message": "Erreur interne lors de la sauvegarde."}
             ), 500
 
 
