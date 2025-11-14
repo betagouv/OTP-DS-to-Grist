@@ -29,6 +29,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from collections import defaultdict
 
 Base = declarative_base()
 
@@ -159,26 +161,49 @@ def reload_scheduler_jobs():
         try:
             active_schedules = db.query(UserSchedule).filter_by(enabled=True).all()
 
+            # Grouper par document Grist
+            schedules_by_doc = defaultdict(list)
             for schedule in active_schedules:
                 # Vérifier que la configuration existe encore
                 otp_config = db.query(OtpConfiguration).filter_by(id=schedule.otp_config_id).first()
                 if not otp_config:
                     logger.warning(f"Configuration manquante pour schedule {schedule.id}, skipping")
                     continue
+                schedules_by_doc[otp_config.grist_doc_id].append((schedule, otp_config))
 
-                # Ajouter le job pour minuit
-                job_id = f"scheduled_sync_{schedule.otp_config_id}"
-                scheduler.add_job(
-                    func=scheduled_sync_job,
-                    trigger=CronTrigger(hour=0, minute=0),  # Tous les jours à minuit
-                    args=[schedule.otp_config_id],
-                    id=job_id,
-                    name=f"Sync planifiée pour config {schedule.otp_config_id}",
-                    replace_existing=True,
-                    max_instances=2
-                )
-
-                logger.info(f"Job ajouté pour config {schedule.otp_config_id} (minuit quotidien)")
+            # Pour chaque document, ajouter les jobs avec décalage si nécessaire
+            for doc_id, schedule_list in schedules_by_doc.items():
+                if len(schedule_list) > 1:
+                    # Plusieurs tâches sur le même document : espacer de 15 min
+                    for i, (schedule, otp_config) in enumerate(sorted(schedule_list, key=lambda x: x[0].otp_config_id)):
+                        offset_minutes = i * 15
+                        job_id = f"scheduled_sync_{schedule.otp_config_id}"
+                        start_date = datetime.now() + timedelta(minutes=offset_minutes)
+                        scheduler.add_job(
+                            func=scheduled_sync_job,
+                            trigger=IntervalTrigger(minutes=2, start_date=start_date),
+                            args=[schedule.otp_config_id],
+                            id=job_id,
+                            name=f"Sync planifiée pour config {schedule.otp_config_id}",
+                            replace_existing=True,
+                            max_instances=1
+                        )
+                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} avec décalage {offset_minutes} min (document {doc_id})")
+                else:
+                    # Une seule tâche : pas de décalage
+                    schedule, otp_config = schedule_list[0]
+                    job_id = f"scheduled_sync_{schedule.otp_config_id}"
+                    start_date = datetime.now()
+                    scheduler.add_job(
+                        func=scheduled_sync_job,
+                        trigger=IntervalTrigger(minutes=2, start_date=start_date),
+                        args=[schedule.otp_config_id],
+                        id=job_id,
+                        name=f"Sync planifiée pour config {schedule.otp_config_id}",
+                        replace_existing=True,
+                        max_instances=1
+                    )
+                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} sans décalage (document {doc_id})")
 
         finally:
             db.close()
@@ -1026,20 +1051,44 @@ def api_config():
             ), 500
 
 
-@app.route('/api/schedule', methods=['POST', 'DELETE'])
+@app.route('/api/schedule', methods=['GET', 'POST', 'DELETE'])
 def api_schedule():
     """API pour gérer les plannings de synchronisation"""
-    data = request.get_json()
-    otp_config_id = data.get('otp_config_id')
-
-    if not otp_config_id:
-        return jsonify(
-            {"success": False, "message": "otp_config_id is required"}
-        ), 400
-
     db = SessionLocal()
 
     try:
+        if request.method == 'GET':
+            otp_config_id = request.args.get('otp_config_id')
+            if not otp_config_id:
+                return jsonify(
+                    {"success": False, "message": "otp_config_id is required"}
+                ), 400
+
+            # Trouver la configuration
+            otp_config = db.query(OtpConfiguration).filter_by(
+                id=otp_config_id
+            ).first()
+
+            if not otp_config:
+                return jsonify(
+                    {"success": False, "message": "Configuration not found"}
+                ), 404
+
+            # Vérifier si le planning existe et est activé
+            schedule = db.query(UserSchedule).filter_by(
+                otp_config_id=otp_config.id
+            ).first()
+
+            return jsonify({"success": True, "enabled": schedule.enabled if schedule else False})
+
+        data = request.get_json()
+        otp_config_id = data.get('otp_config_id')
+
+        if not otp_config_id:
+            return jsonify(
+                {"success": False, "message": "otp_config_id is required"}
+            ), 400
+
         # Trouver la configuration
         otp_config = db.query(OtpConfiguration).filter_by(
             id=otp_config_id

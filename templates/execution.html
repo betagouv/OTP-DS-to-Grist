@@ -6,9 +6,23 @@
             <div id="config_check_result" class="fr-mt-2w">
                 <div class="fr-alert fr-alert--info">
                     <p>Vérification de la configuration en cours...</p>
-                </div>
-            </div>
         </div>
+    </div>
+</div>
+
+<script>
+    // Initialisation de la page d'exécution
+    document.addEventListener('DOMContentLoaded', async function() {
+        // Vérifier la configuration
+        const config = await checkConfiguration()
+
+        if (config) {
+            // Charger l'état de la synchronisation automatique
+            await loadAutoSyncState()
+        }
+    })
+</script>
+
     </div>
 </div>
 
@@ -18,7 +32,7 @@
 <div class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border">
     <div class="fr-card__body">
         <div class="fr-card__content">
-            <h2 class="fr-card__title">Filtres de données</h2>
+             <h2 class="fr-card__title">3. Paramètres</h2>
             
             <!-- Filtres par date -->
             <div class="fr-mt-4w">
@@ -114,9 +128,26 @@
                         </div>
                     </div>
                 </fieldset>
-            </div>
+             </div>
 
-            <!-- Boutons d'action pour les filtres -->
+             <!-- Synchronisation automatique -->
+             <div class="fr-mt-4w">
+                 <fieldset class="fr-fieldset" aria-labelledby="auto-sync-legend">
+                     <legend class="fr-fieldset__legend" id="auto-sync-legend">
+                         Synchronisation automatique
+                         <span class="fr-hint-text">Activez pour synchroniser automatiquement les données chaque jour à minuit</span>
+                     </legend>
+
+                     <div class="fr-fieldset__content">
+                         <div class="fr-checkbox-group">
+                             <input type="checkbox" id="auto_sync_enabled" name="auto_sync_enabled" onchange="toggleAutoSync(this.checked)">
+                             <label class="fr-label" for="auto_sync_enabled">Activer la synchronisation automatique</label>
+                         </div>
+                     </div>
+                 </fieldset>
+             </div>
+
+             <!-- Boutons d'action pour les filtres -->
             <div class="fr-mt-4w">
                 <ul class="fr-btns-group">
                     <li>
