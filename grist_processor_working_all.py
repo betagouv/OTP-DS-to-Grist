@@ -1469,13 +1469,6 @@ def process_dossier_for_grist(client, dossier_data, table_ids, column_types, pro
         # Convertir le numéro de dossier en chaîne pour toutes les comparaisons
         dossier_number_str = str(dossier_number)
 
-        # Vérifier si le dossier a été supprimé par l'usager
-        if "dateSuppressionParUsager" in dossier_data and dossier_data["dateSuppressionParUsager"]:
-            # Option 1: Marquer le dossier comme supprimé dans Grist
-            log(f"Dossier {dossier_number} marqué comme supprimé par l'usager le {dossier_data['dateSuppressionParUsager']}")
-            dossier_info["supprime_par_usager"] = True
-            dossier_info["date_suppression"] = dossier_data["dateSuppressionParUsager"]
-
         # --- PARTIE 1: TRAITEMENT DE LA TABLE DOSSIERS ---
         
         # Préparer l'enregistrement pour la table des dossiers
