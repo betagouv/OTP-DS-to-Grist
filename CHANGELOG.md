@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.3.0...v0.4.0) (2025-11-14)
+
+
+### Features
+
+* **Layout:** Suppression du bloc configuration avancée ([8dcd140](https://github.com/betagouv/OTP-DS-to-Grist/commit/8dcd140bfb83828fc41423c4dd907f5479684677))
+
 ## [0.3.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.2.0...v0.3.0) (2025-11-05)
 
 
