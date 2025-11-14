@@ -200,6 +200,74 @@ const updateTaskProgress = (task) => {
   }
 }
 
+const toggleAutoSync = async (enabled) => {
+  try {
+    const gristContext = await getGristContext()
+    const configResponse = await fetch(`/api/config${gristContext.params}`)
+    const config = await configResponse.json()
+
+    if (!config.otp_config_id) {
+      showNotification('Configuration non sauvegardée. Veuillez sauvegarder la configuration avant d\'activer la synchronisation automatique.', 'error')
+      // Revert checkbox
+      document.getElementById('auto_sync_enabled').checked = false
+      return
+    }
+
+    const method = enabled ? 'POST' : 'DELETE'
+    const response = await fetch('/api/schedule', {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        otp_config_id: config.otp_config_id
+      })
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      const status = enabled ? 'activée' : 'désactivée'
+      showNotification(`Synchronisation automatique ${status}`, 'success')
+    } else {
+      showNotification(result.message || 'Erreur lors de la modification', 'error')
+      // Revert checkbox
+      document.getElementById('auto_sync_enabled').checked = !enabled
+    }
+  } catch (error) {
+    console.error('Erreur:', error)
+    showNotification('Erreur lors de la modification de la synchronisation automatique', 'error')
+    // Revert checkbox
+    document.getElementById('auto_sync_enabled').checked = !enabled
+  }
+}
+
+const loadAutoSyncState = async () => {
+  try {
+    const gristContext = await getGristContext()
+    const configResponse = await fetch(`/api/config${gristContext.params}`)
+    const config = await configResponse.json()
+
+    const checkbox = document.getElementById('auto_sync_enabled')
+
+    if (!config.otp_config_id) {
+      checkbox.disabled = true
+      checkbox.checked = false
+      return
+    }
+
+    checkbox.disabled = false
+
+    // Check if schedule exists and is enabled
+    const response = await fetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
+    const result = await response.json()
+
+    checkbox.checked = result.enabled || false
+  } catch (error) {
+    console.error('Erreur lors du chargement de l\'état auto sync:', error)
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { startSync, updateTaskProgress }
+  module.exports = { startSync, updateTaskProgress, toggleAutoSync, loadAutoSyncState }
 }
