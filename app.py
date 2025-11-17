@@ -39,8 +39,15 @@ scheduler = BackgroundScheduler()
 
 def scheduled_sync_job(otp_config_id):
     """
-    Job exécuté automatiquement par le scheduler pour une configuration donnée.
-    Exécute la synchronisation et log les résultats.
+    Job exécuté automatiquement par APScheduler pour une configuration donnée
+    Exécute la synchronisation et log les résultats
+
+    - Fréquence :
+      - Quotidienne, à minuit UTC (hour=0, minute=0),
+        ou décalée de 15 mn pour chaque config supplémentaire sur le même doc Grist
+      - Au démarrage de l'app
+      - Lors de l'activation/désactivation d'un planning via les endpoints API
+    - Condition : Uniquement pour les synchronisations activés
     """
     logger.info(f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}")
     logger.info(f"Scheduler running: {scheduler.running}, jobs count: {len(scheduler.get_jobs())}")
@@ -48,7 +55,7 @@ def scheduled_sync_job(otp_config_id):
     db = SessionLocal()
 
     try:
-        # Récupérer la configuration OTP
+        # Récupérer le modèle OtpConfiguration par id
         otp_config = db.query(OtpConfiguration).filter_by(
             id=otp_config_id
         ).first()
@@ -153,6 +160,8 @@ def scheduled_sync_job(otp_config_id):
 def reload_scheduler_jobs():
     """
     Recharge tous les jobs actifs du scheduler selon les plannings activés.
+    Exécutée au démarrage et après activation/désactivation de plannings,
+    pour éviter des jobs persistant pour des configs modifiées ou supprimées
     """
     logger.info("Rechargement des jobs du scheduler...")
 
