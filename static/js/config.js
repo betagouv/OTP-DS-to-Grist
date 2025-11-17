@@ -99,11 +99,13 @@ const loadConfiguration = async () => {
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
         </span>`
       dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
+      document.querySelector('#accordion-ds').setAttribute('aria-expanded', false)
     } else {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
         </span>`
       dsApiTokenElement.placeholder = ''
+      document.querySelector('#accordion-ds').setAttribute('aria-expanded', true)
     }
 
     if (config.grist_api_key) {
@@ -111,10 +113,12 @@ const loadConfiguration = async () => {
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
         </span>`
       gristApiKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
+      document.querySelector('#accordion-grist').setAttribute('aria-expanded', false)
     } else {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
         </span>`
+      document.querySelector('#accordion-grist').setAttribute('aria-expanded', true)
     }
 
     return config
@@ -125,7 +129,6 @@ const loadConfiguration = async () => {
 }
 
 const saveConfiguration = async () => {
-  checkConfiguration()
   const dsApiTokenElement = document.getElementById('ds_api_token')
   const dsToken = dsApiTokenElement.value
   const gristKeyElement = document.getElementById('grist_api_key')
@@ -160,12 +163,6 @@ const saveConfiguration = async () => {
   }
 
   try {
-    // Afficher un indicateur de chargement
-    const saveButton = document.querySelector('button[onclick="saveConfiguration()"]')
-    const originalText = saveButton.innerHTML
-    saveButton.disabled = true
-    saveButton.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Sauvegarde...'
-
     const response = await fetch('/api/config', {
       method: 'POST',
       headers: {
@@ -201,19 +198,9 @@ const saveConfiguration = async () => {
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
     }
-
-    // Restaurer le bouton
-    saveButton.disabled = false
-    saveButton.innerHTML = originalText
-
   } catch (error) {
     console.error('Erreur:', error)
     showNotification('Erreur lors de la sauvegarde', 'error')
-
-    // Restaurer le bouton en cas d'erreur
-    const saveButton = document.querySelector('button[onclick="saveConfiguration()"]')
-    saveButton.disabled = false
-    saveButton.innerHTML = '<i class="fas fa-save fr-mr-1w" aria-hidden="true"></i>Sauvegarder la configuration'
   }
 }
 
