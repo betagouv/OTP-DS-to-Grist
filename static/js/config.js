@@ -196,6 +196,7 @@ const saveConfiguration = async () => {
       // Recharger la configuration pour mettre à jour les statuts
       setTimeout(async () => {
         currentConfig = await loadConfiguration()
+        await loadAutoSyncState()
       }, 500)
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
