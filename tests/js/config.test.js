@@ -111,7 +111,9 @@ describe('loadConfiguration', () => {
       <input id="demarche_number">
       <input id="grist_api_key">
       <div id="ds_token_status"></div>
-      <div id="grist_key_status"></div>`
+      <div id="grist_key_status"></div>
+      <button id="accordion-ds"></button>
+      <button id="accordion-grist"></button>`
 
     // Mocks
     global.getGristContext = jest.fn()
