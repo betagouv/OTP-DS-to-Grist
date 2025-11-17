@@ -432,9 +432,32 @@ class ConfigManager:
                 )
             """)
 
+            # Vérifier et ajoute la colonne id si elle n'existe pas (pour les tables existantes sans id)
+            cursor.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'otp_configurations' AND column_name = 'id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("""
+                    ALTER TABLE otp_configurations ADD COLUMN id SERIAL PRIMARY KEY
+                """)
+
             cursor.execute("""
                 ALTER TABLE otp_configurations
                 ADD COLUMN IF NOT EXISTS grist_user_id TEXT DEFAULT ''
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_schedules (
+                    id SERIAL PRIMARY KEY,
+                    otp_config_id INTEGER,
+                    frequency TEXT DEFAULT 'daily',
+                    enabled BOOLEAN DEFAULT FALSE,
+                    last_run TIMESTAMP,
+                    next_run TIMESTAMP,
+                    last_status TEXT,
+                    FOREIGN KEY (otp_config_id) REFERENCES otp_configurations(id) ON DELETE SET NULL
+                )
             """)
 
             cursor.execute("""
@@ -449,10 +472,7 @@ class ConfigManager:
             """)
 
             # Ajouter les colonnes manquantes aux tables existantes
-            cursor.execute("""
-                ALTER TABLE user_schedules
-                ADD COLUMN IF NOT EXISTS last_status TEXT
-            """)
+            # (aucune pour le moment)
 
             # Insérer une ligne vide si la table est vide
             cursor.execute("SELECT COUNT(*) FROM otp_configurations")
@@ -654,6 +674,10 @@ class ConfigManager:
             conn.close()
 
         return True
+
+
+# Initialiser la base de données au chargement du module
+ConfigManager.init_db()
 
 
 def test_demarches_api(api_token, demarche_number=None):
@@ -1395,9 +1419,6 @@ class QuietWSGIRequestHandler(WSGIRequestHandler):
             super().log_request(code, size)
 
 if __name__ == '__main__':
-    # Initialiser la base de données
-    ConfigManager.init_db()
-
     # Démarrer le scheduler APScheduler
     if not scheduler.running:
         scheduler.start()
