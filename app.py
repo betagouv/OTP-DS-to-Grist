@@ -1,6 +1,5 @@
 """
-Application Flask optimisée pour la synchronisation Démarches Simplifiées vers Grist
-Version corrigée avec sauvegarde et persistence des configurations
+Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
 from flask import Flask, render_template, request, jsonify
@@ -10,22 +9,268 @@ import sys
 import time
 import threading
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import requests
 from werkzeug.serving import WSGIRequestHandler
 import psycopg2
 from cryptography.fernet import Fernet
+import logging
+import atexit
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Boolean,
+    DateTime,
+    ForeignKey
+)
+from sqlalchemy.orm import declarative_base, sessionmaker
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from collections import defaultdict
+
+Base = declarative_base()
+
+# Instance globale du scheduler APScheduler
+scheduler = BackgroundScheduler()
+
+
+def scheduled_sync_job(otp_config_id):
+    """
+    Job exécuté automatiquement par APScheduler pour une configuration donnée
+    Exécute la synchronisation et log les résultats
+
+    - Fréquence :
+      - Quotidienne, à minuit UTC (hour=0, minute=0),
+        ou décalée de 15 mn pour chaque config supplémentaire sur le même doc Grist
+      - Au démarrage de l'app
+      - Lors de l'activation/désactivation d'un planning via les endpoints API
+    - Condition : Uniquement pour les synchronisations activés
+    """
+    logger.info(f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}")
+    logger.info(f"Scheduler running: {scheduler.running}, jobs count: {len(scheduler.get_jobs())}")
+
+    db = SessionLocal()
+
+    try:
+        # Récupérer le modèle OtpConfiguration par id
+        otp_config = db.query(OtpConfiguration).filter_by(
+            id=otp_config_id
+        ).first()
+
+        if not otp_config:
+            logger.error(f"Configuration OTP non trouvée: {otp_config_id}")
+            return
+
+        # Charger la configuration complète
+        config = ConfigManager.load_config(
+            grist_user_id=otp_config.grist_user_id,
+            grist_doc_id=otp_config.grist_doc_id
+        )
+
+        if not config:
+            logger.error(f"Impossible de charger la configuration pour {otp_config_id}")
+            return
+
+        # Mettre à jour last_run
+        user_schedule = db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
+        if user_schedule:
+            user_schedule.last_run = datetime.now(timezone.utc)
+            db.commit()
+
+        # Exécuter la synchronisation (sans callbacks WebSocket)
+        result = run_synchronization_task(config, {})
+
+        # Calculer next_run (prochaine exécution à minuit)
+        now = datetime.now(timezone.utc)
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if now.hour >= 0:  # Si on est déjà passé minuit, programmer pour demain
+            next_run = next_run + timedelta(days=1)
+
+        # Mettre à jour next_run
+        if user_schedule:
+            user_schedule.next_run = next_run
+            db.commit()
+
+        # Logger le résultat
+        status = "success" if result.get("success") else "error"
+        message = result.get("message", "Synchronisation terminée")
+
+        # Mettre à jour le statut de la dernière exécution
+        if user_schedule:
+            user_schedule.last_status = status
+            db.commit()
+
+        sync_log = SyncLog(
+            grist_user_id=otp_config.grist_user_id,
+            grist_doc_id=otp_config.grist_doc_id,
+            status=status,
+            message=message
+        )
+        db.add(sync_log)
+        db.commit()
+
+        logger.info(f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}")
+        logger.info(f"next_run DB mis à jour: {next_run}")
+
+        # En cas d'erreur, émettre une notification WebSocket
+        if not result.get("success"):
+            socketio.emit('sync_error', {
+                'grist_user_id': otp_config.grist_user_id,
+                'grist_doc_id': otp_config.grist_doc_id,
+                'message': message,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}")
+
+        # Logger l'erreur
+        try:
+            otp_config = db.query(OtpConfiguration).filter_by(
+                id=otp_config_id
+            ).first()
+
+            if otp_config:
+                sync_log = SyncLog(
+                    grist_user_id=otp_config.grist_user_id,
+                    grist_doc_id=otp_config.grist_doc_id,
+                    status="error",
+                    message=f"Erreur scheduler: {str(e)}"
+                )
+                db.add(sync_log)
+                db.commit()
+
+                # Émettre notification d'erreur
+                socketio.emit('sync_error', {
+                    'grist_user_id': otp_config.grist_user_id,
+                    'grist_doc_id': otp_config.grist_doc_id,
+                    'message': f"Erreur de synchronisation planifiée: {str(e)}",
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                })
+        except Exception as log_error:
+            logger.error(f"Erreur lors du logging de l'erreur scheduler: {str(log_error)}")
+
+    finally:
+        db.close()
+
+
+def reload_scheduler_jobs():
+    """
+    Recharge tous les jobs actifs du scheduler selon les plannings activés.
+    Exécutée au démarrage et après activation/désactivation de plannings,
+    pour éviter des jobs persistant pour des configs modifiées ou supprimées
+    """
+    logger.info("Rechargement des jobs du scheduler...")
+
+    try:
+        # Supprimer tous les jobs existants
+        scheduler.remove_all_jobs()
+
+        # Récupérer tous les plannings activés
+        db = SessionLocal()
+        try:
+            active_schedules = db.query(UserSchedule).filter_by(enabled=True).all()
+
+            # Grouper par document Grist
+            schedules_by_doc = defaultdict(list)
+            for schedule in active_schedules:
+                # Vérifier que la configuration existe encore
+                otp_config = db.query(OtpConfiguration).filter_by(id=schedule.otp_config_id).first()
+                if not otp_config:
+                    logger.warning(f"Configuration manquante pour schedule {schedule.id}, skipping")
+                    continue
+                schedules_by_doc[otp_config.grist_doc_id].append((schedule, otp_config))
+
+            # Pour chaque document, ajouter les jobs avec décalage si nécessaire
+            for doc_id, schedule_list in schedules_by_doc.items():
+                if len(schedule_list) > 1:
+                    # Plusieurs tâches sur le même document : espacer de 15 min
+                    for i, (schedule, otp_config) in enumerate(sorted(schedule_list, key=lambda x: x[0].otp_config_id)):
+                        minute = i * 15
+                        job_id = f"scheduled_sync_{schedule.otp_config_id}"
+                        scheduler.add_job(
+                            func=scheduled_sync_job,
+                            trigger=CronTrigger(hour=0, minute=minute),
+                            args=[schedule.otp_config_id],
+                            id=job_id,
+                            name=f"Sync planifiée pour config {schedule.otp_config_id}",
+                            replace_existing=True,
+                            max_instances=1
+                        )
+                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} à 00:{minute:02d} (document {doc_id})")
+                else:
+                    # Une seule tâche : à minuit
+                    schedule, otp_config = schedule_list[0]
+                    job_id = f"scheduled_sync_{schedule.otp_config_id}"
+                    scheduler.add_job(
+                        func=scheduled_sync_job,
+                        trigger=CronTrigger(hour=0, minute=0),
+                        args=[schedule.otp_config_id],
+                        id=job_id,
+                        name=f"Sync planifiée pour config {schedule.otp_config_id}",
+                        replace_existing=True,
+                        max_instances=1
+                    )
+                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} à 00:00 (document {doc_id})")
+
+        finally:
+            db.close()
+
+        logger.info(f"Scheduler rechargé avec {len(scheduler.get_jobs())} jobs actifs")
+
+    except Exception as e:
+        logger.error(f"Erreur lors du rechargement des jobs scheduler: {str(e)}")
+
+
+class OtpConfiguration(Base):
+    __tablename__ = 'otp_configurations'
+    id = Column(Integer, primary_key=True)
+    ds_api_token = Column(String)
+    demarche_number = Column(String)
+    grist_base_url = Column(String)
+    grist_api_key = Column(String)
+    grist_doc_id = Column(String)
+    grist_user_id = Column(String)
+
+
+class UserSchedule(Base):
+    __tablename__ = 'user_schedules'
+    id = Column(Integer, primary_key=True)
+    otp_config_id = Column(
+        Integer,
+        ForeignKey('otp_configurations.id', ondelete='SET NULL')
+    )
+    frequency = Column(String, default='daily')
+    enabled = Column(Boolean, default=False)
+    last_run = Column(DateTime)
+    next_run = Column(DateTime)
+    last_status = Column(String)
+
+
+class SyncLog(Base):
+    __tablename__ = 'sync_logs'
+    id = Column(Integer, primary_key=True)
+    grist_user_id = Column(String)
+    grist_doc_id = Column(String)
+    status = Column(String)
+    message = Column(String)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 
 DEMARCHES_API_URL = "https://www.demarches-simplifiees.fr/api/v2/graphql"
 
 # Configuration de l'application Flask
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-in-production-2024')
+app.secret_key = os.environ.get(
+    'FLASK_SECRET_KEY',
+    'dev-key-change-in-production-2024'
+)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 # Configuration du logging pour Flask
-import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -35,9 +280,23 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 # Chargement des variables d'environnement
 load_dotenv()
 
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required for database operations"
+    )
+
+# SQLAlchemy setup
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
 class TaskManager:
-    """Gestionnaire de tâches asynchrones avec WebSocket pour les mises à jour en temps réel"""
-    
+    """
+    Gestionnaire de tâches asynchrones avec WebSocket
+    pour les mises à jour en temps réel
+    """
+
     def __init__(self):
         self.tasks = {}
         self.task_counter = 0
@@ -116,13 +375,15 @@ class TaskManager:
             'task_id': task_id,
             'task': self.tasks[task_id]
         })
-    
+
     def get_task(self, task_id):
         """Récupère les informations d'une tâche"""
         return self.tasks.get(task_id)
 
+
 # Instance globale du gestionnaire de tâches
 task_manager = TaskManager()
+
 
 class ConfigManager:
     """Gestionnaire de configuration optimisé avec sauvegarde robuste"""
@@ -148,12 +409,9 @@ class ConfigManager:
     @staticmethod
     def get_db_connection():
         """Établit une connexion à la base de données PostgreSQL"""
-        db_url = os.getenv('DATABASE_URL')
-        if not db_url:
-            return None
-        logger.info(f"DATABASE_URL: {db_url}")
+        logger.info(f"DATABASE_URL: {DATABASE_URL}")
         try:
-            return psycopg2.connect(db_url)
+            return psycopg2.connect(DATABASE_URL)
         except Exception as e:
             logger.error(f"Erreur de connexion à la base de données: {str(e)}")
             return None
@@ -165,6 +423,7 @@ class ConfigManager:
         with conn.cursor() as cursor:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS otp_configurations (
+                    id SERIAL PRIMARY KEY,
                     ds_api_token TEXT,
                     demarche_number TEXT,
                     grist_base_url TEXT,
@@ -178,6 +437,23 @@ class ConfigManager:
                 ADD COLUMN IF NOT EXISTS grist_user_id TEXT DEFAULT ''
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sync_logs (
+                    id SERIAL PRIMARY KEY,
+                    grist_user_id TEXT,
+                    grist_doc_id TEXT,
+                    status TEXT,
+                    message TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Ajouter les colonnes manquantes aux tables existantes
+            cursor.execute("""
+                ALTER TABLE user_schedules
+                ADD COLUMN IF NOT EXISTS last_status TEXT
+            """)
+
             # Insérer une ligne vide si la table est vide
             cursor.execute("SELECT COUNT(*) FROM otp_configurations")
             if cursor.fetchone()[0] == 0:
@@ -186,6 +462,19 @@ class ConfigManager:
                     VALUES ('', '', 'https://grist.numerique.gouv.fr/api', '', '', '')
                 """)
             conn.commit()
+
+    @staticmethod
+    def init_db():
+        """Initialise la base de données en créant les tables si nécessaire"""
+        conn = ConfigManager.get_db_connection()
+        if conn:
+            try:
+                ConfigManager.create_table_if_not_exists(conn)
+                logger.info("Tables de base de données initialisées")
+            finally:
+                conn.close()
+        else:
+            logger.error("Impossible de se connecter à la base de données pour l'initialisation")
 
     @staticmethod
     def encrypt_value(value):
@@ -229,8 +518,6 @@ class ConfigManager:
         conn = ConfigManager.get_db_connection()
 
         try:
-            ConfigManager.create_table_if_not_exists(conn)
-
             with conn.cursor() as cursor:
                 if not grist_user_id or not grist_doc_id:
                     raise Exception("No grist user id or doc id")
@@ -291,7 +578,6 @@ class ConfigManager:
         conn = ConfigManager.get_db_connection()
 
         try:
-            ConfigManager.create_table_if_not_exists(conn)
             with conn.cursor() as cursor:
                 # Préparer les valeurs, chiffrer les sensibles
                 values = {
@@ -701,9 +987,25 @@ def api_config():
             grist_user_id = request.args.get('grist_user_id')
             grist_doc_id = request.args.get('grist_doc_id')
 
-            config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
+            config = ConfigManager.load_config(
+                grist_user_id=grist_user_id,
+                grist_doc_id=grist_doc_id
+            )
 
-            # Garder les vraies valeurs pour la logique côté client, masquer seulement pour affichage
+            # Ajouter l'id de la configuration
+            db = SessionLocal()
+            try:
+                otp_config = db.query(OtpConfiguration).filter_by(
+                    grist_user_id=grist_user_id,
+                    grist_doc_id=grist_doc_id
+                ).first()
+                if otp_config:
+                    config['otp_config_id'] = otp_config.id
+            finally:
+                db.close()
+
+            # Garder les vraies valeurs pour la logique côté client,
+            # masquer seulement pour affichage
             config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
             config['ds_api_token_exists'] = bool(config['ds_api_token'])
             config['grist_api_key_masked'] = '***' if config['grist_api_key'] else ''
@@ -712,7 +1014,7 @@ def api_config():
             return jsonify(config)
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
-    
+
     elif request.method == 'POST':
         try:
             new_config = request.get_json()
@@ -734,15 +1036,134 @@ def api_config():
             
             # Sauvegarder la configuration
             success = ConfigManager.save_config(new_config)
-            
+
             if success:
-                return jsonify({"success": True, "message": "Configuration sauvegardée avec succès"})
+                # Récupérer l'ID de la configuration sauvegardée
+                db = SessionLocal()
+                try:
+                    otp_config = db.query(OtpConfiguration).filter_by(
+                        grist_user_id=new_config.get('grist_user_id'),
+                        grist_doc_id=new_config.get('grist_doc_id')
+                    ).first()
+                    otp_config_id = otp_config.id if otp_config else None
+                finally:
+                    db.close()
+
+                return jsonify({
+                    "success": True,
+                    "message": "Configuration sauvegardée avec succès",
+                    "otp_config_id": otp_config_id
+                })
             else:
-                return jsonify({"success": False, "message": "Erreur lors de la sauvegarde"}), 500
-                
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "Erreur lors de la sauvegarde"
+                    }
+                ), 500
+
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
-            return jsonify({"success": False, "message": f"Erreur: {str(e)}"}), 500
+            return jsonify(
+                {"success": False, "message": "Erreur interne lors de la sauvegarde."}
+            ), 500
+
+
+@app.route('/api/schedule', methods=['GET', 'POST', 'DELETE'])
+def api_schedule():
+    """API pour gérer les plannings de synchronisation"""
+    db = SessionLocal()
+
+    try:
+        if request.method == 'GET':
+            otp_config_id = request.args.get('otp_config_id')
+            if not otp_config_id:
+                return jsonify(
+                    {"success": False, "message": "otp_config_id is required"}
+                ), 400
+
+            # Trouver la configuration
+            otp_config = db.query(OtpConfiguration).filter_by(
+                id=otp_config_id
+            ).first()
+
+            if not otp_config:
+                return jsonify(
+                    {"success": False, "message": "Configuration not found"}
+                ), 404
+
+            # Vérifier si le planning existe et est activé
+            schedule = db.query(UserSchedule).filter_by(
+                otp_config_id=otp_config.id
+            ).first()
+
+            return jsonify({
+                "success": True,
+                "enabled": schedule.enabled if schedule else False,
+                "last_run": schedule.last_run.isoformat() if schedule and schedule.last_run else None,
+                "last_status": schedule.last_status if schedule else None
+            })
+
+        data = request.get_json()
+        otp_config_id = data.get('otp_config_id')
+
+        if not otp_config_id:
+            return jsonify(
+                {"success": False, "message": "otp_config_id is required"}
+            ), 400
+
+        # Trouver la configuration
+        otp_config = db.query(OtpConfiguration).filter_by(
+            id=otp_config_id
+        ).first()
+
+        if not otp_config:
+            return jsonify(
+                {"success": False, "message": "Configuration not found"}
+            ), 404
+
+        if request.method == 'POST':
+            # Activer le planning
+            schedule = db.query(UserSchedule).filter_by(
+                otp_config_id=otp_config.id
+            ).first()
+
+            if schedule:
+                schedule.enabled = True
+            else:
+                schedule = UserSchedule(
+                    otp_config_id=otp_config.id,
+                    enabled=True
+                )
+                db.add(schedule)
+            db.commit()
+
+            # Recharger les jobs du scheduler
+            reload_scheduler_jobs()
+
+            return jsonify({"success": True, "message": "Schedule enabled"})
+
+        elif request.method == 'DELETE':
+            # Désactiver le planning
+            schedule = db.query(UserSchedule).filter_by(
+                otp_config_id=otp_config.id
+            ).first()
+
+            if schedule:
+                schedule.enabled = False
+                db.commit()
+
+            # Recharger les jobs du scheduler
+            reload_scheduler_jobs()
+
+            return jsonify({"success": True, "message": "Schedule disabled"})
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erreur dans api_schedule: {str(e)}")
+        return jsonify({"success": False, "message": "Une erreur interne est survenue."}), 500
+    finally:
+        db.close()
 
 
 @app.route('/api/test-connection', methods=['POST'])
@@ -750,7 +1171,7 @@ def api_test_connection():
     """API pour tester les connexions"""
     data = request.get_json()
     connection_type = data.get('type')
-    
+
     if connection_type == 'demarches':
         success, message = test_demarches_api(
             data.get('api_token'),
@@ -974,16 +1395,28 @@ class QuietWSGIRequestHandler(WSGIRequestHandler):
             super().log_request(code, size)
 
 if __name__ == '__main__':
+    # Initialiser la base de données
+    ConfigManager.init_db()
+
+    # Démarrer le scheduler APScheduler
+    if not scheduler.running:
+        scheduler.start()
+        reload_scheduler_jobs()
+        logger.info("Scheduler APScheduler démarré avec rechargement des jobs")
+
+        # Enregistrer l'arrêt propre du scheduler
+        atexit.register(lambda: scheduler.shutdown(wait=True))
+
     # Désactiver les logs de werkzeug pour les requêtes statiques
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.setLevel(logging.ERROR)
-    
+
     print("🦄 One Trick Pony DS to Grist - Version Flask")
     print(f"📁 Répertoire de travail: {script_dir}")
     print("🌐 Application disponible sur: http://localhost:5000")
     print("🔌 WebSocket activé pour les mises à jour en temps réel")
     print("💾 Gestion améliorée de la sauvegarde des configurations")
-    
+
     # Démarrer l'application
     socketio.run(
         app,
@@ -992,5 +1425,5 @@ if __name__ == '__main__':
         debug=os.getenv(
             'FLASK_DEBUG',
             'False'
-        ).lower() == 'true',
+        ).lower() == 'true'
     )
