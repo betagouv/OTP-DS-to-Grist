@@ -30,6 +30,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from collections import defaultdict
+from zoneinfo import ZoneInfo
 
 Base = declarative_base()
 
@@ -51,6 +52,7 @@ if not DATABASE_URL:
 # Configuration de la synchronisation planifiée
 SYNC_HOUR = int(os.getenv('SYNC_HOUR', '0'))
 SYNC_MINUTE = int(os.getenv('SYNC_MINUTE', '0'))
+SYNC_TZ = os.getenv('SYNC_TZ', 'Europe/Paris')
 
 # SQLAlchemy setup (doit être avant les fonctions qui l'utilisent)
 engine = create_engine(DATABASE_URL)
@@ -63,7 +65,7 @@ def scheduled_sync_job(otp_config_id):
     Exécute la synchronisation et log les résultats
 
     - Fréquence :
-      - Quotidienne, à minuit UTC (hour=0, minute=0),
+      - Quotidienne, à l'heure configurée (SYNC_HOUR:SYNC_MINUTE) dans la timezone SYNC_TZ (défaut Europe/Paris),
         ou décalée de 15 mn pour chaque config supplémentaire sur le même doc Grist
       - Au démarrage de l'app
       - Lors de l'activation/désactivation d'un planning via les endpoints API
@@ -191,6 +193,7 @@ def reload_scheduler_jobs():
 
         # Récupérer tous les plannings activés
         db = SessionLocal()
+        tz = ZoneInfo(SYNC_TZ) if SYNC_TZ != 'UTC' else None
         try:
             active_schedules = db.query(UserSchedule).filter_by(enabled=True).all()
 
@@ -213,7 +216,7 @@ def reload_scheduler_jobs():
                         job_id = f"scheduled_sync_{schedule.otp_config_id}"
                         scheduler.add_job(
                             func=scheduled_sync_job,
-                            trigger=CronTrigger(hour=SYNC_HOUR, minute=minute),
+                            trigger=CronTrigger(hour=SYNC_HOUR, minute=minute, timezone=tz),
                             args=[schedule.otp_config_id],
                             id=job_id,
                             name=f"Sync planifiée pour config {schedule.otp_config_id}",
@@ -227,7 +230,7 @@ def reload_scheduler_jobs():
                     job_id = f"scheduled_sync_{schedule.otp_config_id}"
                     scheduler.add_job(
                         func=scheduled_sync_job,
-                        trigger=CronTrigger(hour=SYNC_HOUR, minute=SYNC_MINUTE),
+                        trigger=CronTrigger(hour=SYNC_HOUR, minute=SYNC_MINUTE, timezone=tz),
                         args=[schedule.otp_config_id],
                         id=job_id,
                         name=f"Sync planifiée pour config {schedule.otp_config_id}",
