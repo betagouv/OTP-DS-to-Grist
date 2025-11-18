@@ -36,6 +36,26 @@ Base = declarative_base()
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler()
 
+# Déterminer le répertoire du script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Chargement des variables d'environnement
+load_dotenv()
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required for database operations"
+    )
+
+# Configuration de la synchronisation planifiée
+SYNC_HOUR = int(os.getenv('SYNC_HOUR', '0'))
+SYNC_MINUTE = int(os.getenv('SYNC_MINUTE', '0'))
+
+# SQLAlchemy setup (doit être avant les fonctions qui l'utilisent)
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def scheduled_sync_job(otp_config_id):
     """
@@ -274,25 +294,12 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Déterminer le répertoire du script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Chargement des variables d'environnement
-load_dotenv()
-
-DATABASE_URL = os.getenv('DATABASE_URL')
-if not DATABASE_URL:
-    raise ValueError(
-        "DATABASE_URL environment variable is required for database operations"
-    )
-
-# Configuration de la synchronisation planifiée
-SYNC_HOUR = int(os.getenv('SYNC_HOUR', '0'))
-SYNC_MINUTE = int(os.getenv('SYNC_MINUTE', '0'))
-
-# SQLAlchemy setup
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Démarrage du scheduler au niveau module
+if not scheduler.running:
+    scheduler.start()
+    reload_scheduler_jobs()
+    logger.info("Scheduler APScheduler démarré au chargement du module")
+    atexit.register(lambda: scheduler.shutdown(wait=True))
 
 
 class TaskManager:
@@ -1423,15 +1430,6 @@ class QuietWSGIRequestHandler(WSGIRequestHandler):
             super().log_request(code, size)
 
 if __name__ == '__main__':
-    # Démarrer le scheduler APScheduler
-    if not scheduler.running:
-        scheduler.start()
-        reload_scheduler_jobs()
-        logger.info("Scheduler APScheduler démarré avec rechargement des jobs")
-
-        # Enregistrer l'arrêt propre du scheduler
-        atexit.register(lambda: scheduler.shutdown(wait=True))
-
     # Désactiver les logs de werkzeug pour les requêtes statiques
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.setLevel(logging.ERROR)
