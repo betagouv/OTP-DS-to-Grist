@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.4.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.3.0...v0.4.0) (2025-11-19)
+
+
+### Features
+
+* **Help:** Changement de terme pour les onglets ([323c64f](https://github.com/betagouv/OTP-DS-to-Grist/commit/323c64fbee07e4539cc97075a64ee35ab0bbdbd5))
+* **Help:** Mise à jour des images ([970ad82](https://github.com/betagouv/OTP-DS-to-Grist/commit/970ad8233ae30b12f2755c28c6c332215f31fb9a))
+* **Layout:** Afficher le bloc de configuration DS sous forme de volet d'accordéon ([105e6d2](https://github.com/betagouv/OTP-DS-to-Grist/commit/105e6d2240a5b7284a2882369f28949d27b1c455))
+* **Layout:** Afficher le bloc de configuration Grist sous forme de volet d'accordéon ([6c5443e](https://github.com/betagouv/OTP-DS-to-Grist/commit/6c5443ed6bd099f02297aa8a3fb24116bb75bd7a))
+* **Layout:** Afficher le bloc de paramètres sous forme de volet d'accordéon ([dac8a4a](https://github.com/betagouv/OTP-DS-to-Grist/commit/dac8a4a6d7d7f9c4f8969a0b56a593fe0b1d5c4d))
+* **Layout:** Ajout d'étoiles pour les champs obligatoires ([4172160](https://github.com/betagouv/OTP-DS-to-Grist/commit/4172160347385daecac8a39adf85523c439bfb13))
+* **Layout:** Déplacement du statut de la configuration ([ec16677](https://github.com/betagouv/OTP-DS-to-Grist/commit/ec166775d6551b49c18c95d7c32efecc89e086bc))
+* **Layout:** Maj du dom des tests de configuration ([dd650bb](https://github.com/betagouv/OTP-DS-to-Grist/commit/dd650bbb700fc02c50620da1b2ff20aefe56a5dc))
+* **Layout:** Sauvegarde et vérifie la configuration à chaque changement ([6b3a4d2](https://github.com/betagouv/OTP-DS-to-Grist/commit/6b3a4d2ac176bbf142a9f4173fce1a02c0a9dffe))
+* **Layout:** Suppression du bloc configuration avancée ([8dcd140](https://github.com/betagouv/OTP-DS-to-Grist/commit/8dcd140bfb83828fc41423c4dd907f5479684677))
+* **Layout:** Suppression du titre ([d8bd7ec](https://github.com/betagouv/OTP-DS-to-Grist/commit/d8bd7ec47e7376aa24bd06a1f1c5d89ff6cbec04))
+* **Sync-auto:** Activation de la case à cocher juste après la configuration initiale ([3e2ae52](https://github.com/betagouv/OTP-DS-to-Grist/commit/3e2ae528fc07886b168b8b87ae4fdf976b558e2c))
+* **Sync-auto:** Affichage du statut de la dernière synchronisation ([77914d7](https://github.com/betagouv/OTP-DS-to-Grist/commit/77914d7e11870343ac1cb2699f2f4b65a0d4cd71))
+* **Sync-auto:** Ajout de la dépendance APScheduler ([a3b985a](https://github.com/betagouv/OTP-DS-to-Grist/commit/a3b985a08cc03f759a764e0368da671f9c910f33))
+* **Sync-auto:** Ajout des nouveaux modèles pour les nouvelles tables ([3ff8409](https://github.com/betagouv/OTP-DS-to-Grist/commit/3ff840929688d115489ec028e18e67a595e37968))
+* **Sync-auto:** Correction de blocages DB dans les jobs planifiés ([a1ede12](https://github.com/betagouv/OTP-DS-to-Grist/commit/a1ede129893bfa1a1114dc5ae27e5b403bee78f5))
+* **Sync-auto:** Correction de blocages de tâche ([10a6e22](https://github.com/betagouv/OTP-DS-to-Grist/commit/10a6e22edfeb923212048f98616d12265c4c6684))
+* **Sync-auto:** Correction de blocages de tâches si chevauchantes ([a28bd94](https://github.com/betagouv/OTP-DS-to-Grist/commit/a28bd946f7720ee88901a976806e3b46057868f4))
+* **Sync-auto:** Décaler les tâches sur le même doc tout le temps, pas seulement la première fois ([e666333](https://github.com/betagouv/OTP-DS-to-Grist/commit/e666333e89d16a2361c5ab2d4c82041fa35f4ad6))
+* **Sync-auto:** Documentation ([39a5430](https://github.com/betagouv/OTP-DS-to-Grist/commit/39a543051326d2c7e618c3374487bb25a9a186dc))
+* **Sync-auto:** Exception si DATABASE_URL n'est pas défini ([f6633b6](https://github.com/betagouv/OTP-DS-to-Grist/commit/f6633b6509451e1b3524b6c9365e145ee2f9e986))
+* **Sync-auto:** Implémentation des fonctions de synchro auto ([b29ce6d](https://github.com/betagouv/OTP-DS-to-Grist/commit/b29ce6dde2d3e4325010765d3debc936f4f894f0))
+* **Sync-auto:** Modification du schéma de la base de données ([4b8fa71](https://github.com/betagouv/OTP-DS-to-Grist/commit/4b8fa71e106565c5c7c5cc44319654309c2cc492))
+* **Sync-auto:** Nouvelle route pour sauvegarder la synchronisation ([ea0b720](https://github.com/betagouv/OTP-DS-to-Grist/commit/ea0b7202feef872847d0345786953763ffebc4ef))
+* **Sync-auto:** Plus de précisions sur certaines fonctions de synchronisation ([4de9a84](https://github.com/betagouv/OTP-DS-to-Grist/commit/4de9a84189e437a2d161c27bf6c1ff1bb967e5bc))
+* **Sync-auto:** poetry lock ([7445394](https://github.com/betagouv/OTP-DS-to-Grist/commit/744539435e5fa4d1c5c3f2205242ee7e141575ed))
+* **Sync-auto:** Possibilité de régler l'heure de synchronisation via l'environnement ([669a7d0](https://github.com/betagouv/OTP-DS-to-Grist/commit/669a7d087680de00d007a2107ed065ba7785951c))
+* **Sync-auto:** Restauration de code perdu ([2d9c022](https://github.com/betagouv/OTP-DS-to-Grist/commit/2d9c0222a4589a31af01be7192395167e779da17))
+
+
+### Bug Fixes
+
+* **DB:** Ajoute la colonne id même si la table existe ([ad60122](https://github.com/betagouv/OTP-DS-to-Grist/commit/ad601224b8c497bde91f51d23a042bdde05169f1))
+* **Sync-auto:** Correction de l'affichage de l'heure de la dernière synchronisation ([5cd8931](https://github.com/betagouv/OTP-DS-to-Grist/commit/5cd8931ccc8adfdc9cca22383b8ad5a741bc8a01))
+* **Sync-auto:** Démarrage du scheduler dans tous les cas ([84dec47](https://github.com/betagouv/OTP-DS-to-Grist/commit/84dec47bed574c8324ca1efc019259e7b8c1cab6))
+* **Sync-auto:** Précision du time zone ([d6b985a](https://github.com/betagouv/OTP-DS-to-Grist/commit/d6b985a33521282fc212c92a1e4c7a5a0dcf804d))
+
 ## [0.3.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.2.0...v0.3.0) (2025-11-05)
 
 
