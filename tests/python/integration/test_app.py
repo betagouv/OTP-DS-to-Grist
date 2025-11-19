@@ -618,6 +618,37 @@ class TestErrorHandling:
         assert 'required' in data_resp['message']
 
     @patch('app.SessionLocal')
+    @patch('app.reload_scheduler_jobs')
+    def test_api_delete_config_success(self, mock_reload, mock_session, client):
+        """Test suppression de configuration réussie"""
+        mock_db = mock_session.return_value
+        mock_config = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_config.id = 123
+
+        response = client.delete('/api/config/123')
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert 'supprimée' in data['message']
+        mock_db.delete.assert_called_once_with(mock_config)
+        mock_db.commit.assert_called_once()
+        mock_reload.assert_called_once()
+
+    @patch('app.SessionLocal')
+    def test_api_delete_config_not_found(self, mock_session, client):
+        """Test suppression de configuration inexistante"""
+        mock_db = mock_session.return_value
+        mock_db.query.return_value.filter_by.return_value.first.return_value = None
+
+        response = client.delete('/api/config/999')
+        assert response.status_code == 404
+
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'non trouvée' in data['message']
+
+    @patch('app.SessionLocal')
     def test_scheduled_sync_job_success(self, mock_session):
         """Test exécution réussie d'une synchronisation planifiée"""
         from app import scheduled_sync_job

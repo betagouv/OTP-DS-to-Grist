@@ -1093,6 +1093,36 @@ def api_config():
             ), 500
 
 
+@app.route('/api/config/<int:otp_config_id>', methods=['DELETE'])
+def api_delete_config(otp_config_id):
+    """API pour supprimer une configuration"""
+    db = SessionLocal()
+
+    try:
+        # Trouver la configuration
+        otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
+
+        if not otp_config:
+            return jsonify({"success": False, "message": "Configuration non trouvée"}), 404
+
+        # Supprimer la configuration (les FK sont gérées automatiquement)
+        db.delete(otp_config)
+        db.commit()
+
+        # Recharger les jobs du scheduler
+        reload_scheduler_jobs()
+
+        logger.info(f"Configuration supprimée: {otp_config_id}")
+        return jsonify({"success": True, "message": "Configuration supprimée avec succès"})
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erreur lors de la suppression de la configuration {otp_config_id}: {str(e)}")
+        return jsonify({"success": False, "message": "Erreur interne lors de la suppression"}), 500
+    finally:
+        db.close()
+
+
 @app.route('/api/schedule', methods=['GET', 'POST', 'DELETE'])
 def api_schedule():
     """API pour gérer les plannings de synchronisation"""
