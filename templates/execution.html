@@ -1,10 +1,22 @@
 <script>
+    let currentConfig = null
+
     // Initialisation de la page d'exécution
     document.addEventListener('DOMContentLoaded', async function() {
         // Vérifier la configuration
-        const config = await checkConfiguration()
+        currentConfig = await checkConfiguration()
 
-        if (config)
+        // Désactiver le bouton de suppression si aucune configuration n'est trouvée
+        const deleteBtn = document.getElementById('delete_config_btn')
+        if (!currentConfig || !currentConfig.otp_config_id) {
+            deleteBtn.disabled = true
+            deleteBtn.title = 'Aucune configuration à supprimer'
+        } else {
+            deleteBtn.disabled = false
+            deleteBtn.title = ''
+        }
+
+        if (currentConfig)
             // Charger l'état de la synchronisation automatique
             await loadAutoSyncState()
     })
