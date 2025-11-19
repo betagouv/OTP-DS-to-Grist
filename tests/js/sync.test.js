@@ -74,6 +74,7 @@ describe('startSync', () => {
     async () => {
       // Setup DOM simulé (comme dans beforeEach)
       document.body.innerHTML += `
+        <div id="sync_progress_container" style="display: none;"></div>
         <div id="sync_controls" style="display: block;"></div>
         <div id="sync_progress" style="display: none;"></div>
         <div id="sync_result" style="display: block;"></div>

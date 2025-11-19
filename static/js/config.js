@@ -204,10 +204,40 @@ const saveConfiguration = async () => {
   }
 }
 
+const deleteConfig = async () => {
+  if (!currentConfig || !currentConfig.otp_config_id) {
+    showNotification('Configuration non trouvée', 'error')
+    return
+  }
+
+  const confirmed = confirm('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
+  if (!confirmed) return
+
+  try {
+    const response = await fetch(`/api/config/${currentConfig.otp_config_id}`, {
+      method: 'DELETE'
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      showNotification('Configuration supprimée avec succès', 'success')
+      // Redirect to configuration page or reload
+      window.location.href = '/'
+    } else {
+      showNotification(result.message || 'Erreur lors de la suppression', 'error')
+    }
+  } catch (error) {
+    console.error('Erreur lors de la suppression:', error)
+    showNotification('Erreur lors de la suppression', 'error')
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     checkConfiguration,
     loadConfiguration,
-    saveConfiguration
+    saveConfiguration,
+    deleteConfig
   }
 }

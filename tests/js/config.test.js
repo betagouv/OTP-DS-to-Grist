@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-const { checkConfiguration, loadConfiguration, saveConfiguration } = require('../../static/js/config.js')
+const { checkConfiguration, loadConfiguration, saveConfiguration, deleteConfig } = require('../../static/js/config.js')
 const { showNotification } = require('../../static/js/notifications.js')
 
 jest.mock('../../static/js/notifications.js', () => ({
@@ -266,3 +266,115 @@ describe('saveConfiguration', () => {
     expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
   })
 })
+
+describe('deleteConfig', () => {
+  beforeEach(() => {
+    // Mock confirm
+    global.confirm = jest.fn()
+
+    // Mock fetch
+    global.fetch = jest.fn()
+
+    // Mock console.error
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore()
+    jest.clearAllMocks()
+  })
+
+  it('affiche une erreur si currentConfig est manquant', async () => {
+    // Pas de currentConfig
+    window.currentConfig = null
+
+    await deleteConfig()
+
+    expect(showNotification).toHaveBeenCalledWith('Configuration non trouvée', 'error')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('affiche une erreur si otp_config_id est manquant', async () => {
+    // currentConfig sans otp_config_id
+    window.currentConfig = { ds_api_token: 'token' }
+
+    await deleteConfig()
+
+    expect(showNotification).toHaveBeenCalledWith('Configuration non trouvée', 'error')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('annule la suppression si l\'utilisateur refuse la confirmation', async () => {
+    // Setup currentConfig valide
+    window.currentConfig = { otp_config_id: 123 }
+
+    // Mock confirm pour refuser
+    confirm.mockReturnValue(false)
+
+    await deleteConfig()
+
+    expect(confirm).toHaveBeenCalledWith('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(showNotification).not.toHaveBeenCalled()
+  })
+
+  it('supprime avec succès et redirige', async () => {
+    // Setup currentConfig valide
+    window.currentConfig = { otp_config_id: 123 }
+
+    // Mock confirm pour accepter
+    confirm.mockReturnValue(true)
+
+    // Mock fetch succès
+    fetch.mockResolvedValue({
+      json: jest.fn().mockResolvedValue({ success: true })
+    })
+
+    await deleteConfig()
+
+    expect(confirm).toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledWith('/api/config/123', { method: 'DELETE' })
+    expect(showNotification).toHaveBeenCalledWith('Configuration supprimée avec succès', 'success')
+  })
+
+  it('gère les erreurs de suppression', async () => {
+    // Setup currentConfig valide
+    window.currentConfig = { otp_config_id: 456 }
+
+    // Mock confirm pour accepter
+    confirm.mockReturnValue(true)
+
+    // Mock fetch erreur
+    fetch.mockResolvedValue({
+      json: jest.fn().mockResolvedValue({ success: false, message: 'Erreur serveur' })
+    })
+
+    await deleteConfig()
+
+    expect(confirm).toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledWith('/api/config/456', { method: 'DELETE' })
+    expect(showNotification).toHaveBeenCalledWith('Erreur serveur', 'error')
+  })
+
+  it('gère les erreurs réseau', async () => {
+    // Setup currentConfig valide
+    window.currentConfig = { otp_config_id: 789 }
+
+    // Mock confirm pour accepter
+    confirm.mockReturnValue(true)
+
+    // Mock fetch pour lever une erreur
+    const error = new Error('Network error')
+    fetch.mockRejectedValue(error)
+
+    await deleteConfig()
+
+    expect(confirm).toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledWith('/api/config/789', { method: 'DELETE' })
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la suppression:', error)
+    expect(showNotification).toHaveBeenCalledWith('Erreur lors de la suppression', 'error')
+  })
+})
+
