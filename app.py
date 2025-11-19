@@ -30,11 +30,33 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from collections import defaultdict
+from zoneinfo import ZoneInfo
 
 Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler()
+
+# Déterminer le répertoire du script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Chargement des variables d'environnement
+load_dotenv()
+
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required for database operations"
+    )
+
+# Configuration de la synchronisation planifiée
+SYNC_HOUR = int(os.getenv('SYNC_HOUR', '0'))
+SYNC_MINUTE = int(os.getenv('SYNC_MINUTE', '0'))
+SYNC_TZ = os.getenv('SYNC_TZ', 'Europe/Paris')
+
+# SQLAlchemy setup (doit être avant les fonctions qui l'utilisent)
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def scheduled_sync_job(otp_config_id):
@@ -43,7 +65,7 @@ def scheduled_sync_job(otp_config_id):
     Exécute la synchronisation et log les résultats
 
     - Fréquence :
-      - Quotidienne, à minuit UTC (hour=0, minute=0),
+      - Quotidienne, à l'heure configurée (SYNC_HOUR:SYNC_MINUTE) dans la timezone SYNC_TZ (défaut Europe/Paris),
         ou décalée de 15 mn pour chaque config supplémentaire sur le même doc Grist
       - Au démarrage de l'app
       - Lors de l'activation/désactivation d'un planning via les endpoints API
@@ -83,10 +105,10 @@ def scheduled_sync_job(otp_config_id):
         # Exécuter la synchronisation (sans callbacks WebSocket)
         result = run_synchronization_task(config, {})
 
-        # Calculer next_run (prochaine exécution à minuit)
+        # Calculer next_run (prochaine exécution à l'heure configurée)
         now = datetime.now(timezone.utc)
-        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if now.hour >= 0:  # Si on est déjà passé minuit, programmer pour demain
+        next_run = now.replace(hour=SYNC_HOUR, minute=SYNC_MINUTE, second=0, microsecond=0)
+        if now >= next_run:  # Si on est déjà passé l'heure programmée, programmer pour demain
             next_run = next_run + timedelta(days=1)
 
         # Mettre à jour next_run
@@ -171,6 +193,7 @@ def reload_scheduler_jobs():
 
         # Récupérer tous les plannings activés
         db = SessionLocal()
+        tz = ZoneInfo(SYNC_TZ) if SYNC_TZ != 'UTC' else None
         try:
             active_schedules = db.query(UserSchedule).filter_by(enabled=True).all()
 
@@ -189,32 +212,32 @@ def reload_scheduler_jobs():
                 if len(schedule_list) > 1:
                     # Plusieurs tâches sur le même document : espacer de 15 min
                     for i, (schedule, otp_config) in enumerate(sorted(schedule_list, key=lambda x: x[0].otp_config_id)):
-                        minute = i * 15
+                        minute = SYNC_MINUTE + i * 15
                         job_id = f"scheduled_sync_{schedule.otp_config_id}"
                         scheduler.add_job(
                             func=scheduled_sync_job,
-                            trigger=CronTrigger(hour=0, minute=minute),
+                            trigger=CronTrigger(hour=SYNC_HOUR, minute=minute, timezone=tz),
                             args=[schedule.otp_config_id],
                             id=job_id,
                             name=f"Sync planifiée pour config {schedule.otp_config_id}",
                             replace_existing=True,
                             max_instances=1
                         )
-                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} à 00:{minute:02d} (document {doc_id})")
+                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{minute:02d} (document {doc_id})")
                 else:
-                    # Une seule tâche : à minuit
+                    # Une seule tâche : à l'heure configurée
                     schedule, otp_config = schedule_list[0]
                     job_id = f"scheduled_sync_{schedule.otp_config_id}"
                     scheduler.add_job(
                         func=scheduled_sync_job,
-                        trigger=CronTrigger(hour=0, minute=0),
+                        trigger=CronTrigger(hour=SYNC_HOUR, minute=SYNC_MINUTE, timezone=tz),
                         args=[schedule.otp_config_id],
                         id=job_id,
                         name=f"Sync planifiée pour config {schedule.otp_config_id}",
                         replace_existing=True,
                         max_instances=1
                     )
-                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} à 00:00 (document {doc_id})")
+                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{SYNC_MINUTE:02d} (document {doc_id})")
 
         finally:
             db.close()
@@ -274,21 +297,12 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Déterminer le répertoire du script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Chargement des variables d'environnement
-load_dotenv()
-
-DATABASE_URL = os.getenv('DATABASE_URL')
-if not DATABASE_URL:
-    raise ValueError(
-        "DATABASE_URL environment variable is required for database operations"
-    )
-
-# SQLAlchemy setup
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Démarrage du scheduler au niveau module
+if not scheduler.running:
+    scheduler.start()
+    reload_scheduler_jobs()
+    logger.info("Scheduler APScheduler démarré au chargement du module")
+    atexit.register(lambda: scheduler.shutdown(wait=True))
 
 
 class TaskManager:
@@ -1419,15 +1433,6 @@ class QuietWSGIRequestHandler(WSGIRequestHandler):
             super().log_request(code, size)
 
 if __name__ == '__main__':
-    # Démarrer le scheduler APScheduler
-    if not scheduler.running:
-        scheduler.start()
-        reload_scheduler_jobs()
-        logger.info("Scheduler APScheduler démarré avec rechargement des jobs")
-
-        # Enregistrer l'arrêt propre du scheduler
-        atexit.register(lambda: scheduler.shutdown(wait=True))
-
     # Désactiver les logs de werkzeug pour les requêtes statiques
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.setLevel(logging.ERROR)

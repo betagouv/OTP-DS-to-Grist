@@ -268,7 +268,7 @@ const loadAutoSyncState = async () => {
 
     // Afficher le statut de la dernière synchronisation si activé
     if (result.enabled && result.last_run) {
-      const lastRunDate = new Date(result.last_run).toLocaleString('fr-FR')
+      const lastRunDate = new Date(result.last_run + '+00:00').toLocaleString('fr-FR')
       const statusClass = result.last_status === 'success' ? 'fr-alert--success' : 'fr-alert--error'
       const statusText = result.last_status === 'success' ? 'Succès' : 'Échec'
       const icon = result.last_status === 'success' ? 'check-circle' : 'exclamation-triangle'

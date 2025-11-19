@@ -36,7 +36,8 @@
 ## 🔄 Synchronisation Automatique
 
 ### **Vue d'ensemble**
-La synchronisation automatique utilise **APScheduler** pour exécuter les synchronisations selon un planning prédéfini. Elle permet de maintenir les données Grist à jour sans intervention manuelle.
+La synchronisation automatique utilise **APScheduler** pour exécuter les synchronisations selon un planning prédéfini.
+Elle permet de maintenir les données Grist à jour sans intervention manuelle.
 
 ### **Architecture du Scheduler**
 
@@ -91,6 +92,12 @@ Logs + Notifications → Interface Web
 | Décalage  | 15 minutes        | Entre configurations du même document |
 | Timeout   | 2 heures          | Durée maximale d'une synchronisation  |
 | Retry     | Automatique       | En cas d'échec réseau                 |
+
+**Minuit** est la configuration par défaut, il est possible d'ajuster l'heure et les minutes via les variables d'environnement :
+```
+SYNC_HOUR=10
+SYNC_MINUTE=50
+```
 
 ---
 
