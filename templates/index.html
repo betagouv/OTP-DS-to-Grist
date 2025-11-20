@@ -57,6 +57,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 const startSyncAction = async () => currentTaskId = await startSync(window.config)
 
+const pocitAction = async () => {
+  const tokenInfo = await grist.docApi.getAccessToken({readOnly: false})
+  const {token} = tokenInfo
+  console.log({token})
+}
+
 // Socket.IO pour les mises à jour en temps réel
 socket.on('task_update', function(data) {
   if (data.task_id === currentTaskId) {
