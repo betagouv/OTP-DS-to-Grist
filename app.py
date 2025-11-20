@@ -1375,6 +1375,95 @@ def api_task_status(task_id):
         return jsonify({"error": "Tâche non trouvée"}), 404
 
 
+@app.route('/api/create-service-account', methods=['POST'])
+def api_create_service_account():
+    """API pour créer un compte de service Grist et le restreindre à un document"""
+    try:
+        data = request.get_json()
+        token = data.get('token')
+        doc_id = data.get('doc_id')
+        label = data.get('label', 'POC Service Account')
+        description = data.get('description', 'Created via POC')
+        expires_at = data.get('expires_at', '2042-10-10')
+
+        if not token:
+            return jsonify({"success": False, "message": "Token requis"}), 400
+        if not doc_id:
+            return jsonify({"success": False, "message": "doc_id requis"}), 400
+
+        # URL de base Grist
+        grist_base_url = os.getenv('GRIST_BASE_URL', 'https://grist.numerique.gouv.fr/api')
+
+        # 1. Créer le compte de service
+        create_url = f"{grist_base_url}/service-accounts"
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "label": label,
+            "description": description,
+            "expiresAt": expires_at
+        }
+
+        # Log the exact API call
+        logger.info(f"Creating service account - API Call: POST {create_url}")
+        logger.info(f"Headers: Content-Type: {headers['Content-Type']}, Authorization: Bearer ***masked***")
+        logger.info(f"Payload: {payload}")
+
+        response = requests.post(create_url, json=payload, headers=headers, timeout=10)
+
+        if response.status_code != 200:
+            return jsonify({
+                "success": False,
+                "message": f"Erreur lors de la création du compte de service: {response.status_code} - {response.text}"
+            }), response.status_code
+
+        service_account = response.json()
+        service_account_login = service_account.get('login')
+
+        if not service_account_login:
+            return jsonify({
+                "success": False,
+                "message": "Login du compte de service non trouvé dans la réponse"
+            }), 500
+
+        # 2. Restreindre l'accès au document spécifique
+        access_url = f"{grist_base_url}/docs/{doc_id}/access"
+
+        access_payload = {
+            "delta": {
+                "users": {
+                    service_account_login: "editors"
+                }
+            }
+        }
+
+        # Log the access restriction API call
+        logger.info(f"Restricting service account access - API Call: PATCH {access_url}")
+        logger.info(f"Headers: Content-Type: {headers['Content-Type']}, Authorization: Bearer ***masked***")
+        logger.info(f"Payload: {access_payload}")
+
+        access_response = requests.patch(access_url, json=access_payload, headers=headers, timeout=10)
+
+        if access_response.status_code != 200:
+            logger.warning(f"Impossible de restreindre l'accès du compte de service au document {doc_id}: {access_response.status_code} - {access_response.text}")
+            # Ne pas échouer complètement, mais logger l'avertissement
+
+        return jsonify({
+            "success": True,
+            "message": "Compte de service créé et accès restreint au document",
+            "service_account": service_account,
+            "doc_id": doc_id
+        })
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la création du compte de service: {str(e)}")
+        return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
+
+
 @app.route('/execution')
 def execution():
     """Page d'exécution et de suivi"""
