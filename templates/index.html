@@ -9,27 +9,41 @@
 
 {% block scripts %}
 <script>
-    let currentConfig = {}
-    
-    // Charger la configuration au démarrage
-    document.addEventListener('DOMContentLoaded', async () => {
-        currentConfig = await loadConfiguration()
-    })
-</script>
-<script>
+window.config = null
 let logsVisible = false
-let currentConfigExec = null
 let currentTaskId = null
 
-const startSyncAction = async () => currentTaskId = await startSync(currentConfigExec)
-
-document.addEventListener(
-  'DOMContentLoaded',
-  async () => {
-    currentConfigExec = await checkConfiguration()
-    loadGroupes()
+window.updateDeleteButton = function(config) {
+  const deleteBtn = document.getElementById('delete_config_btn')
+  if (!config || !config.otp_config_id) {
+    deleteBtn.disabled = true
+    deleteBtn.title = 'Aucune configuration à supprimer'
+  } else {
+    deleteBtn.disabled = false
+    deleteBtn.title = ''
   }
-)
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+
+  // Initialisation de la page d'exécution
+  // Vérifier la configuration
+  const config = await checkConfiguration()
+
+  // Mettre à jour le bouton de suppression
+  window.updateDeleteButton(config)
+
+  if (config)
+    // Charger l'état de la synchronisation automatique
+    await loadAutoSyncState()
+
+  // Charger la configuration au démarrage
+  window.config = await loadConfiguration()
+  loadGroupes()
+})
+
+
+const startSyncAction = async () => currentTaskId = await startSync(window.config)
 
 // Socket.IO pour les mises à jour en temps réel
 socket.on('task_update', function(data) {

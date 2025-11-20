@@ -1,27 +1,3 @@
-<script>
-    let currentConfig = null
-
-    // Initialisation de la page d'exécution
-    document.addEventListener('DOMContentLoaded', async function() {
-        // Vérifier la configuration
-        currentConfig = await checkConfiguration()
-
-        // Désactiver le bouton de suppression si aucune configuration n'est trouvée
-        const deleteBtn = document.getElementById('delete_config_btn')
-        if (!currentConfig || !currentConfig.otp_config_id) {
-            deleteBtn.disabled = true
-            deleteBtn.title = 'Aucune configuration à supprimer'
-        } else {
-            deleteBtn.disabled = false
-            deleteBtn.title = ''
-        }
-
-        if (currentConfig)
-            // Charger l'état de la synchronisation automatique
-            await loadAutoSyncState()
-    })
-</script>
-
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
     <button type="button" id="accordion-settings" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-3">3. Paramètres</button>

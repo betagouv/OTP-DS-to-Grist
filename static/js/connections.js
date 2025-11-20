@@ -15,7 +15,7 @@ const testDemarchesConnection = async () => {
 
     // Utiliser le token saisi OU recharger la config si vide
     let ds_token = ds_token_input
-    if (!ds_token && currentConfig && currentConfig.ds_api_token_exists) {
+    if (!ds_token) {
       try {
         const gristContext = await getGristContext()
         const configResponse = await fetch(`/api/config${gristContext.params}`)
@@ -88,7 +88,7 @@ const testGristConnection = async () => {
     // Utiliser la clé saisie OU recharger la config si vide
     let grist_key = gristKeyInputValue
 
-    if (!grist_key && currentConfig.grist_api_key_exists) {
+    if (!grist_key) {
       try {
         const gristContext   = await getGristContext()
         const configResponse = await fetch(`/api/config${gristContext.params}`)

@@ -221,8 +221,8 @@ describe('saveConfiguration', () => {
       <div id="config_check_result"></div>
       <button id="start_sync_btn"></button>`
 
-    // Mock currentConfig
-    window.currentConfig = {
+    // Mock config
+    window.config = {
       ds_api_token: 'old_token',
       grist_api_key: 'old_key'
     }
@@ -284,9 +284,9 @@ describe('deleteConfig', () => {
     jest.clearAllMocks()
   })
 
-  it('affiche une erreur si currentConfig est manquant', async () => {
-    // Pas de currentConfig
-    window.currentConfig = null
+  it('affiche une erreur si config est manquant', async () => {
+    // Pas de config
+    window.config = null
 
     await deleteConfig()
 
@@ -296,8 +296,8 @@ describe('deleteConfig', () => {
   })
 
   it('affiche une erreur si otp_config_id est manquant', async () => {
-    // currentConfig sans otp_config_id
-    window.currentConfig = { ds_api_token: 'token' }
+    // config sans otp_config_id
+    window.config = { ds_api_token: 'token' }
 
     await deleteConfig()
 
@@ -307,8 +307,8 @@ describe('deleteConfig', () => {
   })
 
   it('annule la suppression si l\'utilisateur refuse la confirmation', async () => {
-    // Setup currentConfig valide
-    window.currentConfig = { otp_config_id: 123 }
+    // Setup config valide
+    window.config = { otp_config_id: 123 }
 
     // Mock confirm pour refuser
     confirm.mockReturnValue(false)
@@ -321,8 +321,8 @@ describe('deleteConfig', () => {
   })
 
   it('supprime avec succès et redirige', async () => {
-    // Setup currentConfig valide
-    window.currentConfig = { otp_config_id: 123 }
+    // Setup config valide
+    window.config = { otp_config_id: 123 }
 
     // Mock confirm pour accepter
     confirm.mockReturnValue(true)
@@ -340,8 +340,8 @@ describe('deleteConfig', () => {
   })
 
   it('gère les erreurs de suppression', async () => {
-    // Setup currentConfig valide
-    window.currentConfig = { otp_config_id: 456 }
+    // Setup config valide
+    window.config = { otp_config_id: 456 }
 
     // Mock confirm pour accepter
     confirm.mockReturnValue(true)
@@ -359,8 +359,8 @@ describe('deleteConfig', () => {
   })
 
   it('gère les erreurs réseau', async () => {
-    // Setup currentConfig valide
-    window.currentConfig = { otp_config_id: 789 }
+    // Setup config valide
+    window.config = { otp_config_id: 789 }
 
     // Mock confirm pour accepter
     confirm.mockReturnValue(true)
