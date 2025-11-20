@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.1](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.4.0...v0.4.1) (2025-11-20)
+
+
+### Bug Fixes
+
+* **Delete-config:** Bouton et javascript pour supprimer la configuration ([4c62be0](https://github.com/betagouv/OTP-DS-to-Grist/commit/4c62be06c5c2f007a12b360e02487f43bac750b6))
+* **Delete-config:** Désactiver le bouton si pas de configuration ([ba82f56](https://github.com/betagouv/OTP-DS-to-Grist/commit/ba82f5627c13ef65edf6a65e9bc8bf043b15af0a))
+* **Delete-config:** Focus sur le 1er champs de config si vide ([ed554de](https://github.com/betagouv/OTP-DS-to-Grist/commit/ed554dee541e7f5575f1009eaa8a5e159236e965))
+* **Delete-config:** Nouvelle route pour supprimer une configuration ([881cb6d](https://github.com/betagouv/OTP-DS-to-Grist/commit/881cb6d82a94d4806af6228b2d9b9acb94314f62))
+* **Delete-config:** Remaniement ([22ba64b](https://github.com/betagouv/OTP-DS-to-Grist/commit/22ba64b32efa75b56751bb7a8469d4813815a935))
+* **Layout:** Style des blocs de compte rendu de synchronisation ([6386a8b](https://github.com/betagouv/OTP-DS-to-Grist/commit/6386a8b40105d9af72f7ef16dd9554f46d756cd3))
+* **Layout:** Toggle du bloc de statuts de synchronisation ([52d796a](https://github.com/betagouv/OTP-DS-to-Grist/commit/52d796a29cd974936a7640abd0b296efb1e4183b))
+
 ## [0.4.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.3.0...v0.4.0) (2025-11-19)
 
 
