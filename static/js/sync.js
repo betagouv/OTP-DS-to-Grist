@@ -53,6 +53,7 @@ const startSync = async (config) => {
     // Afficher la zone de progression
     document.getElementById('sync_controls').style.display = 'none'
     document.getElementById('sync_progress').style.display = 'block'
+    document.getElementById('sync_progress_container').style.display = 'block'
     document.getElementById('sync_result').style.display = 'none'
 
     // Réinitialiser les compteurs et l'affichage

@@ -42,7 +42,6 @@ describe('testDemarchesConnection', () => {
     global.fetch = jest.fn()
 
     // Mock global variables
-    global.currentConfig = { ds_api_token_exists: true }
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
     global.console.error = jest.fn()
   })
@@ -141,11 +140,15 @@ describe('testDemarchesConnection', () => {
     'should show error when no token available',
     async () => {
       mockTokenInput.value = ''
-      global.currentConfig = { ds_api_token_exists: false }
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => ({ ds_api_token: '' })
+      })
 
       await testDemarchesConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Token API requis')
+      expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
       expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -199,7 +202,6 @@ describe('testGristConnection', () => {
     global.fetch = jest.fn()
 
     // Mock global variables
-    global.currentConfig = { grist_api_key_exists: true }
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
     global.console.error = jest.fn()
   })
@@ -300,11 +302,15 @@ describe('testGristConnection', () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
       mockDocInput.value = 'doc123'
-      global.currentConfig = { grist_api_key_exists: false }
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => ({ grist_api_key: '' })
+      })
 
       await testGristConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Clé API Grist requise')
+      expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
       expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
       expect(global.console.error).not.toHaveBeenCalled()
     }

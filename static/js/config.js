@@ -135,11 +135,11 @@ const saveConfiguration = async () => {
   const grist_key = gristKeyElement.value
 
   const config = {
-    ds_api_token: dsToken || currentConfig.ds_api_token || '',
+    ds_api_token: dsToken || window.config.ds_api_token || '',
     ds_api_url: document.getElementById('ds_api_url').value,
     demarche_number: document.getElementById('demarche_number').value,
     grist_base_url: document.getElementById('grist_base_url').value,
-    grist_api_key: grist_key || currentConfig.grist_api_key || '',
+    grist_api_key: grist_key || window.config.grist_api_key || '',
     grist_doc_id: document.getElementById('grist_doc_id').value,
     grist_user_id: document.getElementById('grist_user_id').value,
   }
@@ -192,8 +192,9 @@ const saveConfiguration = async () => {
       }
       // Recharger la configuration pour mettre à jour les statuts
       setTimeout(async () => {
-        currentConfig = await loadConfiguration()
+        window.config = await loadConfiguration()
         await loadAutoSyncState()
+        window.updateDeleteButton(window.config)
       }, 500)
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
@@ -204,10 +205,40 @@ const saveConfiguration = async () => {
   }
 }
 
+const deleteConfig = async () => {
+  if (!window.config || !window.config.otp_config_id) {
+    showNotification('Configuration non trouvée', 'error')
+    return
+  }
+
+  const confirmed = confirm('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
+  if (!confirmed) return
+
+  try {
+    const response = await fetch(`/api/config/${window.config.otp_config_id}`, {
+      method: 'DELETE'
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      showNotification('Configuration supprimée avec succès', 'success')
+      // Redirect to configuration page or reload
+      window.location.href = '/'
+    } else {
+      showNotification(result.message || 'Erreur lors de la suppression', 'error')
+    }
+  } catch (error) {
+    console.error('Erreur lors de la suppression:', error)
+    showNotification('Erreur lors de la suppression', 'error')
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     checkConfiguration,
     loadConfiguration,
-    saveConfiguration
+    saveConfiguration,
+    deleteConfig
   }
 }
