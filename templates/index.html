@@ -40,6 +40,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Charger la configuration au démarrage
   window.config = await loadConfiguration()
   loadGroupes()
+
+  // Mettre le focus sur le premier champs de configuration si vide
+  if (!window.config || !window.config.ds_api_token) {
+
+    setTimeout(
+      () => {
+        document.getElementById('ds_api_token').focus()
+      }
+      , 500 // Attendre que l'accordéon soit ouvert
+    )
+
+  }
 })
 
 
