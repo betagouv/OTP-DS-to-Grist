@@ -27,7 +27,6 @@ const checkConfiguration = async () => {
         <div class="fr-alert fr-alert--error">
           <h3 class="fr-alert__title">Configuration incomplète</h3>
           <p>Champs manquants: ${missingFields.join(', ')}</p>
-          <p><a href="/" class="fr-link">Aller à la configuration</a></p>
         </div>`
 
     resultDiv.innerHTML = `

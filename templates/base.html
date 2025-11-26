@@ -321,18 +321,18 @@
             console.log('Connecté au serveur via Socket.IO')
         })
 
-        const inputsConfig = document.querySelectorAll('.input-config')
-        inputsConfig.forEach(input => input.addEventListener(
-          'blur',
-          async () => {
-            const allFilled = Array.from(inputsConfig).every(input => !!input.value)
+        const saveConfigBtn = document.querySelector('#save_config_btn')
 
-            if (allFilled)
-              await saveConfiguration()
+        const saveConfigAction = async () => {
+          if (!await testGristConnection())
+            return false
 
-            checkConfiguration()
-          }
-        ))
+          if (!await testDemarchesConnection())
+            return false
+
+          await saveConfiguration()
+          await checkConfiguration()
+        }
     </script>
     
     {% block scripts %}{% endblock %}

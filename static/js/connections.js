@@ -29,10 +29,13 @@ const testDemarchesConnection = async () => {
       }
     }
 
-    if (!ds_token)
-      return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+    if (!ds_token) {
+      resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
         <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
       </div>`
+      showNotification('Token API démarches simplifiées requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+      return false
+    }
 
     const response = await fetch('/api/test-connection', {
       method: 'POST',
@@ -53,13 +56,15 @@ const testDemarchesConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      return showNotification(result.message, 'success')
+      showNotification(result.message, 'success')
+      return true
     }
 
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>${result.message}</p>
     </div>`
     showNotification(result.message, 'error')
+    return false
 
   } catch (error) {
     console.error('Erreur lors du test DS:', error)
@@ -67,6 +72,7 @@ const testDemarchesConnection = async () => {
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
     showNotification('Erreur lors du test de connexion', 'error')
+    return false
   } finally {
     button.disabled = false
     button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'
@@ -99,10 +105,12 @@ const testGristConnection = async () => {
       }
     }
 
-    if (!grist_key)
+    if (!grist_key) {
+      showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
       return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
         <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
       </div>`
+    }
 
     if (!gristBaseUrlValue)
       return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
@@ -133,7 +141,8 @@ const testGristConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      return showNotification(result.message, 'success')
+      showNotification(result.message, 'success')
+      return true
     }
 
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
@@ -141,6 +150,7 @@ const testGristConnection = async () => {
     </div>`
 
     showNotification(result.message, 'error')
+    return false
 
   } catch (error) {
     console.error('Erreur lors du test Grist:', error)
@@ -148,13 +158,14 @@ const testGristConnection = async () => {
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
     showNotification('Erreur lors du test de connexion', 'error')
+    return false
   } finally {
     button.disabled = false
     button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'
   }
 }
 
-function testWebSocket() {
+const testWebSocket = () => {
   const statusDiv = document.getElementById('websocket_status')
 
   // Réinitialiser l'état
