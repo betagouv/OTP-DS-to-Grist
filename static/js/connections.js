@@ -1,12 +1,8 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
-const testDemarchesConnection = async () => {
-  const button = document.getElementById('test_ds_btn')
+const testDemarchesConnection = async (silent = false) => {
   const resultDiv = document.getElementById('ds_test_result')
-
-  button.disabled = true
-  button.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Test en cours...'
 
   try {
     const ds_token_input = document.getElementById('ds_api_token').value || ''
@@ -56,7 +52,7 @@ const testDemarchesConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      showNotification(result.message, 'success')
+      if (!silent) showNotification(result.message, 'success')
       return true
     }
 
@@ -73,18 +69,11 @@ const testDemarchesConnection = async () => {
     </div>`
     showNotification('Erreur lors du test de connexion', 'error')
     return false
-  } finally {
-    button.disabled = false
-    button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'
   }
 }
 
-const testGristConnection = async () => {
-  const button = document.getElementById('test_grist_btn')
+const testGristConnection = async (silent = false) => {
   const resultDiv = document.getElementById('grist_test_result')
-
-  button.disabled = true
-  button.innerHTML = '<i class="fas fa-spinner fa-spin fr-mr-1w" aria-hidden="true"></i>Test en cours...'
 
   try {
     const gristKeyInputValue = document.getElementById('grist_api_key').value
@@ -141,7 +130,7 @@ const testGristConnection = async () => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--success">
         <p>${result.message}</p>
       </div>`
-      showNotification(result.message, 'success')
+      if (!silent) showNotification(result.message, 'success')
       return true
     }
 
@@ -159,9 +148,6 @@ const testGristConnection = async () => {
     </div>`
     showNotification('Erreur lors du test de connexion', 'error')
     return false
-  } finally {
-    button.disabled = false
-    button.innerHTML = '<i class="fas fa-plug fr-mr-1w" aria-hidden="true"></i>Tester la connexion'
   }
 }
 

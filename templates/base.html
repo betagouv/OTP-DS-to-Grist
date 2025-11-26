@@ -324,10 +324,10 @@
         const saveConfigBtn = document.querySelector('#save_config_btn')
 
         const saveConfigAction = async () => {
-          if (!await testGristConnection())
+          if (!await testGristConnection(true))
             return false
 
-          if (!await testDemarchesConnection())
+          if (!await testDemarchesConnection(true))
             return false
 
           await saveConfiguration()
