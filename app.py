@@ -102,7 +102,7 @@ def scheduled_sync_job(otp_config_id):
             user_schedule.last_run = datetime.now(timezone.utc)
             db.commit()
 
-        # Exécuter la synchronisation (sans callbacks WebSocket)
+        # Exécuter la synchronisation
         result = run_synchronization_task(config, {})
 
         # Calculer next_run (prochaine exécution à l'heure configurée)
@@ -948,6 +948,7 @@ def run_synchronization_task(config, filters, progress_callback=None, log_callba
             # Ajouter le log
             if log_callback:
                 log_callback(line.strip())
+            logger.info(f"[PROCESSOR] {line.strip()}")
             
             # Mettre à jour la progression
             for keyword, (value, status_text) in progress_keywords.items():
@@ -976,10 +977,12 @@ def run_synchronization_task(config, filters, progress_callback=None, log_callba
         
         # Lire les erreurs
         stderr_output = process.stderr.read()
-        if stderr_output and log_callback:
+        if stderr_output:
             for line in stderr_output.split('\n'):
                 if line.strip():
-                    log_callback(f"ERREUR: {line.strip()}")
+                    if log_callback:
+                        log_callback(f"ERREUR: {line.strip()}")
+                    logger.error(f"[PROCESSOR] ERREUR: {line.strip()}")
         
         # Attendre la fin du processus
         returncode = process.wait()
