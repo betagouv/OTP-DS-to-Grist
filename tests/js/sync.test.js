@@ -3,6 +3,10 @@ jest.mock('../../static/js/utils.js', () => ({
   formatDuration: jest.fn(seconds => `${seconds}s`)
 }))
 
+beforeAll(() => {
+  Element.prototype.scrollIntoView = jest.fn()
+})
+
 jest.mock('../../static/js/notifications.js', () => ({
   showNotification: jest.fn()
 }))
@@ -153,16 +157,20 @@ describe('updateTaskProgress', () => {
   it(
     'gère la fin de la tâche et met à jour l\'interface finale', () => {
     // Setup DOM simulé
-    document.body.innerHTML = ` <div id="sync_progress" style="display: block;"></div>
-      <div id="sync_controls" style="display: none;"></div>
-      <div id="sync_result" style="display: none;"></div>
-      <div id="result_content"></div>
-      <div id="progress_bar" style="width: 0%;"></div>
-      <div id="progress_percentage">0%</div>
-      <div id="current_status">Initialisation...</div>
-      <div id="elapsed_time">0s</div>
-      <div id="processing_speed">-</div>
-      <div id="eta">-</div>`
+    document.body.innerHTML = `<div id="sync_progress_container">
+      <div id="sync_progress" style="display: block;">
+        <div id="progress_percentage">0%</div>
+        <div id="progress_bar" style="width: 0%;"></div>
+        <div id="current_status">Initialisation...</div>
+        <div id="elapsed_time">0s</div>
+        <div id="processing_speed">-</div>
+        <div id="eta">-</div>
+      </div>
+      <div id="sync_result" style="display: none;">
+        <div id="result_content"></div>
+      </div>
+    </div>
+    <div id="sync_controls" style="display: none;"></div>`
 
     // Objet tâche simulé (complétée)
     const mockTask = { status: 'completed', message: 'Sync terminée', progress: 100 }
