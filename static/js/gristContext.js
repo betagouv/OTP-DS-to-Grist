@@ -6,6 +6,7 @@ const getGristContext = async () => {
     grist.ready({requiredAccess: 'full'})
 
     const tokenInfo = await grist.docApi.getAccessToken({readOnly: false})
+    const {token} = tokenInfo
     const docBaseUrl = tokenInfo.baseUrl
     const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]))
     const {docId, userId} = payload

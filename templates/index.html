@@ -57,6 +57,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 const startSyncAction = async () => currentTaskId = await startSync(window.config)
 
+const pocitAction = async () => {
+  try {
+    const tokenInfo = await grist.docApi.getAccessToken({readOnly: false})
+    const {token} = tokenInfo
+    console.log({token})
+
+    // Extraire docId et userId du token JWT
+    const payload = JSON.parse(atob(tokenInfo.token.split('.')[1]))
+    const {docId, userId} = payload
+    console.log({docId, userId})
+
+    // Créer un compte de service avec ce token et le restreindre au document
+    const response = await fetch('/api/create-service-account', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: token,
+        doc_id: docId,
+        label: 'POC Service Account',
+        description: 'Created via POC button - Restricted to document ' + docId,
+        expires_at: '2042-10-10'
+      })
+    })
+
+    const result = await response.json()
+    if (result.success) {
+      console.log('Service account created and restricted:', result.service_account)
+      alert('Compte de service créé avec succès et restreint au document !\nClé API: ' + result.service_account.key + '\nDocument: ' + result.doc_id)
+    } else {
+      console.error('Erreur:', result.message)
+      alert('Erreur lors de la création: ' + result.message)
+    }
+  } catch (error) {
+    console.error('Erreur:', error)
+    alert('Erreur: ' + error.message)
+  }
+}
+
 // Socket.IO pour les mises à jour en temps réel
 socket.on('task_update', function(data) {
   if (data.task_id === currentTaskId) {
