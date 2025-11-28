@@ -10,14 +10,10 @@ jest.mock('../../static/js/notifications.js', () => ({
 }))
 
 describe('testDemarchesConnection', () => {
-  let mockButton, mockResultDiv, mockTokenInput, mockUrlInput, mockDemarcheInput
+  let mockResultDiv, mockTokenInput, mockUrlInput, mockDemarcheInput
 
   beforeEach(() => {
     // Mock DOM elements
-    mockButton = {
-      disabled: false,
-      innerHTML: ''
-    }
     mockResultDiv = {
       innerHTML: ''
     }
@@ -28,7 +24,6 @@ describe('testDemarchesConnection', () => {
     global.document = {
       getElementById: jest.fn((id) => {
         switch (id) {
-          case 'test_ds_btn': return mockButton
           case 'ds_test_result': return mockResultDiv
           case 'ds_api_token': return mockTokenInput
           case 'ds_api_url': return mockUrlInput
@@ -77,8 +72,6 @@ describe('testDemarchesConnection', () => {
       expect(mockResultDiv.innerHTML).toContain('Connexion réussie')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
       expect(showNotification).toHaveBeenCalledWith('Connexion réussie', 'success')
-      expect(mockButton.disabled).toBe(false)
-      expect(mockButton.innerHTML).toContain('Tester la connexion')
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -170,14 +163,10 @@ describe('testDemarchesConnection', () => {
 })
 
 describe('testGristConnection', () => {
-  let mockButton, mockResultDiv, mockKeyInput, mockUrlInput, mockDocInput
+  let mockResultDiv, mockKeyInput, mockUrlInput, mockDocInput
 
   beforeEach(() => {
     // Mock DOM elements
-    mockButton = {
-      disabled: false,
-      innerHTML: ''
-    }
     mockResultDiv = {
       innerHTML: ''
     }
@@ -188,7 +177,6 @@ describe('testGristConnection', () => {
     global.document = {
       getElementById: jest.fn((id) => {
         switch (id) {
-          case 'test_grist_btn': return mockButton
           case 'grist_test_result': return mockResultDiv
           case 'grist_api_key': return mockKeyInput
           case 'grist_base_url': return mockUrlInput
@@ -236,8 +224,6 @@ describe('testGristConnection', () => {
       expect(mockResultDiv.innerHTML).toContain('Connexion Grist réussie')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
       expect(showNotification).toHaveBeenCalledWith('Connexion Grist réussie', 'success')
-      expect(mockButton.disabled).toBe(false)
-      expect(mockButton.innerHTML).toContain('Tester la connexion')
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
