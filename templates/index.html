@@ -28,14 +28,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Initialisation de la page d'exécution
   // Vérifier la configuration
-  const config = await checkConfiguration()
+  const config = await checkConfiguration(true)
 
   // Mettre à jour le bouton de suppression
   window.updateDeleteButton(config)
 
-  if (config)
+  if (config) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
+  }
 
   // Charger la configuration au démarrage
   window.config = await loadConfiguration()
@@ -43,7 +44,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Mettre le focus sur le premier champs de configuration si vide
   if (!window.config || !window.config.ds_api_token) {
-
     setTimeout(
       () => {
         document.getElementById('ds_api_token').focus()

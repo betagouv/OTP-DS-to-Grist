@@ -42,7 +42,7 @@
     <style>
         /* Styles personnalisés complémentaires */
         .progress-bar {
-            background-color: var(--blue-france-sun-113);
+            background-color: var(--background-action-high-blue-france);
         }
         
         .log-area {
@@ -257,7 +257,8 @@
 
     <!-- Contenu principal -->
     <main class="fr-container fr-py-4w">
-        {% block content %}{% endblock %}
+      <h1 id="welcome-title" class="fr-border-bottom"; style="display: none;">Bienvenue sur le connecteur DS vers Grist</h1>
+      {% block content %}{% endblock %}
     </main>
 
     <!-- Pied de page -->
@@ -332,6 +333,12 @@
 
           await saveConfiguration()
           await checkConfiguration()
+        }
+
+        // Afficher le titre la première fois
+        if (document.cookie.search('welcome') === -1) {
+          document.querySelector('#welcome-title').style.display = 'block'
+          document.cookie = 'welcome=true'
         }
     </script>
     

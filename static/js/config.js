@@ -1,8 +1,9 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
-const checkConfiguration = async () => {
+const checkConfiguration = async (silent = false) => {
   const resultDiv = document.getElementById('config_check_result')
+  if (!silent) resultDiv.style.display = 'block'
   const syncBtn   = document.getElementById('start_sync_btn')
   syncBtn.disabled = true
 
@@ -22,12 +23,16 @@ const checkConfiguration = async () => {
 
     const missingFields = requiredFields.filter(field => !config[field] || config[field] === '***')
 
-    if (missingFields.length !== 0)
+    if (missingFields.length !== 0) {
+      if (silent)
+        return
+
       return resultDiv.innerHTML = `
         <div class="fr-alert fr-alert--error">
           <h3 class="fr-alert__title">Configuration incomplète</h3>
           <p>Champs manquants: ${missingFields.join(', ')}</p>
         </div>`
+    }
 
     resultDiv.innerHTML = `
       <div class="fr-alert fr-alert--success">

@@ -172,6 +172,8 @@ const updateTaskProgress = (task) => {
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
     const successRate = totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0
 
+    document.getElementById('sync_progress_container').scrollIntoView({ behavior: 'smooth' });
+
     if (task.status === 'completed' && !hasSignificantErrors) {
       resultContent.innerHTML = `<div class="fr-alert fr-alert--success">
         <h3 class="fr-alert__title">Synchronisation terminée avec succès!</h3>
