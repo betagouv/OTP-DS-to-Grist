@@ -3,7 +3,7 @@ if (typeof showNotification === 'undefined')
 
 const checkConfiguration = async (silent = false) => {
   const resultDiv = document.getElementById('config_check_result')
-  resultDiv.style.display = 'block'
+  if (!silent) resultDiv.style.display = 'block'
   const syncBtn   = document.getElementById('start_sync_btn')
   syncBtn.disabled = true
 
