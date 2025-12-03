@@ -338,7 +338,7 @@
         // Afficher le titre la première fois
         if (document.cookie.search('welcome') === -1) {
           document.querySelector('#welcome-title').style.display = 'block'
-          document.cookie = 'welcome=true'
+          document.cookie = 'welcome=true; SameSite=None; Secure'
         }
     </script>
     
