@@ -5,6 +5,7 @@ if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
 const startSync = async (config) => {
+  document.getElementById('config_check_result').style.display = 'none'
   if (!config)
     return showNotification('Configuration non chargée', 'error')
 

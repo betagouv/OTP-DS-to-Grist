@@ -20,6 +20,7 @@ describe('startSync', () => {
     <input id="date_fin" value="2023-10-31">
     <input type="checkbox" name="statuts" value="en_construction" checked>
     <input type="checkbox" name="groupes" value="1" checked>
+    <div id="config_check_result"></div>
     `
 
     // Mocks existants
