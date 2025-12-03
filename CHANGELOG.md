@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.4.0...v0.5.0) (2025-12-03)
+
+
+### Features
+
+* **Config:** Suppression des boutons et ajout d'un paramètre silent ([503a38b](https://github.com/betagouv/OTP-DS-to-Grist/commit/503a38bdafb3b026d552ec39fecfde68c13663ae))
+* **Config:** Vérifier les connections grist et DS à la sauvegarde ([a55dd3c](https://github.com/betagouv/OTP-DS-to-Grist/commit/a55dd3c290a89bc417790e04ad867bfa3ebc72f0))
+* **Sync:** Afficher le titre à la première visite ([927dc33](https://github.com/betagouv/OTP-DS-to-Grist/commit/927dc334b3b4ed188ec2b398478894faa180c7a9))
+* **Sync:** Bloc de statuts de synchronisation dans un template à part ([1794ad5](https://github.com/betagouv/OTP-DS-to-Grist/commit/1794ad5ecb9ade0b538d11caad8cdfda0ab8453d))
+* **Sync:** Correction de la barre de progression ([a1c97a5](https://github.com/betagouv/OTP-DS-to-Grist/commit/a1c97a55f1a988c7ad5b8c34f5db9dfd4f333dbf))
+* **Sync:** Ne plus afficher le statut de configuration au démarrage ([c791a2f](https://github.com/betagouv/OTP-DS-to-Grist/commit/c791a2f8d9da0b264542d4484a77113287b05af4))
+* **Sync:** Ne plus afficher le statut de configuration au démarrage ([4ae3867](https://github.com/betagouv/OTP-DS-to-Grist/commit/4ae3867b5bfcb47e58ec5996a5c4486e931067eb))
+* **Sync:** Scroller au bloc de statuts à la fin de la synchronisation ([99e758c](https://github.com/betagouv/OTP-DS-to-Grist/commit/99e758ca794ebd2867f075a55df8105dc58299e0))
+
+
+### Bug Fixes
+
+* **Delete-config:** Bouton et javascript pour supprimer la configuration ([4c62be0](https://github.com/betagouv/OTP-DS-to-Grist/commit/4c62be06c5c2f007a12b360e02487f43bac750b6))
+* **Delete-config:** Désactiver le bouton si pas de configuration ([ba82f56](https://github.com/betagouv/OTP-DS-to-Grist/commit/ba82f5627c13ef65edf6a65e9bc8bf043b15af0a))
+* **Delete-config:** Focus sur le 1er champs de config si vide ([ed554de](https://github.com/betagouv/OTP-DS-to-Grist/commit/ed554dee541e7f5575f1009eaa8a5e159236e965))
+* **Delete-config:** Nouvelle route pour supprimer une configuration ([881cb6d](https://github.com/betagouv/OTP-DS-to-Grist/commit/881cb6d82a94d4806af6228b2d9b9acb94314f62))
+* **Delete-config:** Remaniement ([22ba64b](https://github.com/betagouv/OTP-DS-to-Grist/commit/22ba64b32efa75b56751bb7a8469d4813815a935))
+* **Layout:** Style des blocs de compte rendu de synchronisation ([6386a8b](https://github.com/betagouv/OTP-DS-to-Grist/commit/6386a8b40105d9af72f7ef16dd9554f46d756cd3))
+* **Layout:** Toggle du bloc de statuts de synchronisation ([52d796a](https://github.com/betagouv/OTP-DS-to-Grist/commit/52d796a29cd974936a7640abd0b296efb1e4183b))
+* **Sécurité:** activer ignore-scripts (protection Shai-Hulud) ([6269910](https://github.com/betagouv/OTP-DS-to-Grist/commit/6269910f94e857301632f24ddc0c20eecf62ec19))
+
 ## [0.4.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.3.0...v0.4.0) (2025-11-19)
 
 
