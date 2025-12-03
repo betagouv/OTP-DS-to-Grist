@@ -1196,14 +1196,14 @@ docs = ["sphinx"]
 
 [[package]]
 name = "python-socketio"
-version = "5.14.2"
+version = "5.15.0"
 description = "Socket.IO server and client for Python"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "python_socketio-5.14.2-py3-none-any.whl", hash = "sha256:d7133f040ac7ba540f9a907cb4c36d6c4d1d54eb35e482aad9d45c22fca10654"},
-    {file = "python_socketio-5.14.2.tar.gz", hash = "sha256:5da35caa04059048a4521b1378340a33a15439c6a748765046112fa0d145fb1b"},
+    {file = "python_socketio-5.15.0-py3-none-any.whl", hash = "sha256:e93363102f4da6d8e7a8872bf4908b866c40f070e716aa27132891e643e2687c"},
+    {file = "python_socketio-5.15.0.tar.gz", hash = "sha256:d0403ababb59aa12fd5adcfc933a821113f27bd77761bc1c54aad2e3191a9b69"},
 ]
 
 [package.dependencies]
