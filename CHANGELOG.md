@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.5.0...v0.6.0) (2025-12-03)
+
+
+### Features
+
+* **Config:** Ne pas afficher le bandeau à la synchronisation ([f9e9e37](https://github.com/betagouv/OTP-DS-to-Grist/commit/f9e9e37ac85644d8f6e9b89c655b061030681470))
+
+
+### Bug Fixes
+
+* **Layout:** Création de cookie correct pour la production ([82fd046](https://github.com/betagouv/OTP-DS-to-Grist/commit/82fd0461a4eb7862c65a2a63f2d5e7f7390d6e15))
+
 ## [0.5.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.4.0...v0.5.0) (2025-12-03)
 
 
