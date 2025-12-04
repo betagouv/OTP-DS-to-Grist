@@ -51,6 +51,27 @@ class DatabaseManager:
                 ADD COLUMN IF NOT EXISTS grist_user_id TEXT DEFAULT ''
             """)
 
+            # Add filter columns
+            cursor.execute("""
+                ALTER TABLE otp_configurations
+                ADD COLUMN IF NOT EXISTS filter_date_start TEXT
+            """)
+
+            cursor.execute("""
+                ALTER TABLE otp_configurations
+                ADD COLUMN IF NOT EXISTS filter_date_end TEXT
+            """)
+
+            cursor.execute("""
+                ALTER TABLE otp_configurations
+                ADD COLUMN IF NOT EXISTS filter_statuses TEXT
+            """)
+
+            cursor.execute("""
+                ALTER TABLE otp_configurations
+                ADD COLUMN IF NOT EXISTS filter_groups TEXT
+            """)
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_schedules (
                     id SERIAL PRIMARY KEY,
@@ -88,11 +109,19 @@ class DatabaseManager:
                         grist_base_url,
                         grist_api_key,
                         grist_doc_id,
-                        grist_user_id
+                        grist_user_id,
+                        filter_date_start,
+                        filter_date_end,
+                        filter_statuses,
+                        filter_groups
                     ) VALUES (
                         '',
                         '',
                         'https://grist.numerique.gouv.fr/api',
+                        '',
+                        '',
+                        '',
+                        '',
                         '',
                         '',
                         ''
