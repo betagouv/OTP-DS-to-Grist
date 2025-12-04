@@ -107,7 +107,6 @@ describe('loadConfiguration', () => {
       <input id="grist_user_id">
       <input id="grist_base_url">
       <input id="ds_api_token">
-      <input id="ds_api_url">
       <input id="demarche_number">
       <input id="grist_api_key">
       <div id="ds_token_status"></div>
@@ -138,7 +137,6 @@ describe('loadConfiguration', () => {
         ok: true,
         json: jest.fn().mockResolvedValue({
           ds_api_token: 'ds_token',
-          ds_api_url: 'https://api.example.com',
           demarche_number: 123,
           grist_base_url: 'x/xx/x',
           grist_api_key: 'grist_key',
@@ -159,7 +157,6 @@ describe('loadConfiguration', () => {
 
       // Vérifications des champs remplis depuis la config (car hasConfig = true)
       expect(document.getElementById('ds_api_token').value).toBe('')
-      expect(document.getElementById('ds_api_url').value).toBe('https://api.example.com')
       expect(document.getElementById('demarche_number').value).toBe('123')
       expect(document.getElementById('grist_api_key').value).toBe('')
 
@@ -209,7 +206,6 @@ describe('saveConfiguration', () => {
     // Setup DOM simulé
     document.body.innerHTML = `
       <input id="ds_api_token" value="new_token">
-      <input id="ds_api_url" value="https://api.example.com">
       <input id="demarche_number" value="123">
       <input id="grist_base_url" value="https://grist.example.com">
       <input id="grist_api_key" value="new_key">
@@ -255,7 +251,6 @@ describe('saveConfiguration', () => {
     const body = JSON.parse(callArgs.body)
     expect(body).toEqual({
       ds_api_token: 'new_token',
-      ds_api_url: 'https://api.example.com',
       demarche_number: '123',
       grist_base_url: 'https://grist.example.com',
       grist_api_key: 'new_key',

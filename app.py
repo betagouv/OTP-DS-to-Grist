@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
+from constants import DEMARCHES_API_URL
 
 Base = declarative_base()
 
@@ -240,8 +241,6 @@ def reload_scheduler_jobs():
     except Exception as e:
         logger.error(f"Erreur lors du rechargement des jobs scheduler: {str(e)}")
 
-
-DEMARCHES_API_URL = "https://www.demarches-simplifiees.fr/api/v2/graphql"
 
 # Configuration de l'application Flask
 app = Flask(__name__)
@@ -542,15 +541,11 @@ def run_synchronization_task(config, filters, progress_callback=None, log_callba
         # Mettre à jour les variables d'environnement avec la configuration
         env_mapping = {
             'ds_api_token': 'DEMARCHES_API_TOKEN',
-            'ds_api_url': 'DEMARCHES_API_URL',
             'demarche_number': 'DEMARCHE_NUMBER',
             'grist_base_url': 'GRIST_BASE_URL',
             'grist_api_key': 'GRIST_API_KEY',
             'grist_doc_id': 'GRIST_DOC_ID',
             'grist_user_id': 'GRIST_USER_ID',
-            'batch_size': 'BATCH_SIZE',
-            'max_workers': 'MAX_WORKERS',
-            'parallel': 'PARALLEL'
         }
         
         # Sauvegarder la configuration principale
@@ -730,7 +725,6 @@ def api_config():
             # Validation basique
             required_fields = [
                 'ds_api_token',
-                'ds_api_url',
                 'demarche_number',
                 'grist_base_url',
                 'grist_api_key',
@@ -1058,7 +1052,6 @@ def debug():
     required_files = [
         "grist_processor_working_all.py",
         "queries.py",
-        "queries_config.py",
         "queries_extract.py",
         "queries_graphql.py",
         "queries_util.py",
@@ -1079,7 +1072,7 @@ def debug():
     # Variables d'environnement (masquées pour la sécurité)
     env_vars = {
         "DEMARCHES_API_TOKEN": "***" if os.getenv("DEMARCHES_API_TOKEN") else "Non défini",
-        "DEMARCHES_API_URL": os.getenv("DEMARCHES_API_URL", "Non défini"),
+        "DEMARCHES_API_URL": f"Constante: {DEMARCHES_API_URL}",
         "DEMARCHE_NUMBER": os.getenv("DEMARCHE_NUMBER", "Non défini"),
         "GRIST_BASE_URL": os.getenv("GRIST_BASE_URL", "Non défini"),
         "GRIST_API_KEY": "***" if os.getenv("GRIST_API_KEY") else "Non défini",

@@ -79,12 +79,10 @@ const loadConfiguration = async () => {
     const gristBaseUrlElement = document.getElementById('grist_base_url')
     const dsApiTokenElement   = document.getElementById('ds_api_token')
     const dsTokenStatus       = document.getElementById('ds_token_status')
-    const dsApiUrlElement     = document.getElementById('ds_api_url')
     const dsNumberElement     = document.getElementById('demarche_number')
 
     // Remplir les autres champs seulement si une configuration a été trouvée
     dsApiTokenElement.value   = ''
-    dsApiUrlElement.value     = hasConfig && config.ds_api_url || 'https://www.demarches-simplifiees.fr/api/v2/graphql' 
     dsNumberElement.value     = hasConfig && config.demarche_number || ''
     gristBaseUrlElement.value = hasConfig && config.grist_base_url || (gristBaseUrl || 'https://grist.numerique.gouv.fr/api')
     gristApiKeyElement.value  = ''
@@ -140,7 +138,6 @@ const saveConfiguration = async () => {
 
   const config = {
     ds_api_token: dsToken || window.config.ds_api_token || '',
-    ds_api_url: document.getElementById('ds_api_url').value,
     demarche_number: document.getElementById('demarche_number').value,
     grist_base_url: document.getElementById('grist_base_url').value,
     grist_api_key: grist_key || window.config.grist_api_key || '',
@@ -151,7 +148,6 @@ const saveConfiguration = async () => {
   // Validation basique
   const requiredFields = [
     {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
-    {key: 'ds_api_url', name: 'URL API Démarches Simplifiées'},
     {key: 'demarche_number', name: 'Numéro de démarche'},
     {key: 'grist_base_url', name: 'URL de base Grist'},
     {key: 'grist_api_key', name: 'Clé API Grist'},

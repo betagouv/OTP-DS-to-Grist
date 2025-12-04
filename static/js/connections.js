@@ -6,7 +6,7 @@ const testDemarchesConnection = async (silent = false) => {
 
   try {
     const ds_token_input = document.getElementById('ds_api_token').value || ''
-    const ds_api_url = document.getElementById('ds_api_url').value || ''
+    const ds_api_url = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
     const demarche_number = document.getElementById('demarche_number').value || ''
 
     // Utiliser le token saisi OU recharger la config si vide
@@ -220,7 +220,7 @@ const testExternalConnections = async () => {
     const tests          = []
 
     // Test Démarches Simplifiées si configuré
-    if (config.ds_api_token && config.ds_api_token !== '***' && config.ds_api_url) {
+    if (config.ds_api_token && config.ds_api_token !== '***') {
       tests.push({
         name: 'Démarches Simplifiées',
         test: fetch('/api/test-connection', {
@@ -229,7 +229,7 @@ const testExternalConnections = async () => {
           body: JSON.stringify({
             type: 'demarches',
             api_token: config.ds_api_token,
-            api_url: config.ds_api_url,
+            api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
             demarche_number: config.demarche_number
           })
         }).then(r => r.json())

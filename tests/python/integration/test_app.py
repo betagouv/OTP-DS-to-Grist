@@ -23,7 +23,6 @@ def mock_config():
     with patch.object(ConfigManager, 'load_config') as mock_load:
         mock_load.return_value = {
             'ds_api_token': 'test-token',
-            'ds_api_url': 'https://api.test.com',
             'demarche_number': '123',
             'grist_base_url': 'https://grist.test.com',
             'grist_api_key': 'test-key',
@@ -66,7 +65,6 @@ class TestEndpoints:
         """Test de récupération de la configuration"""
         mock_load.return_value = {
             'ds_api_token': 'secret-token',
-            'ds_api_url': 'https://api.test.com',
             'demarche_number': '123',
             'grist_base_url': 'https://grist.test.com',
             'grist_api_key': 'secret-key',
@@ -103,7 +101,6 @@ class TestEndpoints:
 
         config_data = {
             'ds_api_token': 'token',
-            'ds_api_url': 'url',
             'demarche_number': '123',
             'grist_base_url': 'base',
             'grist_api_key': 'key',
@@ -127,7 +124,6 @@ class TestEndpoints:
         """Test de sauvegarde avec champ manquant"""
         config_data = {
             'ds_api_token': '',
-            'ds_api_url': 'url',
             'demarche_number': '123'
             # Champs manquants
         }
@@ -501,7 +497,6 @@ class TestErrorHandling:
 
         config_data = {
             'ds_api_token': 'token',
-            'ds_api_url': 'url',
             'demarche_number': '123',
             'grist_base_url': 'base',
             'grist_api_key': 'key',

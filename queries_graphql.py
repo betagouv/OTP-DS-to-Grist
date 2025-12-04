@@ -1,7 +1,11 @@
 import requests
 import json
+import os
 from typing import Dict, Any, List, Optional
-from queries_config import API_TOKEN, API_URL
+from constants import DEMARCHES_API_URL
+
+API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
+API_URL = DEMARCHES_API_URL
 
 # Requêtes GraphQL (fragmentées en quelques constantes)
 # Pour les fragments communs
