@@ -7,7 +7,7 @@ if (typeof escapeHtml === 'undefined')
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
-const resetFilters = () => {
+const resetFilters = async () => {
   // Réinitialiser tous les champs de filtre
   document.getElementById('date_debut').value = ''
   document.getElementById('date_fin').value = ''
@@ -19,6 +19,14 @@ const resetFilters = () => {
   document.getElementById('active_filters').style.display = 'none'
 
   showNotification('Filtres réinitialisés', 'info')
+
+  // Sauvegarder la configuration sans filtres
+  try {
+    await saveConfiguration()
+  } catch (error) {
+    console.error('Erreur lors de la sauvegarde après reset des filtres:', error)
+    showNotification('Erreur lors de la sauvegarde des filtres réinitialisés', 'error')
+  }
 }
 
 const applyFilters = () => {

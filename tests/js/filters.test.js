@@ -22,12 +22,15 @@ describe('resetFilters', () => {
       <input type="checkbox" name="groupes" checked>
       <div id="active_filters" style="display: block;"></div>
       `
+
+    // Mock saveConfiguration
+    global.saveConfiguration = jest.fn().mockResolvedValue()
   })
 
   it(
     'reset all inputs and hide enabled filters',
-    () => {
-      resetFilters()
+    async () => {
+      await resetFilters()
 
       // Check dates
       expect(document.getElementById('date_debut').value).toBe('')
@@ -46,6 +49,9 @@ describe('resetFilters', () => {
 
       // Check notification
       expect(showNotification).toHaveBeenCalledWith('Filtres réinitialisés', 'info')
+
+      // Check saveConfiguration called
+      expect(global.saveConfiguration).toHaveBeenCalled()
     })
 })
 
