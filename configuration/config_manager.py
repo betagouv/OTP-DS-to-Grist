@@ -84,7 +84,11 @@ class ConfigManager:
                         grist_base_url,
                         grist_api_key,
                         grist_doc_id,
-                        grist_user_id
+                        grist_user_id,
+                        filter_date_start,
+                        filter_date_end,
+                        filter_statuses,
+                        filter_groups
                     FROM otp_configurations
                     WHERE grist_user_id = %s AND grist_doc_id = %s
                     LIMIT 1
@@ -99,6 +103,10 @@ class ConfigManager:
                         'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
                         'grist_doc_id': row[4] or '',
                         'grist_user_id': row[5] or '',
+                        'filter_date_start': row[6] or '',
+                        'filter_date_end': row[7] or '',
+                        'filter_statuses': row[8] or '',
+                        'filter_groups': row[9] or '',
                     }
                 else:
                     config = {
@@ -108,6 +116,10 @@ class ConfigManager:
                         'grist_api_key': '',
                         'grist_doc_id': '',
                         'grist_user_id': '',
+                        'filter_date_start': '',
+                        'filter_date_end': '',
+                        'filter_statuses': '',
+                        'filter_groups': '',
                     }
 
                 # Charger les autres valeurs depuis les variables d'environnement
@@ -143,6 +155,10 @@ class ConfigManager:
                     'grist_doc_id': config.get('grist_doc_id', ''),
                     'grist_user_id': config.get('grist_user_id', ''),
                     'grist_document_id': config.get('grist_document_id', ''),
+                    'filter_date_start': config.get('filter_date_start', ''),
+                    'filter_date_end': config.get('filter_date_end', ''),
+                    'filter_statuses': config.get('filter_statuses', ''),
+                    'filter_groups': config.get('filter_groups', ''),
                 }
 
                 # Vérifier si une configuration existe déjà pour ce grist_user_id et grist_doc_id
@@ -170,7 +186,11 @@ class ConfigManager:
                         grist_base_url = %s,
                         grist_api_key = %s,
                         grist_doc_id = %s,
-                        grist_user_id = %s
+                        grist_user_id = %s,
+                        filter_date_start = %s,
+                        filter_date_end = %s,
+                        filter_statuses = %s,
+                        filter_groups = %s
                         WHERE grist_user_id = %s AND grist_doc_id = %s
                     """, (
                         values['ds_api_token'],
@@ -179,6 +199,10 @@ class ConfigManager:
                         values['grist_api_key'],
                         values['grist_doc_id'],
                         values['grist_user_id'],
+                        values['filter_date_start'],
+                        values['filter_date_end'],
+                        values['filter_statuses'],
+                        values['filter_groups'],
                         grist_user_id,
                         grist_doc_id
                     ))
@@ -187,15 +211,28 @@ class ConfigManager:
                     # INSERT : créer une nouvelle configuration
                     cursor.execute("""
                         INSERT INTO otp_configurations
-                        (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        (ds_api_token,
+                         demarche_number,
+                         grist_base_url,
+                         grist_api_key,
+                         grist_doc_id,
+                         grist_user_id,
+                         filter_date_start,
+                         filter_date_end,
+                         filter_statuses,
+                         filter_groups)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         values['ds_api_token'],
                         values['demarche_number'],
                         values['grist_base_url'],
                         values['grist_api_key'],
                         values['grist_doc_id'],
-                        values['grist_user_id']
+                        values['grist_user_id'],
+                        values['filter_date_start'],
+                        values['filter_date_end'],
+                        values['filter_statuses'],
+                        values['filter_groups']
                     ))
                     logger.info(f"Nouvelle configuration créée pour user_id={grist_user_id}, doc_id={grist_doc_id}")
 

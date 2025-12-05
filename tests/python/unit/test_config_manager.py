@@ -66,12 +66,16 @@ class TestConfigManager:
 
         # Mock des données retournées par la DB
         mock_cursor.fetchone.return_value = (
-            'encrypted_token',  # ds_api_token
-            '12345',           # demarche_number
+            'encrypted_token',         # ds_api_token
+            '12345',                   # demarche_number
             'https://test.grist.com',  # grist_base_url
-            'encrypted_key',   # grist_api_key
-            'test_doc',        # grist_doc_id
-            'test_user'        # grist_user_id
+            'encrypted_key',           # grist_api_key
+            'test_doc',                # grist_doc_id
+            'test_user',               # grist_user_id
+            '2023-01-01',              # filter_date_start
+            '2023-12-31',              # filter_date_end
+            'status1,status2',         # filter_statuses
+            'group1,group2'            # filter_groups
         )
 
         # Mock des méthodes de déchiffrement
@@ -85,6 +89,10 @@ class TestConfigManager:
         assert config['grist_api_key'] == 'decrypted_encrypted_key'
         assert config['grist_doc_id'] == 'test_doc'
         assert config['grist_user_id'] == 'test_user'
+        assert config['filter_date_start'] == '2023-01-01'
+        assert config['filter_date_end'] == '2023-12-31'
+        assert config['filter_statuses'] == 'status1,status2'
+        assert config['filter_groups'] == 'group1,group2'
 
         # Vérifier que la requête SQL a été appelée correctement
         mock_cursor.execute.assert_called_once()
@@ -114,6 +122,10 @@ class TestConfigManager:
         assert config['grist_api_key'] == ''
         assert config['grist_doc_id'] == ''
         assert config['grist_user_id'] == ''
+        assert config['filter_date_start'] == ''
+        assert config['filter_date_end'] == ''
+        assert config['filter_statuses'] == ''
+        assert config['filter_groups'] == ''
 
     @patch('configuration.config_manager.DatabaseManager')
     @patch.dict(os.environ, {'ENCRYPTION_KEY': 'test_key_12345678901234567890123456789012'})
@@ -146,7 +158,11 @@ class TestConfigManager:
                 'grist_base_url': 'https://test.grist.com',
                 'grist_api_key': 'test_key',
                 'grist_doc_id': 'test_doc',
-                'grist_user_id': 'test_user'
+                'grist_user_id': 'test_user',
+                'filter_date_start': '2023-01-01',
+                'filter_date_end': '2023-12-31',
+                'filter_statuses': 'status1,status2',
+                'filter_groups': 'group1,group2'
             })
 
         assert result is True
@@ -155,6 +171,7 @@ class TestConfigManager:
         assert mock_cursor.execute.call_count == 2  # SELECT COUNT + UPDATE
         update_call = mock_cursor.execute.call_args_list[1]
         assert 'UPDATE otp_configurations SET' in update_call[0][0]
+        assert 'filter_date_start' in update_call[0][0]
 
     @patch('configuration.config_manager.DatabaseManager')
     @patch.dict(os.environ, {'ENCRYPTION_KEY': 'test_key_12345678901234567890123456789012'})
@@ -177,7 +194,11 @@ class TestConfigManager:
                 'grist_base_url': 'https://test.grist.com',
                 'grist_api_key': 'test_key',
                 'grist_doc_id': 'test_doc',
-                'grist_user_id': 'test_user'
+                'grist_user_id': 'test_user',
+                'filter_date_start': '2023-01-01',
+                'filter_date_end': '2023-12-31',
+                'filter_statuses': 'status1,status2',
+                'filter_groups': 'group1,group2'
             })
 
         assert result is True
@@ -186,6 +207,7 @@ class TestConfigManager:
         assert mock_cursor.execute.call_count == 2  # SELECT COUNT + INSERT
         insert_call = mock_cursor.execute.call_args_list[1]
         assert 'INSERT INTO otp_configurations' in insert_call[0][0]
+        assert 'filter_date_start' in insert_call[0][0]
 
     @patch('configuration.config_manager.DatabaseManager')
     @patch.dict(os.environ, {'ENCRYPTION_KEY': 'test_key'})
