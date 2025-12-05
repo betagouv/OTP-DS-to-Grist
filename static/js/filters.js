@@ -68,9 +68,9 @@ const applyFilters = () => {
   const activeFiltersList = document.getElementById('active_filters_list')
 
   if (activeFilters.length > 0) {
-    let filtersHtml = '<ul class="fr-list">'
+    let filtersHtml = '<ul class="fr-tags-group">'
     activeFilters.forEach(filter => {
-      filtersHtml += `<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>${escapeHtml(filter)}</li>`
+      filtersHtml += `<li><button class="fr-tag fr-tag--high-blue-france">${escapeHtml(filter)}</button><li>`
     })
     filtersHtml += '</ul>'
     activeFiltersList.innerHTML = filtersHtml

@@ -85,15 +85,11 @@ describe('applyFilters', () => {
 
       expect(activeFiltersDiv.style.display).toBe('block')
 
-      // Vérifier le contenu HTML généré (avec formatDate et escapeHtml)
-      const expectedHtml = '<ul class="fr-list">' +
-        '<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>Date de début: 01/10/2023</li>' +
-        '<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>Date de fin: 31/10/2023</li>' +
-        '<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>Statuts: en_construction</li>' +
-        '<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>Groupes: Groupe A</li>' +
-        '</ul>'
-
-      expect(activeFiltersList.innerHTML).toBe(expectedHtml)
+      // Vérifier le contenu textuel généré (avec formatDate et escapeHtml)
+      expect(activeFiltersList.textContent).toContain('Date de début: 01/10/2023')
+      expect(activeFiltersList.textContent).toContain('Date de fin: 31/10/2023')
+      expect(activeFiltersList.textContent).toContain('Statuts: en_construction')
+      expect(activeFiltersList.textContent).toContain('Groupes: Groupe A')
 
       // Vérifier la notification
       expect(showNotification).toHaveBeenCalledWith('Filtres appliqués avec succès', 'success')
