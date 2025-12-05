@@ -87,6 +87,28 @@ const loadConfiguration = async () => {
     gristBaseUrlElement.value = hasConfig && config.grist_base_url || (gristBaseUrl || 'https://grist.numerique.gouv.fr/api')
     gristApiKeyElement.value  = ''
 
+    // Peupler les filtres
+    document.getElementById('date_debut').value = hasConfig && config.filter_date_start || ''
+    document.getElementById('date_fin').value = hasConfig && config.filter_date_end || ''
+
+    if (hasConfig) {
+      // Statuts
+      const filterStatuses = config.filter_statuses ? config.filter_statuses.split(',') : []
+      document.querySelectorAll('input[name="statuts"]').forEach(el => {
+        el.checked = filterStatuses.includes(el.value)
+      })
+
+      // Groupes
+      const filterGroups = config.filter_groups ? config.filter_groups.split(',') : []
+      document.querySelectorAll('input[name="groupes"]').forEach(el => {
+        el.checked = filterGroups.includes(el.value)
+      })
+    } else {
+      // Aucun config : décocher tous les filtres
+      document.querySelectorAll('input[name="statuts"]').forEach(el => el.checked = false)
+      document.querySelectorAll('input[name="groupes"]').forEach(el => el.checked = false)
+    }
+
     // Mettre à jour les statuts initiaux
     updateDSTokenStatus(config)
     updateGristKeyStatus(config)
@@ -143,6 +165,10 @@ const saveConfiguration = async () => {
     grist_api_key: grist_key || window.config.grist_api_key || '',
     grist_doc_id: document.getElementById('grist_doc_id').value,
     grist_user_id: document.getElementById('grist_user_id').value,
+    filter_date_start: document.getElementById('date_debut').value,
+    filter_date_end: document.getElementById('date_fin').value,
+    filter_statuses: Array.from(document.querySelectorAll('input[name="statuts"]:checked')).map(el => el.value).join(','),
+    filter_groups: Array.from(document.querySelectorAll('input[name="groupes"]:checked')).map(el => el.value).join(','),
   }
 
   // Validation basique

@@ -109,6 +109,12 @@ describe('loadConfiguration', () => {
       <input id="ds_api_token">
       <input id="demarche_number">
       <input id="grist_api_key">
+      <input id="date_debut">
+      <input id="date_fin">
+      <input type="checkbox" name="statuts" value="en_construction">
+      <input type="checkbox" name="statuts" value="en_instruction">
+      <input type="checkbox" name="groupes" value="1">
+      <input type="checkbox" name="groupes" value="2">
       <div id="ds_token_status"></div>
       <div id="grist_key_status"></div>
       <button id="accordion-ds"></button>
@@ -141,6 +147,10 @@ describe('loadConfiguration', () => {
           grist_base_url: 'x/xx/x',
           grist_api_key: 'grist_key',
           grist_doc_id: 'doc123',
+          filter_date_start: '2023-01-01',
+          filter_date_end: '2023-12-31',
+          filter_statuses: 'en_construction,en_instruction',
+          filter_groups: '1,2',
           batch_size: 50,
           max_workers: 4,
           parallel: true
@@ -159,6 +169,14 @@ describe('loadConfiguration', () => {
       expect(document.getElementById('ds_api_token').value).toBe('')
       expect(document.getElementById('demarche_number').value).toBe('123')
       expect(document.getElementById('grist_api_key').value).toBe('')
+
+      // Vérifications des filtres
+      expect(document.getElementById('date_debut').value).toBe('2023-01-01')
+      expect(document.getElementById('date_fin').value).toBe('2023-12-31')
+      expect(document.querySelector('input[name="statuts"][value="en_construction"]').checked).toBe(true)
+      expect(document.querySelector('input[name="statuts"][value="en_instruction"]').checked).toBe(true)
+      expect(document.querySelector('input[name="groupes"][value="1"]').checked).toBe(true)
+      expect(document.querySelector('input[name="groupes"][value="2"]').checked).toBe(true)
 
       // Vérifications des appels de fonctions
       expect(updateDSTokenStatus).toHaveBeenCalled()
@@ -211,6 +229,12 @@ describe('saveConfiguration', () => {
       <input id="grist_api_key" value="new_key">
       <input id="grist_doc_id" value="doc123">
       <input id="grist_user_id" value="5">
+      <input id="date_debut" value="2023-01-01">
+      <input id="date_fin" value="2023-12-31">
+      <input type="checkbox" name="statuts" value="en_construction" checked>
+      <input type="checkbox" name="statuts" value="en_instruction">
+      <input type="checkbox" name="groupes" value="1" checked>
+      <input type="checkbox" name="groupes" value="2">
       <button onclick="saveConfiguration()">Save</button>
       <div id="ds_token_status"></div>
       <div id="grist_key_status"></div>
@@ -255,7 +279,11 @@ describe('saveConfiguration', () => {
       grist_base_url: 'https://grist.example.com',
       grist_api_key: 'new_key',
       grist_doc_id: 'doc123',
-      grist_user_id: '5'
+      grist_user_id: '5',
+      filter_date_start: '2023-01-01',
+      filter_date_end: '2023-12-31',
+      filter_statuses: 'en_construction',
+      filter_groups: '1'
     })
 
     expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
