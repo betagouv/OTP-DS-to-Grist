@@ -121,11 +121,6 @@
     <div class="fr-mt-4w">
       <ul class="fr-btns-group fr-btns-group--inline">
         <li>
-          <button class="fr-btn" onclick="applyFilters()">
-            Appliquer les filtres
-          </button>
-        </li>
-        <li>
           <button class="fr-btn fr-btn--secondary" onclick="resetFilters()">
             Réinitialiser
           </button>
@@ -154,7 +149,28 @@
     </button>
 </div>
 <div id="sync_controls" class="fr-my-4w">
-    <button class="fr-btn fr-mr-1w" onclick="startSyncAction()" id="start_sync_btn">
-        Lancer la synchronisation
-    </button>
-</div>
+  <button class="fr-btn fr-mr-1w" onclick="startSyncAction()" id="start_sync_btn">
+    Lancer la synchronisation
+  </button>
+ </div>
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+  // Charger la config pour peupler les filtres
+  window.config = await loadConfiguration()
+
+  // Initialiser les listeners automatiques pour les filtres
+  document.getElementById('date_debut').addEventListener('change', applyFilters)
+  document.getElementById('date_fin').addEventListener('change', applyFilters)
+  document.querySelectorAll('input[name="statuts"]').forEach(el => {
+    el.addEventListener('change', applyFilters)
+  })
+  // Les groupes sont gérés dans loadGroupes()
+
+  // Charger les groupes (ajoute aussi les listeners pour les groupes)
+  await loadGroupes()
+})
+</script>
+{% endblock %}
+

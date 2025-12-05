@@ -142,7 +142,17 @@ const loadConfiguration = async () => {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
         </span>`
+      gristApiKeyElement.placeholder = ''
       document.querySelector('#accordion-grist').setAttribute('aria-expanded', true)
+    }
+
+    // Afficher le résumé des filtres actifs si présents
+    const hasActiveFilters = document.getElementById('date_debut').value ||
+                             document.getElementById('date_fin').value ||
+                             document.querySelectorAll('input[name="statuts"]:checked').length > 0 ||
+                             document.querySelectorAll('input[name="groupes"]:checked').length > 0
+    if (hasActiveFilters) {
+      applyFilters()
     }
 
     return config

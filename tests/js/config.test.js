@@ -123,8 +123,9 @@ describe('loadConfiguration', () => {
     // Mocks
     global.getGristContext = jest.fn()
     global.fetch = jest.fn()
-    global.updateDSTokenStatus = jest.fn()
-    global.updateGristKeyStatus = jest.fn()
+    window.updateDSTokenStatus = jest.fn()
+    window.updateGristKeyStatus = jest.fn()
+    global.applyFilters = jest.fn()
   })
 
   it(
@@ -179,8 +180,8 @@ describe('loadConfiguration', () => {
       expect(document.querySelector('input[name="groupes"][value="2"]').checked).toBe(true)
 
       // Vérifications des appels de fonctions
-      expect(updateDSTokenStatus).toHaveBeenCalled()
-      expect(updateGristKeyStatus).toHaveBeenCalled()
+      expect(window.updateDSTokenStatus).toHaveBeenCalled()
+      expect(window.updateGristKeyStatus).toHaveBeenCalled()
     }
   )
 

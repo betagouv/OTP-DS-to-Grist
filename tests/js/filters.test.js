@@ -8,7 +8,7 @@ jest.mock('../../static/js/notifications.js', () => ({
   showNotification: jest.fn()
 }))
 
-const { resetFilters, applyFilters, loadGroupes } = require('../../static/js/filters.js')
+const { resetFilters, applyFilters, loadGroupes, initFilterListeners } = require('../../static/js/filters.js')
 const { formatDate } = require('../../static/js/utils.js')
 
 describe('resetFilters', () => {

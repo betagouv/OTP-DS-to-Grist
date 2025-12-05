@@ -100,6 +100,11 @@ const loadGroupes = async () => {
 
     container.innerHTML = html
 
+    // Ajouter les event listeners pour les groupes
+    document.querySelectorAll('input[name="groupes"]').forEach(el => {
+      el.addEventListener('change', applyFilters)
+    })
+
   } catch (error) {
     console.error('Erreur lors du chargement des groupes:', error)
     container.innerHTML = `<div class="fr-alert fr-alert--error">
