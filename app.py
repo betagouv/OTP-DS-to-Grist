@@ -43,6 +43,9 @@ if not DATABASE_URL:
         "DATABASE_URL environment variable is required for database operations"
     )
 
+# Instance de ConfigManager
+config_manager = ConfigManager(DATABASE_URL)
+
 # Configuration de la synchronisation planifiée
 SYNC_HOUR = int(os.getenv('SYNC_HOUR', '0'))
 SYNC_MINUTE = int(os.getenv('SYNC_MINUTE', '0'))
@@ -690,7 +693,7 @@ def api_config():
             grist_user_id = request.args.get('grist_user_id')
             grist_doc_id = request.args.get('grist_doc_id')
 
-            config = ConfigManager.load_config(
+            config = config_manager.load_config(
                 grist_user_id=grist_user_id,
                 grist_doc_id=grist_doc_id
             )
@@ -724,14 +727,14 @@ def api_config():
             otp_config_id = new_config.get('otp_config_id')
             if otp_config_id:
                 # Update existant
-                existing_config = ConfigManager.load_config_by_id(otp_config_id)
+                existing_config = config_manager.load_config_by_id(otp_config_id)
                 # Fusionner : garder existant si non fourni
                 for key, value in new_config.items():
                     if value or value == 0:  # Inclure si non vide (sauf 0)
                         existing_config[key] = value
                 # Supprimer otp_config_id du dict avant sauvegarde
                 existing_config.pop('otp_config_id', None)
-                success = ConfigManager.save_config(existing_config)
+                success = config_manager.save_config(existing_config)
                 return jsonify({
                     "success": True,
                     "message": "Configuration mise à jour avec succès",
@@ -750,7 +753,7 @@ def api_config():
                 for field in required_fields:
                     if not new_config.get(field):
                         return jsonify({"success": False, "message": f"Le champ {field} est requis"}), 400
-                success = ConfigManager.save_config(new_config)
+                success = config_manager.save_config(new_config)
                 if success:
                     db = SessionLocal()
                     try:
@@ -931,7 +934,7 @@ def api_groups():
     """API pour récupérer les groupes instructeurs"""
     grist_user_id = request.args.get('grist_user_id')
     grist_doc_id = request.args.get('grist_doc_id')
-    config = ConfigManager.load_config(
+    config = config_manager.load_config(
         grist_user_id=grist_user_id,
         grist_doc_id=grist_doc_id
     )
@@ -953,7 +956,7 @@ def api_start_sync():
         otp_config_id = data.get('otp_config_id')
         if not otp_config_id:
             return jsonify({"success": False, "message": "ID de configuration requis"}), 400
-        server_config = ConfigManager.load_config_by_id(otp_config_id)
+        server_config = config_manager.load_config_by_id(otp_config_id)
         filters = data.get('filters', {})
         
         # Validation simple de la configuration serveur

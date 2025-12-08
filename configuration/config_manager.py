@@ -15,8 +15,10 @@ class ConfigManager:
 
     SENSITIVE_KEYS = ['ds_api_token', 'grist_api_key']
 
-    @staticmethod
-    def get_env_path():
+    def __init__(self, database_url):
+        self.database_url = database_url
+
+    def get_env_path(self):
         """Retourne le chemin vers le fichier .env"""
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         return os.path.join(script_dir, '.env')
@@ -68,10 +70,9 @@ class ConfigManager:
                 Vérifiez la clé de chiffrement ou la valeur fournie."
             )
 
-    @staticmethod
-    def load_config(grist_user_id, grist_doc_id):
+    def load_config(self, grist_user_id, grist_doc_id):
         """Charge la configuration depuis la base de données"""
-        conn = DatabaseManager.get_connection(DATABASE_URL)
+        conn = DatabaseManager.get_connection(self.database_url)
 
         try:
             with conn.cursor() as cursor:
@@ -100,7 +101,7 @@ class ConfigManager:
                         'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
                         'demarche_number': row[1] or '',
                         'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
-                        'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
+                        'grist_api_key': self.decrypt_value(row[3]) if row[3] else '',
                         'grist_doc_id': row[4] or '',
                         'grist_user_id': row[5] or '',
                         'filter_date_start': row[6] or '',
@@ -139,10 +140,9 @@ class ConfigManager:
         finally:
             conn.close()
 
-    @staticmethod
-    def load_config_by_id(otp_config_id):
+    def load_config_by_id(self, otp_config_id):
         """Charge la configuration depuis la base de données par ID"""
-        conn = DatabaseManager.get_connection(DATABASE_URL)
+        conn = DatabaseManager.get_connection(self.database_url)
 
         try:
             with conn.cursor() as cursor:
@@ -201,10 +201,9 @@ class ConfigManager:
         finally:
             conn.close()
 
-    @staticmethod
-    def save_config(config):
+    def save_config(self, config):
         """Sauvegarde la configuration dans la base de données"""
-        conn = DatabaseManager.get_connection(DATABASE_URL)
+        conn = DatabaseManager.get_connection(self.database_url)
 
         try:
             with conn.cursor() as cursor:

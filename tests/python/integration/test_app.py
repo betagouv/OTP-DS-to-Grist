@@ -60,16 +60,16 @@ class TestEndpoints:
         assert b'utiliser' in response.data
 
     @patch('app.SessionLocal')
-    @patch.object(ConfigManager, 'load_config')
-    def test_api_config_get(self, mock_load, mock_session, client):
-        """Test de récupération de la configuration"""
+    @patch('app.config_manager.load_config_by_id')
+    def test_api_start_sync_success(self, mock_load, mock_start, client):
+        """Test de démarrage de synchronisation réussi"""
         mock_load.return_value = {
-            'ds_api_token': 'secret-token',
+            'otp_config_id': 123,
+            'ds_api_token': 'token',
             'demarche_number': '123',
-            'grist_base_url': 'https://grist.test.com',
-            'grist_api_key': 'secret-key',
-            'grist_doc_id': 'doc123',
-            'grist_user_id': 'user123'
+            'grist_api_key': 'key',
+            'grist_doc_id': 'doc',
+            'grist_user_id': 'user'
         }
 
         # Mock pour l'id
@@ -661,14 +661,15 @@ class TestErrorHandling:
         mock_schedule = MagicMock()
         mock_db.query.return_value.filter_by.return_value.first.return_value = mock_config
 
-        # Mock de ConfigManager.load_config
-        with patch('app.ConfigManager.load_config') as mock_load_config:
+        # Mock de config_manager.load_config_by_id
+        with patch('app.config_manager.load_config_by_id') as mock_load_config:
             mock_load_config.return_value = {
-                'ds_api_token': 'token',
+                'otp_config_id': 1,
                 'demarche_number': '123',
-                'grist_api_key': 'key',
                 'grist_doc_id': 'doc456',
-                'grist_user_id': 'user123'
+                'grist_user_id': 'user123',
+                'has_ds_token': True,
+                'has_grist_key': True
             }
 
             # Mock de run_synchronization_task
@@ -679,10 +680,7 @@ class TestErrorHandling:
                 scheduled_sync_job(1)
 
                 # Vérifications
-                mock_load_config.assert_called_once_with(
-                    grist_user_id='user123',
-                    grist_doc_id='doc456'
-                )
+                mock_load_config.assert_called_once_with(1)
                 mock_sync.assert_called_once()
                 mock_db.add.assert_called()  # SyncLog ajouté
                 mock_db.commit.assert_called()
@@ -703,14 +701,15 @@ class TestErrorHandling:
 
         mock_db.query.return_value.filter_by.return_value.first.return_value = mock_config
 
-        # Mock de ConfigManager.load_config
-        with patch('app.ConfigManager.load_config') as mock_load_config:
+        # Mock de config_manager.load_config_by_id
+        with patch('app.config_manager.load_config_by_id') as mock_load_config:
             mock_load_config.return_value = {
-                'ds_api_token': 'token',
+                'otp_config_id': 1,
                 'demarche_number': '123',
-                'grist_api_key': 'key',
                 'grist_doc_id': 'doc456',
-                'grist_user_id': 'user123'
+                'grist_user_id': 'user123',
+                'has_ds_token': True,
+                'has_grist_key': True
             }
 
             # Mock de run_synchronization_task qui échoue
@@ -723,6 +722,7 @@ class TestErrorHandling:
                     scheduled_sync_job(1)
 
                     # Vérifications
+                    mock_load_config.assert_called_once_with(1)
                     mock_sync.assert_called_once()
                     mock_emit.assert_called_once()
                     call_args = mock_emit.call_args
