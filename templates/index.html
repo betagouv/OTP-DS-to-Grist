@@ -9,62 +9,87 @@
 
 {% block scripts %}
 <script>
+// ===== INITIALISATIONS GLOBALES =====
+// FIXME
 window.config = null
 let logsVisible = false
 let currentTaskId = null
 
-window.updateDeleteButton = function(config) {
-  const deleteBtn = document.getElementById('delete_config_btn')
-  if (!config || !config.otp_config_id) {
-    deleteBtn.disabled = true
-    deleteBtn.title = 'Aucune configuration à supprimer'
-  } else {
-    deleteBtn.disabled = false
-    deleteBtn.title = ''
+// ===== SOCKET.IO =====
+const socket = io()
+
+socket.on('connect_error', function(error) {
+    console.error('Erreur de connexion Socket.IO:', error)
+    showNotification('Erreur de connexion en temps réel', 'error')
+})
+
+socket.on('connect', function() {
+    console.log('Connecté au serveur via Socket.IO')
+})
+
+// Gestion des mises à jour en temps réel
+socket.on('task_update', function(data) {
+  if (data.task_id === currentTaskId) {
+    updateTaskProgress(data.task)
+    if (data.task.status === 'completed' || data.task.status === 'error') {
+      currentTaskId = null
+    }
   }
-}
+})
 
+document.addEventListener('DOMContentLoaded', () => {
+})
+
+// ===== INITIALISATION DE LA PAGE =====
 document.addEventListener('DOMContentLoaded', async () => {
+  // ===== GESTION DE LA NAVIGATION DE L'AIDE =====
+  const currentPath = window.location.pathname
+  const navLinks = document.querySelectorAll('.fr-nav__link')
 
-  // Initialisation de la page d'exécution
+  navLinks.forEach(link => {
+    if (link.getAttribute('href') === currentPath ||
+      (currentPath === '/' && link.getAttribute('href') === '/')) {
+      link.setAttribute('aria-current', 'page')
+    }
+  })
+
   // Vérifier la configuration
   const config = await checkConfiguration(true)
 
   // Mettre à jour le bouton de suppression
-  window.updateDeleteButton(config)
+  updateDeleteButton(config)
 
   if (config) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
   }
 
-  // Charger la configuration au démarrage
+  // Charger la configuration et groupes
   window.config = await loadConfiguration()
   loadGroupes()
 
-  // Mettre le focus sur le premier champs de configuration si vide
-  if (!window.config || !window.config.ds_api_token) {
-    setTimeout(
-      () => {
-        document.getElementById('ds_api_token').focus()
-      }
-      , 500 // Attendre que l'accordéon soit ouvert
-    )
+  // Initialiser les listeners automatiques pour les filtres
+  document.getElementById('date_debut').addEventListener('change', applyFilters)
+  document.getElementById('date_fin').addEventListener('change', applyFilters)
+  document.querySelectorAll('input[name="statuts"]').forEach(el => {
+    el.addEventListener('change', applyFilters)
+  })
 
+  // Focus sur le premier champ si vide
+  if (!window.config || !window.config.ds_api_token) {
+    setTimeout(() => {
+      document.getElementById('ds_api_token').focus()
+    }, 500)
   }
 })
 
-
+// ===== ACTIONS DE SYNCHRONISATION =====
 const startSyncAction = async () => currentTaskId = await startSync(window.config)
 
-// Socket.IO pour les mises à jour en temps réel
-socket.on('task_update', function(data) {
-  if (data.task_id === currentTaskId) {
-    updateTaskProgress(data.task)
-    if (data.task.status === 'completed' || data.task.status === 'error') {
-      currentTaskId = null;
-    }
-  }
-})
+// ===== AFFICHAGE DU TITRE DE BIENVENUE =====
+if (document.cookie.search('welcome') === -1) {
+  document.querySelector('#welcome-title').style.display = 'block'
+  document.cookie = 'welcome=true; SameSite=None; Secure'
+}
 </script>
 {% endblock %}

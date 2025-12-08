@@ -292,56 +292,6 @@
         </div>
     </footer>
     
-    <script>
-        // Initialisation de Socket.IO
-        const socket = io()
-        
-        // Marquer la page active dans la navigation
-        document.addEventListener(
-          'DOMContentLoaded',
-          () => {
-            const currentPath = window.location.pathname
-            const navLinks = document.querySelectorAll('.fr-nav__link')
-
-            navLinks.forEach(link => {
-              if (link.getAttribute('href') === currentPath || 
-                (currentPath === '/' && link.getAttribute('href') === '/')) {
-                link.setAttribute('aria-current', 'page')
-              }
-            })
-          }
-        )
-        
-        // Gestion des erreurs Socket.IO
-        socket.on('connect_error', function(error) {
-            console.error('Erreur de connexion Socket.IO:', error)
-            showNotification('Erreur de connexion en temps réel', 'error')
-        })
-        
-        socket.on('connect', function() {
-            console.log('Connecté au serveur via Socket.IO')
-        })
-
-        const saveConfigBtn = document.querySelector('#save_config_btn')
-
-        const saveConfigAction = async () => {
-          if (!await testGristConnection(true))
-            return false
-
-          if (!await testDemarchesConnection(true))
-            return false
-
-          await saveConfiguration()
-          await checkConfiguration()
-        }
-
-        // Afficher le titre la première fois
-        if (document.cookie.search('welcome') === -1) {
-          document.querySelector('#welcome-title').style.display = 'block'
-          document.cookie = 'welcome=true; SameSite=None; Secure'
-        }
-    </script>
-    
     {% block scripts %}{% endblock %}
 </body>
 </html>

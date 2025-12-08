@@ -230,7 +230,7 @@ const saveConfiguration = async () => {
       setTimeout(async () => {
         window.config = await loadConfiguration()
         await loadAutoSyncState()
-        window.updateDeleteButton(window.config)
+        updateDeleteButton(window.config)
       }, 500)
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
@@ -241,17 +241,15 @@ const saveConfiguration = async () => {
   }
 }
 
-const deleteConfig = async () => {
-  if (!window.config || !window.config.otp_config_id) {
-    showNotification('Configuration non trouvée', 'error')
-    return
-  }
+const deleteConfig = async (configId = null) => {
+  if (!configId)
+    throw new Error('ID de configuration requis pour la suppression')
 
   const confirmed = confirm('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
   if (!confirmed) return
 
   try {
-    const response = await fetch(`/api/config/${window.config.otp_config_id}`, {
+    const response = await fetch(`/api/config/${configId}`, {
       method: 'DELETE'
     })
 
@@ -270,11 +268,36 @@ const deleteConfig = async () => {
   }
 }
 
+// Fonctions utilitaires pour l'UI de configuration
+const updateDeleteButton = (config) => {
+  const deleteBtn = document.getElementById('delete_config_btn')
+  if (!config || !config.otp_config_id) {
+    deleteBtn.disabled = true
+    deleteBtn.title = 'Aucune configuration à supprimer'
+  } else {
+    deleteBtn.disabled = false
+    deleteBtn.title = ''
+  }
+}
+
+const saveConfigAction = async () => {
+  if (!await testGristConnection(true))
+    return false
+
+  if (!await testDemarchesConnection(true))
+    return false
+
+  await saveConfiguration()
+  await checkConfiguration()
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     checkConfiguration,
     loadConfiguration,
     saveConfiguration,
-    deleteConfig
+    deleteConfig,
+    updateDeleteButton,
+    saveConfigAction
   }
 }

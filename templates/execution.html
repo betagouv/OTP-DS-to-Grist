@@ -144,7 +144,7 @@
     <button class="fr-btn fr-mr-1w" onclick="saveConfigAction()" id="save_config_btn">
         Sauvegarder la configuration
     </button>
-    <button class="fr-btn fr-btn--secondary fr-ml-1w" onclick="deleteConfig()" id="delete_config_btn">
+    <button class="fr-btn fr-btn--secondary fr-ml-1w" onclick="deleteConfig(window.config.otp_config_id)" id="delete_config_btn">
         Supprimer ma configuration
     </button>
 </div>
@@ -153,24 +153,3 @@
     Lancer la synchronisation
   </button>
  </div>
-
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', async () => {
-  // Charger la config pour peupler les filtres
-  window.config = await loadConfiguration()
-
-  // Initialiser les listeners automatiques pour les filtres
-  document.getElementById('date_debut').addEventListener('change', applyFilters)
-  document.getElementById('date_fin').addEventListener('change', applyFilters)
-  document.querySelectorAll('input[name="statuts"]').forEach(el => {
-    el.addEventListener('change', applyFilters)
-  })
-  // Les groupes sont gérés dans loadGroupes()
-
-  // Charger les groupes (ajoute aussi les listeners pour les groupes)
-  await loadGroupes()
-})
-</script>
-{% endblock %}
-
