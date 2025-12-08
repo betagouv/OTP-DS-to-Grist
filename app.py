@@ -943,11 +943,12 @@ def api_start_sync():
     """API pour démarrer la synchronisation - Version sécurisée"""
     try:
         data = request.get_json()
-        
-        # Utiliser la config du contexte Grist fourni
-        grist_user_id = str(data.get('grist_user_id', '')) if data.get('grist_user_id') is not None else None
-        grist_doc_id = str(data.get('grist_doc_id', '')) if data.get('grist_doc_id') is not None else None
-        server_config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
+
+        # Utiliser l'ID de config fourni
+        otp_config_id = data.get('otp_config_id')
+        if not otp_config_id:
+            return jsonify({"success": False, "message": "ID de configuration requis"}), 400
+        server_config = ConfigManager.load_config_by_id(otp_config_id)
         filters = data.get('filters', {})
         
         # Validation simple de la configuration serveur

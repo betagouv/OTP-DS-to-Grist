@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 })
 
 // ===== ACTIONS DE SYNCHRONISATION =====
-const startSyncAction = async () => currentTaskId = await startSync(window.config)
+const startSyncAction = async () => currentTaskId = await startSync(window.config.otp_config_id)
 
 // ===== AFFICHAGE DU TITRE DE BIENVENUE =====
 if (document.cookie.search('welcome') === -1) {

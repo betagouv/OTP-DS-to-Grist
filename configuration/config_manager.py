@@ -140,6 +140,68 @@ class ConfigManager:
             conn.close()
 
     @staticmethod
+    def load_config_by_id(otp_config_id):
+        """Charge la configuration depuis la base de données par ID"""
+        conn = DatabaseManager.get_connection(DATABASE_URL)
+
+        try:
+            with conn.cursor() as cursor:
+                if not otp_config_id:
+                    raise Exception("No otp config id")
+
+                cursor.execute("""
+                    SELECT id,
+                        ds_api_token,
+                        demarche_number,
+                        grist_base_url,
+                        grist_api_key,
+                        grist_doc_id,
+                        grist_user_id,
+                        filter_date_start,
+                        filter_date_end,
+                        filter_statuses,
+                        filter_groups
+                    FROM otp_configurations
+                    WHERE id = %s
+                    LIMIT 1
+                """, (otp_config_id,))
+                row = cursor.fetchone()
+
+                if row:
+                    config = {
+                        'otp_config_id': row[0],
+                        'ds_api_token': ConfigManager.decrypt_value(row[1]) if row[1] else '',
+                        'demarche_number': row[2] or '',
+                        'grist_base_url': row[3] or 'https://grist.numerique.gouv.fr/api',
+                        'grist_api_key': ConfigManager.decrypt_value(row[4]) if row[4] else '',
+                        'grist_doc_id': row[5] or '',
+                        'grist_user_id': row[6] or '',
+                        'filter_date_start': row[7] or '',
+                        'filter_date_end': row[8] or '',
+                        'filter_statuses': row[9] or '',
+                        'filter_groups': row[10] or '',
+                    }
+                else:
+                    raise Exception("Configuration not found")
+
+                # Charger les autres valeurs depuis les variables d'environnement
+                config.update({
+                    'ds_api_url': DEMARCHES_API_URL,
+                    'batch_size': int(os.getenv('BATCH_SIZE', '25')),
+                    'max_workers': int(os.getenv('MAX_WORKERS', '2')),
+                    'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
+                })
+
+                return config
+
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
+            conn.close()
+            raise Exception(str(e))
+        finally:
+            conn.close()
+
+    @staticmethod
     def save_config(config):
         """Sauvegarde la configuration dans la base de données"""
         conn = DatabaseManager.get_connection(DATABASE_URL)
