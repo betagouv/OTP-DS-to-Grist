@@ -54,18 +54,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   // Vérifier la configuration
-  const config = await checkConfiguration(true)
+  const checkedConfig = await checkConfiguration(true)
 
   // Mettre à jour le bouton de suppression
-  updateDeleteButton(config)
+  updateDeleteButton()
 
-  if (config) {
+  if (checkedConfig) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
   }
 
   // Charger la configuration et groupes
-  window.config = await loadConfiguration()
+  const loadedConfig = await loadConfiguration()
+  window.otp_config_id = loadedConfig.otp_config_id
+  updateDeleteButton()
   loadGroupes()
 
   // Initialiser les listeners automatiques pour les filtres
@@ -76,7 +78,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   // Focus sur le premier champ si vide
-  if (!window.config || !window.config.ds_api_token) {
+  if (!window.otp_config_id) {
     setTimeout(() => {
       document.getElementById('ds_api_token').focus()
     }, 500)
@@ -84,7 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 })
 
 // ===== ACTIONS DE SYNCHRONISATION =====
-const startSyncAction = async () => currentTaskId = await startSync(window.config.otp_config_id)
+const startSyncAction = async () => currentTaskId = await startSync(window.otp_config_id)
 
 // ===== AFFICHAGE DU TITRE DE BIENVENUE =====
 if (document.cookie.search('welcome') === -1) {

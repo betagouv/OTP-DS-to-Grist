@@ -15,13 +15,13 @@ const checkConfiguration = async (silent = false) => {
 
     // Vérifier que tous les champs requis sont présents
     const requiredFields = [
-      'ds_api_token',
-      'demarche_number', 
+      'has_ds_token',
+      'demarche_number',
       'grist_base_url',
-      'grist_api_key',
+      'has_grist_key',
     ]
 
-    const missingFields = requiredFields.filter(field => !config[field] || config[field] === '***')
+    const missingFields = requiredFields.filter(field => !config[field])
 
     if (missingFields.length !== 0) {
       if (silent)
@@ -61,18 +61,22 @@ const loadConfiguration = async () => {
     let gristUserId = gristContext.userId
     let gristDocId = gristContext.docId
     let gristBaseUrl = gristContext.baseUrl
+
+    // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
+    document.getElementById('grist_doc_id').value = gristDocId || ''
+    document.getElementById('grist_user_id').value = gristUserId || ''
+
+    // Set default base url
+    document.getElementById('grist_base_url').value = gristBaseUrl || 'https://grist.numerique.gouv.fr/api'
+
     const response = await fetch(`/api/config${gristParams}`)
     const config = await response.json()
 
     if (!response.ok)
       throw new Error(config.message)
 
-    // Déterminer si une configuration a été trouvée pour ce contexte Grist
-    const hasConfig = gristUserId && gristDocId && config.ds_api_token
-
-    // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
-    document.getElementById('grist_doc_id').value = gristDocId || ''
-    document.getElementById('grist_user_id').value = gristUserId || ''
+    // Déterminer si une configuration a été trouvée
+    const hasConfig = !!config.otp_config_id
 
     const gristApiKeyElement  = document.getElementById('grist_api_key')
     const gristKeyStatus      = document.getElementById('grist_key_status')
@@ -84,7 +88,7 @@ const loadConfiguration = async () => {
     // Remplir les autres champs seulement si une configuration a été trouvée
     dsApiTokenElement.value   = ''
     dsNumberElement.value     = hasConfig && config.demarche_number || ''
-    gristBaseUrlElement.value = hasConfig && config.grist_base_url || (gristBaseUrl || 'https://grist.numerique.gouv.fr/api')
+    gristBaseUrlElement.value = hasConfig && config.grist_base_url || gristBaseUrlElement.value
     gristApiKeyElement.value  = ''
 
     // Peupler les filtres
@@ -118,7 +122,7 @@ const loadConfiguration = async () => {
     gristApiKeyElement.addEventListener('input', updateGristKeyStatus)
 
     // Afficher le statut des tokens
-    if (config.ds_api_token) {
+    if (config.has_ds_token) {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
         </span>`
@@ -132,7 +136,7 @@ const loadConfiguration = async () => {
       document.querySelector('#accordion-ds').setAttribute('aria-expanded', true)
     }
 
-    if (config.grist_api_key) {
+    if (config.has_grist_key) {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
         </span>`
@@ -168,11 +172,12 @@ const saveConfiguration = async () => {
   const gristKeyElement = document.getElementById('grist_api_key')
   const grist_key = gristKeyElement.value
 
+  const isUpdate = !!window.otp_config_id
+
   const config = {
-    ds_api_token: dsToken || window.config.ds_api_token || '',
+    otp_config_id: window.otp_config_id || undefined,
     demarche_number: document.getElementById('demarche_number').value,
     grist_base_url: document.getElementById('grist_base_url').value,
-    grist_api_key: grist_key || window.config.grist_api_key || '',
     grist_doc_id: document.getElementById('grist_doc_id').value,
     grist_user_id: document.getElementById('grist_user_id').value,
     filter_date_start: document.getElementById('date_debut').value,
@@ -181,15 +186,25 @@ const saveConfiguration = async () => {
     filter_groups: Array.from(document.querySelectorAll('input[name="groupes"]:checked')).map(el => el.value).join(','),
   }
 
+  // Inclure tokens seulement si saisis
+  if (dsToken) config.ds_api_token = dsToken
+  if (grist_key) config.grist_api_key = grist_key
+
   // Validation basique
   const requiredFields = [
-    {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
     {key: 'demarche_number', name: 'Numéro de démarche'},
     {key: 'grist_base_url', name: 'URL de base Grist'},
-    {key: 'grist_api_key', name: 'Clé API Grist'},
     {key: 'grist_doc_id', name: 'ID du document Grist'},
     {key: 'grist_user_id', name: 'ID utilisateur Grist'}
   ]
+
+  if (!isUpdate) {
+    // Pour création, requérir tokens
+    requiredFields.push(
+      {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
+      {key: 'grist_api_key', name: 'Clé API Grist'}
+    )
+  }
 
   for (const field of requiredFields) {
     if (!config[field.key]) {
@@ -226,12 +241,13 @@ const saveConfiguration = async () => {
           </span>`
         gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
       }
-      // Recharger la configuration pour mettre à jour les statuts
-      setTimeout(async () => {
-        window.config = await loadConfiguration()
-        await loadAutoSyncState()
-        updateDeleteButton(window.config)
-      }, 500)
+       // Recharger la configuration pour mettre à jour les statuts
+       setTimeout(async () => {
+         const reloadedConfig = await loadConfiguration()
+         window.otp_config_id = reloadedConfig.otp_config_id
+         await loadAutoSyncState()
+         updateDeleteButton()
+       }, 500)
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
     }
@@ -269,9 +285,9 @@ const deleteConfig = async (configId = null) => {
 }
 
 // Fonctions utilitaires pour l'UI de configuration
-const updateDeleteButton = (config) => {
+const updateDeleteButton = () => {
   const deleteBtn = document.getElementById('delete_config_btn')
-  if (!config || !config.otp_config_id) {
+  if (!window.otp_config_id) {
     deleteBtn.disabled = true
     deleteBtn.title = 'Aucune configuration à supprimer'
   } else {

@@ -40,11 +40,12 @@ describe('checkConfiguration', () => {
       // Mock réponse API valide
       fetch.mockResolvedValue({
         json: jest.fn().mockResolvedValue({
-          ds_api_token: 'token',
+          otp_config_id: 123,
           demarche_number: 123,
           grist_base_url: 'url',
-          grist_api_key: 'key',
-          grist_doc_id: 'doc'
+          grist_doc_id: 'doc',
+          has_ds_token: true,
+          has_grist_key: true
         })
       })
 
@@ -65,11 +66,12 @@ describe('checkConfiguration', () => {
       // Mock réponse API incomplète (champ manquant)
       fetch.mockResolvedValue({
         json: jest.fn().mockResolvedValue({
-          ds_api_token: 'token',
+          otp_config_id: 123,
           demarche_number: 123,
           // grist_base_url manquant
-          grist_api_key: 'key',
-          grist_doc_id: 'doc'
+          grist_doc_id: 'doc',
+          has_ds_token: true,
+          has_grist_key: true
         })
       })
 
@@ -150,10 +152,9 @@ describe('loadConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          ds_api_token: 'ds_token',
+          otp_config_id: 123,
           demarche_number: 123,
           grist_base_url: 'x/xx/x',
-          grist_api_key: 'grist_key',
           grist_doc_id: 'doc123',
           filter_date_start: '2023-01-01',
           filter_date_end: '2023-12-31',
@@ -161,7 +162,9 @@ describe('loadConfiguration', () => {
           filter_groups: '1,2',
           batch_size: 50,
           max_workers: 4,
-          parallel: true
+          parallel: true,
+          has_ds_token: true,
+          has_grist_key: true
         })
       })
 
@@ -214,9 +217,9 @@ describe('loadConfiguration', () => {
       await loadConfiguration()
 
       // Vérifications : les champs restent vides ou par défaut
-      expect(document.getElementById('grist_doc_id').value).toBe('')
-      expect(document.getElementById('grist_user_id').value).toBe('')
-      expect(document.getElementById('grist_base_url').value).toBe('')
+      expect(document.getElementById('grist_doc_id').value).toBe('doc123')
+      expect(document.getElementById('grist_user_id').value).toBe('5')
+      expect(document.getElementById('grist_base_url').value).toBe('http://localhost:8484/o/docs/api')
 
       // Vérifications des appels
       expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors du chargement de la configuration:', error)
@@ -319,7 +322,8 @@ describe('updateDeleteButton', () => {
   it(
     'désactive le bouton si pas d’id de config',
     () => {
-      updateDeleteButton({})
+      window.otp_config_id = undefined
+      updateDeleteButton()
 
       expect(document.getElementById('delete_config_btn').disabled).toBe(true)
     }
@@ -327,7 +331,8 @@ describe('updateDeleteButton', () => {
 
   it(
     'active le bouton si il y’a une config', () => {
-      updateDeleteButton({ otp_config_id: 123 })
+      window.otp_config_id = 123
+      updateDeleteButton()
 
       expect(document.getElementById('delete_config_btn').disabled).toBe(false)
       expect(document.getElementById('delete_config_btn').title).toBe('')

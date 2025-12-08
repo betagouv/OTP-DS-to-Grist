@@ -707,12 +707,11 @@ def api_config():
             finally:
                 db.close()
 
-            # Garder les vraies valeurs pour la logique côté client,
-            # masquer seulement pour affichage
-            config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
-            config['ds_api_token_exists'] = bool(config['ds_api_token'])
-            config['grist_api_key_masked'] = '***' if config['grist_api_key'] else ''
-            config['grist_api_key_exists'] = bool(config['grist_api_key'])
+            # Supprimer les tokens sensibles, ajouter flags d'existence
+            config['has_ds_token'] = bool(config.get('ds_api_token'))
+            config['has_grist_key'] = bool(config.get('grist_api_key'))
+            config.pop('ds_api_token', None)
+            config.pop('grist_api_key', None)
 
             return jsonify(config)
         except Exception as e:
@@ -721,48 +720,54 @@ def api_config():
     elif request.method == 'POST':
         try:
             new_config = request.get_json()
-            
-            # Validation basique
-            required_fields = [
-                'ds_api_token',
-                'demarche_number',
-                'grist_base_url',
-                'grist_api_key',
-                'grist_doc_id',
-                'grist_user_id'
-            ]
-            
-            for field in required_fields:
-                if not new_config.get(field):
-                    return jsonify({"success": False, "message": f"Le champ {field} est requis"}), 400
-            
-            # Sauvegarder la configuration
-            success = ConfigManager.save_config(new_config)
 
-            if success:
-                # Récupérer l'ID de la configuration sauvegardée
-                db = SessionLocal()
-                try:
-                    otp_config = db.query(OtpConfiguration).filter_by(
-                        grist_user_id=new_config.get('grist_user_id'),
-                        grist_doc_id=new_config.get('grist_doc_id')
-                    ).first()
-                    otp_config_id = otp_config.id if otp_config else None
-                finally:
-                    db.close()
-
+            otp_config_id = new_config.get('otp_config_id')
+            if otp_config_id:
+                # Update existant
+                existing_config = ConfigManager.load_config_by_id(otp_config_id)
+                # Fusionner : garder existant si non fourni
+                for key, value in new_config.items():
+                    if value or value == 0:  # Inclure si non vide (sauf 0)
+                        existing_config[key] = value
+                # Supprimer otp_config_id du dict avant sauvegarde
+                existing_config.pop('otp_config_id', None)
+                success = ConfigManager.save_config(existing_config)
                 return jsonify({
                     "success": True,
-                    "message": "Configuration sauvegardée avec succès",
+                    "message": "Configuration mise à jour avec succès",
                     "otp_config_id": otp_config_id
-                })
+                }) if success else jsonify({"success": False, "message": "Erreur lors de la mise à jour"}), 500
             else:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": "Erreur lors de la sauvegarde"
-                    }
-                ), 500
+                # Création
+                required_fields = [
+                    'ds_api_token',
+                    'demarche_number',
+                    'grist_base_url',
+                    'grist_api_key',
+                    'grist_doc_id',
+                    'grist_user_id'
+                ]
+                for field in required_fields:
+                    if not new_config.get(field):
+                        return jsonify({"success": False, "message": f"Le champ {field} est requis"}), 400
+                success = ConfigManager.save_config(new_config)
+                if success:
+                    db = SessionLocal()
+                    try:
+                        otp_config = db.query(OtpConfiguration).filter_by(
+                            grist_user_id=new_config.get('grist_user_id'),
+                            grist_doc_id=new_config.get('grist_doc_id')
+                        ).first()
+                        otp_config_id = otp_config.id if otp_config else None
+                    finally:
+                        db.close()
+                    return jsonify({
+                        "success": True,
+                        "message": "Configuration sauvegardée avec succès",
+                        "otp_config_id": otp_config_id
+                    })
+                else:
+                    return jsonify({"success": False, "message": "Erreur lors de la sauvegarde"}), 500
 
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
