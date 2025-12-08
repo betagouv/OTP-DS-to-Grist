@@ -123,13 +123,13 @@ const loadConfiguration = async () => {
 
     // Afficher le statut des tokens
     if (config.has_ds_token) {
-      dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
+      dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
         </span>`
       dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
       document.querySelector('#accordion-ds').setAttribute('aria-expanded', false)
     } else {
-      dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
+      dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
         </span>`
       dsApiTokenElement.placeholder = ''
@@ -137,13 +137,13 @@ const loadConfiguration = async () => {
     }
 
     if (config.has_grist_key) {
-      gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
+      gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
         </span>`
       gristApiKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
       document.querySelector('#accordion-grist').setAttribute('aria-expanded', false)
     } else {
-      gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm">
+      gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
         </span>`
       gristApiKeyElement.placeholder = ''
@@ -229,14 +229,14 @@ const saveConfiguration = async () => {
 
       // Mettre à jour immédiatement le statut des tokens si saisis
       if (dsToken) {
-        document.getElementById('ds_token_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
+        document.getElementById('ds_token_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
             <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
           </span>`
         dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
       }
 
       if (grist_key) {
-        document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm">
+        document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
             <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
           </span>`
         gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
