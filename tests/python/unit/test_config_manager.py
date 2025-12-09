@@ -80,7 +80,8 @@ class TestConfigManager:
 
         # Mock des méthodes de déchiffrement
         with patch.object(ConfigManager, 'decrypt_value', side_effect=lambda x: f"decrypted_{x}"):
-            config = ConfigManager.load_config('test_user', 'test_doc')
+            config_manager = ConfigManager('dummy_url')
+            config = config_manager.load_config('test_user', 'test_doc')
 
         # Vérifications
         assert config['ds_api_token'] == 'decrypted_encrypted_token'
@@ -113,7 +114,8 @@ class TestConfigManager:
         # Mock : aucune ligne trouvée
         mock_cursor.fetchone.return_value = None
 
-        config = ConfigManager.load_config('test_user', 'test_doc')
+        config_manager = ConfigManager('dummy_url')
+        config = config_manager.load_config('test_user', 'test_doc')
 
         # Vérifications des valeurs par défaut
         assert config['ds_api_token'] == ''
@@ -131,11 +133,12 @@ class TestConfigManager:
     @patch.dict(os.environ, {'ENCRYPTION_KEY': 'test_key_12345678901234567890123456789012'})
     def test_load_config_invalid_params(self, mock_db_manager):
         """Test d'erreur avec des paramètres invalides"""
+        config_manager = ConfigManager('dummy_url')
         with pytest.raises(Exception, match="No grist user id or doc id"):
-            ConfigManager.load_config('', '')
+            config_manager.load_config('', '')
 
         with pytest.raises(Exception, match="No grist user id or doc id"):
-            ConfigManager.load_config(None, 'test_doc')
+            config_manager.load_config(None, 'test_doc')
 
     @patch('configuration.config_manager.DatabaseManager')
     @patch.dict(os.environ, {'ENCRYPTION_KEY': 'test_key_12345678901234567890123456789012'})
@@ -152,7 +155,8 @@ class TestConfigManager:
 
         # Mock des méthodes de chiffrement
         with patch.object(ConfigManager, 'encrypt_value', side_effect=lambda x: f"encrypted_{x}"):
-            result = ConfigManager.save_config({
+            config_manager = ConfigManager('dummy_url')
+            result = config_manager.save_config({
                 'ds_api_token': 'test_token',
                 'demarche_number': '12345',
                 'grist_base_url': 'https://test.grist.com',
@@ -188,7 +192,8 @@ class TestConfigManager:
 
         # Mock des méthodes de chiffrement
         with patch.object(ConfigManager, 'encrypt_value', side_effect=lambda x: f"encrypted_{x}"):
-            result = ConfigManager.save_config({
+            config_manager = ConfigManager('dummy_url')
+            result = config_manager.save_config({
                 'ds_api_token': 'test_token',
                 'demarche_number': '12345',
                 'grist_base_url': 'https://test.grist.com',
@@ -214,7 +219,8 @@ class TestConfigManager:
     def test_save_config_invalid_params(self, mock_db_manager):
         """Test d'erreur de sauvegarde avec paramètres invalides"""
         # La méthode retourne False au lieu de lever une exception
-        result = ConfigManager.save_config({
+        config_manager = ConfigManager('dummy_url')
+        result = config_manager.save_config({
             'grist_user_id': '',
             'grist_doc_id': 'test_doc'
         })

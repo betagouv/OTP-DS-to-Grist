@@ -19,7 +19,7 @@ from sqlalchemy import (create_engine)
 from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from collections import defaultdict
+from apscheduler.executors.pool import ProcessPoolExecutor
 from zoneinfo import ZoneInfo
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
@@ -29,7 +29,9 @@ from constants import DEMARCHES_API_URL
 Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(executors={
+    'default': ProcessPoolExecutor(max_workers=5)
+})
 
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -58,16 +60,23 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def scheduled_sync_job(otp_config_id):
     """
-    Job exécuté automatiquement par APScheduler pour une configuration donnée
-    Exécute la synchronisation et log les résultats
-
+    Job exécuté automatiquement par APScheduler pour une configuration donnée.
+    Exécute la synchronisation complète, met à jour les statuts en base de données,
+    et gère les erreurs avec notifications et désactivation automatique.
     - Fréquence :
       - Quotidienne, à l'heure configurée (SYNC_HOUR:SYNC_MINUTE) dans la timezone SYNC_TZ (défaut Europe/Paris),
         ou décalée de 15 mn pour chaque config supplémentaire sur le même doc Grist
       - Au démarrage de l'app
       - Lors de l'activation/désactivation d'un planning via les endpoints API
-    - Condition : Uniquement pour les synchronisations activés
+    - Condition : Uniquement pour les synchronisations activées
+    - Actions :
+      - Charge la configuration depuis la base
+      - Met à jour last_run et calcule next_run dans UserSchedule
+      - Exécute run_synchronization_task
+      - Met à jour last_status et crée une entrée SyncLog
+      - En cas d'erreur : émet notification WebSocket et désactive le planning
     """
+
     logger.info(f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}")
     logger.info(f"Scheduler running: {scheduler.running}, jobs count: {len(scheduler.get_jobs())}")
 
@@ -84,13 +93,10 @@ def scheduled_sync_job(otp_config_id):
             return
 
         # Charger la configuration complète
-        config = ConfigManager.load_config(
-            grist_user_id=otp_config.grist_user_id,
-            grist_doc_id=otp_config.grist_doc_id
-        )
+        config = config_manager.load_config_by_id(otp_config_id)
 
         if not config:
-            logger.error(f"Impossible de charger la configuration pour {otp_config_id}")
+            logger.error(f"Configuration {otp_config_id} non trouvée")
             return
 
         # Mettre à jour last_run
@@ -146,6 +152,16 @@ def scheduled_sync_job(otp_config_id):
     except Exception as e:
         logger.error(f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}")
 
+        # Désactiver le planning en cas d'erreur
+        try:
+            user_schedule = db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
+            if user_schedule:
+                user_schedule.enabled = False
+                db.commit()
+                logger.info(f"Planning désactivé pour config {otp_config_id} à cause d'erreur")
+        except Exception as disable_e:
+            logger.error(f"Erreur lors de la désactivation du planning: {str(disable_e)}")
+
         # Logger l'erreur
         try:
             otp_config = db.query(OtpConfiguration).filter_by(
@@ -192,49 +208,31 @@ def reload_scheduler_jobs():
         db = SessionLocal()
         tz = ZoneInfo(SYNC_TZ) if SYNC_TZ != 'UTC' else None
         try:
-            active_schedules = db.query(UserSchedule).filter_by(enabled=True).all()
+            active_schedules = db.query(UserSchedule).filter_by(enabled=True).filter(UserSchedule.otp_config_id.isnot(None)).all()
 
-            # Grouper par document Grist
-            schedules_by_doc = defaultdict(list)
-            for schedule in active_schedules:
+            # Trier tous les plannings par otp_config_id pour espacement global
+            sorted_schedules = sorted(active_schedules, key=lambda s: s.otp_config_id)
+
+            for i, schedule in enumerate(sorted_schedules):
                 # Vérifier que la configuration existe encore
                 otp_config = db.query(OtpConfiguration).filter_by(id=schedule.otp_config_id).first()
                 if not otp_config:
                     logger.warning(f"Configuration manquante pour schedule {schedule.id}, skipping")
                     continue
-                schedules_by_doc[otp_config.grist_doc_id].append((schedule, otp_config))
 
-            # Pour chaque document, ajouter les jobs avec décalage si nécessaire
-            for doc_id, schedule_list in schedules_by_doc.items():
-                if len(schedule_list) > 1:
-                    # Plusieurs tâches sur le même document : espacer de 15 min
-                    for i, (schedule, otp_config) in enumerate(sorted(schedule_list, key=lambda x: x[0].otp_config_id)):
-                        minute = SYNC_MINUTE + i * 15
-                        job_id = f"scheduled_sync_{schedule.otp_config_id}"
-                        scheduler.add_job(
-                            func=scheduled_sync_job,
-                            trigger=CronTrigger(hour=SYNC_HOUR, minute=minute, timezone=tz),
-                            args=[schedule.otp_config_id],
-                            id=job_id,
-                            name=f"Sync planifiée pour config {schedule.otp_config_id}",
-                            replace_existing=True,
-                            max_instances=1
-                        )
-                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{minute:02d} (document {doc_id})")
-                else:
-                    # Une seule tâche : à l'heure configurée
-                    schedule, otp_config = schedule_list[0]
-                    job_id = f"scheduled_sync_{schedule.otp_config_id}"
-                    scheduler.add_job(
-                        func=scheduled_sync_job,
-                        trigger=CronTrigger(hour=SYNC_HOUR, minute=SYNC_MINUTE, timezone=tz),
-                        args=[schedule.otp_config_id],
-                        id=job_id,
-                        name=f"Sync planifiée pour config {schedule.otp_config_id}",
-                        replace_existing=True,
-                        max_instances=1
-                    )
-                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{SYNC_MINUTE:02d} (document {doc_id})")
+
+                minute = SYNC_MINUTE + i * 5
+                job_id = f"scheduled_sync_{schedule.otp_config_id}"
+                scheduler.add_job(
+                    func=scheduled_sync_job,
+                    trigger=CronTrigger(hour=SYNC_HOUR, minute=minute, timezone=tz),
+                    args=[schedule.otp_config_id],
+                    id=job_id,
+                    name=f"Sync planifiée pour config {schedule.otp_config_id}",
+                    replace_existing=True,
+                    max_instances=1
+                )
+                logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{minute:02d} (document {otp_config.grist_doc_id})")
 
         finally:
             db.close()

@@ -101,7 +101,7 @@ class ConfigManager:
                         'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
                         'demarche_number': row[1] or '',
                         'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
-                        'grist_api_key': self.decrypt_value(row[3]) if row[3] else '',
+                        'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
                         'grist_doc_id': row[4] or '',
                         'grist_user_id': row[5] or '',
                         'filter_date_start': row[6] or '',
