@@ -726,10 +726,14 @@ def api_config():
             if otp_config_id:
                 # Update existant
                 existing_config = config_manager.load_config_by_id(otp_config_id)
-                # Fusionner : garder existant si non fourni
+                # Fusionner : champs sensibles seulement si fournis, autres toujours
+                sensitive_keys = ['ds_api_token', 'grist_api_key']
                 for key, value in new_config.items():
-                    if value or value == 0:  # Inclure si non vide (sauf 0)
-                        existing_config[key] = value
+                    if key in sensitive_keys:
+                        if value:  # Seulement si fourni (non vide)
+                            existing_config[key] = value
+                    else:
+                        existing_config[key] = value  # Toujours mettre à jour, même vide
                 # Supprimer otp_config_id du dict avant sauvegarde
                 existing_config.pop('otp_config_id', None)
                 success = config_manager.save_config(existing_config)

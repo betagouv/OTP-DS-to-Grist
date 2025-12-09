@@ -11,13 +11,14 @@ const testDemarchesConnection = async (silent = false) => {
 
     // Utiliser le token saisi OU recharger la config si vide
     let ds_token = ds_token_input
+    let latestConfig = null
     if (!ds_token) {
       try {
         const gristContext = await getGristContext()
         const configResponse = await fetch(`/api/config${gristContext.params}`)
 
         if (configResponse.ok) {
-          const latestConfig = await configResponse.json()
+          latestConfig = await configResponse.json()
           ds_token = latestConfig.ds_api_token || ''
         }
       } catch (e) {
@@ -26,11 +27,15 @@ const testDemarchesConnection = async (silent = false) => {
     }
 
     if (!ds_token) {
-      resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
-        <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
-      </div>`
-      showNotification('Token API démarches simplifiées requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
-      return false
+      if (latestConfig && latestConfig.has_ds_token) {
+        return true  // Déjà configuré, pas besoin de tester
+      } else {
+        resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+          <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
+        </div>`
+        if (!silent) showNotification('Token API démarches simplifiées requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+        return false
+      }
     }
 
     const response = await fetch('/api/test-connection', {
@@ -82,23 +87,30 @@ const testGristConnection = async (silent = false) => {
 
     // Utiliser la clé saisie OU recharger la config si vide
     let grist_key = gristKeyInputValue
+    let latestConfig = null
 
     if (!grist_key) {
       try {
         const gristContext   = await getGristContext()
         const configResponse = await fetch(`/api/config${gristContext.params}`)
-        const latestConfig   = await configResponse.json()
-        grist_key            = latestConfig.grist_api_key
+        if (configResponse.ok) {
+          latestConfig = await configResponse.json()
+          grist_key    = latestConfig.grist_api_key || ''
+        }
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
     }
 
     if (!grist_key) {
-      showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
-      return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
-        <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
-      </div>`
+      if (latestConfig && latestConfig.has_grist_key) {
+        return true  // Déjà configuré, pas besoin de tester
+      } else {
+        if (!silent) showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+        return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+          <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
+        </div>`
+      }
     }
 
     if (!gristBaseUrlValue)
