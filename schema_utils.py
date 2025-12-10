@@ -10,7 +10,11 @@ import requests
 from typing import Dict, List, Any
 
 # Importer les configurations nécessaires
-from queries_config import API_TOKEN, API_URL
+import os
+from constants import DEMARCHES_API_URL
+
+API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
+API_URL = DEMARCHES_API_URL
 
 # ========================================
 # FONCTIONS EXISTANTES - CORRIGÉES

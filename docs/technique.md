@@ -112,10 +112,9 @@ SYNC_MINUTE=50
 ### **Modules de requêtes API**
 
 4. **`queries.py`** - Module principal d'orchestration des requêtes
-5. **`queries_config.py`** - Configuration des connexions API
-6. **`queries_graphql.py`** - Requêtes GraphQL vers l'API DS
-7. **`queries_extract.py`** - Extraction et transformation des données
-8. **`queries_util.py`** - Utilitaires pour le traitement des données
+5. **`queries_graphql.py`** - Requêtes GraphQL vers l'API DS
+6. **`queries_extract.py`** - Extraction et transformation des données
+7. **`queries_util.py`** - Utilitaires pour le traitement des données
 
 ### **Modules spécialisés**
 

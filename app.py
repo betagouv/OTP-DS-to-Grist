@@ -13,29 +13,25 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import requests
 from werkzeug.serving import WSGIRequestHandler
-import psycopg2
-from cryptography.fernet import Fernet
 import logging
 import atexit
-from sqlalchemy import (
-    create_engine,
-    Column,
-    Integer,
-    String,
-    Boolean,
-    DateTime,
-    ForeignKey
-)
+from sqlalchemy import (create_engine)
 from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from collections import defaultdict
+from apscheduler.executors.pool import ProcessPoolExecutor
 from zoneinfo import ZoneInfo
+from database.database_manager import DatabaseManager
+from database.models import OtpConfiguration, UserSchedule, SyncLog
+from configuration.config_manager import ConfigManager
+from constants import DEMARCHES_API_URL
 
 Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(executors={
+    'default': ProcessPoolExecutor(max_workers=5)
+})
 
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -49,6 +45,9 @@ if not DATABASE_URL:
         "DATABASE_URL environment variable is required for database operations"
     )
 
+# Instance de ConfigManager
+config_manager = ConfigManager(DATABASE_URL)
+
 # Configuration de la synchronisation planifiée
 SYNC_HOUR = int(os.getenv('SYNC_HOUR', '0'))
 SYNC_MINUTE = int(os.getenv('SYNC_MINUTE', '0'))
@@ -61,16 +60,25 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def scheduled_sync_job(otp_config_id):
     """
-    Job exécuté automatiquement par APScheduler pour une configuration donnée
-    Exécute la synchronisation et log les résultats
-
+    Job exécuté automatiquement par APScheduler pour une configuration donnée.
+    Exécute la synchronisation complète, met à jour les statuts en base de données,
+    et gère les erreurs avec notifications et désactivation automatique.
     - Fréquence :
       - Quotidienne, à l'heure configurée (SYNC_HOUR:SYNC_MINUTE) dans la timezone SYNC_TZ (défaut Europe/Paris),
         ou décalée de 15 mn pour chaque config supplémentaire sur le même doc Grist
       - Au démarrage de l'app
       - Lors de l'activation/désactivation d'un planning via les endpoints API
-    - Condition : Uniquement pour les synchronisations activés
+    - Condition : Uniquement pour les synchronisations activées
+    - Actions :
+      - Charge la configuration depuis la base
+      - Met à jour last_run et calcule next_run dans UserSchedule
+      - Exécute run_synchronization_task
+      - Met à jour last_status et crée une entrée SyncLog
+      - En cas d'erreur :
+        - Notification WebSocket : uniquement pour success: false.
+        - Désactivation du planning : uniquement pour les exceptions.
     """
+
     logger.info(f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}")
     logger.info(f"Scheduler running: {scheduler.running}, jobs count: {len(scheduler.get_jobs())}")
 
@@ -87,13 +95,10 @@ def scheduled_sync_job(otp_config_id):
             return
 
         # Charger la configuration complète
-        config = ConfigManager.load_config(
-            grist_user_id=otp_config.grist_user_id,
-            grist_doc_id=otp_config.grist_doc_id
-        )
+        config = config_manager.load_config_by_id(otp_config_id)
 
         if not config:
-            logger.error(f"Impossible de charger la configuration pour {otp_config_id}")
+            logger.error(f"Configuration {otp_config_id} non trouvée")
             return
 
         # Mettre à jour last_run
@@ -103,7 +108,7 @@ def scheduled_sync_job(otp_config_id):
             db.commit()
 
         # Exécuter la synchronisation
-        result = run_synchronization_task(config, {})
+        result = run_synchronization_task(config)
 
         # Calculer next_run (prochaine exécution à l'heure configurée)
         now = datetime.now(timezone.utc)
@@ -148,6 +153,16 @@ def scheduled_sync_job(otp_config_id):
 
     except Exception as e:
         logger.error(f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}")
+
+        # Désactiver le planning en cas d'erreur
+        try:
+            user_schedule = db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
+            if user_schedule:
+                user_schedule.enabled = False
+                db.commit()
+                logger.info(f"Planning désactivé pour config {otp_config_id} à cause d'erreur")
+        except Exception as disable_e:
+            logger.error(f"Erreur lors de la désactivation du planning: {str(disable_e)}")
 
         # Logger l'erreur
         try:
@@ -195,49 +210,31 @@ def reload_scheduler_jobs():
         db = SessionLocal()
         tz = ZoneInfo(SYNC_TZ) if SYNC_TZ != 'UTC' else None
         try:
-            active_schedules = db.query(UserSchedule).filter_by(enabled=True).all()
+            active_schedules = db.query(UserSchedule).filter_by(enabled=True).filter(UserSchedule.otp_config_id.isnot(None)).all()
 
-            # Grouper par document Grist
-            schedules_by_doc = defaultdict(list)
-            for schedule in active_schedules:
+            # Trier tous les plannings par otp_config_id pour espacement global
+            sorted_schedules = sorted(active_schedules, key=lambda s: s.otp_config_id)
+
+            for i, schedule in enumerate(sorted_schedules):
                 # Vérifier que la configuration existe encore
                 otp_config = db.query(OtpConfiguration).filter_by(id=schedule.otp_config_id).first()
                 if not otp_config:
                     logger.warning(f"Configuration manquante pour schedule {schedule.id}, skipping")
                     continue
-                schedules_by_doc[otp_config.grist_doc_id].append((schedule, otp_config))
 
-            # Pour chaque document, ajouter les jobs avec décalage si nécessaire
-            for doc_id, schedule_list in schedules_by_doc.items():
-                if len(schedule_list) > 1:
-                    # Plusieurs tâches sur le même document : espacer de 15 min
-                    for i, (schedule, otp_config) in enumerate(sorted(schedule_list, key=lambda x: x[0].otp_config_id)):
-                        minute = SYNC_MINUTE + i * 15
-                        job_id = f"scheduled_sync_{schedule.otp_config_id}"
-                        scheduler.add_job(
-                            func=scheduled_sync_job,
-                            trigger=CronTrigger(hour=SYNC_HOUR, minute=minute, timezone=tz),
-                            args=[schedule.otp_config_id],
-                            id=job_id,
-                            name=f"Sync planifiée pour config {schedule.otp_config_id}",
-                            replace_existing=True,
-                            max_instances=1
-                        )
-                        logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{minute:02d} (document {doc_id})")
-                else:
-                    # Une seule tâche : à l'heure configurée
-                    schedule, otp_config = schedule_list[0]
-                    job_id = f"scheduled_sync_{schedule.otp_config_id}"
-                    scheduler.add_job(
-                        func=scheduled_sync_job,
-                        trigger=CronTrigger(hour=SYNC_HOUR, minute=SYNC_MINUTE, timezone=tz),
-                        args=[schedule.otp_config_id],
-                        id=job_id,
-                        name=f"Sync planifiée pour config {schedule.otp_config_id}",
-                        replace_existing=True,
-                        max_instances=1
-                    )
-                    logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{SYNC_MINUTE:02d} (document {doc_id})")
+
+                minute = SYNC_MINUTE + i * 5
+                job_id = f"scheduled_sync_{schedule.otp_config_id}"
+                scheduler.add_job(
+                    func=scheduled_sync_job,
+                    trigger=CronTrigger(hour=SYNC_HOUR, minute=minute, timezone=tz),
+                    args=[schedule.otp_config_id],
+                    id=job_id,
+                    name=f"Sync planifiée pour config {schedule.otp_config_id}",
+                    replace_existing=True,
+                    max_instances=1
+                )
+                logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{minute:02d} (document {otp_config.grist_doc_id})")
 
         finally:
             db.close()
@@ -247,43 +244,6 @@ def reload_scheduler_jobs():
     except Exception as e:
         logger.error(f"Erreur lors du rechargement des jobs scheduler: {str(e)}")
 
-
-class OtpConfiguration(Base):
-    __tablename__ = 'otp_configurations'
-    id = Column(Integer, primary_key=True)
-    ds_api_token = Column(String)
-    demarche_number = Column(String)
-    grist_base_url = Column(String)
-    grist_api_key = Column(String)
-    grist_doc_id = Column(String)
-    grist_user_id = Column(String)
-
-
-class UserSchedule(Base):
-    __tablename__ = 'user_schedules'
-    id = Column(Integer, primary_key=True)
-    otp_config_id = Column(
-        Integer,
-        ForeignKey('otp_configurations.id', ondelete='SET NULL')
-    )
-    frequency = Column(String, default='daily')
-    enabled = Column(Boolean, default=False)
-    last_run = Column(DateTime)
-    next_run = Column(DateTime)
-    last_status = Column(String)
-
-
-class SyncLog(Base):
-    __tablename__ = 'sync_logs'
-    id = Column(Integer, primary_key=True)
-    grist_user_id = Column(String)
-    grist_doc_id = Column(String)
-    status = Column(String)
-    message = Column(String)
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-
-DEMARCHES_API_URL = "https://www.demarches-simplifiees.fr/api/v2/graphql"
 
 # Configuration de l'application Flask
 app = Flask(__name__)
@@ -399,299 +359,8 @@ class TaskManager:
 task_manager = TaskManager()
 
 
-class ConfigManager:
-    """Gestionnaire de configuration optimisé avec sauvegarde robuste"""
-
-    SENSITIVE_KEYS = ['ds_api_token', 'grist_api_key']
-
-    @staticmethod
-    def get_env_path():
-        """Retourne le chemin vers le fichier .env"""
-        return os.path.join(script_dir, '.env')
-
-    @staticmethod
-    def get_encryption_key():
-        """Récupère ou génère la clé de chiffrement"""
-        logger.info("---get_encryption_key---")
-        key = os.getenv('ENCRYPTION_KEY')
-
-        if not key:
-            raise ValueError('"ENCRYPTION_KEY" non définie')
-
-        return key
-
-    @staticmethod
-    def get_db_connection():
-        """Établit une connexion à la base de données PostgreSQL"""
-        logger.info(f"DATABASE_URL: {DATABASE_URL}")
-        try:
-            return psycopg2.connect(DATABASE_URL)
-        except Exception as e:
-            logger.error(f"Erreur de connexion à la base de données: {str(e)}")
-            return None
-
-    @staticmethod
-    def create_table_if_not_exists(conn):
-        """Crée la table otp_configurations
-        si elle n'existe pas et ajoute les colonnes manquantes"""
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS otp_configurations (
-                    id SERIAL PRIMARY KEY,
-                    ds_api_token TEXT,
-                    demarche_number TEXT,
-                    grist_base_url TEXT,
-                    grist_api_key TEXT,
-                    grist_doc_id TEXT
-                )
-            """)
-
-            # Vérifier et ajoute la colonne id si elle n'existe pas (pour les tables existantes sans id)
-            cursor.execute("""
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'otp_configurations' AND column_name = 'id'
-            """)
-            if not cursor.fetchone():
-                cursor.execute("""
-                    ALTER TABLE otp_configurations ADD COLUMN id SERIAL PRIMARY KEY
-                """)
-
-            cursor.execute("""
-                ALTER TABLE otp_configurations
-                ADD COLUMN IF NOT EXISTS grist_user_id TEXT DEFAULT ''
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS user_schedules (
-                    id SERIAL PRIMARY KEY,
-                    otp_config_id INTEGER,
-                    frequency TEXT DEFAULT 'daily',
-                    enabled BOOLEAN DEFAULT FALSE,
-                    last_run TIMESTAMP,
-                    next_run TIMESTAMP,
-                    last_status TEXT,
-                    FOREIGN KEY (otp_config_id) REFERENCES otp_configurations(id) ON DELETE SET NULL
-                )
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS sync_logs (
-                    id SERIAL PRIMARY KEY,
-                    grist_user_id TEXT,
-                    grist_doc_id TEXT,
-                    status TEXT,
-                    message TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Ajouter les colonnes manquantes aux tables existantes
-            # (aucune pour le moment)
-
-            # Insérer une ligne vide si la table est vide
-            cursor.execute("SELECT COUNT(*) FROM otp_configurations")
-            if cursor.fetchone()[0] == 0:
-                cursor.execute("""
-                    INSERT INTO otp_configurations (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id)
-                    VALUES ('', '', 'https://grist.numerique.gouv.fr/api', '', '', '')
-                """)
-            conn.commit()
-
-    @staticmethod
-    def init_db():
-        """Initialise la base de données en créant les tables si nécessaire"""
-        conn = ConfigManager.get_db_connection()
-        if conn:
-            try:
-                ConfigManager.create_table_if_not_exists(conn)
-                logger.info("Tables de base de données initialisées")
-            finally:
-                conn.close()
-        else:
-            logger.error("Impossible de se connecter à la base de données pour l'initialisation")
-
-    @staticmethod
-    def encrypt_value(value):
-        """Chiffre une valeur"""
-        logger.info("---encrypt_value---")
-        try:
-            if not value:
-                return value
-
-            key = ConfigManager.get_encryption_key()
-            f = Fernet(key.encode())
-
-            return f.encrypt(value.encode()).decode()
-        except Exception as e:
-            raise ValueError(
-                f"Échec du chiffrement : {str(e)}. \
-                Vérifiez la clé de chiffrement ou la valeur fournie."
-            )
-
-    @staticmethod
-    def decrypt_value(value):
-        """Déchiffre une valeur"""
-        logger.info("---decrypt_value---")
-        try:
-            if not value:
-                return value
-
-            key = ConfigManager.get_encryption_key()
-            f = Fernet(key.encode())
-
-            return f.decrypt(value.encode()).decode()
-        except Exception as e:
-            raise ValueError(
-                f"Échec du déchiffrement : {str(e)}. \
-                Vérifiez la clé de chiffrement ou la valeur fournie."
-            )
-
-    @staticmethod
-    def load_config(grist_user_id, grist_doc_id):
-        """Charge la configuration depuis la base de données"""
-        conn = ConfigManager.get_db_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                if not grist_user_id or not grist_doc_id:
-                    raise Exception("No grist user id or doc id")
-
-                cursor.execute("""
-                    SELECT ds_api_token,
-                        demarche_number,
-                        grist_base_url,
-                        grist_api_key,
-                        grist_doc_id,
-                        grist_user_id
-                    FROM otp_configurations
-                    WHERE grist_user_id = %s AND grist_doc_id = %s
-                    LIMIT 1
-                """, (grist_user_id, grist_doc_id))
-                row = cursor.fetchone()
-
-                if row:
-                    config = {
-                        'ds_api_token': ConfigManager.decrypt_value(row[0]) if row[0] else '',
-                        'demarche_number': row[1] or '',
-                        'grist_base_url': row[2] or 'https://grist.numerique.gouv.fr/api',
-                        'grist_api_key': ConfigManager.decrypt_value(row[3]) if row[3] else '',
-                        'grist_doc_id': row[4] or '',
-                        'grist_user_id': row[5] or '',
-                    }
-                else:
-                    config = {
-                        'ds_api_token': '',
-                        'demarche_number': '',
-                        'grist_base_url': 'https://grist.numerique.gouv.fr/api',
-                        'grist_api_key': '',
-                        'grist_doc_id': '',
-                        'grist_user_id': '',
-                    }
-
-                # Charger les autres valeurs depuis les variables d'environnement
-                config.update({
-                    'ds_api_url': DEMARCHES_API_URL,
-                    'batch_size': int(os.getenv('BATCH_SIZE', '25')),
-                    'max_workers': int(os.getenv('MAX_WORKERS', '2')),
-                    'parallel': os.getenv('PARALLEL', 'True').lower() == 'true'
-                })
-
-                return config
-
-        except Exception as e:
-            logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
-            conn.close()
-            raise Exception(str(e))
-        finally:
-            conn.close()
-
-
-    @staticmethod
-    def save_config(config):
-        """Sauvegarde la configuration dans la base de données"""
-        conn = ConfigManager.get_db_connection()
-
-        try:
-            with conn.cursor() as cursor:
-                # Préparer les valeurs, chiffrer les sensibles
-                values = {
-                    'ds_api_token': ConfigManager.encrypt_value(config.get('ds_api_token', '')),
-                    'demarche_number': config.get('demarche_number', ''),
-                    'grist_base_url': config.get('grist_base_url', 'https://grist.numerique.gouv.fr/api'),
-                    'grist_api_key': ConfigManager.encrypt_value(config.get('grist_api_key', '')),
-                    'grist_doc_id': config.get('grist_doc_id', ''),
-                    'grist_user_id': config.get('grist_user_id', ''),
-                    'grist_document_id': config.get('grist_document_id', ''),
-                }
-
-                # Vérifier si une configuration existe déjà pour ce grist_user_id et grist_doc_id
-                grist_user_id = config.get('grist_user_id', '')
-                grist_doc_id = config.get('grist_doc_id', '')
-
-                if not grist_user_id or not grist_doc_id:
-                    raise Exception("No grist user id or doc id")
-
-                # Vérifier si la configuration existe
-                cursor.execute("""
-                    SELECT COUNT(*) FROM otp_configurations
-                    WHERE grist_user_id = %s AND grist_doc_id = %s
-                """, (grist_user_id, grist_doc_id))
-
-                result = cursor.fetchone()
-                exists = result[0] > 0 if result else False
-
-                if exists:
-                    # UPDATE : mettre à jour la configuration existante
-                    cursor.execute("""
-                        UPDATE otp_configurations SET
-                        ds_api_token = %s,
-                        demarche_number = %s,
-                        grist_base_url = %s,
-                        grist_api_key = %s,
-                        grist_doc_id = %s,
-                        grist_user_id = %s
-                        WHERE grist_user_id = %s AND grist_doc_id = %s
-                    """, (
-                        values['ds_api_token'],
-                        values['demarche_number'],
-                        values['grist_base_url'],
-                        values['grist_api_key'],
-                        values['grist_doc_id'],
-                        values['grist_user_id'],
-                        grist_user_id,
-                        grist_doc_id
-                    ))
-                    logger.info(f"Configuration mise à jour pour user_id={grist_user_id}, doc_id={grist_doc_id}")
-                else:
-                    # INSERT : créer une nouvelle configuration
-                    cursor.execute("""
-                        INSERT INTO otp_configurations
-                        (ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id, grist_user_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (
-                        values['ds_api_token'],
-                        values['demarche_number'],
-                        values['grist_base_url'],
-                        values['grist_api_key'],
-                        values['grist_doc_id'],
-                        values['grist_user_id']
-                    ))
-                    logger.info(f"Nouvelle configuration créée pour user_id={grist_user_id}, doc_id={grist_doc_id}")
-
-                conn.commit()
-        except Exception as e:
-            logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
-            conn.close()
-
-            return False
-        finally:
-            conn.close()
-
-        return True
-
-
 # Initialiser la base de données au chargement du module
-ConfigManager.init_db()
+DatabaseManager.init_db(DATABASE_URL)
 
 
 def test_demarches_api(api_token, demarche_number=None):
@@ -834,66 +503,63 @@ def get_available_groups(api_token, demarche_number):
         return []
 
 
-def run_synchronization_task(config, filters, progress_callback=None, log_callback=None):
+def run_synchronization_task(config, progress_callback=None, log_callback=None):
     """Exécute la synchronisation avec callbacks pour le suivi en temps réel"""
     try:
         if progress_callback:
             progress_callback(5, "Préparation de l'environnement...")
-        
-        # ✅ NOUVEAU : Afficher les filtres effectivement utilisés
-        if log_callback:
-            log_callback("=== CONFIGURATION DES FILTRES ===")
-            
-            # Vérifier et afficher les variables d'environnement actuelles
-            date_debut = os.getenv("DATE_DEPOT_DEBUT", "").strip()
-            date_fin = os.getenv("DATE_DEPOT_FIN", "").strip()
-            statuts = os.getenv("STATUTS_DOSSIERS", "").strip()
-            groupes = os.getenv("GROUPES_INSTRUCTEURS", "").strip()
-            
-            if date_debut:
-                log_callback(f"✓ Filtre date début: {date_debut}")
-            else:
-                log_callback("○ Date début: AUCUN FILTRE (tous les dossiers)")
-                
-            if date_fin:
-                log_callback(f"✓ Filtre date fin: {date_fin}")
-            else:
-                log_callback("○ Date fin: AUCUN FILTRE (tous les dossiers)")
-                
-            if statuts:
-                log_callback(f"✓ Filtre statuts: {statuts}")
-            else:
-                log_callback("○ Statuts: AUCUN FILTRE (tous les statuts)")
-                
-            if groupes:
-                log_callback(f"✓ Filtre groupes: {groupes}")
-            else:
-                log_callback("○ Groupes: AUCUN FILTRE (tous les groupes)")
-            
-            log_callback("=== FIN CONFIGURATION FILTRES ===")
-        
+
         # Mettre à jour les variables d'environnement avec la configuration
         env_mapping = {
             'ds_api_token': 'DEMARCHES_API_TOKEN',
-            'ds_api_url': 'DEMARCHES_API_URL',
             'demarche_number': 'DEMARCHE_NUMBER',
             'grist_base_url': 'GRIST_BASE_URL',
             'grist_api_key': 'GRIST_API_KEY',
             'grist_doc_id': 'GRIST_DOC_ID',
             'grist_user_id': 'GRIST_USER_ID',
-            'batch_size': 'BATCH_SIZE',
-            'max_workers': 'MAX_WORKERS',
-            'parallel': 'PARALLEL'
+            # Filtres depuis la configuration DB
+            'filter_date_start': 'DATE_DEPOT_DEBUT',
+            'filter_date_end': 'DATE_DEPOT_FIN',
+            'filter_statuses': 'STATUTS_DOSSIERS',
+            'filter_groups': 'GROUPES_INSTRUCTEURS',
         }
-        
-        # Sauvegarder la configuration principale
+
+        # Sauvegarder la configuration principale et les filtres
         for config_key, env_key in env_mapping.items():
             if config_key in config and config[config_key]:
                 os.environ[env_key] = str(config[config_key])
-        
-        # ⚠️ NE PAS écraser les filtres ici car ils ont déjà été définis dans api_start_sync
-        # Les variables DATE_DEPOT_DEBUT, DATE_DEPOT_FIN, STATUTS_DOSSIERS, GROUPES_INSTRUCTEURS
-        # sont déjà correctement définies dans api_start_sync
+
+        # ✅ Afficher les filtres effectivement utilisés (après définition)
+        if log_callback:
+            log_callback("=== CONFIGURATION DES FILTRES ===")
+
+            # Vérifier et afficher les variables d'environnement actuelles
+            date_debut = os.getenv("DATE_DEPOT_DEBUT", "").strip()
+            date_fin = os.getenv("DATE_DEPOT_FIN", "").strip()
+            statuts = os.getenv("STATUTS_DOSSIERS", "").strip()
+            groupes = os.getenv("GROUPES_INSTRUCTEURS", "").strip()
+
+            if date_debut:
+                log_callback(f"✓ Filtre date début: {date_debut}")
+            else:
+                log_callback("○ Date début: AUCUN FILTRE (tous les dossiers)")
+
+            if date_fin:
+                log_callback(f"✓ Filtre date fin: {date_fin}")
+            else:
+                log_callback("○ Date fin: AUCUN FILTRE (tous les dossiers)")
+
+            if statuts:
+                log_callback(f"✓ Filtre statuts: {statuts}")
+            else:
+                log_callback("○ Statuts: AUCUN FILTRE (tous les statuts)")
+
+            if groupes:
+                log_callback(f"✓ Filtre groupes: {groupes}")
+            else:
+                log_callback("○ Groupes: AUCUN FILTRE (tous les groupes)")
+
+            log_callback("=== FIN CONFIGURATION FILTRES ===")
         
         if progress_callback:
             progress_callback(10, "Démarrage du processeur...")
@@ -1028,7 +694,7 @@ def api_config():
             grist_user_id = request.args.get('grist_user_id')
             grist_doc_id = request.args.get('grist_doc_id')
 
-            config = ConfigManager.load_config(
+            config = config_manager.load_config(
                 grist_user_id=grist_user_id,
                 grist_doc_id=grist_doc_id
             )
@@ -1045,12 +711,11 @@ def api_config():
             finally:
                 db.close()
 
-            # Garder les vraies valeurs pour la logique côté client,
-            # masquer seulement pour affichage
-            config['ds_api_token_masked'] = '***' if config['ds_api_token'] else ''
-            config['ds_api_token_exists'] = bool(config['ds_api_token'])
-            config['grist_api_key_masked'] = '***' if config['grist_api_key'] else ''
-            config['grist_api_key_exists'] = bool(config['grist_api_key'])
+            # Supprimer les tokens sensibles, ajouter flags d'existence
+            config['has_ds_token'] = bool(config.get('ds_api_token'))
+            config['has_grist_key'] = bool(config.get('grist_api_key'))
+            config.pop('ds_api_token', None)
+            config.pop('grist_api_key', None)
 
             return jsonify(config)
         except Exception as e:
@@ -1059,49 +724,58 @@ def api_config():
     elif request.method == 'POST':
         try:
             new_config = request.get_json()
-            
-            # Validation basique
-            required_fields = [
-                'ds_api_token',
-                'ds_api_url',
-                'demarche_number',
-                'grist_base_url',
-                'grist_api_key',
-                'grist_doc_id',
-                'grist_user_id'
-            ]
-            
-            for field in required_fields:
-                if not new_config.get(field):
-                    return jsonify({"success": False, "message": f"Le champ {field} est requis"}), 400
-            
-            # Sauvegarder la configuration
-            success = ConfigManager.save_config(new_config)
 
-            if success:
-                # Récupérer l'ID de la configuration sauvegardée
-                db = SessionLocal()
-                try:
-                    otp_config = db.query(OtpConfiguration).filter_by(
-                        grist_user_id=new_config.get('grist_user_id'),
-                        grist_doc_id=new_config.get('grist_doc_id')
-                    ).first()
-                    otp_config_id = otp_config.id if otp_config else None
-                finally:
-                    db.close()
-
+            otp_config_id = new_config.get('otp_config_id')
+            if otp_config_id:
+                # Update existant
+                existing_config = config_manager.load_config_by_id(otp_config_id)
+                # Fusionner : champs sensibles seulement si fournis, autres toujours
+                sensitive_keys = ['ds_api_token', 'grist_api_key']
+                for key, value in new_config.items():
+                    if key in sensitive_keys:
+                        if value:  # Seulement si fourni (non vide)
+                            existing_config[key] = value
+                    else:
+                        existing_config[key] = value  # Toujours mettre à jour, même vide
+                # Supprimer otp_config_id du dict avant sauvegarde
+                existing_config.pop('otp_config_id', None)
+                success = config_manager.save_config(existing_config)
                 return jsonify({
                     "success": True,
-                    "message": "Configuration sauvegardée avec succès",
+                    "message": "Configuration mise à jour avec succès",
                     "otp_config_id": otp_config_id
-                })
+                }) if success else jsonify({"success": False, "message": "Erreur lors de la mise à jour"}), 500
             else:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": "Erreur lors de la sauvegarde"
-                    }
-                ), 500
+                # Création
+                required_fields = [
+                    'ds_api_token',
+                    'demarche_number',
+                    'grist_base_url',
+                    'grist_api_key',
+                    'grist_doc_id',
+                    'grist_user_id'
+                ]
+                for field in required_fields:
+                    if not new_config.get(field):
+                        return jsonify({"success": False, "message": f"Le champ {field} est requis"}), 400
+                success = config_manager.save_config(new_config)
+                if success:
+                    db = SessionLocal()
+                    try:
+                        otp_config = db.query(OtpConfiguration).filter_by(
+                            grist_user_id=new_config.get('grist_user_id'),
+                            grist_doc_id=new_config.get('grist_doc_id')
+                        ).first()
+                        otp_config_id = otp_config.id if otp_config else None
+                    finally:
+                        db.close()
+                    return jsonify({
+                        "success": True,
+                        "message": "Configuration sauvegardée avec succès",
+                        "otp_config_id": otp_config_id
+                    })
+                else:
+                    return jsonify({"success": False, "message": "Erreur lors de la sauvegarde"}), 500
 
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
@@ -1265,7 +939,7 @@ def api_groups():
     """API pour récupérer les groupes instructeurs"""
     grist_user_id = request.args.get('grist_user_id')
     grist_doc_id = request.args.get('grist_doc_id')
-    config = ConfigManager.load_config(
+    config = config_manager.load_config(
         grist_user_id=grist_user_id,
         grist_doc_id=grist_doc_id
     )
@@ -1282,11 +956,12 @@ def api_start_sync():
     """API pour démarrer la synchronisation - Version sécurisée"""
     try:
         data = request.get_json()
-        
-        # Utiliser la config du contexte Grist fourni
-        grist_user_id = str(data.get('grist_user_id', '')) if data.get('grist_user_id') is not None else None
-        grist_doc_id = str(data.get('grist_doc_id', '')) if data.get('grist_doc_id') is not None else None
-        server_config = ConfigManager.load_config(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
+
+        # Utiliser l'ID de config fourni
+        otp_config_id = data.get('otp_config_id')
+        if not otp_config_id:
+            return jsonify({"success": False, "message": "ID de configuration requis"}), 400
+        server_config = config_manager.load_config_by_id(otp_config_id)
         filters = data.get('filters', {})
         
         # Validation simple de la configuration serveur
@@ -1304,56 +979,8 @@ def api_start_sync():
                 "missing_fields": missing_fields
             }), 400
         
-        # ✅ FORCER la mise à jour des variables d'environnement
-        # Cela écrase les anciennes valeurs et donne la priorité à l'interface web
-        
-        logger.info(f"Filtres reçus de l'interface: {filters}")
-        
-        # Traitement des filtres de date
-        date_debut = filters.get('date_depot_debut', '').strip()
-        date_fin = filters.get('date_depot_fin', '').strip()
-        
-        if date_debut:
-            os.environ['DATE_DEPOT_DEBUT'] = date_debut
-            logger.info(f"DATE_DEPOT_DEBUT définie à: {date_debut}")
-        else:
-            os.environ['DATE_DEPOT_DEBUT'] = ''
-            logger.info("DATE_DEPOT_DEBUT vidée (tous les dossiers)")
-            
-        if date_fin:
-            os.environ['DATE_DEPOT_FIN'] = date_fin
-            logger.info(f"DATE_DEPOT_FIN définie à: {date_fin}")
-        else:
-            os.environ['DATE_DEPOT_FIN'] = ''
-            logger.info("DATE_DEPOT_FIN vidée (tous les dossiers)")
-        
-        # Traitement des statuts - CRITIQUE
-        statuts = filters.get('statuts_dossiers', '').strip()
-        if statuts:
-            os.environ['STATUTS_DOSSIERS'] = statuts
-            logger.info(f"STATUTS_DOSSIERS définis à: {statuts}")
-        else:
-            os.environ['STATUTS_DOSSIERS'] = ''
-            logger.info("STATUTS_DOSSIERS vidé (tous les statuts)")
-            
-        # Traitement des groupes instructeurs - CRITIQUE  
-        groupes = filters.get('groupes_instructeurs', '').strip()
-        if groupes:
-            os.environ['GROUPES_INSTRUCTEURS'] = groupes
-            logger.info(f"GROUPES_INSTRUCTEURS définis à: {groupes}")
-        else:
-            os.environ['GROUPES_INSTRUCTEURS'] = ''
-            logger.info("GROUPES_INSTRUCTEURS vidé (tous les groupes)")
-        
-        # Log de vérification - afficher les variables d'environnement finales
-        logger.info("Variables d'environnement après mise à jour:")
-        logger.info(f"  DATE_DEPOT_DEBUT = '{os.getenv('DATE_DEPOT_DEBUT', '')}'")
-        logger.info(f"  DATE_DEPOT_FIN = '{os.getenv('DATE_DEPOT_FIN', '')}'")
-        logger.info(f"  STATUTS_DOSSIERS = '{os.getenv('STATUTS_DOSSIERS', '')}'")
-        logger.info(f"  GROUPES_INSTRUCTEURS = '{os.getenv('GROUPES_INSTRUCTEURS', '')}'")
-        
         # Démarrer la tâche avec la configuration serveur sécurisée
-        task_id = task_manager.start_task(run_synchronization_task, server_config, filters)
+        task_id = task_manager.start_task(run_synchronization_task, server_config)
         
         return jsonify({
             "success": True,
@@ -1391,7 +1018,6 @@ def debug():
     required_files = [
         "grist_processor_working_all.py",
         "queries.py",
-        "queries_config.py",
         "queries_extract.py",
         "queries_graphql.py",
         "queries_util.py",
@@ -1412,7 +1038,7 @@ def debug():
     # Variables d'environnement (masquées pour la sécurité)
     env_vars = {
         "DEMARCHES_API_TOKEN": "***" if os.getenv("DEMARCHES_API_TOKEN") else "Non défini",
-        "DEMARCHES_API_URL": os.getenv("DEMARCHES_API_URL", "Non défini"),
+        "DEMARCHES_API_URL": f"Constante: {DEMARCHES_API_URL}",
         "DEMARCHE_NUMBER": os.getenv("DEMARCHE_NUMBER", "Non défini"),
         "GRIST_BASE_URL": os.getenv("GRIST_BASE_URL", "Non défini"),
         "GRIST_API_KEY": "***" if os.getenv("GRIST_API_KEY") else "Non défini",

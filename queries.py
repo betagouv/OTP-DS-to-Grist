@@ -4,7 +4,8 @@ from pprint import pprint
 from dotenv import load_dotenv
 
 # Import des modules locaux
-from queries_config import API_TOKEN
+import os
+API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
 from queries_graphql import get_dossier, get_demarche, get_demarche_dossiers, get_dossier_geojson
 from queries_util import format_complex_json_for_grist, associate_geojson_with_champs
 from queries_extract import extract_champ_values, dossier_to_flat_data

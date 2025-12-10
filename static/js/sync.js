@@ -4,10 +4,10 @@ if (typeof formatDuration === 'undefined')
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
-const startSync = async (config) => {
+const startSync = async (otp_config_id) => {
   document.getElementById('config_check_result').style.display = 'none'
-  if (!config)
-    return showNotification('Configuration non chargée', 'error')
+  if (!otp_config_id)
+    return showNotification('ID de configuration manquant', 'error')
 
   // Collecter les filtres
   const filters = {
@@ -32,7 +32,7 @@ const startSync = async (config) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        config,
+        otp_config_id,
         filters: filters,
         grist_user_id: gristUserId,
         grist_doc_id: gristDocId

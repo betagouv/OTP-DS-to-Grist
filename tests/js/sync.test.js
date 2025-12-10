@@ -37,14 +37,14 @@ describe('startSync', () => {
   })
 
   it(
-    'display error if falsy config',
+    'handle null config',
     async () => {
 
       // Appel de la fonction avec config falsy
       await startSync(null)  // Ou undefined, etc.
 
       // Vérifications
-      expect(showNotification).toHaveBeenCalledWith('Configuration non chargée', 'error')
+      expect(showNotification).toHaveBeenCalledWith('ID de configuration manquant', 'error')
       // Pas d'autres appels (pas de fetch, etc.)
       expect(consoleErrorSpy).not.toHaveBeenCalled()
     }
@@ -53,9 +53,6 @@ describe('startSync', () => {
   it(
     'handle errors',
     async () => {
-      // Mock config valide
-      const mockConfig = { ds_api_token: 'token', demarche_number: 123 }
-
       // Mock getGristContext
       global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1', docId: 'doc', userId: 'user' })
 
@@ -65,7 +62,7 @@ describe('startSync', () => {
       global.fetch = jest.fn().mockRejectedValue(error)
 
       // Appel de la fonction
-      await startSync(mockConfig)
+      await startSync(123)
 
       // Vérifications
       expect(fetch).toHaveBeenCalled()  // Fetch a été tenté
@@ -93,9 +90,6 @@ describe('startSync', () => {
         <div id="logs_count">2</div>
         <div id="logs_content"></div>`
 
-      // Mock config valide
-      const mockConfig = { ds_api_token: 'token', demarche_number: 123 }
-
       // Mock getGristContext
       global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1', docId: 'doc', userId: 'user' })
 
@@ -105,7 +99,7 @@ describe('startSync', () => {
       })
 
       // Appel de la fonction
-      const taskId = await startSync(mockConfig)
+      const taskId = await startSync(123)
 
       // Vérifications des éléments HTML modifiés
       expect(document.getElementById('sync_controls').style.display).toBe('none')  // Masqué

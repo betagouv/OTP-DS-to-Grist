@@ -1,5 +1,12 @@
 /** @jest-environment jsdom */
-const { checkConfiguration, loadConfiguration, saveConfiguration, deleteConfig } = require('../../static/js/config.js')
+const {
+  checkConfiguration,
+  loadConfiguration,
+  saveConfiguration,
+  deleteConfig,
+  updateDeleteButton,
+  saveConfigAction
+} = require('../../static/js/config.js')
 const { showNotification } = require('../../static/js/notifications.js')
 
 jest.mock('../../static/js/notifications.js', () => ({
@@ -33,11 +40,12 @@ describe('checkConfiguration', () => {
       // Mock réponse API valide
       fetch.mockResolvedValue({
         json: jest.fn().mockResolvedValue({
-          ds_api_token: 'token',
+          otp_config_id: 123,
           demarche_number: 123,
           grist_base_url: 'url',
-          grist_api_key: 'key',
-          grist_doc_id: 'doc'
+          grist_doc_id: 'doc',
+          has_ds_token: true,
+          has_grist_key: true
         })
       })
 
@@ -58,11 +66,12 @@ describe('checkConfiguration', () => {
       // Mock réponse API incomplète (champ manquant)
       fetch.mockResolvedValue({
         json: jest.fn().mockResolvedValue({
-          ds_api_token: 'token',
+          otp_config_id: 123,
           demarche_number: 123,
           // grist_base_url manquant
-          grist_api_key: 'key',
-          grist_doc_id: 'doc'
+          grist_doc_id: 'doc',
+          has_ds_token: true,
+          has_grist_key: true
         })
       })
 
@@ -107,9 +116,14 @@ describe('loadConfiguration', () => {
       <input id="grist_user_id">
       <input id="grist_base_url">
       <input id="ds_api_token">
-      <input id="ds_api_url">
       <input id="demarche_number">
       <input id="grist_api_key">
+      <input id="date_debut">
+      <input id="date_fin">
+      <input type="checkbox" name="statuts" value="en_construction">
+      <input type="checkbox" name="statuts" value="en_instruction">
+      <input type="checkbox" name="groupes" value="1">
+      <input type="checkbox" name="groupes" value="2">
       <div id="ds_token_status"></div>
       <div id="grist_key_status"></div>
       <button id="accordion-ds"></button>
@@ -118,8 +132,9 @@ describe('loadConfiguration', () => {
     // Mocks
     global.getGristContext = jest.fn()
     global.fetch = jest.fn()
-    global.updateDSTokenStatus = jest.fn()
-    global.updateGristKeyStatus = jest.fn()
+    window.updateDSTokenStatus = jest.fn()
+    window.updateGristKeyStatus = jest.fn()
+    global.applyFilters = jest.fn()
   })
 
   it(
@@ -137,15 +152,19 @@ describe('loadConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          ds_api_token: 'ds_token',
-          ds_api_url: 'https://api.example.com',
+          otp_config_id: 123,
           demarche_number: 123,
           grist_base_url: 'x/xx/x',
-          grist_api_key: 'grist_key',
           grist_doc_id: 'doc123',
+          filter_date_start: '2023-01-01',
+          filter_date_end: '2023-12-31',
+          filter_statuses: 'en_construction,en_instruction',
+          filter_groups: '1,2',
           batch_size: 50,
           max_workers: 4,
-          parallel: true
+          parallel: true,
+          has_ds_token: true,
+          has_grist_key: true
         })
       })
 
@@ -159,13 +178,20 @@ describe('loadConfiguration', () => {
 
       // Vérifications des champs remplis depuis la config (car hasConfig = true)
       expect(document.getElementById('ds_api_token').value).toBe('')
-      expect(document.getElementById('ds_api_url').value).toBe('https://api.example.com')
       expect(document.getElementById('demarche_number').value).toBe('123')
       expect(document.getElementById('grist_api_key').value).toBe('')
 
+      // Vérifications des filtres
+      expect(document.getElementById('date_debut').value).toBe('2023-01-01')
+      expect(document.getElementById('date_fin').value).toBe('2023-12-31')
+      expect(document.querySelector('input[name="statuts"][value="en_construction"]').checked).toBe(true)
+      expect(document.querySelector('input[name="statuts"][value="en_instruction"]').checked).toBe(true)
+      expect(document.querySelector('input[name="groupes"][value="1"]').checked).toBe(true)
+      expect(document.querySelector('input[name="groupes"][value="2"]').checked).toBe(true)
+
       // Vérifications des appels de fonctions
-      expect(updateDSTokenStatus).toHaveBeenCalled()
-      expect(updateGristKeyStatus).toHaveBeenCalled()
+      expect(window.updateDSTokenStatus).toHaveBeenCalled()
+      expect(window.updateGristKeyStatus).toHaveBeenCalled()
     }
   )
 
@@ -191,9 +217,9 @@ describe('loadConfiguration', () => {
       await loadConfiguration()
 
       // Vérifications : les champs restent vides ou par défaut
-      expect(document.getElementById('grist_doc_id').value).toBe('')
-      expect(document.getElementById('grist_user_id').value).toBe('')
-      expect(document.getElementById('grist_base_url').value).toBe('')
+      expect(document.getElementById('grist_doc_id').value).toBe('doc123')
+      expect(document.getElementById('grist_user_id').value).toBe('5')
+      expect(document.getElementById('grist_base_url').value).toBe('http://localhost:8484/o/docs/api')
 
       // Vérifications des appels
       expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors du chargement de la configuration:', error)
@@ -205,66 +231,178 @@ describe('loadConfiguration', () => {
 })
 
 describe('saveConfiguration', () => {
-  it('cas nominal : sauvegarde la configuration avec succès', async () => {
-    // Setup DOM simulé
+  it(
+    'cas nominal : sauvegarde la configuration avec succès',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `
+        <input id="ds_api_token" value="new_token">
+        <input id="demarche_number" value="123">
+        <input id="grist_base_url" value="https://grist.example.com">
+        <input id="grist_api_key" value="new_key">
+        <input id="grist_doc_id" value="doc123">
+        <input id="grist_user_id" value="5">
+        <input id="date_debut" value="2023-01-01">
+        <input id="date_fin" value="2023-12-31">
+        <input type="checkbox" name="statuts" value="en_construction" checked>
+        <input type="checkbox" name="statuts" value="en_instruction">
+        <input type="checkbox" name="groupes" value="1" checked>
+        <input type="checkbox" name="groupes" value="2">
+        <button onclick="saveConfiguration()">Save</button>
+        <div id="ds_token_status"></div>
+        <div id="grist_key_status"></div>
+        <div id="config_check_result"></div>
+        <button id="start_sync_btn"></button>`
+
+      // Mock config
+      window.config = {
+        ds_api_token: 'old_token',
+        grist_api_key: 'old_key'
+      }
+
+      // Mock fetch
+      global.fetch = jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ success: true })
+      })
+
+      // Mock App
+      global.App = { showNotification: jest.fn() }
+
+      // Mock loadConfiguration
+      const mockLoadConfiguration = jest.fn()
+      global.loadConfiguration = mockLoadConfiguration
+
+      // Mock setTimeout
+      jest.useFakeTimers()
+
+      // Appel
+      await saveConfiguration()
+
+      // Vérifications
+      expect(fetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }))
+
+      const callArgs = fetch.mock.calls[0][1]
+      const body = JSON.parse(callArgs.body)
+      expect(body).toEqual({
+        ds_api_token: 'new_token',
+        demarche_number: '123',
+        grist_base_url: 'https://grist.example.com',
+        grist_api_key: 'new_key',
+        grist_doc_id: 'doc123',
+        grist_user_id: '5',
+        filter_date_start: '2023-01-01',
+        filter_date_end: '2023-12-31',
+        filter_statuses: 'en_construction',
+        filter_groups: '1'
+      })
+
+      expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+    }
+  )
+})
+
+describe('updateDeleteButton', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<button id="delete_config_btn"></button>'
+  })
+
+  it(
+    'désactive le bouton si pas de config',
+    () => {
+      updateDeleteButton(null)
+
+      expect(document.getElementById('delete_config_btn').disabled).toBe(true)
+      expect(document.getElementById('delete_config_btn').title).toBe('Aucune configuration à supprimer')
+    }
+  )
+
+  it(
+    'désactive le bouton si pas d’id de config',
+    () => {
+      window.otp_config_id = undefined
+      updateDeleteButton()
+
+      expect(document.getElementById('delete_config_btn').disabled).toBe(true)
+    }
+  )
+
+  it(
+    'active le bouton si il y’a une config', () => {
+      window.otp_config_id = 123
+      updateDeleteButton()
+
+      expect(document.getElementById('delete_config_btn').disabled).toBe(false)
+      expect(document.getElementById('delete_config_btn').title).toBe('')
+    }
+  )
+})
+
+describe('saveConfigAction', () => {
+  beforeEach(() => {
+    // Setup minimal DOM for saveConfiguration and checkConfiguration
     document.body.innerHTML = `
-      <input id="ds_api_token" value="new_token">
-      <input id="ds_api_url" value="https://api.example.com">
+      <input id="ds_api_token" value="token">
       <input id="demarche_number" value="123">
-      <input id="grist_base_url" value="https://grist.example.com">
-      <input id="grist_api_key" value="new_key">
-      <input id="grist_doc_id" value="doc123">
-      <input id="grist_user_id" value="5">
-      <button onclick="saveConfiguration()">Save</button>
+      <input id="grist_base_url" value="url">
+      <input id="grist_api_key" value="key">
+      <input id="grist_doc_id" value="doc">
+      <input id="grist_user_id" value="user">
+      <input id="date_debut" value="">
+      <input id="date_fin" value="">
       <div id="ds_token_status"></div>
       <div id="grist_key_status"></div>
       <div id="config_check_result"></div>
-      <button id="start_sync_btn"></button>`
-
-    // Mock config
-    window.config = {
-      ds_api_token: 'old_token',
-      grist_api_key: 'old_key'
-    }
-
-    // Mock fetch
-    global.fetch = jest.fn().mockResolvedValue({
-      json: jest.fn().mockResolvedValue({ success: true })
-    })
-
-    // Mock App
-    global.App = { showNotification: jest.fn() }
-
-    // Mock loadConfiguration
-    const mockLoadConfiguration = jest.fn()
-    global.loadConfiguration = mockLoadConfiguration
-
-    // Mock setTimeout
-    jest.useFakeTimers()
-
-    // Appel
-    await saveConfiguration()
-
-    // Vérifications
-    expect(fetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    }))
-
-    const callArgs = fetch.mock.calls[0][1]
-    const body = JSON.parse(callArgs.body)
-    expect(body).toEqual({
-      ds_api_token: 'new_token',
-      ds_api_url: 'https://api.example.com',
-      demarche_number: '123',
-      grist_base_url: 'https://grist.example.com',
-      grist_api_key: 'new_key',
-      grist_doc_id: 'doc123',
-      grist_user_id: '5'
-    })
-
-    expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+      <button id="start_sync_btn"></button>
+    `
+    global.testGristConnection = jest.fn()
+    global.testDemarchesConnection = jest.fn()
+    global.saveConfiguration = jest.fn()
+    global.checkConfiguration = jest.fn()
   })
+
+  it(
+    'lance les tests de connexion et sauvegarde si c’est en succès',
+    async () => {
+      global.testGristConnection.mockResolvedValue(true)
+      global.testDemarchesConnection.mockResolvedValue(true)
+
+      const result = await saveConfigAction()
+
+      expect(global.testGristConnection).toHaveBeenCalledWith(true)
+      expect(global.testDemarchesConnection).toHaveBeenCalledWith(true)
+      expect(result).toBeUndefined()  // No return value
+    }
+  )
+
+  it(
+    'si le test de connexion grist échoue',
+    async () => {
+      global.testGristConnection.mockResolvedValue(false)
+
+      const result = await saveConfigAction()
+
+      expect(global.testGristConnection).toHaveBeenCalled()
+      expect(global.testDemarchesConnection).not.toHaveBeenCalled()
+      expect(result).toBe(false)
+    }
+  )
+
+  it(
+    'si le test DS échoue',
+    async () => {
+      global.testGristConnection.mockResolvedValue(true)
+      global.testDemarchesConnection.mockResolvedValue(false)
+
+      const result = await saveConfigAction()
+
+      expect(global.testGristConnection).toHaveBeenCalled()
+      expect(global.testDemarchesConnection).toHaveBeenCalled()
+      expect(result).toBe(false)
+    }
+  )
 })
 
 describe('deleteConfig', () => {
@@ -284,97 +422,84 @@ describe('deleteConfig', () => {
     jest.clearAllMocks()
   })
 
-  it('affiche une erreur si config est manquant', async () => {
-    // Pas de config
-    window.config = null
+  it(
+    'lance une erreur si otp_config_id est null',
+    async () => {
+      await expect(deleteConfig(null)).rejects.toThrow('ID de configuration requis pour la suppression')
+      expect(confirm).not.toHaveBeenCalled()
+      expect(fetch).not.toHaveBeenCalled()
+    }
+  )
 
-    await deleteConfig()
+  it(
+    'annule la suppression si l\'utilisateur refuse la confirmation',
+    async () => {
+      // Mock confirm pour refuser
+      confirm.mockReturnValue(false)
 
-    expect(showNotification).toHaveBeenCalledWith('Configuration non trouvée', 'error')
-    expect(confirm).not.toHaveBeenCalled()
-    expect(fetch).not.toHaveBeenCalled()
-  })
+      await deleteConfig(123)
 
-  it('affiche une erreur si otp_config_id est manquant', async () => {
-    // config sans otp_config_id
-    window.config = { ds_api_token: 'token' }
+      expect(confirm).toHaveBeenCalledWith('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
+      expect(fetch).not.toHaveBeenCalled()
+      expect(showNotification).not.toHaveBeenCalled()
+    }
+  )
 
-    await deleteConfig()
+  it(
+    'supprime avec succès et redirige',
+    async () => {
+      // Mock confirm pour accepter
+      confirm.mockReturnValue(true)
 
-    expect(showNotification).toHaveBeenCalledWith('Configuration non trouvée', 'error')
-    expect(confirm).not.toHaveBeenCalled()
-    expect(fetch).not.toHaveBeenCalled()
-  })
+      // Mock fetch succès
+      fetch.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ success: true })
+      })
 
-  it('annule la suppression si l\'utilisateur refuse la confirmation', async () => {
-    // Setup config valide
-    window.config = { otp_config_id: 123 }
+      await deleteConfig(123)
 
-    // Mock confirm pour refuser
-    confirm.mockReturnValue(false)
+      expect(confirm).toHaveBeenCalled()
+      expect(fetch).toHaveBeenCalledWith('/api/config/123', { method: 'DELETE' })
+      expect(showNotification).toHaveBeenCalledWith('Configuration supprimée avec succès', 'success')
+    }
+  )
 
-    await deleteConfig()
+  it(
+    'gère les erreurs de suppression',
+    async () => {
+      // Mock confirm pour accepter
+      confirm.mockReturnValue(true)
 
-    expect(confirm).toHaveBeenCalledWith('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
-    expect(fetch).not.toHaveBeenCalled()
-    expect(showNotification).not.toHaveBeenCalled()
-  })
+      // Mock fetch erreur
+      fetch.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ success: false, message: 'Erreur serveur' })
+      })
 
-  it('supprime avec succès et redirige', async () => {
-    // Setup config valide
-    window.config = { otp_config_id: 123 }
+      await deleteConfig(456)
 
-    // Mock confirm pour accepter
-    confirm.mockReturnValue(true)
+      expect(confirm).toHaveBeenCalled()
+      expect(fetch).toHaveBeenCalledWith('/api/config/456', { method: 'DELETE' })
+      expect(showNotification).toHaveBeenCalledWith('Erreur serveur', 'error')
+    }
+  )
 
-    // Mock fetch succès
-    fetch.mockResolvedValue({
-      json: jest.fn().mockResolvedValue({ success: true })
-    })
+  it(
+    'gère les erreurs réseau',
+    async () => {
+      // Mock confirm pour accepter
+      confirm.mockReturnValue(true)
 
-    await deleteConfig()
+      // Mock fetch pour lever une erreur
+      const error = new Error('Network error')
+      fetch.mockRejectedValue(error)
 
-    expect(confirm).toHaveBeenCalled()
-    expect(fetch).toHaveBeenCalledWith('/api/config/123', { method: 'DELETE' })
-    expect(showNotification).toHaveBeenCalledWith('Configuration supprimée avec succès', 'success')
-  })
+      await deleteConfig(789)
 
-  it('gère les erreurs de suppression', async () => {
-    // Setup config valide
-    window.config = { otp_config_id: 456 }
-
-    // Mock confirm pour accepter
-    confirm.mockReturnValue(true)
-
-    // Mock fetch erreur
-    fetch.mockResolvedValue({
-      json: jest.fn().mockResolvedValue({ success: false, message: 'Erreur serveur' })
-    })
-
-    await deleteConfig()
-
-    expect(confirm).toHaveBeenCalled()
-    expect(fetch).toHaveBeenCalledWith('/api/config/456', { method: 'DELETE' })
-    expect(showNotification).toHaveBeenCalledWith('Erreur serveur', 'error')
-  })
-
-  it('gère les erreurs réseau', async () => {
-    // Setup config valide
-    window.config = { otp_config_id: 789 }
-
-    // Mock confirm pour accepter
-    confirm.mockReturnValue(true)
-
-    // Mock fetch pour lever une erreur
-    const error = new Error('Network error')
-    fetch.mockRejectedValue(error)
-
-    await deleteConfig()
-
-    expect(confirm).toHaveBeenCalled()
-    expect(fetch).toHaveBeenCalledWith('/api/config/789', { method: 'DELETE' })
-    expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la suppression:', error)
-    expect(showNotification).toHaveBeenCalledWith('Erreur lors de la suppression', 'error')
-  })
+      expect(confirm).toHaveBeenCalled()
+      expect(fetch).toHaveBeenCalledWith('/api/config/789', { method: 'DELETE' })
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la suppression:', error)
+      expect(showNotification).toHaveBeenCalledWith('Erreur lors de la suppression', 'error')
+    }
+  )
 })
 

@@ -26,7 +26,6 @@ describe('testDemarchesConnection', () => {
         switch (id) {
           case 'ds_test_result': return mockResultDiv
           case 'ds_api_token': return mockTokenInput
-          case 'ds_api_url': return mockUrlInput
           case 'demarche_number': return mockDemarcheInput
           default: return null
         }
@@ -65,7 +64,7 @@ describe('testDemarchesConnection', () => {
         body: JSON.stringify({
           type: 'demarches',
           api_token: 'test-token',
-          api_url: 'https://api.example.com',
+          api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
           demarche_number: '123'
         })
       }))
@@ -121,7 +120,7 @@ describe('testDemarchesConnection', () => {
         body: JSON.stringify({
           type: 'demarches',
           api_token: 'config-token',
-          api_url: '',
+          api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
           demarche_number: ''
         })
       }))
@@ -466,7 +465,6 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           json: () => Promise.resolve({
             ds_api_token: 'valid-token',
-            ds_api_url: 'https://api.example.com',
             demarche_number: '123'
           })
         })
@@ -524,7 +522,6 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           json: () => Promise.resolve({
             ds_api_token: 'token',
-            ds_api_url: 'url',
             demarche_number: '123',
             grist_api_key: 'key',
             grist_base_url: 'base',
@@ -551,7 +548,6 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           json: () => Promise.resolve({
             ds_api_token: 'token',
-            ds_api_url: 'url',
             demarche_number: '123',
             grist_api_key: 'key',
             grist_base_url: 'base',

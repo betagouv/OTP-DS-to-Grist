@@ -121,11 +121,6 @@
     <div class="fr-mt-4w">
       <ul class="fr-btns-group fr-btns-group--inline">
         <li>
-          <button class="fr-btn" onclick="applyFilters()">
-            Appliquer les filtres
-          </button>
-        </li>
-        <li>
           <button class="fr-btn fr-btn--secondary" onclick="resetFilters()">
             Réinitialiser
           </button>
@@ -149,12 +144,12 @@
     <button class="fr-btn fr-mr-1w" onclick="saveConfigAction()" id="save_config_btn">
         Sauvegarder la configuration
     </button>
-    <button class="fr-btn fr-btn--secondary fr-ml-1w" onclick="deleteConfig()" id="delete_config_btn">
+    <button class="fr-btn fr-btn--secondary fr-ml-1w" onclick="deleteConfig(window.otp_config_id)" id="delete_config_btn">
         Supprimer ma configuration
     </button>
 </div>
 <div id="sync_controls" class="fr-my-4w">
-    <button class="fr-btn fr-mr-1w" onclick="startSyncAction()" id="start_sync_btn">
-        Lancer la synchronisation
-    </button>
-</div>
+  <button class="fr-btn fr-mr-1w" onclick="startSyncAction()" id="start_sync_btn">
+    Lancer la synchronisation
+  </button>
+ </div>

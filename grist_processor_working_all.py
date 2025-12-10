@@ -345,7 +345,9 @@ def get_problematic_descriptor_ids(demarche_number):
     Récupère les IDs des descripteurs de champs problématiques (HeaderSectionChamp et ExplicationChamp)
     pour une démarche donnée, y compris dans les blocs répétables.
     """
-    from queries_config import API_TOKEN, API_URL
+    from constants import DEMARCHES_API_URL
+    API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
+    API_URL = DEMARCHES_API_URL
     import requests
     
     # ✅ REQUÊTE CORRIGÉE avec exploration des blocs répétables
@@ -695,7 +697,9 @@ def process_dossiers_in_parallel(client, dossier_data_dict, table_ids, column_ty
 # Fonction pour récupérer les labels d'un dossier spécifique
 def get_dossier_labels(dossier_number):
     """Récupère uniquement les labels d'un dossier spécifique"""
-    from queries_config import API_TOKEN, API_URL
+    from constants import DEMARCHES_API_URL
+    API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
+    API_URL = DEMARCHES_API_URL
     
     query = """
     query GetDossierLabels($dossierNumber: Int!) {

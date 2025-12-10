@@ -7,7 +7,7 @@ if (typeof escapeHtml === 'undefined')
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
-const resetFilters = () => {
+const resetFilters = async () => {
   // Réinitialiser tous les champs de filtre
   document.getElementById('date_debut').value = ''
   document.getElementById('date_fin').value = ''
@@ -19,6 +19,14 @@ const resetFilters = () => {
   document.getElementById('active_filters').style.display = 'none'
 
   showNotification('Filtres réinitialisés', 'info')
+
+  // Sauvegarder la configuration sans filtres
+  try {
+    await saveConfiguration()
+  } catch (error) {
+    console.error('Erreur lors de la sauvegarde après reset des filtres:', error)
+    showNotification('Erreur lors de la sauvegarde des filtres réinitialisés', 'error')
+  }
 }
 
 const applyFilters = () => {
@@ -60,9 +68,9 @@ const applyFilters = () => {
   const activeFiltersList = document.getElementById('active_filters_list')
 
   if (activeFilters.length > 0) {
-    let filtersHtml = '<ul class="fr-list">'
+    let filtersHtml = '<ul class="fr-tags-group">'
     activeFilters.forEach(filter => {
-      filtersHtml += `<li><i class="fas fa-check fr-mr-1w" aria-hidden="true"></i>${escapeHtml(filter)}</li>`
+      filtersHtml += `<li><button class="fr-tag fr-tag--high-blue-france">${escapeHtml(filter)}</button><li>`
     })
     filtersHtml += '</ul>'
     activeFiltersList.innerHTML = filtersHtml
@@ -99,6 +107,11 @@ const loadGroupes = async () => {
     html += '</div>'
 
     container.innerHTML = html
+
+    // Ajouter les event listeners pour les groupes
+    document.querySelectorAll('input[name="groupes"]').forEach(el => {
+      el.addEventListener('change', applyFilters)
+    })
 
   } catch (error) {
     console.error('Erreur lors du chargement des groupes:', error)
