@@ -976,47 +976,31 @@ def api_start_sync():
                 "missing_fields": missing_fields
             }), 400
         
-        # ✅ FORCER la mise à jour des variables d'environnement
-        # Cela écrase les anciennes valeurs et donne la priorité à l'interface web
-        
-        logger.info(f"Filtres reçus de l'interface: {filters}")
-        
-        # Traitement des filtres de date
-        date_debut = filters.get('date_depot_debut', '').strip()
-        date_fin = filters.get('date_depot_fin', '').strip()
-        
-        if date_debut:
-            os.environ['DATE_DEPOT_DEBUT'] = date_debut
-            logger.info(f"DATE_DEPOT_DEBUT définie à: {date_debut}")
-        else:
-            os.environ['DATE_DEPOT_DEBUT'] = ''
-            logger.info("DATE_DEPOT_DEBUT vidée (tous les dossiers)")
-            
-        if date_fin:
-            os.environ['DATE_DEPOT_FIN'] = date_fin
-            logger.info(f"DATE_DEPOT_FIN définie à: {date_fin}")
-        else:
-            os.environ['DATE_DEPOT_FIN'] = ''
-            logger.info("DATE_DEPOT_FIN vidée (tous les dossiers)")
-        
-        # Traitement des statuts - CRITIQUE
-        statuts = filters.get('statuts_dossiers', '').strip()
-        if statuts:
-            os.environ['STATUTS_DOSSIERS'] = statuts
-            logger.info(f"STATUTS_DOSSIERS définis à: {statuts}")
-        else:
-            os.environ['STATUTS_DOSSIERS'] = ''
-            logger.info("STATUTS_DOSSIERS vidé (tous les statuts)")
-            
-        # Traitement des groupes instructeurs - CRITIQUE  
-        groupes = filters.get('groupes_instructeurs', '').strip()
-        if groupes:
-            os.environ['GROUPES_INSTRUCTEURS'] = groupes
-            logger.info(f"GROUPES_INSTRUCTEURS définis à: {groupes}")
-        else:
-            os.environ['GROUPES_INSTRUCTEURS'] = ''
-            logger.info("GROUPES_INSTRUCTEURS vidé (tous les groupes)")
-        
+        # ✅ FORCER la mise à jour des variables d'environnement des filtres
+        # Les valeurs viennent de la configuration sauvegardée en base de données
+
+        logger.info("Chargement des filtres depuis la configuration DB")
+
+        # Traitement des filtres de date depuis DB
+        date_debut = server_config.get('filter_date_start', '').strip()
+        date_fin = server_config.get('filter_date_end', '').strip()
+
+        os.environ['DATE_DEPOT_DEBUT'] = date_debut
+        logger.info(f"DATE_DEPOT_DEBUT définie à: '{date_debut}'")
+
+        os.environ['DATE_DEPOT_FIN'] = date_fin
+        logger.info(f"DATE_DEPOT_FIN définie à: '{date_fin}'")
+
+        # Traitement des statuts depuis DB
+        statuts = server_config.get('filter_statuses', '').strip()
+        os.environ['STATUTS_DOSSIERS'] = statuts
+        logger.info(f"STATUTS_DOSSIERS définis à: '{statuts}'")
+
+        # Traitement des groupes instructeurs depuis DB
+        groupes = server_config.get('filter_groups', '').strip()
+        os.environ['GROUPES_INSTRUCTEURS'] = groupes
+        logger.info(f"GROUPES_INSTRUCTEURS définis à: '{groupes}'")
+
         # Log de vérification - afficher les variables d'environnement finales
         logger.info("Variables d'environnement après mise à jour:")
         logger.info(f"  DATE_DEPOT_DEBUT = '{os.getenv('DATE_DEPOT_DEBUT', '')}'")
