@@ -106,7 +106,7 @@ def scheduled_sync_job(otp_config_id):
             db.commit()
 
         # Exécuter la synchronisation
-        result = run_synchronization_task(config, {})
+        result = run_synchronization_task(config)
 
         # Calculer next_run (prochaine exécution à l'heure configurée)
         now = datetime.now(timezone.utc)
@@ -501,44 +501,12 @@ def get_available_groups(api_token, demarche_number):
         return []
 
 
-def run_synchronization_task(config, filters, progress_callback=None, log_callback=None):
+def run_synchronization_task(config, progress_callback=None, log_callback=None):
     """Exécute la synchronisation avec callbacks pour le suivi en temps réel"""
     try:
         if progress_callback:
             progress_callback(5, "Préparation de l'environnement...")
-        
-        # ✅ NOUVEAU : Afficher les filtres effectivement utilisés
-        if log_callback:
-            log_callback("=== CONFIGURATION DES FILTRES ===")
-            
-            # Vérifier et afficher les variables d'environnement actuelles
-            date_debut = os.getenv("DATE_DEPOT_DEBUT", "").strip()
-            date_fin = os.getenv("DATE_DEPOT_FIN", "").strip()
-            statuts = os.getenv("STATUTS_DOSSIERS", "").strip()
-            groupes = os.getenv("GROUPES_INSTRUCTEURS", "").strip()
-            
-            if date_debut:
-                log_callback(f"✓ Filtre date début: {date_debut}")
-            else:
-                log_callback("○ Date début: AUCUN FILTRE (tous les dossiers)")
-                
-            if date_fin:
-                log_callback(f"✓ Filtre date fin: {date_fin}")
-            else:
-                log_callback("○ Date fin: AUCUN FILTRE (tous les dossiers)")
-                
-            if statuts:
-                log_callback(f"✓ Filtre statuts: {statuts}")
-            else:
-                log_callback("○ Statuts: AUCUN FILTRE (tous les statuts)")
-                
-            if groupes:
-                log_callback(f"✓ Filtre groupes: {groupes}")
-            else:
-                log_callback("○ Groupes: AUCUN FILTRE (tous les groupes)")
-            
-            log_callback("=== FIN CONFIGURATION FILTRES ===")
-        
+
         # Mettre à jour les variables d'environnement avec la configuration
         env_mapping = {
             'ds_api_token': 'DEMARCHES_API_TOKEN',
@@ -547,16 +515,49 @@ def run_synchronization_task(config, filters, progress_callback=None, log_callba
             'grist_api_key': 'GRIST_API_KEY',
             'grist_doc_id': 'GRIST_DOC_ID',
             'grist_user_id': 'GRIST_USER_ID',
+            # Filtres depuis la configuration DB
+            'filter_date_start': 'DATE_DEPOT_DEBUT',
+            'filter_date_end': 'DATE_DEPOT_FIN',
+            'filter_statuses': 'STATUTS_DOSSIERS',
+            'filter_groups': 'GROUPES_INSTRUCTEURS',
         }
-        
-        # Sauvegarder la configuration principale
+
+        # Sauvegarder la configuration principale et les filtres
         for config_key, env_key in env_mapping.items():
             if config_key in config and config[config_key]:
                 os.environ[env_key] = str(config[config_key])
-        
-        # ⚠️ NE PAS écraser les filtres ici car ils ont déjà été définis dans api_start_sync
-        # Les variables DATE_DEPOT_DEBUT, DATE_DEPOT_FIN, STATUTS_DOSSIERS, GROUPES_INSTRUCTEURS
-        # sont déjà correctement définies dans api_start_sync
+
+        # ✅ Afficher les filtres effectivement utilisés (après définition)
+        if log_callback:
+            log_callback("=== CONFIGURATION DES FILTRES ===")
+
+            # Vérifier et afficher les variables d'environnement actuelles
+            date_debut = os.getenv("DATE_DEPOT_DEBUT", "").strip()
+            date_fin = os.getenv("DATE_DEPOT_FIN", "").strip()
+            statuts = os.getenv("STATUTS_DOSSIERS", "").strip()
+            groupes = os.getenv("GROUPES_INSTRUCTEURS", "").strip()
+
+            if date_debut:
+                log_callback(f"✓ Filtre date début: {date_debut}")
+            else:
+                log_callback("○ Date début: AUCUN FILTRE (tous les dossiers)")
+
+            if date_fin:
+                log_callback(f"✓ Filtre date fin: {date_fin}")
+            else:
+                log_callback("○ Date fin: AUCUN FILTRE (tous les dossiers)")
+
+            if statuts:
+                log_callback(f"✓ Filtre statuts: {statuts}")
+            else:
+                log_callback("○ Statuts: AUCUN FILTRE (tous les statuts)")
+
+            if groupes:
+                log_callback(f"✓ Filtre groupes: {groupes}")
+            else:
+                log_callback("○ Groupes: AUCUN FILTRE (tous les groupes)")
+
+            log_callback("=== FIN CONFIGURATION FILTRES ===")
         
         if progress_callback:
             progress_callback(10, "Démarrage du processeur...")
@@ -976,40 +977,8 @@ def api_start_sync():
                 "missing_fields": missing_fields
             }), 400
         
-        # ✅ FORCER la mise à jour des variables d'environnement des filtres
-        # Les valeurs viennent de la configuration sauvegardée en base de données
-
-        logger.info("Chargement des filtres depuis la configuration DB")
-
-        # Traitement des filtres de date depuis DB
-        date_debut = server_config.get('filter_date_start', '').strip()
-        date_fin = server_config.get('filter_date_end', '').strip()
-
-        os.environ['DATE_DEPOT_DEBUT'] = date_debut
-        logger.info(f"DATE_DEPOT_DEBUT définie à: '{date_debut}'")
-
-        os.environ['DATE_DEPOT_FIN'] = date_fin
-        logger.info(f"DATE_DEPOT_FIN définie à: '{date_fin}'")
-
-        # Traitement des statuts depuis DB
-        statuts = server_config.get('filter_statuses', '').strip()
-        os.environ['STATUTS_DOSSIERS'] = statuts
-        logger.info(f"STATUTS_DOSSIERS définis à: '{statuts}'")
-
-        # Traitement des groupes instructeurs depuis DB
-        groupes = server_config.get('filter_groups', '').strip()
-        os.environ['GROUPES_INSTRUCTEURS'] = groupes
-        logger.info(f"GROUPES_INSTRUCTEURS définis à: '{groupes}'")
-
-        # Log de vérification - afficher les variables d'environnement finales
-        logger.info("Variables d'environnement après mise à jour:")
-        logger.info(f"  DATE_DEPOT_DEBUT = '{os.getenv('DATE_DEPOT_DEBUT', '')}'")
-        logger.info(f"  DATE_DEPOT_FIN = '{os.getenv('DATE_DEPOT_FIN', '')}'")
-        logger.info(f"  STATUTS_DOSSIERS = '{os.getenv('STATUTS_DOSSIERS', '')}'")
-        logger.info(f"  GROUPES_INSTRUCTEURS = '{os.getenv('GROUPES_INSTRUCTEURS', '')}'")
-        
         # Démarrer la tâche avec la configuration serveur sécurisée
-        task_id = task_manager.start_task(run_synchronization_task, server_config, filters)
+        task_id = task_manager.start_task(run_synchronization_task, server_config)
         
         return jsonify({
             "success": True,
