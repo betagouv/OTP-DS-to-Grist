@@ -14,6 +14,7 @@ def decode_base64_id(base64_id: str) -> str:
     """
     try:
         # Décodage Base64
+        # Nouveau comment
         decoded = base64.b64decode(base64_id).decode('utf-8')
         
         # Les IDs GraphQL sont souvent de la forme "TypeName:id"
