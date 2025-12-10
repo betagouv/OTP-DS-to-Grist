@@ -74,7 +74,9 @@ def scheduled_sync_job(otp_config_id):
       - Met à jour last_run et calcule next_run dans UserSchedule
       - Exécute run_synchronization_task
       - Met à jour last_status et crée une entrée SyncLog
-      - En cas d'erreur : émet notification WebSocket et désactive le planning
+      - En cas d'erreur :
+        - Notification WebSocket : uniquement pour success: false.
+        - Désactivation du planning : uniquement pour les exceptions.
     """
 
     logger.info(f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}")
