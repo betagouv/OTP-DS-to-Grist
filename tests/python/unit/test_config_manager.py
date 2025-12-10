@@ -48,6 +48,12 @@ class TestConfigManager:
         decrypted = ConfigManager.decrypt_value(None)
         assert decrypted is None
 
+    @patch.dict(os.environ, {'ENCRYPTION_KEY': 'test_key_12345678901234567890123456789012'})
+    def test_decrypt_unencrypted_value(self):
+        """Test du déchiffrement d'une valeur non chiffrée (doit lever ValueError)"""
+        with pytest.raises(ValueError, match="Échec du déchiffrement"):
+            ConfigManager.decrypt_value("unencrypted_value")
+
     @patch.dict(os.environ, {'ENCRYPTION_KEY': ''})
     def test_get_encryption_key_missing(self):
         """Test d'erreur quand la clé de chiffrement est manquante"""
