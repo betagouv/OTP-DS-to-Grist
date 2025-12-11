@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.6.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.5.0...v0.6.0) (2025-12-11)
+
+
+### Features
+
+* **Config:** Appliquer les filtres à chaque changement ([f6742c6](https://github.com/betagouv/OTP-DS-to-Grist/commit/f6742c6f2e3b2dd205f4a5c508ee26d4bdac9d96))
+* **Config:** ConfigManager garde la config de base de données ([85d3745](https://github.com/betagouv/OTP-DS-to-Grist/commit/85d37455a05d7cc88706e27cc40fa41c5365b325))
+* **Config:** Extraction de ConfigManager ([41475e1](https://github.com/betagouv/OTP-DS-to-Grist/commit/41475e1db11160792d1ce3c8a25fa79b8e9b9e5c))
+* **Config:** Extraction du code préparant la base de données ([a4229ea](https://github.com/betagouv/OTP-DS-to-Grist/commit/a4229eac0ea879b5f55acb7137b8f4f25caf3fee))
+* **Config:** Ne pas afficher le bandeau à la synchronisation ([f9e9e37](https://github.com/betagouv/OTP-DS-to-Grist/commit/f9e9e37ac85644d8f6e9b89c655b061030681470))
+* **Config:** Nettoyage de globale ([979d829](https://github.com/betagouv/OTP-DS-to-Grist/commit/979d8298b6121fedb4fd55a563ad34bf610c2164))
+* **Config:** Nettoyage de la constante d'url de démarches simplifiées ([8338ac3](https://github.com/betagouv/OTP-DS-to-Grist/commit/8338ac3d8feae31d928a961d0783b5b8e7b15508))
+* **Config:** Nouvelles colonnes en base pour les filtres ([1574b33](https://github.com/betagouv/OTP-DS-to-Grist/commit/1574b338fa0e94d4b358c16112dc50c377f3dec8))
+* **Config:** Prise en compte des champs de filtre dans le frontend ([03b6b33](https://github.com/betagouv/OTP-DS-to-Grist/commit/03b6b3349f64d0ab6a98df69fa55da5721ac6e7f))
+* **Config:** Prise en compte des nouveaux champs dans le backend ([e2c5a43](https://github.com/betagouv/OTP-DS-to-Grist/commit/e2c5a438efca1a3813516aea3fd7aaea51361975))
+* **Config:** Rassemblement du javascript en template ([0b459eb](https://github.com/betagouv/OTP-DS-to-Grist/commit/0b459ebe81a5118351dfbb4168f3736d7f9945ef))
+* **Config:** Réinitialiser les filtres sauvegarde la configuration également ([568efd8](https://github.com/betagouv/OTP-DS-to-Grist/commit/568efd89cb19015fb81abaad610362e4d2376abb))
+* **Config:** Résumé des filtres sous forme de cartouches ([e2f57f3](https://github.com/betagouv/OTP-DS-to-Grist/commit/e2f57f3d8c4484d49d1e63ae4ca883c4bcfd0756))
+* **Config:** Suppression des doubles symboles et harmonisation des espaces ([49b0280](https://github.com/betagouv/OTP-DS-to-Grist/commit/49b02808ae4cd80235846fa9aca6b7ad84e50bc9))
+* **Config:** Utilisation de l'id de la config ([4374dad](https://github.com/betagouv/OTP-DS-to-Grist/commit/4374dad8591dee07ac46e62ee5ce78aa98d72582))
+* **Synchro auto:** Isolation des processus & espacement systématique des jobs ([237bf38](https://github.com/betagouv/OTP-DS-to-Grist/commit/237bf38096af512469a85885f21ced9c4d951dd4))
+
+
+### Bug Fixes
+
+* **CI:** Test de déchiffrement d'une valeur non chiffrée ([85c4030](https://github.com/betagouv/OTP-DS-to-Grist/commit/85c40305d4c5f568f3908dc7dcc3fd47905a2e65))
+* **Config:** Permettre la mise à jour de la configuration via les filtres ([16c7675](https://github.com/betagouv/OTP-DS-to-Grist/commit/16c767521d2b5f8646a13cab9903ebf61440ee8b))
+* **Config:** Utilisation des filtres sauvegardés en base à la sync auto ([22f08f2](https://github.com/betagouv/OTP-DS-to-Grist/commit/22f08f2db21f605450e93f4f114564f143d977c9))
+* **Config:** Utilisation des filtres sauvegardés en base à la sync manuelle ([6a8afd7](https://github.com/betagouv/OTP-DS-to-Grist/commit/6a8afd7efb63287fb4e345002554bd4d7f582316))
+* **Layout:** Création de cookie correct pour la production ([82fd046](https://github.com/betagouv/OTP-DS-to-Grist/commit/82fd0461a4eb7862c65a2a63f2d5e7f7390d6e15))
+
 ## [0.5.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.4.0...v0.5.0) (2025-12-03)
 
 
