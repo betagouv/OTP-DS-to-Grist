@@ -524,20 +524,23 @@ def run_synchronization_task(config, progress_callback=None, log_callback=None):
             'filter_groups': 'GROUPES_INSTRUCTEURS',
         }
 
-        # Sauvegarder la configuration principale et les filtres
+        # Créer une copie de l'environnement pour éviter la pollution globale
+        env_copy = os.environ.copy()
+
+        # Définir les filtres dans la copie d'environnement (pas dans l'environnement global)
         for config_key, env_key in env_mapping.items():
             if config_key in config and config[config_key]:
-                os.environ[env_key] = str(config[config_key])
+                env_copy[env_key] = str(config[config_key])
 
         # ✅ Afficher les filtres effectivement utilisés (après définition)
         if log_callback:
             log_callback("=== CONFIGURATION DES FILTRES ===")
 
-            # Vérifier et afficher les variables d'environnement actuelles
-            date_debut = os.getenv("DATE_DEPOT_DEBUT", "").strip()
-            date_fin = os.getenv("DATE_DEPOT_FIN", "").strip()
-            statuts = os.getenv("STATUTS_DOSSIERS", "").strip()
-            groupes = os.getenv("GROUPES_INSTRUCTEURS", "").strip()
+            # Vérifier et afficher les variables d'environnement de la copie
+            date_debut = env_copy.get("DATE_DEPOT_DEBUT", "").strip()
+            date_fin = env_copy.get("DATE_DEPOT_FIN", "").strip()
+            statuts = env_copy.get("STATUTS_DOSSIERS", "").strip()
+            groupes = env_copy.get("GROUPES_INSTRUCTEURS", "").strip()
 
             if date_debut:
                 log_callback(f"✓ Filtre date début: {date_debut}")
@@ -570,8 +573,7 @@ def run_synchronization_task(config, progress_callback=None, log_callback=None):
         if not os.path.exists(script_path):
             raise Exception(f"Script de traitement non trouvé: {script_path}")
         
-        # Créer une copie de l'environnement actuel pour le sous-processus
-        env_copy = os.environ.copy()
+        # env_copy déjà créé plus haut
         
         # Afficher dans les logs les variables d'environnement transmises au sous-processus
         if log_callback:
