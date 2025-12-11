@@ -3,11 +3,20 @@
 
 ## Sur scalingo
 
+1. Créer un add-on Postgres
 1. Via git push
     1. Avoir une [clé publique ssh](https://doc.scalingo.com/platform/getting-started/setup-ssh-linux) dans le [compte utilisateur scalingo](https://dashboard.scalingo.com/account/keys)
     2. Ajouter la remote (ici nommé `scalingo`) : `git remote add scalingo <url-du-dépot-distant-de-scalingo>`
     3. Pousser / déployer la référence locale : `git push scalingo <branch-local>:main`
-2. Via github : ❌ Pas les droits pour pointer la bonne organisation pour l'instant
+1. Via github : ❌ Pas les droits pour pointer la bonne organisation pour l'instant
+
+Ajouter les variables d'environnement :
+
+* ENCRYPTION_KEY
+* FLASK_SECRET_KEY
+* LOG_LEVEL
+* DATABASE_URL (**automatiquement renseigné par Scalingo**)
+* SCALINGO_POSTGRESQL_URL (**automatiquement renseigné par Scalingo**)
 
 ### Debug
 
