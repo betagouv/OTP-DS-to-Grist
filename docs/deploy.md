@@ -24,6 +24,8 @@ Ajouter les variables d'environnement :
 
 ### Note à propos de DATABASE_URL
 
+Il est nécessaire de bien s'assurer que le protocol est bien `postgresql://` au lieu de juste `postgres://` (incompatible avec SQLAlchemy)
+
 ### Debug
 
 Scalingo n'affiche que certaines informations par défaut. Pour avoir plus d'informations :
