@@ -22,6 +22,8 @@ Ajouter les variables d'environnement :
 * DATABASE_URL (**automatiquement renseigné par Scalingo**)
 * SCALINGO_POSTGRESQL_URL (**automatiquement renseigné par Scalingo**)
 
+### Note à propos de DATABASE_URL
+
 ### Debug
 
 Scalingo n'affiche que certaines informations par défaut. Pour avoir plus d'informations :
