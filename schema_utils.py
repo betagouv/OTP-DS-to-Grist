@@ -245,6 +245,7 @@ def create_columns_from_schema(demarche_schema):
         {"id": "state", "type": "Text"},
         {"id": "date_depot", "type": "DateTime"},
         {"id": "date_derniere_modification", "type": "DateTime"},
+        {"id": "date_expiration", "type": "DateTime"},
         {"id": "date_traitement", "type": "DateTime"},
         {"id": "demandeur_type", "type": "Text"},
         {"id": "demandeur_civilite", "type": "Text"},
