@@ -19,7 +19,7 @@ from sqlalchemy import (create_engine)
 from sqlalchemy.orm import declarative_base, sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.executors.pool import ProcessPoolExecutor
+from apscheduler.executors.pool import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
@@ -30,7 +30,7 @@ Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler(executors={
-    'default': ProcessPoolExecutor(max_workers=5)
+    'default': ThreadPoolExecutor(max_workers=2)
 })
 
 # Déterminer le répertoire du script
