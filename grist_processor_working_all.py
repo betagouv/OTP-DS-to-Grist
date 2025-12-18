@@ -170,6 +170,7 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
         {"id": "date_depot", "type": "DateTime"},
         {"id": "date_derniere_modification", "type": "DateTime"},
         {"id": "date_traitement", "type": "DateTime"},
+        {"id": "date_expiration", "type": "DateTime"},
         {"id": "demandeur_type", "type": "Text"},
         {"id": "demandeur_civilite", "type": "Text"},
         {"id": "demandeur_nom", "type": "Text"},
