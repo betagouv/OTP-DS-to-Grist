@@ -529,8 +529,7 @@ def run_synchronization_task(config, progress_callback=None, log_callback=None):
 
         # Définir les filtres dans la copie d'environnement (pas dans l'environnement global)
         for config_key, env_key in env_mapping.items():
-            if config_key in config and config[config_key]:
-                env_copy[env_key] = str(config[config_key])
+            env_copy[env_key] = str(config.get(config_key, ''))
 
         # ✅ Afficher les filtres effectivement utilisés (après définition)
         if log_callback:
