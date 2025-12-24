@@ -5,8 +5,6 @@ Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO
 import os
-import sys
-import subprocess
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import requests
@@ -23,7 +21,7 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from constants import DEMARCHES_API_URL
-from task_manager import TaskManager
+from sync_task_manager import SyncTaskManager
 
 
 Base = declarative_base()
@@ -111,7 +109,7 @@ def scheduled_sync_job(otp_config_id):
             db.commit()
 
         # Exécuter la synchronisation
-        result = run_synchronization_task(config)
+        result = sync_task_manager.run_synchronization_task(config)
 
         # Calculer next_run (prochaine exécution à l'heure configurée)
         now = datetime.now(timezone.utc)
@@ -269,8 +267,12 @@ if not scheduler.running:
     atexit.register(lambda: scheduler.shutdown(wait=True))
 
 
-# Instance globale du gestionnaire de tâches
-task_manager = TaskManager()
+# Callback d'injection pour les notifications WebSocket
+def socketio_notify_callback(event_type, data):
+    socketio.emit(event_type, data)
+
+# Instance globale du gestionnaire de synchronisations
+sync_task_manager = SyncTaskManager(notify_callback=socketio_notify_callback)
 
 
 def test_demarches_api(api_token, demarche_number=None):
@@ -413,177 +415,7 @@ def get_available_groups(api_token, demarche_number):
         return []
 
 
-def run_synchronization_task(config, progress_callback=None, log_callback=None):
-    """Exécute la synchronisation avec callbacks pour le suivi en temps réel"""
-    try:
-        if progress_callback:
-            progress_callback(5, "Préparation de l'environnement...")
-
-        # Mettre à jour les variables d'environnement avec la configuration
-        env_mapping = {
-            'ds_api_token': 'DEMARCHES_API_TOKEN',
-            'demarche_number': 'DEMARCHE_NUMBER',
-            'grist_base_url': 'GRIST_BASE_URL',
-            'grist_api_key': 'GRIST_API_KEY',
-            'grist_doc_id': 'GRIST_DOC_ID',
-            'grist_user_id': 'GRIST_USER_ID',
-            # Filtres depuis la configuration DB
-            'filter_date_start': 'DATE_DEPOT_DEBUT',
-            'filter_date_end': 'DATE_DEPOT_FIN',
-            'filter_statuses': 'STATUTS_DOSSIERS',
-            'filter_groups': 'GROUPES_INSTRUCTEURS',
-        }
-
-        # Créer une copie de l'environnement pour éviter la pollution globale
-        env_copy = os.environ.copy()
-
-        # Définir les filtres dans la copie d'environnement (pas dans l'environnement global)
-        for config_key, env_key in env_mapping.items():
-            env_copy[env_key] = str(config.get(config_key, ''))
-
-        # ✅ Afficher les filtres effectivement utilisés (après définition)
-        if log_callback:
-            log_callback("=== CONFIGURATION DES FILTRES ===")
-
-            # Vérifier et afficher les variables d'environnement de la copie
-            date_debut = env_copy.get("DATE_DEPOT_DEBUT", "").strip()
-            date_fin = env_copy.get("DATE_DEPOT_FIN", "").strip()
-            statuts = env_copy.get("STATUTS_DOSSIERS", "").strip()
-            groupes = env_copy.get("GROUPES_INSTRUCTEURS", "").strip()
-
-            if date_debut:
-                log_callback(f"✓ Filtre date début: {date_debut}")
-            else:
-                log_callback("○ Date début: AUCUN FILTRE (tous les dossiers)")
-
-            if date_fin:
-                log_callback(f"✓ Filtre date fin: {date_fin}")
-            else:
-                log_callback("○ Date fin: AUCUN FILTRE (tous les dossiers)")
-
-            if statuts:
-                log_callback(f"✓ Filtre statuts: {statuts}")
-            else:
-                log_callback("○ Statuts: AUCUN FILTRE (tous les statuts)")
-
-            if groupes:
-                log_callback(f"✓ Filtre groupes: {groupes}")
-            else:
-                log_callback("○ Groupes: AUCUN FILTRE (tous les groupes)")
-
-            log_callback("=== FIN CONFIGURATION FILTRES ===")
-        
-        if progress_callback:
-            progress_callback(10, "Démarrage du processeur...")
-        
-        # Chemin vers le script de traitement
-        script_path = os.path.join(script_dir, "grist_processor_working_all.py")
-        
-        if not os.path.exists(script_path):
-            raise Exception(f"Script de traitement non trouvé: {script_path}")
-        
-        # env_copy déjà créé plus haut
-        
-        # Afficher dans les logs les variables d'environnement transmises au sous-processus
-        if log_callback:
-            log_callback("Variables transmises au processeur:")
-            log_callback(f"  DATE_DEPOT_DEBUT = '{env_copy.get('DATE_DEPOT_DEBUT', '')}'")
-            log_callback(f"  DATE_DEPOT_FIN = '{env_copy.get('DATE_DEPOT_FIN', '')}'")
-            log_callback(f"  STATUTS_DOSSIERS = '{env_copy.get('STATUTS_DOSSIERS', '')}'")
-            log_callback(f"  GROUPES_INSTRUCTEURS = '{env_copy.get('GROUPES_INSTRUCTEURS', '')}'")
-        
-        # Lancer le processus avec l'environnement mis à jour
-        process = subprocess.Popen(
-            [sys.executable, script_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env_copy,  # Utiliser l'environnement mis à jour
-            cwd=script_dir
-        )
-        
-        # Mots-clés pour estimer la progression
-        progress_keywords = {
-            "Récupération de la démarche": (15, "Récupération des données de la démarche..."),
-            "Démarche trouvée": (20, "Démarche trouvée - Analyse des données..."),
-            "Nombre de dossiers trouvés": (25, "Dossiers trouvés - Préparation du traitement..."),
-            "Types de colonnes détectés": (35, "Analyse de la structure des données..."),
-            "Table dossiers": (45, "Création/mise à jour des tables Grist..."),
-            "Table champs": (50, "Configuration des champs..."),
-            "Traitement du lot": (60, "Traitement des dossiers..."),
-            "Dossiers traités avec succès": (90, "Finalisation du traitement..."),
-            "Traitement terminé": (100, "Traitement terminé!")
-        }
-        
-        current_progress = 10
-        
-        # Lire la sortie en temps réel
-        for line in iter(process.stdout.readline, ''):
-            if not line:
-                break
-                
-            # Ajouter le log
-            if log_callback:
-                log_callback(line.strip())
-            logger.info(f"[PROCESSOR] {line.strip()}")
-            
-            # Mettre à jour la progression
-            for keyword, (value, status_text) in progress_keywords.items():
-                if keyword in line and value > current_progress:
-                    current_progress = value
-                    if progress_callback:
-                        progress_callback(current_progress, status_text)
-                    break
-            
-            # Détecter le pourcentage dans les lignes de progression
-            if "Progression:" in line and "/" in line:
-                try:
-                    # Extraire X/Y du texte "Progression: X/Y dossiers"
-                    parts = line.split("Progression:")[1].strip().split("/")
-                    current = int(parts[0].strip())
-                    total = int(parts[1].split()[0].strip())
-                    
-                    if total > 0:
-                        batch_progress = 60 + (30 * (current / total))
-                        if batch_progress > current_progress:
-                            current_progress = batch_progress
-                            if progress_callback:
-                                progress_callback(current_progress, f"Traitement: {current}/{total} dossiers")
-                except:
-                    pass
-        
-        # Lire les erreurs
-        stderr_output = process.stderr.read()
-        if stderr_output:
-            for line in stderr_output.split('\n'):
-                if line.strip():
-                    if log_callback:
-                        log_callback(f"ERREUR: {line.strip()}")
-                    logger.error(f"[PROCESSOR] ERREUR: {line.strip()}")
-        
-        # Attendre la fin du processus
-        returncode = process.wait()
-        
-        if progress_callback:
-            progress_callback(100, "Traitement terminé!")
-        
-        if returncode == 0:
-            if log_callback:
-                log_callback("✅ Traitement terminé avec succès!")
-            return {"success": True, "message": "Synchronisation terminée avec succès"}
-        else:
-            if log_callback:
-                log_callback(f"❌ Erreur lors du traitement (code {returncode})")
-            return {"success": False, "message": f"Erreur lors du traitement (code {returncode})"}
-        
-    except Exception as e:
-        error_msg = f"Erreur lors de la synchronisation: {str(e)}"
-        if log_callback:
-            log_callback(error_msg)
-        return {"success": False, "message": error_msg}
-
 # Routes Flask
-
 
 @app.context_processor
 def inject_build_time():
@@ -891,7 +723,7 @@ def api_start_sync():
             }), 400
         
         # Démarrer la tâche avec la configuration serveur sécurisée
-        task_id = task_manager.start_task(run_synchronization_task, server_config)
+        task_id = sync_task_manager.start_sync(server_config)
         
         return jsonify({
             "success": True,
@@ -909,7 +741,7 @@ def api_start_sync():
 @app.route('/api/task/<task_id>')
 def api_task_status(task_id):
     """API pour récupérer le statut d'une tâche"""
-    task = task_manager.get_task(task_id)
+    task = sync_task_manager.get_task(task_id)
     if task:
         return jsonify(task)
     else:

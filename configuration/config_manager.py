@@ -26,7 +26,6 @@ class ConfigManager:
     @staticmethod
     def get_encryption_key():
         """Récupère ou génère la clé de chiffrement"""
-        logger.info("---get_encryption_key---")
         key = os.getenv('ENCRYPTION_KEY')
 
         if not key:
@@ -37,7 +36,6 @@ class ConfigManager:
     @staticmethod
     def encrypt_value(value):
         """Chiffre une valeur"""
-        logger.info("---encrypt_value---")
         try:
             if not value:
                 return value
@@ -55,7 +53,6 @@ class ConfigManager:
     @staticmethod
     def decrypt_value(value):
         """Déchiffre une valeur"""
-        logger.info("---decrypt_value---")
         try:
             if not value:
                 return value
