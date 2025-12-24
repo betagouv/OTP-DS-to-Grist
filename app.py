@@ -45,6 +45,9 @@ if not DATABASE_URL:
         "DATABASE_URL environment variable is required for database operations"
     )
 
+# Initialiser la base de données au chargement du module
+DatabaseManager.init_db(DATABASE_URL)
+
 # Instance de ConfigManager
 config_manager = ConfigManager(DATABASE_URL)
 
@@ -251,6 +254,7 @@ app.secret_key = os.environ.get(
     'FLASK_SECRET_KEY',
     'dev-key-change-in-production-2024'
 )
+
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 # Configuration du logging pour Flask
@@ -267,10 +271,6 @@ if not scheduler.running:
 
 # Instance globale du gestionnaire de tâches
 task_manager = TaskManager()
-
-
-# Initialiser la base de données au chargement du module
-DatabaseManager.init_db(DATABASE_URL)
 
 
 def test_demarches_api(api_token, demarche_number=None):
