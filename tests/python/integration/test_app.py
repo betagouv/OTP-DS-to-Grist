@@ -6,7 +6,7 @@ import os
 # Mock DATABASE_URL for tests
 os.environ['DATABASE_URL'] = 'postgresql://test:test@localhost/testdb'
 
-from app import app, ConfigManager, task_manager
+from app import app, ConfigManager, sync_task_manager
 
 
 @pytest.fixture
@@ -59,8 +59,8 @@ class TestEndpoints:
         assert response.status_code == 200
         assert b'utiliser' in response.data
 
-    @patch('app.SessionLocal')
-    @patch('app.config_manager.load_config_by_id')
+    @patch.object(sync_task_manager, 'start_sync')
+    @patch.object(ConfigManager, 'load_config_by_id')
     def test_api_start_sync_success(self, mock_load, mock_start, client):
         """Test de démarrage de synchronisation réussi"""
         mock_load.return_value = {
@@ -71,22 +71,23 @@ class TestEndpoints:
             'grist_doc_id': 'doc',
             'grist_user_id': 'user'
         }
+        mock_start.return_value = 'task_123'
 
-        # Mock pour l'id
-        mock_db = mock_session.return_value
-        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
-        mock_otp.id = 123
+        sync_data = {
+            'otp_config_id': 123,
+            'filters': {}
+        }
 
-        response = client.get('/api/config?grist_user_id=user123&grist_doc_id=doc123')
+        response = client.post(
+            '/api/start-sync',
+            data=json.dumps(sync_data),
+            content_type='application/json'
+        )
+
         assert response.status_code == 200
-
         data = json.loads(response.data)
-        # Vérifier que les tokens sont masqués
-        assert data['ds_api_token_masked'] == '***'
-        assert data['grist_api_key_masked'] == '***'
-        assert data['ds_api_token_exists'] is True
-        assert data['grist_api_key_exists'] is True
-        assert data['otp_config_id'] == 123
+        assert data['success'] is True
+        assert data['task_id'] == 'task_123'
 
     @patch('app.SessionLocal')
     @patch.object(ConfigManager, 'save_config')
@@ -217,9 +218,9 @@ class TestEndpoints:
         assert len(data) == 1
         assert data[0]['label'] == 'Groupe 1'
 
-    @patch.object(task_manager, 'start_task')
+    @patch.object(sync_task_manager, 'start_sync')
     @patch.object(ConfigManager, 'load_config_by_id')
-    def test_api_start_sync_success(self, mock_load, mock_start, client):
+    def test_api_start_sync_task_manager_success(self, mock_load, mock_start, client):
         """Test de démarrage de synchronisation réussi"""
         mock_load.return_value = {
             'otp_config_id': 123,
@@ -270,7 +271,7 @@ class TestEndpoints:
         assert data['success'] is False
         assert 'manquants' in data['message']
 
-    @patch.object(task_manager, 'get_task')
+    @patch.object(sync_task_manager, 'get_task')
     def test_api_task_status_found(self, mock_get, client):
         """Test de récupération du statut d'une tâche existante"""
         mock_get.return_value = {'status': 'running', 'progress': 50}
@@ -282,7 +283,7 @@ class TestEndpoints:
         assert data['status'] == 'running'
         assert data['progress'] == 50
 
-    @patch.object(task_manager, 'get_task')
+    @patch.object(sync_task_manager, 'get_task')
     def test_api_task_status_not_found(self, mock_get, client):
         """Test de récupération du statut d'une tâche inexistante"""
         mock_get.return_value = None
@@ -458,9 +459,9 @@ class TestErrorHandling:
         assert 'manquants' in data['message']
         assert 'demarche_number' in data['missing_fields']
 
-    @patch('app.run_synchronization_task')
+    @patch.object(sync_task_manager, 'run_synchronization_task')
     @patch.object(ConfigManager, 'load_config_by_id')
-    def test_api_start_sync_task_failure(self, mock_load, mock_run, client):
+    def test_api_start_sync_task_failure_before_refactor(self, mock_load, mock_run, client):
         """Test échec de tâche de synchronisation"""
         mock_load.return_value = {
             'otp_config_id': 123,
@@ -673,7 +674,7 @@ class TestErrorHandling:
             }
 
             # Mock de run_synchronization_task
-            with patch('app.run_synchronization_task') as mock_sync:
+            with patch.object(sync_task_manager, 'run_synchronization_task') as mock_sync:
                 mock_sync.return_value = {'success': True, 'message': 'Sync successful'}
 
                 # Exécuter la fonction
@@ -713,7 +714,7 @@ class TestErrorHandling:
             }
 
             # Mock de run_synchronization_task qui échoue
-            with patch('app.run_synchronization_task') as mock_sync:
+            with patch.object(sync_task_manager, 'run_synchronization_task') as mock_sync:
                 mock_sync.return_value = {'success': False, 'message': 'Sync failed'}
 
                 # Mock de socketio.emit

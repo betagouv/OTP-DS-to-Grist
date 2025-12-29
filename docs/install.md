@@ -3,6 +3,8 @@
 
 ## Logiciels requis
 - **Python 3.13+** ([Télécharger Python](https://www.python.org/downloads/))
+- **Poetry** ([Guide d'installation](https://python-poetry.org/docs/#installation))
+- **Postgresql** (Installé et activé) ([Télécharger Postgresql](https://www.postgresql.org/download/))
 - **Git** ([Télécharger Git](https://git-scm.com/downloads/))
 - **Un éditeur de code** (VS Code, PyCharm, etc.)
 
@@ -35,6 +37,12 @@ poetry install
 poetry install --with dev # Pour profiter des outils de développement
 ```
 
+## 4. Créer la base de données
+
+```bash
+createdb otp
+```
+
 ## 4. Configuration des variables d'environnement
 
 Créez un fichier `.env` à la racine du projet :
@@ -53,18 +61,12 @@ PARALLEL='True'
 # 0=minimal, 1=normal, 2=verbose
 LOG_LEVEL=1
 
-# Filtres (optionnels)
-DATE_DEPOT_DEBUT=
-DATE_DEPOT_FIN=
-STATUTS_DOSSIERS=
-GROUPES_INSTRUCTEURS=
-
 # Flask
 FLASK_SECRET_KEY=
 # True = dev, False = prod
 FLASK_DEBUG=False
 
-DATABASE_URL=postgresql://user:password@host:port/db_name
+DATABASE_URL=postgresql://user<:mot de passe ou vide>@host:port/db_name
 ENCRYPTION_KEY='encrypt-key'
 ```
 
@@ -84,7 +86,7 @@ ENCRYPTION_KEY='encrypt-key'
 
 ```bash
 # Activer l'environnement virtuel si pas déjà fait
-poetry env activate
+source $(poetry env info --path)/bin/activate
 
 # Lancer l'application de développement
 poe dev
