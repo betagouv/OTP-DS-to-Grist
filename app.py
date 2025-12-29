@@ -327,7 +327,7 @@ def test_demarches_api(api_token, demarche_number=None):
             result = response.json()
             if "errors" in result:
                 return False, f"Erreur API: {'; '.join([e.get('message', 'Erreur inconnue') for e in result['errors']])}"
-            
+
             if demarche_number and "data" in result and "demarche" in result["data"]:
                 demarche = result["data"]["demarche"]
                 if demarche:
@@ -352,9 +352,9 @@ def test_grist_api(base_url, api_key, doc_id):
         if not base_url.endswith('/api'):
             base_url = f"{base_url}/api" if base_url else "https://grist.numerique.gouv.fr/api"
         url = f"{base_url}/docs/{doc_id}"
-        
+
         response = requests.get(url, headers=headers, timeout=10)
-        
+
         if response.status_code == 200:
             try:
                 doc_info = response.json()
@@ -373,7 +373,7 @@ def get_available_groups(api_token, demarche_number):
     """Récupère les groupes instructeurs disponibles"""
     if not all([api_token, demarche_number]):
         return []
-    
+
     try:
         query = """
         query getDemarche($demarcheNumber: Int!) {
@@ -386,30 +386,30 @@ def get_available_groups(api_token, demarche_number):
             }
         }
         """
-        
+
         variables = {"demarcheNumber": int(demarche_number)}
         headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         }
-        
+
         response = requests.post(
             DEMARCHES_API_URL,
             json={"query": query, "variables": variables},
             headers=headers,
             timeout=10
         )
-        
+
         if response.status_code != 200:
             return []
-        
+
         result = response.json()
         if "errors" in result:
             return []
-        
+
         groupes = result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
         return [(groupe.get("number"), groupe.get("label")) for groupe in groupes]
-        
+
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des groupes instructeurs: {str(e)}")
         return []
@@ -673,7 +673,7 @@ def api_test_connection():
         )
     else:
         return jsonify({"success": False, "message": "Type de connexion invalide"}), 400
-    
+
     return jsonify({"success": success, "message": message})
 
 
@@ -706,7 +706,7 @@ def api_start_sync():
             return jsonify({"success": False, "message": "ID de configuration requis"}), 400
         server_config = config_manager.load_config_by_id(otp_config_id)
         filters = data.get('filters', {})
-        
+
         # Validation simple de la configuration serveur
         required_fields = ['ds_api_token', 'demarche_number', 'grist_api_key', 'grist_doc_id', 'grist_user_id']
         missing_fields = []
@@ -714,17 +714,17 @@ def api_start_sync():
         for field in required_fields:
             if not server_config.get(field):
                 missing_fields.append(field)
-        
+
         if missing_fields:
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": f"Configuration incomplète. Champs manquants: {', '.join(missing_fields)}",
                 "missing_fields": missing_fields
             }), 400
-        
+
         # Démarrer la tâche avec la configuration serveur sécurisée
         task_id = sync_task_manager.start_sync(server_config)
-        
+
         return jsonify({
             "success": True,
             "task_id": task_id,
@@ -732,7 +732,7 @@ def api_start_sync():
             "demarche_number": server_config['demarche_number'],
             "doc_id": server_config['grist_doc_id']
         })
-        
+
     except Exception as e:
         logger.error(f"Erreur lors du démarrage de la synchronisation: {str(e)}")
         return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500

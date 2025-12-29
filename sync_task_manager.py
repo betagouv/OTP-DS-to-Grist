@@ -16,16 +16,16 @@ class SyncTaskManager:
         self.tasks = {}
         self.task_counter = 0
         self.notify_callback = notify_callback
-    
+
     def notify(self, event_type, data):
         """Méthode publique pour les notifications"""
         if self.notify_callback:
             self.notify_callback(event_type, data)
-    
+
     def start_sync(self, server_config):
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
         return self.start_task(self.run_synchronization_task, server_config)
-    
+
     def run_synchronization_task(self, config, progress_callback=None, log_callback=None):
         """Exécute la synchronisation avec callbacks pour le suivi en temps réel"""
         try:
@@ -121,7 +121,7 @@ class SyncTaskManager:
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(os.path.dirname(__file__), "grist_processor_working_all.py")
-            
+
             if log_callback:
                 log_callback(f"Lancement du script: {script_path}")
 
@@ -133,7 +133,7 @@ class SyncTaskManager:
                 env=env_copy,  # Utiliser l'environnement mis à jour
                 cwd=os.path.dirname(__file__)
             )
-            
+
             # Mots-clés pour estimer la progression
             progress_keywords = {
                 "Récupération de la démarche": (15, "Récupération des données de la démarche..."),
@@ -146,18 +146,18 @@ class SyncTaskManager:
                 "Dossiers traités avec succès": (90, "Finalisation du traitement..."),
                 "Traitement terminé": (100, "Traitement terminé!")
             }
-            
+
             current_progress = 20
-            
+
             # Lire la sortie en temps réel
             for line in process.stdout.split('\n'):
                 if not line.strip():
                     continue
-                    
+
                 # Ajouter le log
                 if log_callback:
                     log_callback(line.strip())
-                
+
                 # Mettre à jour la progression
                 for keyword, (value, status_text) in progress_keywords.items():
                     if keyword in line and value > current_progress:
@@ -165,7 +165,7 @@ class SyncTaskManager:
                         if progress_callback:
                             progress_callback(current_progress, status_text)
                         break
-                
+
                 # Détecter le pourcentage dans les lignes de progression
                 if "Progression:" in line and "/" in line:
                     try:
@@ -173,7 +173,7 @@ class SyncTaskManager:
                         parts = line.split("Progression:")[1].strip().split("/")
                         current = int(parts[0].strip())
                         total = int(parts[1].split()[0].strip())
-                        
+
                         if total > 0:
                             batch_progress = 60 + (30 * (current / total))
                             if batch_progress > current_progress:
@@ -190,7 +190,7 @@ class SyncTaskManager:
                     for line in error_output.split('\n'):
                         if line.strip():
                             log_callback(f"ERREUR: {line.strip()}")
-                
+
                 raise subprocess.CalledProcessError(process.returncode, process.args)
 
             # Analyser le résultat
@@ -244,22 +244,22 @@ class SyncTaskManager:
             error_msg = f"Erreur lors de la synchronisation: {str(e)}"
             if log_callback:
                 log_callback(error_msg)
-            
+
             if log_callback:
                 log_callback(traceback.format_exc())
-            
+
             return {
                 'success': False,
                 'message': error_msg,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'traceback': traceback.format_exc()
             }
-    
+
     def start_task(self, task_function, *args, **kwargs):
         """Démarre une nouvelle tâche asynchrone"""
         self.task_counter += 1
         task_id = f"task_{self.task_counter}"
-        
+
         self.tasks[task_id] = {
             'status': 'running',
             'progress': 0,
@@ -267,7 +267,7 @@ class SyncTaskManager:
             'start_time': time.time(),
             'logs': []
         }
-        
+
         # Démarrer la tâche dans un thread séparé
         thread = threading.Thread(
             target=self._run_task,
@@ -275,18 +275,18 @@ class SyncTaskManager:
             kwargs=kwargs
         )
         thread.start()
-        
+
         return task_id
-    
+
     def _run_task(self, task_id, task_function, *args, **kwargs):
         """Exécute une tâche avec gestion des erreurs"""
         try:
             # Ajouter le callback de progression
             kwargs['progress_callback'] = lambda progress, message: self._update_progress(task_id, progress, message)
             kwargs['log_callback'] = lambda message: self._add_log(task_id, message)
-            
+
             result = task_function(*args, **kwargs)
-            
+
             self.tasks[task_id].update({
                 'status': 'completed',
                 'progress': 100,
@@ -294,9 +294,9 @@ class SyncTaskManager:
                 'result': result,
                 'end_time': time.time()
             })
-            
+
             self._emit_update(task_id)
-            
+
         except Exception as e:
             self.tasks[task_id].update({
                 'status': 'error',
@@ -304,16 +304,16 @@ class SyncTaskManager:
                 'error': str(e),
                 'end_time': time.time()
             })
-            
+
             self._emit_update(task_id)
-    
+
     def _update_progress(self, task_id, progress, message):
         """Met à jour la progression d'une tâche"""
         if task_id in self.tasks:
             self.tasks[task_id]['progress'] = progress
             self.tasks[task_id]['message'] = message
             self._emit_update(task_id)
-    
+
     def _add_log(self, task_id, message):
         """Ajoute un log à une tâche"""
         if task_id in self.tasks:
@@ -322,7 +322,7 @@ class SyncTaskManager:
                 'message': message
             })
             self._emit_update(task_id)
-    
+
     def _emit_update(self, task_id):
         """Émet une mise à jour via notification callback"""
         self.notify('task_update', {
