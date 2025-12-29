@@ -7,10 +7,20 @@ const {
   updateDeleteButton,
   saveConfigAction
 } = require('../../static/js/config.js')
-const { showNotification } = require('../../static/js/notifications.js')
+const { loadGroupes } = require('../../static/js/filters.js')
 
+// Mock the module that contains showNotification
 jest.mock('../../static/js/notifications.js', () => ({
   showNotification: jest.fn()
+}))
+
+// Mock showNotification globally since it's imported conditionally in config.js
+global.showNotification = jest.fn()
+
+jest.mock('../../static/js/filters.js', () => ({
+  loadGroupes: jest.fn(),
+  resetFilters: jest.fn(),
+  applyFilters: jest.fn()
 }))
 
 describe('checkConfiguration', () => {
@@ -135,6 +145,10 @@ describe('loadConfiguration', () => {
     window.updateDSTokenStatus = jest.fn()
     window.updateGristKeyStatus = jest.fn()
     global.applyFilters = jest.fn()
+    
+    // Reset showNotification mock
+    showNotification.mockClear()
+    jest.clearAllMocks()
   })
 
   it(
@@ -231,6 +245,12 @@ describe('loadConfiguration', () => {
 })
 
 describe('saveConfiguration', () => {
+  beforeEach(() => {
+    // Reset showNotification mock
+    showNotification.mockClear()
+    jest.clearAllMocks()
+  })
+
   it(
     'cas nominal : sauvegarde la configuration avec succès',
     async () => {
@@ -342,6 +362,10 @@ describe('updateDeleteButton', () => {
 
 describe('saveConfigAction', () => {
   beforeEach(() => {
+    // Reset showNotification mock
+    showNotification.mockClear()
+    jest.clearAllMocks()
+
     // Setup minimal DOM for saveConfiguration and checkConfiguration
     document.body.innerHTML = `
       <input id="ds_api_token" value="token">
@@ -361,6 +385,13 @@ describe('saveConfigAction', () => {
     global.testDemarchesConnection = jest.fn()
     global.saveConfiguration = jest.fn()
     global.checkConfiguration = jest.fn()
+    
+    // Reset mock calls
+    loadGroupes.mockResolvedValue(undefined)
+    loadGroupes.mockClear()
+    
+    // Make loadGroupes available globally for config.js
+    global.loadGroupes = loadGroupes
   })
 
   it(
@@ -407,6 +438,10 @@ describe('saveConfigAction', () => {
 
 describe('deleteConfig', () => {
   beforeEach(() => {
+    // Reset showNotification mock
+    showNotification.mockClear()
+    jest.clearAllMocks()
+
     // Mock confirm
     global.confirm = jest.fn()
 

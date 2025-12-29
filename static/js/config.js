@@ -308,7 +308,7 @@ const saveConfigAction = async () => {
 
   await saveConfiguration()
   await checkConfiguration()
-  await loadGroupes()
+  await loadGroupes(window.otp_config_id)
 }
 
 if (typeof module !== 'undefined' && module.exports) {

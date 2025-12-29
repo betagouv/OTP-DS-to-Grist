@@ -82,12 +82,22 @@ const applyFilters = () => {
   showNotification('Filtres appliqués avec succès', 'success')
 }
 
-const loadGroupes = async () => {
+const loadGroupes = async (otp_config_id = null) => {
   const container = document.getElementById('groupes_container')
 
+  // Pas de requête si aucun ID disponible
+  if (!otp_config_id) {
+    console.log('Aucun otp_config_id fourni, pas de chargement des groupes')
+    container.innerHTML = `<div class="fr-alert fr-alert--info">
+      <p>Aucun identifiant de configuration disponible</p>
+    </div>`
+    console.groupEnd()
+    return
+  }
+
   try {
-    const gristContext = await getGristContext()
-    const response = await fetch(`/api/groups${gristContext.params}`)
+    const url = `/api/groups?otp_config_id=${otp_config_id}`
+    const response = await fetch(url)
     const groups = await response.json()
 
     if (groups.length === 0)
@@ -117,8 +127,7 @@ const loadGroupes = async () => {
     console.error('Erreur lors du chargement des groupes:', error)
     container.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>Erreur lors du chargement des groupes instructeurs</p>
-    </div>
-    `
+    </div>`
   }
 }
 

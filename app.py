@@ -672,26 +672,39 @@ def api_test_connection():
             data.get('doc_id')
         )
     else:
-        return jsonify({"success": False, "message": "Type de connexion invalide"}), 400
+        return jsonify(
+            {"success": False, "message": "Type de connexion invalide"}
+        ), 400
 
     return jsonify({"success": success, "message": message})
 
 
 @app.route('/api/groups')
 def api_groups():
-    """API pour récupérer les groupes instructeurs"""
-    grist_user_id = request.args.get('grist_user_id')
-    grist_doc_id = request.args.get('grist_doc_id')
-    config = config_manager.load_config(
-        grist_user_id=grist_user_id,
-        grist_doc_id=grist_doc_id
-    )
-    groups = get_available_groups(
-        config['ds_api_token'],
-        config['demarche_number']
-    )
+    """API pour récupérer les groupes instructeurs - Mode hybride"""
+    try:
+        # Mode 1: Priorité à otp_config_id si fourni
+        otp_config_id = request.args.get('otp_config_id')
+        if otp_config_id:
+            config = config_manager.load_config_by_id(otp_config_id)
+        else:
+            # Mode 2: Utiliser les paramètres Grist (compatibilité)
+            grist_user_id = request.args.get('grist_user_id')
+            grist_doc_id = request.args.get('grist_doc_id')
+            config = config_manager.load_config(
+                grist_user_id=grist_user_id,
+                grist_doc_id=grist_doc_id
+            )
 
-    return jsonify(groups)
+        groups = get_available_groups(
+            config['ds_api_token'],
+            config['demarche_number']
+        )
+
+        return jsonify(groups)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/api/start-sync', methods=['POST'])
