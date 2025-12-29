@@ -20,8 +20,8 @@ from zoneinfo import ZoneInfo
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
-from constants import DEMARCHES_API_URL
 from sync_task_manager import SyncTaskManager
+from constants import DEMARCHES_API_URL
 
 
 Base = declarative_base()

@@ -9,8 +9,6 @@ Ces tests couvrent l'ensemble des fonctionnalités de la classe :
 - Gestion des erreurs
 """
 
-# pyright: reportUnusedParameter=false
-
 import os
 from unittest.mock import patch, MagicMock
 from sync_task_manager import SyncTaskManager
