@@ -1,6 +1,9 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
+if (typeof loadGroupes === 'undefined')
+  ({ showNotification } = require('./filters.js'))
+
 const checkConfiguration = async (silent = false) => {
   const resultDiv = document.getElementById('config_check_result')
   if (!silent) resultDiv.style.display = 'block'
@@ -305,6 +308,7 @@ const saveConfigAction = async () => {
 
   await saveConfiguration()
   await checkConfiguration()
+  await loadGroupes()
 }
 
 if (typeof module !== 'undefined' && module.exports) {
