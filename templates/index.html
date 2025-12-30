@@ -10,7 +10,6 @@
 {% block scripts %}
 <script>
 // ===== INITIALISATIONS GLOBALES =====
-// FIXME
 window.config = null
 let logsVisible = false
 let currentTaskId = null
@@ -68,7 +67,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const loadedConfig = await loadConfiguration()
   window.otp_config_id = loadedConfig.otp_config_id
   updateDeleteButton()
-  loadGroupes()
+  loadGroupes(window.otp_config_id)
 
   // Initialiser les listeners automatiques pour les filtres
   document.getElementById('date_debut').addEventListener('change', applyFilters)
@@ -92,6 +91,21 @@ const startSyncAction = async () => currentTaskId = await startSync(window.otp_c
 if (document.cookie.search('welcome') === -1) {
   document.querySelector('#welcome-title').style.display = 'block'
   document.cookie = 'welcome=true; SameSite=None; Secure'
+}
+
+// ===== ACTIONS DE SAUVEGARDE =====
+const saveConfigAction = async () => {
+  if (!await testGristConnection(true))
+    return false
+
+  if (!await testDemarchesConnection(true))
+    return false
+
+  await saveConfiguration()
+  await checkConfiguration()
+  const loadedConfig = await loadConfiguration()
+  window.otp_config_id = loadedConfig.otp_config_id
+  await loadGroupes(window.otp_config_id)
 }
 </script>
 {% endblock %}

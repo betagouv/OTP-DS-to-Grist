@@ -296,17 +296,6 @@ const updateDeleteButton = () => {
   }
 }
 
-const saveConfigAction = async () => {
-  if (!await testGristConnection(true))
-    return false
-
-  if (!await testDemarchesConnection(true))
-    return false
-
-  await saveConfiguration()
-  await checkConfiguration()
-}
-
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     checkConfiguration,
@@ -314,6 +303,5 @@ if (typeof module !== 'undefined' && module.exports) {
     saveConfiguration,
     deleteConfig,
     updateDeleteButton,
-    saveConfigAction
   }
 }

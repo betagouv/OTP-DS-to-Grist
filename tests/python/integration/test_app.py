@@ -1,11 +1,6 @@
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-import os
-
-# Mock DATABASE_URL for tests
-os.environ['DATABASE_URL'] = 'postgresql://test:test@localhost/testdb'
-
 from app import app, ConfigManager, sync_task_manager
 
 
@@ -202,15 +197,25 @@ class TestEndpoints:
 
     @patch.object(ConfigManager, 'load_config')
     @patch('app.get_available_groups')
-    def test_api_groups(self, mock_groups, mock_load, client):
-        """Test de récupération des groupes"""
+    def test_api_groups_with_grist_params(
+            self,
+            mock_groups,
+            mock_load,
+            client
+    ):
+        """
+        Test de récupération des groupes
+        avec paramètres grist_user_id et grist_doc_id
+        """
         mock_load.return_value = {
             'ds_api_token': 'token',
             'demarche_number': '123'
         }
         mock_groups.return_value = [{'id': '1', 'label': 'Groupe 1'}]
 
-        response = client.get('/api/groups')
+        response = client.get(
+            '/api/groups?grist_user_id=user123&grist_doc_id=doc456'
+        )
         assert response.status_code == 200
 
         data = json.loads(response.data)
@@ -218,9 +223,82 @@ class TestEndpoints:
         assert len(data) == 1
         assert data[0]['label'] == 'Groupe 1'
 
+        # Vérifie que load_config a été appelé avec les bons paramètres
+        mock_load.assert_called_once_with(
+            grist_user_id='user123',
+            grist_doc_id='doc456'
+        )
+
+    @patch.object(ConfigManager, 'load_config_by_id')
+    @patch('app.get_available_groups')
+    def test_api_groups_otp_config_id_mode(
+            self,
+            mock_groups,
+            mock_load,
+            client
+    ):
+        """Test de récupération des groupes en mode otp_config_id"""
+        mock_load.return_value = {
+            'ds_api_token': 'token789',
+            'demarche_number': '456'
+        }
+        mock_groups.return_value = [
+            (1, 'Groupe Instructeur A'),
+            (2, 'Groupe Instructeur B')
+        ]
+
+        response = client.get('/api/groups?otp_config_id=789')
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        assert isinstance(data, list)
+        assert len(data) == 2
+        assert data[0] == [1, 'Groupe Instructeur A']
+        assert data[1] == [2, 'Groupe Instructeur B']
+
+        # Vérifie que load_config_by_id a été appelé avec le bon ID
+        mock_load.assert_called_once_with('789')
+
+    @patch.object(ConfigManager, 'load_config_by_id')
+    def test_api_groups_otp_config_id_not_found(self, mock_load, client):
+        """Test de récupération des groupes avec otp_config_id inexistant"""
+        mock_load.side_effect = Exception("Configuration not found")
+
+        response = client.get('/api/groups?otp_config_id=999')
+        assert response.status_code == 400
+
+        data = json.loads(response.data)
+        assert 'error' in data
+        assert 'Erreur lors de la récupération des groupes' == data['error']
+
+    @patch.object(ConfigManager, 'load_config')
+    def test_api_groups_legacy_missing_params(self, mock_load, client):
+        """Test de récupération des groupes en mode legacy sans paramètres"""
+        mock_load.side_effect = Exception("No grist user id or doc id")
+
+        response = client.get('/api/groups')
+        assert response.status_code == 400
+
+        data = json.loads(response.data)
+        assert 'error' in data
+        assert 'Erreur lors de la récupération des groupes' == data['error']
+
+    def test_api_groups_no_params_400(self, client):
+        """Test de récupération des groupes sans aucun paramètre"""
+        response = client.get('/api/groups')
+        assert response.status_code == 400
+
+        data = json.loads(response.data)
+        assert 'error' in data
+
     @patch.object(sync_task_manager, 'start_sync')
     @patch.object(ConfigManager, 'load_config_by_id')
-    def test_api_start_sync_task_manager_success(self, mock_load, mock_start, client):
+    def test_api_start_sync_task_manager_success(
+            self,
+            mock_load,
+            mock_start,
+            client
+    ):
         """Test de démarrage de synchronisation réussi"""
         mock_load.return_value = {
             'otp_config_id': 123,
@@ -461,7 +539,12 @@ class TestErrorHandling:
 
     @patch.object(sync_task_manager, 'run_synchronization_task')
     @patch.object(ConfigManager, 'load_config_by_id')
-    def test_api_start_sync_task_failure_before_refactor(self, mock_load, mock_run, client):
+    def test_api_start_sync_task_failure_before_refactor(
+        self,
+        mock_load,
+        mock_run,
+        client
+    ):
         """Test échec de tâche de synchronisation"""
         mock_load.return_value = {
             'otp_config_id': 123,
@@ -528,7 +611,11 @@ class TestErrorHandling:
 
         data = {'otp_config_id': 1}
 
-        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        response = client.post(
+            '/api/schedule',
+            data=json.dumps(data),
+            content_type='application/json'
+        )
         assert response.status_code == 200
 
         data_resp = json.loads(response.data)
@@ -562,7 +649,11 @@ class TestErrorHandling:
 
         data = {'otp_config_id': 1}
 
-        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        response = client.post(
+            '/api/schedule',
+            data=json.dumps(data),
+            content_type='application/json'
+        )
         assert response.status_code == 200
 
         data_resp = json.loads(response.data)
@@ -580,7 +671,11 @@ class TestErrorHandling:
 
         data = {'otp_config_id': 1}
 
-        response = client.delete('/api/schedule', data=json.dumps(data), content_type='application/json')
+        response = client.delete(
+            '/api/schedule',
+            data=json.dumps(data),
+            content_type='application/json'
+        )
         assert response.status_code == 200
 
         data_resp = json.loads(response.data)
@@ -595,7 +690,11 @@ class TestErrorHandling:
 
         data = {'otp_config_id': 999}
 
-        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        response = client.post(
+            '/api/schedule',
+            data=json.dumps(data),
+            content_type='application/json'
+        )
         assert response.status_code == 404
 
         data_resp = json.loads(response.data)
@@ -603,11 +702,15 @@ class TestErrorHandling:
         assert 'not found' in data_resp['message']
 
     @patch('app.SessionLocal')
-    def test_api_schedule_missing_fields(self, mock_session, client):
+    def test_api_schedule_missing_fields(self, _, client):
         """Test planning avec champs manquants"""
         data = {}  # missing otp_config_id
 
-        response = client.post('/api/schedule', data=json.dumps(data), content_type='application/json')
+        response = client.post(
+            '/api/schedule',
+            data=json.dumps(data),
+            content_type='application/json'
+        )
         assert response.status_code == 400
 
         data_resp = json.loads(response.data)
@@ -616,7 +719,12 @@ class TestErrorHandling:
 
     @patch('app.SessionLocal')
     @patch('app.reload_scheduler_jobs')
-    def test_api_delete_config_success(self, mock_reload, mock_session, client):
+    def test_api_delete_config_success(
+            self,
+            mock_reload,
+            mock_session,
+            client
+    ):
         """Test suppression de configuration réussie"""
         mock_db = mock_session.return_value
         mock_config = mock_db.query.return_value.filter_by.return_value.first.return_value
@@ -659,7 +767,6 @@ class TestErrorHandling:
         mock_config.grist_user_id = 'user123'
         mock_config.grist_doc_id = 'doc456'
 
-        mock_schedule = MagicMock()
         mock_db.query.return_value.filter_by.return_value.first.return_value = mock_config
 
         # Mock de config_manager.load_config_by_id
@@ -675,7 +782,10 @@ class TestErrorHandling:
 
             # Mock de run_synchronization_task
             with patch.object(sync_task_manager, 'run_synchronization_task') as mock_sync:
-                mock_sync.return_value = {'success': True, 'message': 'Sync successful'}
+                mock_sync.return_value = {
+                    'success': True,
+                    'message': 'Sync successful'
+                }
 
                 # Exécuter la fonction
                 scheduled_sync_job(1)
@@ -715,7 +825,10 @@ class TestErrorHandling:
 
             # Mock de run_synchronization_task qui échoue
             with patch.object(sync_task_manager, 'run_synchronization_task') as mock_sync:
-                mock_sync.return_value = {'success': False, 'message': 'Sync failed'}
+                mock_sync.return_value = {
+                    'success': False,
+                    'message': 'Sync failed'
+                }
 
                 # Mock de socketio.emit
                 with patch('app.socketio.emit') as mock_emit:
@@ -786,4 +899,5 @@ class TestErrorHandling:
 
             # Vérifications
             mock_scheduler_instance.remove_all_jobs.assert_called_once()
-            # Vérifier que add_job a été appelé (ne pas vérifier le nombre exact car dépend de la logique)
+            # Vérifier que add_job a été appelé
+            # (ne pas vérifier le nombre exact car dépend de la logique)
