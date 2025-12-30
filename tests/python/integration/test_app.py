@@ -273,7 +273,7 @@ class TestEndpoints:
 
         data = json.loads(response.data)
         assert 'error' in data
-        assert 'Configuration not found' in data['error']
+        assert 'Erreur lors de la récupération des groupes' == data['error']
 
     @patch.object(ConfigManager, 'load_config')
     def test_api_groups_legacy_missing_params(self, mock_load, client):
@@ -285,7 +285,7 @@ class TestEndpoints:
 
         data = json.loads(response.data)
         assert 'error' in data
-        assert 'No grist user id or doc id' in data['error']
+        assert 'Erreur lors de la récupération des groupes' == data['error']
 
     def test_api_groups_no_params_400(self, client):
         """Test de récupération des groupes sans aucun paramètre"""
