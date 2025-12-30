@@ -133,15 +133,11 @@ describe('filters', () => {
         // Mock fetch pour vérifier qu'il n'est pas appelé
         global.fetch = jest.fn()
 
-        // Mock console.log pour vérifier le message
-        global.console.log = jest.fn()
-
         // Appel de la fonction sans otp_config_id
         await loadGroupes(null)
 
         // Vérifications
         expect(fetch).not.toHaveBeenCalled()
-        expect(console.log).toHaveBeenCalledWith('Aucun otp_config_id fourni, pas de chargement des groupes')
 
         const container = document.getElementById('groupes_container')
         expect(container.innerHTML).toContain('Aucun identifiant de configuration disponible')
@@ -154,15 +150,11 @@ describe('filters', () => {
         // Mock fetch pour vérifier qu'il n'est pas appelé
         global.fetch = jest.fn()
 
-        // Mock console.log pour vérifier le message
-        global.console.log = jest.fn()
-
         // Appel de la fonction sans otp_config_id
         await loadGroupes(undefined)
 
         // Vérifications
         expect(fetch).not.toHaveBeenCalled()
-        expect(console.log).toHaveBeenCalledWith('Aucun otp_config_id fourni, pas de chargement des groupes')
 
         const container = document.getElementById('groupes_container')
         expect(container.innerHTML).toContain('Aucun identifiant de configuration disponible')

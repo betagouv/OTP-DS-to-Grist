@@ -1,9 +1,6 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
-if (typeof loadGroupes === 'undefined')
-  ({ showNotification } = require('./filters.js'))
-
 const checkConfiguration = async (silent = false) => {
   const resultDiv = document.getElementById('config_check_result')
   if (!silent) resultDiv.style.display = 'block'
@@ -299,18 +296,6 @@ const updateDeleteButton = () => {
   }
 }
 
-const saveConfigAction = async () => {
-  if (!await testGristConnection(true))
-    return false
-
-  if (!await testDemarchesConnection(true))
-    return false
-
-  await saveConfiguration()
-  await checkConfiguration()
-  await loadGroupes(window.otp_config_id)
-}
-
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     checkConfiguration,
@@ -318,6 +303,5 @@ if (typeof module !== 'undefined' && module.exports) {
     saveConfiguration,
     deleteConfig,
     updateDeleteButton,
-    saveConfigAction
   }
 }

@@ -86,18 +86,15 @@ const loadGroupes = async (otp_config_id = null) => {
   const container = document.getElementById('groupes_container')
 
   // Pas de requête si aucun ID disponible
-  if (!otp_config_id) {
-    console.log('Aucun otp_config_id fourni, pas de chargement des groupes')
-    container.innerHTML = `<div class="fr-alert fr-alert--info">
+  if (!otp_config_id)
+    return container.innerHTML = `<div class="fr-alert fr-alert--info">
       <p>Aucun identifiant de configuration disponible</p>
     </div>`
-    console.groupEnd()
-    return
-  }
 
   try {
-    const url = `/api/groups?otp_config_id=${otp_config_id}`
-    const response = await fetch(url)
+    const response = await fetch(
+      `/api/groups?otp_config_id=${otp_config_id}`
+    )
     const groups = await response.json()
 
     if (groups.length === 0)
@@ -122,7 +119,6 @@ const loadGroupes = async (otp_config_id = null) => {
     document.querySelectorAll('input[name="groupes"]').forEach(el => {
       el.addEventListener('change', applyFilters)
     })
-
   } catch (error) {
     console.error('Erreur lors du chargement des groupes:', error)
     container.innerHTML = `<div class="fr-alert fr-alert--error">
