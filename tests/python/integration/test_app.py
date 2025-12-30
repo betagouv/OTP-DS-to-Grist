@@ -1,11 +1,7 @@
 import pytest
 import json
 from unittest.mock import patch, MagicMock
-import os
 from app import app, ConfigManager, sync_task_manager
-
-# Mock DATABASE_URL for tests
-os.environ['DATABASE_URL'] = 'postgresql://test:test@localhost/testdb'
 
 
 @pytest.fixture
