@@ -13,12 +13,13 @@ const checkConfiguration = async (silent = false) => {
     const response = await fetch(`/api/config${gristContext.params}`)
     const config = await response.json()
 
-    // Vérifier que tous les champs requis sont présents
+    // Vérifier que tous les champs requis sont présents (pour sauvegarde partielle)
     const requiredFields = [
       'has_ds_token',
       'demarche_number',
       'grist_base_url',
-      'has_grist_key',
+      'grist_doc_id',
+      'grist_user_id'
     ]
 
     const missingFields = requiredFields.filter(field => !config[field])
@@ -190,21 +191,14 @@ const saveConfiguration = async () => {
   if (dsToken) config.ds_api_token = dsToken
   if (grist_key) config.grist_api_key = grist_key
 
-  // Validation basique
+  // Validation basique - champs minimum pour sauvegarde partielle
   const requiredFields = [
+    {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
     {key: 'demarche_number', name: 'Numéro de démarche'},
     {key: 'grist_base_url', name: 'URL de base Grist'},
     {key: 'grist_doc_id', name: 'ID du document Grist'},
     {key: 'grist_user_id', name: 'ID utilisateur Grist'}
   ]
-
-  if (!isUpdate) {
-    // Pour création, requérir tokens
-    requiredFields.push(
-      {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
-      {key: 'grist_api_key', name: 'Clé API Grist'}
-    )
-  }
 
   for (const field of requiredFields) {
     if (!config[field.key]) {

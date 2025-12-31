@@ -86,40 +86,10 @@ class TestEndpoints:
 
     @patch('app.SessionLocal')
     @patch.object(ConfigManager, 'save_config')
-    def test_api_config_post_success(self, mock_save, mock_session, client):
-        """Test de sauvegarde de configuration réussie"""
-        mock_save.return_value = True
-
-        # Mock pour l'id
-        mock_db = mock_session.return_value
-        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
-        mock_otp.id = 456
-
+    def test_api_config_post_missing_field(self, mock_save, mock_session, client):
+        """Test de sauvegarde avec champ minimum manquant"""
         config_data = {
-            'ds_api_token': 'token',
-            'demarche_number': '123',
-            'grist_base_url': 'base',
-            'grist_api_key': 'key',
-            'grist_doc_id': 'doc',
-            'grist_user_id': 'user'
-        }
-
-        response = client.post(
-            '/api/config',
-            data=json.dumps(config_data),
-            content_type='application/json'
-        )
-
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data['success'] is True
-        assert 'sauvegardée' in data['message']
-        assert data['otp_config_id'] == 456
-
-    def test_api_config_post_missing_field(self, client):
-        """Test de sauvegarde avec champ manquant"""
-        config_data = {
-            'ds_api_token': '',
+            'ds_api_token': '',  # Manquant
             'demarche_number': '123'
             # Champs manquants
         }
@@ -134,6 +104,48 @@ class TestEndpoints:
         data = json.loads(response.data)
         assert data['success'] is False
         assert 'requis' in data['message']
+
+    @patch('app.SessionLocal')
+    @patch.object(ConfigManager, 'save_config')
+    def test_api_config_post_partial_save_success(self, mock_save, mock_session, client):
+        """Test de sauvegarde partielle réussie (sans clé API Grist)"""
+        mock_save.return_value = True
+
+        # Mock pour l'id
+        mock_db = mock_session.return_value
+        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_otp.id = 456
+
+        # Configuration partielle (sans grist_api_key)
+        config_data = {
+            'ds_api_token': 'token123',
+            'demarche_number': '12345',
+            'grist_base_url': 'https://grist.numerique.gouv.fr/api',
+            'grist_doc_id': 'doc123',
+            'grist_user_id': 'user456'
+            # grist_api_key manquant (sauvegarde partielle)
+        }
+
+        response = client.post(
+            '/api/config',
+            data=json.dumps(config_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert 'sauvegardée' in data['message']
+        assert data['otp_config_id'] == 456
+
+        # Vérifier que save_config a été appelé avec la configuration partielle
+        mock_save.assert_called_once()
+        call_args = mock_save.call_args[0][0]
+        assert call_args['ds_api_token'] == 'token123'
+        assert call_args['demarche_number'] == '12345'
+        assert call_args['grist_base_url'] == 'https://grist.numerique.gouv.fr/api'
+        assert call_args['grist_doc_id'] == 'doc123'
+        assert call_args['grist_user_id'] == 'user456'
 
     @patch('app.test_demarches_api')
     def test_api_test_connection_demarches(self, mock_test, client):

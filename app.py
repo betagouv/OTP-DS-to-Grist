@@ -551,15 +551,15 @@ def api_config():
                     }
                    ), 500
             else:
-                # Création
+                # Création - champs minimum pour sauvegarde partielle
                 required_fields = [
                     'ds_api_token',
                     'demarche_number',
                     'grist_base_url',
-                    'grist_api_key',
                     'grist_doc_id',
                     'grist_user_id'
                 ]
+
                 for field in required_fields:
                     if not new_config.get(field):
                         return jsonify(

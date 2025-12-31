@@ -54,6 +54,7 @@ describe('checkConfiguration', () => {
           demarche_number: 123,
           grist_base_url: 'url',
           grist_doc_id: 'doc',
+          grist_user_id: 'user',
           has_ds_token: true,
           has_grist_key: true
         })
@@ -114,6 +115,63 @@ describe('checkConfiguration', () => {
       expect(document.getElementById('start_sync_btn').disabled).toBe(true)
       expect(showNotification).not.toHaveBeenCalled() // Erreur gérée dans le DOM
       expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la vérification de la configuration:', error)
+    }
+  )
+
+  it(
+    'configuration partielle valide (sans clé Grist)',
+    async () => {
+      // Mock réponse API partielle
+      fetch.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          otp_config_id: 123,
+          demarche_number: 123,
+          grist_base_url: 'https://grist.numerique.gouv.fr/api',
+          grist_doc_id: 'doc123',
+          grist_user_id: 'user123',
+          has_ds_token: true,
+          has_grist_key: false // Manquant mais acceptable
+        })
+      })
+
+      // Appel de la fonction
+      await checkConfiguration()
+
+      // Vérifications
+      const resultDiv = document.getElementById('config_check_result')
+      expect(resultDiv.innerHTML).toContain('Configuration complète')
+      expect(document.getElementById('start_sync_btn').disabled).toBe(false)
+      expect(showNotification).not.toHaveBeenCalled()
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'configuration partielle invalide (manque token DS)',
+    async () => {
+      // Mock réponse API incomplète
+      fetch.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          otp_config_id: 123,
+          demarche_number: 123,
+          grist_base_url: 'https://grist.numerique.gouv.fr/api',
+          grist_doc_id: 'doc123',
+          grist_user_id: 'user123',
+          has_ds_token: false, // Manquant
+          has_grist_key: true
+        })
+      })
+
+      // Appel de la fonction
+      await checkConfiguration()
+
+      // Vérifications
+      const resultDiv = document.getElementById('config_check_result')
+      expect(resultDiv.innerHTML).toContain('Configuration incomplète')
+      expect(resultDiv.innerHTML).toContain('has_ds_token') // Champ manquant listé
+      expect(document.getElementById('start_sync_btn').disabled).toBe(true)
+      expect(showNotification).not.toHaveBeenCalled()
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
     }
   )
 })
@@ -320,6 +378,100 @@ describe('saveConfiguration', () => {
       })
 
       expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+    }
+  )
+
+  it(
+    'sauvegarde partielle sans clé API Grist',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `
+        <input id="ds_api_token" value="test_token">
+        <input id="demarche_number" value="123">
+        <input id="grist_base_url" value="https://grist.numerique.gouv.fr/api">
+        <input id="grist_api_key" value=""> <!-- Vide pour sauvegarde partielle -->
+        <input id="grist_doc_id" value="doc123">
+        <input id="grist_user_id" value="5">
+        <input id="date_debut" value="2023-01-01">
+        <input id="date_fin" value="2023-12-31">
+        <input type="checkbox" name="statuts" value="en_construction" checked>
+        <input type="checkbox" name="groupes" value="1" checked>
+        <div id="ds_token_status"></div>
+        <div id="grist_key_status"></div>
+        <div id="config_check_result"></div>
+        <button id="start_sync_btn"></button>`
+
+      // Mock fetch
+      global.fetch = jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ success: true })
+      })
+
+      // Mock App
+      global.App = { showNotification: jest.fn() }
+
+      // Mock loadConfiguration
+      const mockLoadConfiguration = jest.fn()
+      global.loadConfiguration = mockLoadConfiguration
+
+      // Mock setTimeout
+      jest.useFakeTimers()
+
+      // Appel
+      await saveConfiguration()
+
+      // Vérifications
+      expect(fetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }))
+
+      const callArgs = fetch.mock.calls[0][1]
+      const body = JSON.parse(callArgs.body)
+      
+      // Vérifier que la clé API Grist n'est pas incluse si vide
+      expect(body).toEqual({
+        otp_config_id: undefined,
+        ds_api_token: 'test_token',
+        demarche_number: '123',
+        grist_base_url: 'https://grist.numerique.gouv.fr/api',
+        grist_doc_id: 'doc123',
+        grist_user_id: '5',
+        filter_date_start: '2023-01-01',
+        filter_date_end: '2023-12-31',
+        filter_statuses: 'en_construction',
+        filter_groups: '1'
+      })
+
+      // Vérifier que grist_api_key n'est pas dans le body
+      expect(body.grist_api_key).toBeUndefined()
+
+      expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+    }
+  )
+
+  it(
+    'échec sauvegarde si champ minimum manquant',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `
+        <input id="ds_api_token" value=""> <!-- Manquant -->
+        <input id="demarche_number" value="123">
+        <input id="grist_base_url" value="https://grist.numerique.gouv.fr/api">
+        <input id="grist_api_key" value="">
+        <input id="grist_doc_id" value="doc123">
+        <input id="grist_user_id" value="5">
+        <input id="date_debut" value="">
+        <input id="date_fin" value="">`
+
+      // Mock fetch (ne devrait pas être appelé)
+      global.fetch = jest.fn()
+
+      // Appel
+      await saveConfiguration()
+
+      // Vérifications
+      expect(fetch).not.toHaveBeenCalled()
+      expect(showNotification).toHaveBeenCalledWith('Le champ "Token API Démarches Simplifiées" est requis', 'error')
     }
   )
 })

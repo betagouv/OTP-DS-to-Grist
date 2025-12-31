@@ -239,3 +239,46 @@ class TestConfigManager:
         assert 'ds_api_token' in ConfigManager.SENSITIVE_KEYS
         assert 'grist_api_key' in ConfigManager.SENSITIVE_KEYS
         assert len(ConfigManager.SENSITIVE_KEYS) == 2
+
+    @patch('configuration.config_manager.DatabaseManager')
+    @patch.dict(os.environ, {'ENCRYPTION_KEY': 'test_key_12345678901234567890123456789012'})
+    def test_save_config_partial_without_grist_key(self, mock_db_manager):
+        """Test de la sauvegarde partielle sans clé API Grist"""
+        # Mock de la connexion DB
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        # Mock : configuration n'existe pas encore (création)
+        mock_cursor.fetchone.return_value = [0]  # COUNT(*) = 0
+
+        # Mock des méthodes de chiffrement (ne chiffre que les valeurs non vides)
+        with patch.object(ConfigManager, 'encrypt_value', side_effect=lambda x: f"encrypted_{x}" if x else x):
+            config_manager = ConfigManager('dummy_url')
+            result = config_manager.save_config({
+                'ds_api_token': 'test_token',
+                'demarche_number': '12345',
+                'grist_base_url': 'https://grist.numerique.gouv.fr/api',
+                'grist_doc_id': 'test_doc',
+                'grist_user_id': 'test_user',
+                # grist_api_key manquant (sauvegarde partielle)
+                'filter_date_start': '2023-01-01',
+                'filter_date_end': '2023-12-31',
+                'filter_statuses': 'status1,status2',
+                'filter_groups': 'group1,group2'
+            })
+
+        assert result is True
+
+        # Vérifier que INSERT a été appelé
+        assert mock_cursor.execute.call_count == 2  # SELECT COUNT + INSERT
+        insert_call = mock_cursor.execute.call_args_list[1]
+        assert 'INSERT INTO otp_configurations' in insert_call[0][0]
+        
+        # Vérifier que les valeurs chiffrées sont correctes
+        call_args = insert_call[0]
+        assert call_args[1][0] == 'encrypted_test_token'  # ds_api_token
+        assert call_args[1][1] == '12345'  # demarche_number
+        assert call_args[1][2] == 'https://grist.numerique.gouv.fr/api'  # grist_base_url
+        assert call_args[1][3] == ''  # grist_api_key vide (pas chiffré)
