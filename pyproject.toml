@@ -32,7 +32,7 @@ build-backend = "poetry.core.masonry.api"
 package-mode = false
 
 [tool.poetry.group.dev.dependencies]
-commitizen = "^4.10.0"
+commitizen = "^4.11.0"
 poethepoet = "^0.38.0"
 pytest = "^9.0.2"
 pytest-cov = "^7.0.0"
