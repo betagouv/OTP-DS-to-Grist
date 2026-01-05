@@ -1,11 +1,10 @@
 import requests
 import json
-import os
+from requests.adapters import HTTPAdapter  # ✅ NOUVEAU
+from urllib3.util.retry import Retry  # ✅ NOUVEAU
+import time  # ✅ NOUVEAU
 from typing import Dict, Any, List, Optional
-from constants import DEMARCHES_API_URL
-
-API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
-API_URL = DEMARCHES_API_URL
+from queries_config import API_TOKEN, API_URL
 
 # Requêtes GraphQL (fragmentées en quelques constantes)
 # Pour les fragments communs
@@ -22,6 +21,25 @@ fragment PersonneMoraleFragment on PersonneMorale {
         siren
         raisonSociale
         nomCommercial
+        
+        # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
+        capitalSocial
+        codeEffectifEntreprise
+        formeJuridique
+        formeJuridiqueCode
+        numeroTvaIntracommunautaire
+        dateCreation
+        etatAdministratif
+    }
+    
+    # ✅ NOUVEAU BLOC ASSOCIATION (pour les associations)
+    association {
+        rna
+        titre
+        objet
+        dateCreation
+        dateDeclaration
+        datePublication
     }
 }
 
@@ -40,8 +58,17 @@ fragment AddressFragment on Address {
     label
     type
     streetAddress
+    
+    # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
+    streetNumber
+    streetName
     postalCode
     cityName
+    cityCode
+    departmentName
+    departmentCode
+    regionName
+    regionCode
 }
 
 fragment FileFragment on File {
@@ -191,6 +218,19 @@ fragment ChampFragment on Champ {
         files {
             ...FileFragment
         }
+        columns {
+            __typename
+            id
+            label
+            ... on TextColumn {
+                value
+            }
+            ... on AttachmentsColumn {
+                value {
+                    ...FileFragment
+                }
+            }
+        }
     }
     ... on AddressChamp {
         address {
@@ -304,7 +344,6 @@ fragment DossierFragment on Dossier {
     dateTraitement
     dateExpiration
     dateSuppressionParUsager
-    dateDerniereCorrectionEnAttente
     dateDerniereModificationChamps
     dateDerniereModificationAnnotations
     motivation
@@ -344,7 +383,13 @@ fragment DossierFragment on Dossier {
         ...ChampFragment
         ...RootChampFragment
     }
+    labels {
+        id
+        name
+        color
+    }
 }
+
 
 """ + COMMON_FRAGMENTS + SPECIALIZED_FRAGMENTS + CHAMP_FRAGMENTS
 
@@ -461,11 +506,6 @@ fragment DossierFragment on Dossier {
     datePassageEnConstruction
     datePassageEnInstruction
     dateTraitement
-    dateSuppressionParUsager
-    dateDerniereCorrectionEnAttente
-    dateDerniereModificationChamps
-    dateDerniereModificationAnnotations
-    motivation
     usager {
         email
     }
@@ -507,6 +547,34 @@ fragment DossierFragment on Dossier {
 
 """ + COMMON_FRAGMENTS + SPECIALIZED_FRAGMENTS + CHAMP_FRAGMENTS
 
+# ✅ SESSION GLOBALE (créée une seule fois)
+_session = None
+
+def get_session_with_retries():
+    """
+    Retourne une session HTTP avec retry (singleton).
+    La session est créée une seule fois et réutilisée.
+    """
+    global _session
+    
+    if _session is None:
+        print("[RETRY] Création session avec retry automatique (3 tentatives, backoff 1s)")
+        _session = requests.Session()
+        
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"],
+            raise_on_status=False
+        )
+        
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        _session.mount("https://", adapter)
+        _session.mount("http://", adapter)
+    
+    return _session
+
 # Fonctions d'API
 def get_dossier(dossier_number: int) -> Dict[str, Any]:
     """
@@ -534,7 +602,8 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
     }
     
     # Exécution de la requête
-    response = requests.post(
+    session = get_session_with_retries()
+    response = session.post(
         API_URL,
         json={"query": query_get_dossier, "variables": variables},
         headers=headers
@@ -617,8 +686,9 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
         "Authorization": f"Bearer {API_TOKEN}",
         "Content-Type": "application/json"
     }
-    
-    response = requests.post(
+    # Exécution de la requête avec retry automatique
+    session = get_session_with_retries()
+    response = session.post(
         API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers
@@ -730,25 +800,25 @@ def get_demarche_dossiers_filtered(
         if 'T' not in date_debut:
             date_debut += 'T00:00:00Z'
         server_filters['createdSince'] = date_debut
-        print(f"🗓️ Filtre serveur par date de début: {date_debut}")
+        print(f"Filtre serveur par date de début: {date_debut}")
     
     # ❌ FILTRES CÔTÉ CLIENT : Tout le reste
     if date_fin:
         client_filters['date_fin'] = date_fin
-        print(f"🗓️ Filtre client par date de fin: {date_fin}")
+        print(f"Filtre client par date de fin: {date_fin}")
     
     if groupes_instructeurs:
         client_filters['groupes_instructeurs'] = groupes_instructeurs
-        print(f"👥 Filtre client par groupes: {groupes_instructeurs}")
+        print(f"Filtre client par groupes: {groupes_instructeurs}")
     
     if statuts:
         client_filters['statuts'] = statuts
-        print(f"📋 Filtre client par statuts: {statuts}")
+        print(f"Filtre client par statuts: {statuts}")
     
     if server_filters:
         print(f"[FILTRAGE] Filtres côté serveur: {list(server_filters.keys())}")
     if client_filters:
-        print(f"💻 Filtres côté client: {list(client_filters.keys())}")
+        print(f"Filtres côté client: {list(client_filters.keys())}")
     
     # Variables pour la requête (SIMPLIFIÉES)
     variables = {
@@ -841,7 +911,9 @@ def get_demarche_dossiers_filtered(
     # Exécution de la requête
     print(f"[RECHERCHE] Exécution requête avec filtres serveur supportés...")
     
-    response = requests.post(
+    # Exécution de la requête avec retry automatique
+    session = get_session_with_retries()  # ✅ AJOUTE CETTE LIGNE
+    response = session.post(
         API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers
@@ -852,7 +924,7 @@ def get_demarche_dossiers_filtered(
     
     if "errors" in result:
         error_messages = [error.get("message", "Unknown error") for error in result["errors"]]
-        print(f"❌ Erreurs GraphQL: {error_messages}")
+        print(f"Erreurs GraphQL: {error_messages}")
         raise Exception(f"GraphQL errors: {', '.join(error_messages)}")
     
     # Récupération avec pagination
@@ -871,11 +943,12 @@ def get_demarche_dossiers_filtered(
         
         while has_next_page:
             page_num += 1
-            print(f"📄 Page {page_num}...")
+            print(f"Page {page_num}...")
             
             variables["afterCursor"] = cursor
             
-            next_response = requests.post(
+            session = get_session_with_retries()  # ✅ AJOUTE
+            next_response = session.post(  # ✅ CHANGE requests → session
                 API_URL,
                 json={"query": query_get_demarche, "variables": variables},
                 headers=headers
@@ -885,7 +958,7 @@ def get_demarche_dossiers_filtered(
             next_result = next_response.json()
             
             if "errors" in next_result:
-                print(f"❌ Erreurs page {page_num}: {next_result['errors']}")
+                print(f"Erreurs page {page_num}: {next_result['errors']}")
                 break
             
             next_demarche = next_result["data"]["demarche"]
@@ -960,7 +1033,7 @@ def get_demarche_dossiers_filtered(
     
     # Debug : Afficher quelques exemples
     if filtered_dossiers:
-        print(f"📊 Exemples de résultats finaux:")
+        print(f"Exemples de résultats finaux:")
         for i, dossier in enumerate(filtered_dossiers[:3]):
             groupe = dossier.get('groupeInstructeur', {})
             print(f"   {i+1}. Dossier {dossier['number']}: {dossier['dateDepot'][:10]} - {dossier['state']}")
@@ -1015,7 +1088,8 @@ def test_working_filter():
         "Content-Type": "application/json"
     }
     
-    response = requests.post(
+    session = get_session_with_retries()  # ✅ AJOUTE
+    response = session.post(
         API_URL,
         json={"query": query, "variables": variables},
         headers=headers
@@ -1024,16 +1098,16 @@ def test_working_filter():
     if response.status_code == 200:
         result = response.json()
         if "errors" in result:
-            print(f"❌ Erreurs: {result['errors']}")
+            print(f"Erreurs: {result['errors']}")
         else:
             dossiers = result["data"]["demarche"]["dossiers"]["nodes"]
             print(f"[OK]SUCCESS! {len(dossiers)} dossiers après 2025-06-15")
             
             for dossier in dossiers:
                 groupe = dossier['groupeInstructeur']
-                print(f"   📁 {dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}")
+                print(f"{dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}")
     else:
-        print(f"❌ Erreur HTTP: {response.status_code}")
+        print(f"Erreur HTTP: {response.status_code}")
 
 
 if __name__ == "__main__":
@@ -1055,7 +1129,7 @@ if __name__ == "__main__":
 - groupeInstructeurNumber        # Groupe instructeur
 - states                         # Statuts des dossiers
 
-💻 SOLUTION HYBRIDE :
+SOLUTION HYBRIDE :
 1. Filtrer par date de début côté serveur (gain majeur)
 2. Filtrer le reste côté client sur le résultat réduit
 
@@ -1090,7 +1164,8 @@ def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
         "Accept": "application/json"
     }
     
-    response = requests.get(url, headers=headers)
+    session = get_session_with_retries()  # ✅ AJOUTE
+    response = session.get(url, headers=headers)
     response.raise_for_status()
     
     return response.json()
