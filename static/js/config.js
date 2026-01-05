@@ -173,8 +173,6 @@ const saveConfiguration = async () => {
   const gristKeyElement = document.getElementById('grist_api_key')
   const grist_key = gristKeyElement.value
 
-  const isUpdate = !!window.otp_config_id
-
   const config = {
     otp_config_id: window.otp_config_id || undefined,
     demarche_number: document.getElementById('demarche_number').value,
