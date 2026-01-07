@@ -263,7 +263,11 @@ def reload_scheduler_jobs():
                     replace_existing=True,
                     max_instances=1
                 )
-                logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{minute:02d} (document {otp_config.grist_doc_id})")
+                logger.info(
+                    f"Job ajouté pour schedule {schedule.id} "
+                    f"(config {schedule.otp_config_id}, démarche {otp_config.demarche_number}) "
+                    f"à {hour:02d}:{minute:02d} (document {otp_config.grist_doc_id})"
+                )
 
         finally:
             db.close()
