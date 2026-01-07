@@ -809,6 +809,47 @@ def api_groups():
         ), 400
 
 
+@app.route('/api/reload-scheduler', methods=['POST'])
+def api_reload_scheduler():
+    """Route pour recharger manuellement les jobs du scheduler"""
+    db = SessionLocal()
+    try:
+        reload_scheduler_jobs()
+
+        # Récupérer les détails des jobs
+        jobs = scheduler.get_jobs()
+        jobs_details = []
+
+        for job in jobs:
+            if job.id.startswith('scheduled_sync_'):
+                config_id = job.args[0]
+                # Récupérer les détails de la config
+                config = db.query(OtpConfiguration).filter_by(id=config_id).first()
+                if config:
+                    # Récupérer l'ID du schedule
+                    schedule = db.query(UserSchedule).filter_by(otp_config_id=config_id).first()
+                    schedule_id = schedule.id if schedule else None
+
+                    jobs_details.append({
+                        "schedule_id": schedule_id,
+                        "config_id": config_id,
+                        "demarche": config.demarche_number,
+                        "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                        "document": config.grist_doc_id
+                    })
+
+        return jsonify({
+            "success": True,
+            "message": "Scheduler rechargé avec succès",
+            "jobs": jobs_details
+        })
+    except Exception as e:
+        logger.error(f"Erreur rechargement scheduler: {str(e)}")
+        return jsonify({"success": False, "message": f"Erreur: {str(e)}"}), 500
+    finally:
+        db.close()
+
+
 @app.route('/api/start-sync', methods=['POST'])
 def api_start_sync():
     """API pour démarrer la synchronisation - Version sécurisée"""

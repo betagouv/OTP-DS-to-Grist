@@ -114,6 +114,23 @@
     </div>
 </div>
 
+<!-- Contrôles du Scheduler -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-clock fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Contrôles du Scheduler</span>
+            </h2>
+            <button id="reload-scheduler-btn" class="fr-btn fr-btn--secondary">
+                <i class="fas fa-sync fr-mr-1w" aria-hidden="true"></i>
+                Recharger le Scheduler
+            </button>
+            <div id="reload-result" class="fr-mt-3w" style="display: none;"></div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -123,6 +140,30 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Tester automatiquement WebSocket au chargement
         setTimeout(testWebSocket, 1000)
+    })
+
+    // Écouteur pour recharger le scheduler
+    document.getElementById('reload-scheduler-btn').addEventListener('click', async () => {
+        const resultDiv = document.getElementById('reload-result');
+        try {
+            const response = await fetch('/api/reload-scheduler', { method: 'POST' });
+            const data = await response.json();
+            resultDiv.style.display = 'block';
+            resultDiv.className = (data.success ? 'fr-alert fr-alert--success' : 'fr-alert fr-alert--error') + ' fr-mt-3w';
+            let html = `<p>${data.message}</p>`;
+            if (data.jobs && data.jobs.length > 0) {
+                html += '<h4>Jobs programmés :</h4><ul>';
+                data.jobs.forEach(job => {
+                    html += `<li>Schedule ${job.schedule_id} (config ${job.config_id}, démarche ${job.demarche}) : prochaine exécution ${job.next_run || 'N/A'}, document ${job.document}</li>`;
+                });
+                html += '</ul>';
+            }
+            resultDiv.innerHTML = html;
+        } catch (error) {
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'fr-alert fr-alert--error fr-mt-3w';
+            resultDiv.innerHTML = `<p>Erreur réseau: ${error.message}</p>`;
+        }
     })
 </script>
 {% endblock %}
