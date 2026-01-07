@@ -245,12 +245,15 @@ def reload_scheduler_jobs():
                     logger.warning(f"Configuration manquante pour schedule {schedule.id}, skipping")
                     continue
 
-                minute = SYNC_MINUTE + i * 5
+                total_offset = SYNC_MINUTE + i * 5
+                minute = total_offset % 60
+                hour_offset = total_offset // 60
+                hour = (SYNC_HOUR + hour_offset) % 24
                 job_id = f"scheduled_sync_{schedule.otp_config_id}"
                 scheduler.add_job(
                     func=scheduled_sync_job,
                     trigger=CronTrigger(
-                        hour=SYNC_HOUR,
+                        hour=hour,
                         minute=minute,
                         timezone=tz
                     ),
