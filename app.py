@@ -12,7 +12,7 @@ from werkzeug.serving import WSGIRequestHandler
 import logging
 import atexit
 from sqlalchemy import (create_engine)
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -22,9 +22,6 @@ from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
 from constants import DEMARCHES_API_URL
-
-
-Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler(executors={
