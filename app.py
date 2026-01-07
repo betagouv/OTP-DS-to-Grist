@@ -809,6 +809,48 @@ def api_groups():
         ), 400
 
 
+@app.route('/api/sync-report', methods=['GET'])
+def api_sync_report():
+    """Route pour récupérer le rapport des synchronisations des dernières 24h"""
+    db = SessionLocal()
+    try:
+        # Logs des dernières 24h avec jointures pour récupérer config_id, schedule_id, demarche
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        logs_query = db.query(
+            SyncLog,
+            OtpConfiguration.id.label('config_id'),
+            UserSchedule.id.label('schedule_id'),
+            OtpConfiguration.demarche_number
+        ).join(
+            OtpConfiguration,
+            (SyncLog.grist_user_id == OtpConfiguration.grist_user_id) &
+            (SyncLog.grist_doc_id == OtpConfiguration.grist_doc_id)
+        ).join(
+            UserSchedule,
+            UserSchedule.otp_config_id == OtpConfiguration.id
+        ).filter(SyncLog.timestamp >= cutoff).order_by(SyncLog.timestamp.asc()).all()
+
+        logs_data = []
+        for log, config_id, schedule_id, demarche_number in logs_query:
+            logs_data.append({
+                "timestamp": log.timestamp.isoformat(),
+                "status": log.status,
+                "message": log.message,
+                "grist_user_id": log.grist_user_id,
+                "grist_doc_id": log.grist_doc_id,
+                "config_id": config_id,
+                "schedule_id": schedule_id,
+                "demarche": demarche_number
+            })
+
+        return jsonify({"logs": logs_data})
+    except Exception as e:
+        logger.error(f"Erreur récupération rapport sync: {str(e)}")
+        return jsonify({"error": f"Erreur: {str(e)}"}), 500
+    finally:
+        db.close()
+
+
 @app.route('/api/reload-scheduler', methods=['POST'])
 def api_reload_scheduler():
     """Route pour recharger manuellement les jobs du scheduler"""

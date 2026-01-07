@@ -114,6 +114,23 @@
     </div>
 </div>
 
+<!-- Rapport des synchronisations -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-chart-line fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Rapport des synchronisations (24h)</span>
+            </h2>
+            <div id="sync-report" class="fr-mt-3w">
+                <div class="fr-alert fr-alert--info">
+                    <p>Chargement du rapport...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Contrôles du Scheduler -->
 <div class="fr-card fr-mb-4w">
     <div class="fr-card__body">
@@ -140,7 +157,39 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Tester automatiquement WebSocket au chargement
         setTimeout(testWebSocket, 1000)
+
+        // Charger le rapport des syncs
+        loadSyncReport()
     })
+
+    async function loadSyncReport() {
+        const reportDiv = document.getElementById('sync-report');
+        try {
+            const response = await fetch('/api/sync-report');
+            const data = await response.json();
+            if (data.logs && data.logs.length > 0) {
+                let html = '<table class="fr-table fr-table--no-caption"><thead><tr><th scope="col">Timestamp</th><th scope="col">Statut</th><th scope="col">Message</th><th scope="col">Config/Schedule</th><th scope="col">Démarche</th><th scope="col">User/Doc</th></tr></thead><tbody>';
+                data.logs.forEach(log => {
+                    const date = new Date(log.timestamp);
+                    const readableTimestamp = date.toLocaleString('fr-FR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    const statusClass = log.status === 'success' ? 'fr-badge fr-badge--success fr-badge--sm' : 'fr-badge fr-badge--error fr-badge--sm';
+                    html += `<tr><td>${readableTimestamp}</td><td><span class="${statusClass}">${log.status}</span></td><td>${log.message}</td><td>${log.config_id}/${log.schedule_id}</td><td>${log.demarche}</td><td>${log.grist_user_id}/${log.grist_doc_id}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                reportDiv.innerHTML = html;
+            } else {
+                reportDiv.innerHTML = '<div class="fr-alert fr-alert--info"><p>Aucune synchronisation dans les dernières 24h.</p></div>';
+            }
+        } catch (error) {
+            reportDiv.innerHTML = `<div class="fr-alert fr-alert--error"><p>Erreur de chargement du rapport: ${error.message}</p></div>`;
+        }
+    }
 
     // Écouteur pour recharger le scheduler
     document.getElementById('reload-scheduler-btn').addEventListener('click', async () => {
