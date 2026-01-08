@@ -107,7 +107,7 @@ const loadGroupes = async (otp_config_id = null) => {
       html += `<div class="fr-col-12 fr-col-md-6 fr-col-lg-4">
         <div class="fr-checkbox-group">
           <input type="checkbox" id="groupe_${number}" name="groupes" value="${number}">
-          <label class="fr-label" for="groupe_${number}">${label} (#${number})</label>
+          <label class="fr-label" for="groupe_${number}">${label}</label>
         </div>
       </div>`
     })
