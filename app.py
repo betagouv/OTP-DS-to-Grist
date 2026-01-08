@@ -846,7 +846,9 @@ def api_sync_report():
         return jsonify({"logs": logs_data})
     except Exception as e:
         logger.error(f"Erreur récupération rapport sync: {str(e)}")
-        return jsonify({"error": f"Erreur: {str(e)}"}), 500
+        return jsonify({
+            "error": "Une erreur interne est survenue lors de la récupération du rapport de synchronisation."
+        }), 500
     finally:
         db.close()
 
@@ -887,7 +889,10 @@ def api_reload_scheduler():
         })
     except Exception as e:
         logger.error(f"Erreur rechargement scheduler: {str(e)}")
-        return jsonify({"success": False, "message": f"Erreur: {str(e)}"}), 500
+        return jsonify({
+            "success": False,
+            "message": "Une erreur interne est survenue lors du rechargement du scheduler."
+        }), 500
     finally:
         db.close()
 
