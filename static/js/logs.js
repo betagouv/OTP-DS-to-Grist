@@ -106,7 +106,7 @@ const extractStatsFromLog = (message) => {
   }
 
   // Extraire le nombre d'erreurs/échecs
-  let errorMatch = message.match(/(\d+)\s+dossiers?\s+en\s+échec/i);
+  let errorMatch = message.match(/Dossiers en échec:\s*(\d+)/i);
   if (!errorMatch)
     errorMatch = message.match(/Échecs?:\s*(\d+)/i);
 
