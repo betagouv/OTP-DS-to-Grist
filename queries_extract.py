@@ -537,6 +537,7 @@ def dossier_to_flat_data(dossier_data: Dict[str, Any], exclude_repetition_champs
         "date_depot": dossier_data.get("dateDepot"),
         "date_derniere_modification": dossier_data.get("dateDerniereModification"),
         "date_traitement": dossier_data.get("dateTraitement"),
+        "date_expiration": dossier_data.get("dateExpiration"),
         # Champs de suppression (renommés)
         "date_suppression": dossier_data.get("dateSuppressionParUsager"),
         "supprime_par_usager": bool(dossier_data.get("dateSuppressionParUsager")),
