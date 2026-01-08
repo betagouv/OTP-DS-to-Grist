@@ -6,6 +6,7 @@ import sys
 import traceback
 from datetime import datetime, timezone
 
+
 class SyncTaskManager:
     """
     Gestionnaire de synchronisations asynchrones avec callbacks de notification
@@ -26,8 +27,15 @@ class SyncTaskManager:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
         return self.start_task(self.run_synchronization_task, server_config)
 
-    def run_synchronization_task(self, config, progress_callback=None, log_callback=None):
-        """Exécute la synchronisation avec callbacks pour le suivi en temps réel"""
+    def run_synchronization_task(
+            self,
+            config,
+            progress_callback=None,
+            log_callback=None
+    ):
+        """
+        Exécute la synchronisation avec callbacks pour le suivi en temps réel
+        """
         try:
             if progress_callback:
                 progress_callback(5, "Préparation de l'environnement...")
@@ -47,11 +55,14 @@ class SyncTaskManager:
                 'filter_groups': 'GROUPES_INSTRUCTEURS',
             }
 
-            # Créer une copie de l'environnement pour éviter la pollution globale
+            # Copie de l'environnement pour éviter la pollution globale
             env_copy = os.environ.copy()
 
             if progress_callback:
-                progress_callback(10, "Configuration des variables d'environnement...")
+                progress_callback(
+                    10,
+                    "Configuration des variables d'environnement..."
+                )
 
             # Mettre à jour les variables d'environnement avec les filtres
             if config.get('filter_date_start'):
@@ -72,7 +83,10 @@ class SyncTaskManager:
             os.environ.update(env_copy)
 
             if progress_callback:
-                progress_callback(20, "Chargement des données depuis Démarches Simplifiées...")
+                progress_callback(
+                    20,
+                    "Chargement des données depuis Démarches Simplifiées..."
+                )
 
             # Définir les filtres dans la copie d'environnement (pas dans l'environnement global)
             for config_key, env_key in env_mapping.items():
@@ -199,23 +213,67 @@ class SyncTaskManager:
             total_processed = 0
             errors_list = []
 
+            # Fonctions helper pour parsing
+            def _parse_success_count(line):
+                """Extrait le nombre de succès depuis une ligne de log"""
+                if "Dossiers traités avec succès:" not in line:
+                    return None, None
+
+                try:
+                    parts = line.split(":", 1)
+                    if len(parts) <= 1:
+                        return None, None
+
+                    num_str = parts[1].strip()
+                    if "/" in num_str:
+                        # Format "X/Y"
+                        success = int(num_str.split("/")[0].strip())
+                        total = int(num_str.split("/")[1].strip())
+                        return success, total
+                    else:
+                        # Format "X"
+                        success = int(num_str)
+                        return success, None
+                except (ValueError, IndexError):
+                    return None, None
+
+            def _parse_error_count(line):
+                """Extrait le nombre d'erreurs depuis une ligne de log"""
+                if "Dossiers en échec:" not in line:
+                    return None
+
+                try:
+                    parts = line.split(":", 1)
+                    if len(parts) <= 1:
+                        return None
+                    return int(parts[1].strip())
+                except (ValueError, IndexError):
+                    return None
+
             # Parser la sortie pour extraire les statistiques
             for line in process.stdout.split('\n'):
-                if "dossiers traités avec succès" in line:
-                    try:
-                        success_count = int(line.split()[0])
-                    except (ValueError, IndexError):
-                        pass
-                elif "erreurs" in line and "dossiers" in line:
-                    try:
-                        error_count = int(line.split()[0])
-                    except (ValueError, IndexError):
-                        pass
-                elif "Total dossiers traités:" in line:
+                # Essayer de parser succès
+                success_parsed, total_parsed = _parse_success_count(line)
+                if success_parsed is not None:
+                    success_count = success_parsed
+                    if total_parsed is not None:
+                        total_processed = total_parsed
+
+                # Essayer de parser erreurs
+                error_parsed = _parse_error_count(line)
+                if error_parsed is not None:
+                    error_count = error_parsed
+
+                # Essayer de parser total (si présent dans logs)
+                if "Total dossiers traités:" in line:
                     try:
                         total_processed = int(line.split(":")[1].strip())
                     except (ValueError, IndexError):
                         pass
+
+            # Calculer total si pas déjà extrait
+            if total_processed == 0:
+                total_processed = success_count + error_count
 
             if progress_callback:
                 progress_callback(95, "Finalisation...")

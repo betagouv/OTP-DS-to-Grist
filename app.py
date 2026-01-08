@@ -12,7 +12,7 @@ from werkzeug.serving import WSGIRequestHandler
 import logging
 import atexit
 from sqlalchemy import (create_engine)
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -22,9 +22,6 @@ from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
 from constants import DEMARCHES_API_URL
-
-
-Base = declarative_base()
 
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler(executors={
@@ -248,12 +245,15 @@ def reload_scheduler_jobs():
                     logger.warning(f"Configuration manquante pour schedule {schedule.id}, skipping")
                     continue
 
-                minute = SYNC_MINUTE + i * 5
+                total_offset = SYNC_MINUTE + i * 5
+                minute = total_offset % 60
+                hour_offset = total_offset // 60
+                hour = (SYNC_HOUR + hour_offset) % 24
                 job_id = f"scheduled_sync_{schedule.otp_config_id}"
                 scheduler.add_job(
                     func=scheduled_sync_job,
                     trigger=CronTrigger(
-                        hour=SYNC_HOUR,
+                        hour=hour,
                         minute=minute,
                         timezone=tz
                     ),
@@ -263,7 +263,11 @@ def reload_scheduler_jobs():
                     replace_existing=True,
                     max_instances=1
                 )
-                logger.info(f"Job ajouté pour config {schedule.otp_config_id} à {SYNC_HOUR:02d}:{minute:02d} (document {otp_config.grist_doc_id})")
+                logger.info(
+                    f"Job ajouté pour schedule {schedule.id} "
+                    f"(config {schedule.otp_config_id}, démarche {otp_config.demarche_number}) "
+                    f"à {hour:02d}:{minute:02d} (document {otp_config.grist_doc_id})"
+                )
 
         finally:
             db.close()
@@ -803,6 +807,94 @@ def api_groups():
         return jsonify(
             {'error': 'Erreur lors de la récupération des groupes'}
         ), 400
+
+
+@app.route('/api/sync-report', methods=['GET'])
+def api_sync_report():
+    """Route pour récupérer le rapport des synchronisations des dernières 24h"""
+    db = SessionLocal()
+    try:
+        # Logs des dernières 24h avec jointures pour récupérer config_id, schedule_id, demarche
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        logs_query = db.query(
+            SyncLog,
+            OtpConfiguration.id.label('config_id'),
+            UserSchedule.id.label('schedule_id'),
+            OtpConfiguration.demarche_number
+        ).join(
+            OtpConfiguration,
+            (SyncLog.grist_user_id == OtpConfiguration.grist_user_id) &
+            (SyncLog.grist_doc_id == OtpConfiguration.grist_doc_id)
+        ).join(
+            UserSchedule,
+            UserSchedule.otp_config_id == OtpConfiguration.id
+        ).filter(SyncLog.timestamp >= cutoff).order_by(SyncLog.timestamp.asc()).all()
+
+        logs_data = []
+        for log, config_id, schedule_id, demarche_number in logs_query:
+            logs_data.append({
+                "timestamp": log.timestamp.isoformat(),
+                "status": log.status,
+                "message": log.message,
+                "grist_user_id": log.grist_user_id,
+                "grist_doc_id": log.grist_doc_id,
+                "config_id": config_id,
+                "schedule_id": schedule_id,
+                "demarche": demarche_number
+            })
+
+        return jsonify({"logs": logs_data})
+    except Exception as e:
+        logger.error(f"Erreur récupération rapport sync: {str(e)}")
+        return jsonify({
+            "error": "Une erreur interne est survenue lors de la récupération du rapport de synchronisation."
+        }), 500
+    finally:
+        db.close()
+
+
+@app.route('/api/reload-scheduler', methods=['POST'])
+def api_reload_scheduler():
+    """Route pour recharger manuellement les jobs du scheduler"""
+    db = SessionLocal()
+    try:
+        reload_scheduler_jobs()
+
+        # Récupérer les détails des jobs
+        jobs = scheduler.get_jobs()
+        jobs_details = []
+
+        for job in jobs:
+            if job.id.startswith('scheduled_sync_'):
+                config_id = job.args[0]
+                # Récupérer les détails de la config
+                config = db.query(OtpConfiguration).filter_by(id=config_id).first()
+                if config:
+                    # Récupérer l'ID du schedule
+                    schedule = db.query(UserSchedule).filter_by(otp_config_id=config_id).first()
+                    schedule_id = schedule.id if schedule else None
+
+                    jobs_details.append({
+                        "schedule_id": schedule_id,
+                        "config_id": config_id,
+                        "demarche": config.demarche_number,
+                        "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                        "document": config.grist_doc_id
+                    })
+
+        return jsonify({
+            "success": True,
+            "message": "Scheduler rechargé avec succès",
+            "jobs": jobs_details
+        })
+    except Exception as e:
+        logger.error(f"Erreur rechargement scheduler: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Une erreur interne est survenue lors du rechargement du scheduler."
+        }), 500
+    finally:
+        db.close()
 
 
 @app.route('/api/start-sync', methods=['POST'])

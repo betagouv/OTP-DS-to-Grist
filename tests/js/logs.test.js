@@ -131,7 +131,7 @@ describe(
         global.successCount = 0
         global.errorCount = 0
 
-        const message = `${nbDossiers} dossiers en échec`
+        const message = `Dossiers en échec: ${nbDossiers}`
 
         extractStatsFromLog(message)
 

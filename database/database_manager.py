@@ -13,7 +13,6 @@ class DatabaseManager:
     @staticmethod
     def get_connection(database_url):
         """Établit une connexion à la base de données PostgreSQL"""
-        logger.info(f"DATABASE_URL: {database_url}")
         try:
             return psycopg2.connect(database_url)
         except Exception as e:

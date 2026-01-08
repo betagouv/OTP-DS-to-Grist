@@ -226,8 +226,8 @@ class TestSyncTaskManager:
         Table champs
         Traitement du lot 1/5
         Progression: 5/5 dossiers
-        10 dossiers traités avec succès
-        0 erreurs sur 10 dossiers
+        Dossiers traités avec succès: 10
+        Dossiers en échec: 0
         Total dossiers traités: 10
         """
         mock_process.stderr = ""
@@ -428,8 +428,8 @@ class TestSyncTaskManager:
         mock_process = MagicMock()
         mock_process.returncode = 0
         mock_process.stdout = """
-        85 dossiers traités avec succès
-        15 erreurs sur 100 dossiers
+        Dossiers traités avec succès: 85
+        Dossiers en échec: 15
         Total dossiers traités: 100
         """
         mock_process.stderr = ""
