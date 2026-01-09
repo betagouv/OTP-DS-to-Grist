@@ -540,16 +540,21 @@ def api_config():
                 # Supprimer otp_config_id du dict avant sauvegarde
                 existing_config.pop('otp_config_id', None)
                 success = config_manager.save_config(existing_config)
-                return jsonify({
-                    "success": True,
-                    "message": "Configuration mise à jour avec succès",
-                    "otp_config_id": otp_config_id
-                }) if success else jsonify(
-                    {
+
+                return (
+                    jsonify({
+                        "success": True,
+                        "message": "Configuration mise à jour avec succès",
+                        "otp_config_id": otp_config_id
+                    }),
+                    200
+                ) if success else (
+                    jsonify({
                         "success": False,
                         "message": "Erreur lors de la mise à jour"
-                    }
-                   ), 500
+                    }),
+                    500
+                )
             else:
                 # Création - champs minimum pour sauvegarde partielle
                 required_fields = [
