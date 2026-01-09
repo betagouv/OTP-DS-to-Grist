@@ -15,6 +15,7 @@
 window.config = null
 let logsVisible = false
 let currentTaskId = null
+let saveTimeout = null
 
 // ===== SOCKET.IO =====
 const socket = io()
@@ -87,34 +88,39 @@ if (document.cookie.search('welcome') === -1) {
 
 // ===== ACTIONS DE SAUVEGARDE =====
 const saveConfigAction = async () => {
-  // Tests conditionnels selon les champs renseignés
-  const dsToken = document.getElementById('ds_api_token').value
-  const dsNumber = document.getElementById('demarche_number').value
-  const gristKey = document.getElementById('grist_api_key').value
+  clearTimeout(saveTimeout)
+  saveTimeout = setTimeout(
+    async () => {
+      const dsToken = document.getElementById('ds_api_token').value
+      const dsNumber = document.getElementById('demarche_number').value
+      const gristKey = document.getElementById('grist_api_key').value
 
-  const config = await getConfiguration()
+      const config = await getConfiguration()
 
-  if ((!dsToken || !config.has_ds_token) && !dsNumber) {
-    console.log('Pas de sauvegarde sans token DN ni numéro de démarche')
-    return
-  }
+      if ((!dsToken || !config.has_ds_token) && !dsNumber) {
+        console.log('Pas de sauvegarde sans token DN ni numéro de démarche')
+        return
+      }
 
-  if (!await testDemarchesConnection(true))
-    return false
+      if (!await testDemarchesConnection(true))
+        return false
 
-  // Test connexion Grist seulement si clé présente
-  if (
-    (gristKey || config.has_grist_key)
-    && !await testGristConnection(true)
+      // Test connexion Grist seulement si clé présente
+      if (
+        (gristKey || config.has_grist_key)
+          && !await testGristConnection(true)
+      )
+        return false
+
+      await saveConfiguration()
+      await checkConfiguration()
+      const loadedConfig = await loadConfiguration()
+      window.otp_config_id = loadedConfig.otp_config_id
+
+      await loadGroupes(window.otp_config_id)
+    }
+    , 2000
   )
-    return false
-
-  await saveConfiguration()
-  await checkConfiguration()
-  const loadedConfig = await loadConfiguration()
-  window.otp_config_id = loadedConfig.otp_config_id
-
-  await loadGroupes(window.otp_config_id)
 }
 
 // ===== ACTIONS DE SAUVEGARDE AUTO =====
