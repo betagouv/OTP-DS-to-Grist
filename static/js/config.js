@@ -1,6 +1,17 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
+const getConfiguration = async () => {
+  // Récupérer le contexte Grist
+  const gristContext = await getGristContext()
+  const response = await fetch(`/api/config${gristContext.params}`)
+  if (!response.ok) {
+    throw new Error(`Erreur HTTP ${response.status}`)
+  }
+
+  return await response.json()
+}
+
 const checkConfiguration = async (silent = false) => {
   const resultDiv = document.getElementById('config_check_result')
   if (!silent) resultDiv.style.display = 'block'
@@ -9,10 +20,7 @@ const checkConfiguration = async (silent = false) => {
   syncBtn.disabled = true
 
   try {
-    // Récupérer le contexte Grist pour conditionner le chargement de la configuration
-    const gristContext = await getGristContext()
-    const response = await fetch(`/api/config${gristContext.params}`)
-    const config = await response.json()
+    const config = await getConfiguration()
 
     // Vérifier que tous les champs requis sont présents (pour sauvegarde partielle)
     const requiredFields = [
@@ -59,7 +67,6 @@ const loadConfiguration = async () => {
   try {
     // Récupérer d'abord le contexte Grist pour conditionner le chargement de la configuration
     const gristContext = await getGristContext()
-    let gristParams = gristContext.params
     let gristUserId = gristContext.userId
     let gristDocId = gristContext.docId
     let gristBaseUrl = gristContext.baseUrl
@@ -71,11 +78,10 @@ const loadConfiguration = async () => {
     // Set default base url
     document.getElementById('grist_base_url').value = gristBaseUrl || 'https://grist.numerique.gouv.fr/api'
 
-    const response = await fetch(`/api/config${gristParams}`)
-    const config = await response.json()
+    const config = await getConfiguration()
 
-    if (!response.ok)
-      throw new Error(config.message)
+    if (!config)
+      throw new Error('Configuration non trouvée')
 
     // Déterminer si une configuration a été trouvée
     const hasConfig = !!config.otp_config_id
@@ -291,6 +297,7 @@ const updateDeleteButton = () => {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    getConfiguration,
     checkConfiguration,
     loadConfiguration,
     saveConfiguration,

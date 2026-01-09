@@ -92,7 +92,7 @@ const saveConfigAction = async () => {
   const dsNumber = document.getElementById('demarche_number').value
   const gristKey = document.getElementById('grist_api_key').value
 
-  const config = await checkConfiguration()
+  const config = await getConfiguration()
 
   if ((!dsToken || !config.has_ds_token) && !dsNumber) {
     console.log('Pas de sauvegarde sans token DN ni numéro de démarche')

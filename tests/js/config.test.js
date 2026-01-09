@@ -1,13 +1,12 @@
 /** @jest-environment jsdom */
 const {
+  getConfiguration,
   checkConfiguration,
   loadConfiguration,
   saveConfiguration,
   deleteConfig,
-  updateDeleteButton,
-  saveConfigAction
+  updateDeleteButton
 } = require('../../static/js/config.js')
-const { loadGroupes } = require('../../static/js/filters.js')
 
 // Mock the module that contains showNotification
 jest.mock('../../static/js/notifications.js', () => ({
@@ -22,6 +21,60 @@ jest.mock('../../static/js/filters.js', () => ({
   resetFilters: jest.fn(),
   applyFilters: jest.fn()
 }))
+
+describe('getConfiguration', () => {
+  beforeEach(() => {
+    // Mock getGristContext
+    global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+
+    // Mock fetch
+    global.fetch = jest.fn()
+  })
+
+  it(
+    'returns config on successful fetch',
+    async () => {
+      const mockConfig = {
+        otp_config_id: 123,
+        demarche_number: 456,
+        has_ds_token: true,
+        has_grist_key: false
+      }
+
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(mockConfig)
+      })
+
+      const result = await getConfiguration()
+
+      expect(fetch).toHaveBeenCalledWith('/api/config?test=1')
+      expect(result).toEqual(mockConfig)
+    }
+  )
+
+  it(
+    'throws error on fetch failure',
+    async () => {
+      fetch.mockResolvedValue({
+        ok: false,
+        status: 500
+      })
+
+      await expect(getConfiguration()).rejects.toThrow('Erreur HTTP 500')
+    }
+  )
+
+  it(
+    'throws error on network error',
+    async () => {
+      const error = new Error('Network error')
+      fetch.mockRejectedValue(error)
+
+      await expect(getConfiguration()).rejects.toThrow('Network error')
+    }
+  )
+})
 
 describe('checkConfiguration', () => {
   beforeEach(() => {
@@ -49,6 +102,7 @@ describe('checkConfiguration', () => {
     async () => {
       // Mock réponse API valide
       fetch.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue({
           otp_config_id: 123,
           demarche_number: 123,
@@ -76,6 +130,7 @@ describe('checkConfiguration', () => {
     async () => {
       // Mock réponse API incomplète (champ manquant)
       fetch.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue({
           otp_config_id: 123,
           demarche_number: 123,
@@ -123,6 +178,7 @@ describe('checkConfiguration', () => {
     async () => {
       // Mock réponse API partielle
       fetch.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue({
           otp_config_id: 123,
           demarche_number: 123,
@@ -151,6 +207,7 @@ describe('checkConfiguration', () => {
     async () => {
       // Mock réponse API incomplète
       fetch.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue({
           otp_config_id: 123,
           demarche_number: 123,
