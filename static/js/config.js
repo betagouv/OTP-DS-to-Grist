@@ -198,7 +198,6 @@ const saveConfiguration = async () => {
 
   // Validation basique - champs minimum pour sauvegarde partielle
   const requiredFields = [
-    {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
     {key: 'demarche_number', name: 'Numéro de démarche'},
     {key: 'grist_base_url', name: 'URL de base Grist'},
     {key: 'grist_doc_id', name: 'ID du document Grist'},
