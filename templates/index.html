@@ -99,27 +99,22 @@ const saveConfigAction = async () => {
     return
   }
 
-  // Test connexion DS seulement si token présent
-  if (dsToken && dsNumber) {
-    if (!await testDemarchesConnection(true))
-      return false
-  }
+  if (!await testDemarchesConnection(true))
+    return false
 
   // Test connexion Grist seulement si clé présente
-  if (gristKey) {
-    if (!await testGristConnection(true))
-      return false
-  }
+  if (
+    (gristKey || config.has_grist_key)
+    && !await testGristConnection(true)
+  )
+    return false
 
   await saveConfiguration()
   await checkConfiguration()
   const loadedConfig = await loadConfiguration()
   window.otp_config_id = loadedConfig.otp_config_id
 
-  // Charger groupes seulement si configuration complète
-  if (loadedConfig.has_grist_key && loadedConfig.has_ds_token) {
-    await loadGroupes(window.otp_config_id)
-  }
+  await loadGroupes(window.otp_config_id)
 }
 
 // ===== ACTIONS DE SAUVEGARDE AUTO =====
