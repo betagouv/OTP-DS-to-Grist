@@ -204,6 +204,13 @@ const saveConfiguration = async () => {
     {key: 'grist_user_id', name: 'ID utilisateur Grist'}
   ]
 
+  // Vérification spécifique pour ds_api_token : obligatoire si pas en base
+  const currentConfig = await getConfiguration()
+  if (!dsToken && !currentConfig.has_ds_token) {
+    showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
+    return
+  }
+
   for (const field of requiredFields) {
     if (!config[field.key]) {
       showNotification(`Le champ "${field.name}" est requis`, 'error')

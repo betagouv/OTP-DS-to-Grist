@@ -102,6 +102,12 @@ const saveConfigAction = async () => {
         return
       }
 
+      // Vérification spécifique pour ds_api_token : obligatoire si pas en base
+      if (!dsToken && !config.has_ds_token) {
+        showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
+        return
+      }
+
       if (!await testDemarchesConnection(true))
         return false
 

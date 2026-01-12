@@ -351,7 +351,10 @@ describe('loadConfiguration', () => {
       expect(document.getElementById('grist_base_url').value).toBe('http://localhost:8484/o/docs/api')
 
       // Vérifications des appels
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors du chargement de la configuration:', error)
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'Erreur lors du chargement de la configuration:',
+        error
+      )
       expect(updateDSTokenStatus).not.toHaveBeenCalled()
       expect(updateGristKeyStatus).not.toHaveBeenCalled()
 
@@ -389,23 +392,32 @@ describe('saveConfiguration', () => {
         <div id="config_check_result"></div>
         <button id="start_sync_btn"></button>`
 
-      // Mock config
-      window.config = {
-        ds_api_token: 'old_token',
-        grist_api_key: 'old_key'
-      }
+       // Mock getGristContext
+       global.getGristContext = jest.fn().mockResolvedValue({ params: '' })
 
-      // Mock fetch
-      global.fetch = jest.fn().mockResolvedValue({
-        json: jest.fn().mockResolvedValue({ success: true })
-      })
+       // Mock fetch
+       global.fetch = jest.fn().mockImplementation((_, options) => {
+         if (options?.method === 'POST') {
+           return Promise.resolve({
+             json: () => Promise.resolve({ success: true })
+           })
+         } else {
+           return Promise.resolve({
+             ok: true,
+             json: () => Promise.resolve({ has_ds_token: false })
+           })
+         }
+       })
 
-      // Mock App
-      global.App = { showNotification: jest.fn() }
+       // Mock App
+       global.App = { showNotification: jest.fn() }
 
-      // Mock loadConfiguration
-      const mockLoadConfiguration = jest.fn()
-      global.loadConfiguration = mockLoadConfiguration
+       // Mock loadConfiguration
+       const mockLoadConfiguration = jest.fn().mockResolvedValue({
+         otp_config_id: 123,
+         has_ds_token: true
+       })
+       global.loadConfiguration = mockLoadConfiguration
 
       // Mock setTimeout
       jest.useFakeTimers()
@@ -419,7 +431,7 @@ describe('saveConfiguration', () => {
         headers: { 'Content-Type': 'application/json' }
       }))
 
-      const callArgs = fetch.mock.calls[0][1]
+      const callArgs = fetch.mock.calls[1][1]
       const body = JSON.parse(callArgs.body)
       expect(body).toEqual({
         ds_api_token: 'new_token',
@@ -434,7 +446,10 @@ describe('saveConfiguration', () => {
         filter_groups: '1'
       })
 
-      expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+      expect(showNotification).toHaveBeenCalledWith(
+        'Configuration sauvegardée avec succès',
+        'success'
+      )
     }
   )
 
@@ -458,16 +473,31 @@ describe('saveConfiguration', () => {
         <div id="config_check_result"></div>
         <button id="start_sync_btn"></button>`
 
-      // Mock fetch
-      global.fetch = jest.fn().mockResolvedValue({
-        json: jest.fn().mockResolvedValue({ success: true })
-      })
-
       // Mock App
       global.App = { showNotification: jest.fn() }
 
+      // Mock getGristContext
+      global.getGristContext = jest.fn().mockResolvedValue({ params: '' })
+
+      // Mock fetch
+      global.fetch = jest.fn().mockImplementation((url, options) => {
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            json: () => Promise.resolve({ success: true })
+          })
+        } else {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ has_ds_token: false })
+          })
+        }
+      })
+
       // Mock loadConfiguration
-      const mockLoadConfiguration = jest.fn()
+      const mockLoadConfiguration = jest.fn().mockResolvedValue({
+        otp_config_id: 123,
+        has_ds_token: false
+      })
       global.loadConfiguration = mockLoadConfiguration
 
       // Mock setTimeout
@@ -482,7 +512,7 @@ describe('saveConfiguration', () => {
         headers: { 'Content-Type': 'application/json' }
       }))
 
-      const callArgs = fetch.mock.calls[0][1]
+      const callArgs = fetch.mock.calls[1][1]
       const body = JSON.parse(callArgs.body)
       
       // Vérifier que la clé API Grist n'est pas incluse si vide
@@ -501,8 +531,10 @@ describe('saveConfiguration', () => {
 
       // Vérifier que grist_api_key n'est pas dans le body
       expect(body.grist_api_key).toBeUndefined()
-
-      expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+      expect(showNotification).toHaveBeenCalledWith(
+        'Configuration sauvegardée avec succès',
+        'success'
+      )
     }
   )
 
@@ -520,14 +552,21 @@ describe('saveConfiguration', () => {
         <input id="date_debut" value="">
         <input id="date_fin" value="">`
 
-      // Mock fetch (ne devrait pas être appelé)
-      global.fetch = jest.fn()
+      // Ni en formulaire ni en base de données
+      global.fetch = jest.fn().mockResolvedValue(
+        {
+          ok: true,
+          json: () => ({
+            has_ds_token: false
+          })
+        }
+      )
 
       // Appel
       await saveConfiguration()
 
       // Vérifications
-      expect(fetch).not.toHaveBeenCalled()
+      expect(fetch).toHaveBeenCalled()
       expect(showNotification).toHaveBeenCalledWith('Le champ "Token API Démarches Simplifiées" est requis', 'error')
     }
   )
