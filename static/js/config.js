@@ -174,11 +174,22 @@ const loadConfiguration = async () => {
   }
 }
 
+// Fonction helper pour gérer l'état des boutons
+const setButtonsDisabled = (disabled) => {
+  const startSyncBtn = document.getElementById('start_sync_btn')
+  const deleteConfigBtn = document.getElementById('delete_config_btn')
+  if (startSyncBtn) startSyncBtn.disabled = disabled
+  if (deleteConfigBtn) deleteConfigBtn.disabled = disabled
+}
+
 const saveConfiguration = async () => {
   const dsApiTokenElement = document.getElementById('ds_api_token')
   const dsToken = dsApiTokenElement.value
   const gristKeyElement = document.getElementById('grist_api_key')
   const grist_key = gristKeyElement.value
+
+  // Désactiver les boutons pendant la sauvegarde
+  setButtonsDisabled(true)
 
   const config = {
     otp_config_id: window.otp_config_id || undefined,
@@ -208,12 +219,16 @@ const saveConfiguration = async () => {
   const currentConfig = await getConfiguration()
   if (!dsToken && !currentConfig.has_ds_token) {
     showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
+    // Réactiver les boutons en cas d'erreur de validation
+    setButtonsDisabled(false)
     return
   }
 
   for (const field of requiredFields) {
     if (!config[field.key]) {
       showNotification(`Le champ "${field.name}" est requis`, 'error')
+      // Réactiver les boutons en cas d'erreur de validation
+      setButtonsDisabled(false)
       return
     }
   }
@@ -247,18 +262,24 @@ const saveConfiguration = async () => {
         gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
       }
        // Recharger la configuration pour mettre à jour les statuts
-       setTimeout(async () => {
-         const reloadedConfig = await loadConfiguration()
-         window.otp_config_id = reloadedConfig.otp_config_id
-         await loadAutoSyncState()
-         updateDeleteButton()
-       }, 500)
+        setTimeout(async () => {
+          const reloadedConfig = await loadConfiguration()
+          window.otp_config_id = reloadedConfig.otp_config_id
+          await loadAutoSyncState()
+          updateDeleteButton()
+        }, 500)
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
     }
+
+    // Réactiver les boutons après succès ou erreur
+    setButtonsDisabled(false)
+
   } catch (error) {
     console.error('Erreur:', error)
     showNotification('Erreur lors de la sauvegarde', 'error')
+    // Réactiver les boutons en cas d'exception
+    setButtonsDisabled(false)
   }
 }
 
