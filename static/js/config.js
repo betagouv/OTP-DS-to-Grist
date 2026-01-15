@@ -291,6 +291,9 @@ const deleteConfig = async (configId = null) => {
   const confirmed = confirm('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
   if (!confirmed) return
 
+  // Annuler toute sauvegarde auto en cours pour éviter les conflits
+  clearTimeout(window.saveTimeout)
+
   try {
     const response = await fetch(`/api/config/${configId}`, {
       method: 'DELETE'
