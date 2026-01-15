@@ -157,6 +157,14 @@ const updateTaskProgress = (task) => {
     logsCount = task.logs.length
     document.getElementById('logs_count').textContent = logsCount
 
+    // Afficher le bouton de copie si des logs existent
+    const copyBtn = document.getElementById('copy_logs_btn')
+    if (logsCount > 0) {
+      copyBtn.style.display = 'inline-block'
+    } else {
+      copyBtn.style.display = 'none'
+    }
+
     // Auto-scroll vers le bas si les logs sont visibles
     if (logsVisible)
       logsContent.scrollTop = logsContent.scrollHeight
