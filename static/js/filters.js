@@ -18,11 +18,10 @@ const resetFilters = async () => {
   // Masquer les filtres actifs
   document.getElementById('active_filters').style.display = 'none'
 
-  showNotification('Filtres réinitialisés', 'info')
-
   // Sauvegarder la configuration sans filtres
   try {
     await saveConfiguration()
+    showNotification('Filtres réinitialisés', 'info')
   } catch (error) {
     console.error('Erreur lors de la sauvegarde après reset des filtres:', error)
     showNotification('Erreur lors de la sauvegarde des filtres réinitialisés', 'error')
