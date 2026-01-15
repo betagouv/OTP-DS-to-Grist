@@ -326,6 +326,9 @@ const updateDeleteButton = () => {
   }
 }
 
+// Exposer globalement pour accès depuis templates
+window.setButtonsDisabled = setButtonsDisabled
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getConfiguration,
