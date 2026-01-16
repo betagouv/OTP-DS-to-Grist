@@ -64,10 +64,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Charger la configuration et groupes
-  const loadedConfig = await loadConfiguration()
-  window.otp_config_id = loadedConfig.otp_config_id
+  window.otp_config_id = checkedConfig.otp_config_id
   updateDeleteButton()
-  loadGroupes(window.otp_config_id)
+  await loadGroupes(window.otp_config_id)
+  await loadConfiguration()
 
   // Focus sur le premier champ si vide
   if (!window.otp_config_id) {
@@ -121,11 +121,12 @@ const saveConfigAction = async () => {
            return setButtonsDisabled(false)
 
          await saveConfiguration()
-         await checkConfiguration()
-         const loadedConfig = await loadConfiguration()
-         window.otp_config_id = loadedConfig.otp_config_id
+         const checkedConfig = await checkConfiguration()
+         window.otp_config_id = checkedConfig.otp_config_id
 
          await loadGroupes(window.otp_config_id)
+         await loadConfiguration()
+
        } finally {
          setButtonsDisabled(false)
        }
