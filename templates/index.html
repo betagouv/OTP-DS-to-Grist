@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Charger la configuration et groupes
-  window.otp_config_id = checkedConfig.otp_config_id
+  window.otp_config_id = checkedConfig?.otp_config_id
   updateDeleteButton()
   await loadGroupes(window.otp_config_id)
   await loadConfiguration()
@@ -137,6 +137,9 @@ const saveConfigAction = async () => {
 
 // ===== ACTIONS DE SAUVEGARDE AUTO =====
 const form = document.querySelector('form')
-form.addEventListener('input', saveConfigAction)
+form.addEventListener('input', () => {
+  updateButtonsState()
+  saveConfigAction()
+})
 </script>
 {% endblock %}

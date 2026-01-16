@@ -12,15 +12,40 @@ const getConfiguration = async () => {
   return await response.json()
 }
 
+const updateButtonsState = () => {
+  const demarcheElement = document.getElementById('demarche_number')
+  const dsTokenElement  = document.getElementById('ds_api_token')
+  const gristKeyElement = document.getElementById('grist_api_key')
+  const startBtn        = document.getElementById('start_sync_btn')
+
+  if (
+    !demarcheElement
+    || !dsTokenElement
+    || !gristKeyElement
+    || !startBtn
+  ) return
+
+  const demarche = demarcheElement.value
+  const dsToken = dsTokenElement.value
+  const gristKey = gristKeyElement.value.trim()
+  const dsOk = dsToken || window.has_ds_token
+  const gristOk = gristKey || window.has_grist_key
+
+  startBtn.disabled = !(demarche && dsOk && gristOk)
+}
+
 const checkConfiguration = async (silent = false) => {
   const resultDiv = document.getElementById('config_check_result')
   if (!silent) resultDiv.style.display = 'block'
 
-  const syncBtn   = document.getElementById('start_sync_btn')
+  const syncBtn    = document.getElementById('start_sync_btn')
   syncBtn.disabled = true
 
   try {
     const config = await getConfiguration()
+
+    window.has_ds_token = config.has_ds_token
+    window.has_grist_key = config.has_grist_key
 
     // Vérifier que tous les champs requis sont présents (pour sauvegarde partielle)
     const requiredFields = [
@@ -49,12 +74,13 @@ const checkConfiguration = async (silent = false) => {
         <h3 class="fr-alert__title">Configuration complète</h3>
         <p>Démarche ${config.demarche_number} → Document Grist ${config.grist_doc_id}</p>
       </div>`
-    syncBtn.disabled = false
+
+    updateButtonsState()
 
     return config
   } catch (error) {
     console.error('Erreur lors de la vérification de la configuration:', error)
-    syncBtn.disabled = true
+    updateButtonsState()
     resultDiv.innerHTML = `
       <div class="fr-alert fr-alert--error">
         <h3 class="fr-alert__title">Erreur lors de la vérification</h3>
@@ -158,6 +184,9 @@ const loadConfiguration = async () => {
       document.querySelector('#accordion-grist').setAttribute('aria-expanded', true)
     }
 
+    window.has_ds_token = config.has_ds_token
+    window.has_grist_key = config.has_grist_key
+
     // Afficher le résumé des filtres actifs si présents
     const hasActiveFilters = document.getElementById('date_debut').value ||
                              document.getElementById('date_fin').value ||
@@ -167,6 +196,7 @@ const loadConfiguration = async () => {
       applyFilters()
     }
 
+    updateButtonsState()
     return config
   } catch (error) {
     console.error('Erreur lors du chargement de la configuration:', error)
