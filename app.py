@@ -11,6 +11,8 @@ import requests
 from werkzeug.serving import WSGIRequestHandler
 import logging
 import atexit
+import subprocess
+import re
 from sqlalchemy import (create_engine)
 from sqlalchemy.orm import sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -472,6 +474,52 @@ def get_available_groups(api_token, demarche_number):
 @app.context_processor
 def inject_build_time():
     return dict(build_time=datetime.now())
+
+
+@app.context_processor
+def inject_version_info():
+    def get_changelog_anchor(version):
+        anchor = f"{version.replace('.', '')}"
+
+        try:
+            with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            for line in content.splitlines():
+                if not line.startswith(f'## [{version}]'):
+                    continue
+
+                match = re.search(r'\((\d{4}-\d{2}-\d{2})\)', line)
+                if not match:
+                    continue
+
+                date = match.group(1)
+                anchor = f"{version.replace('.', '')}-{date}"
+                break
+        except Exception:
+            pass
+
+        return anchor
+
+    try:
+        result = subprocess.run(
+            ['git', 'describe', '--tags', '--abbrev=0'],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=os.path.dirname(__file__)
+        )
+        tag = result.stdout.strip()
+        version_clean = tag[1:] if tag.startswith('v') else tag
+        anchor = get_changelog_anchor(version_clean)
+
+        base_url = "https://github.com/betagouv/OTP-DS-to-Grist/blob/main/CHANGELOG.md"
+        release_url = f"{base_url}#{anchor}"
+        version_display = f"v {version_clean}"
+
+        return dict(version_display=version_display, release_url=release_url)
+    except Exception:
+        return dict(version_display="v inconnu", release_url="#")
 
 
 @app.route('/')
