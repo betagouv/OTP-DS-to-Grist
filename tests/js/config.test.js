@@ -81,7 +81,19 @@ describe('checkConfiguration', () => {
     // Setup DOM simulé
     document.body.innerHTML = `
       <div id="config_check_result"></div>
-      <button id="start_sync_btn"></button>`
+      <button id="start_sync_btn"></button>
+      <input id="demarche_number">
+      <input id="ds_api_token">
+      <input id="grist_api_key">`
+
+    // Set values explicitly
+    document.getElementById('demarche_number').value = '123'
+    document.getElementById('ds_api_token').value = ''
+    document.getElementById('grist_api_key').value = 'key'
+
+    // Reset window properties
+    window.has_ds_token = undefined
+    window.has_grist_key = undefined
 
     // Mock getGristContext
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
@@ -95,6 +107,7 @@ describe('checkConfiguration', () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore() // Restaure console.log
+    jest.clearAllTimers()
   })
 
   it(
