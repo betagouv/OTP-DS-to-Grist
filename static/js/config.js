@@ -1,24 +1,59 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
+const getConfiguration = async () => {
+  // Récupérer le contexte Grist
+  const gristContext = await getGristContext()
+  const response = await fetch(`/api/config${gristContext.params}`)
+  if (!response.ok) {
+    throw new Error(`Erreur HTTP ${response.status}`)
+  }
+
+  return await response.json()
+}
+
+const updateButtonsState = () => {
+  const demarcheElement = document.getElementById('demarche_number')
+  const dsTokenElement  = document.getElementById('ds_api_token')
+  const gristKeyElement = document.getElementById('grist_api_key')
+  const startBtn        = document.getElementById('start_sync_btn')
+
+  if (
+    !demarcheElement
+    || !dsTokenElement
+    || !gristKeyElement
+    || !startBtn
+  ) return
+
+  const demarche = demarcheElement.value
+  const dsToken = dsTokenElement.value
+  const gristKey = gristKeyElement.value.trim()
+  const dsOk = dsToken || window.has_ds_token
+  const gristOk = gristKey || window.has_grist_key
+
+  startBtn.disabled = !(demarche && dsOk && gristOk)
+}
+
 const checkConfiguration = async (silent = false) => {
   const resultDiv = document.getElementById('config_check_result')
   if (!silent) resultDiv.style.display = 'block'
-  const syncBtn   = document.getElementById('start_sync_btn')
+
+  const syncBtn    = document.getElementById('start_sync_btn')
   syncBtn.disabled = true
 
   try {
-    // Récupérer le contexte Grist pour conditionner le chargement de la configuration
-    const gristContext = await getGristContext()
-    const response = await fetch(`/api/config${gristContext.params}`)
-    const config = await response.json()
+    const config = await getConfiguration()
 
-    // Vérifier que tous les champs requis sont présents
+    window.has_ds_token = config.has_ds_token
+    window.has_grist_key = config.has_grist_key
+
+    // Vérifier que tous les champs requis sont présents (pour sauvegarde partielle)
     const requiredFields = [
       'has_ds_token',
       'demarche_number',
       'grist_base_url',
-      'has_grist_key',
+      'grist_doc_id',
+      'grist_user_id'
     ]
 
     const missingFields = requiredFields.filter(field => !config[field])
@@ -39,12 +74,13 @@ const checkConfiguration = async (silent = false) => {
         <h3 class="fr-alert__title">Configuration complète</h3>
         <p>Démarche ${config.demarche_number} → Document Grist ${config.grist_doc_id}</p>
       </div>`
-    syncBtn.disabled = false
+
+    updateButtonsState()
 
     return config
   } catch (error) {
     console.error('Erreur lors de la vérification de la configuration:', error)
-    syncBtn.disabled = true
+    updateButtonsState()
     resultDiv.innerHTML = `
       <div class="fr-alert fr-alert--error">
         <h3 class="fr-alert__title">Erreur lors de la vérification</h3>
@@ -57,7 +93,6 @@ const loadConfiguration = async () => {
   try {
     // Récupérer d'abord le contexte Grist pour conditionner le chargement de la configuration
     const gristContext = await getGristContext()
-    let gristParams = gristContext.params
     let gristUserId = gristContext.userId
     let gristDocId = gristContext.docId
     let gristBaseUrl = gristContext.baseUrl
@@ -69,11 +104,10 @@ const loadConfiguration = async () => {
     // Set default base url
     document.getElementById('grist_base_url').value = gristBaseUrl || 'https://grist.numerique.gouv.fr/api'
 
-    const response = await fetch(`/api/config${gristParams}`)
-    const config = await response.json()
+    const config = await getConfiguration()
 
-    if (!response.ok)
-      throw new Error(config.message)
+    if (!config)
+      throw new Error('Configuration non trouvée')
 
     // Déterminer si une configuration a été trouvée
     const hasConfig = !!config.otp_config_id
@@ -150,6 +184,9 @@ const loadConfiguration = async () => {
       document.querySelector('#accordion-grist').setAttribute('aria-expanded', true)
     }
 
+    window.has_ds_token = config.has_ds_token
+    window.has_grist_key = config.has_grist_key
+
     // Afficher le résumé des filtres actifs si présents
     const hasActiveFilters = document.getElementById('date_debut').value ||
                              document.getElementById('date_fin').value ||
@@ -159,11 +196,20 @@ const loadConfiguration = async () => {
       applyFilters()
     }
 
+    updateButtonsState()
     return config
   } catch (error) {
     console.error('Erreur lors du chargement de la configuration:', error)
     showNotification(`Erreur lors du chargement de la configuration : ${error.message}`, 'error')
   }
+}
+
+// Fonction helper pour gérer l'état des boutons
+const setButtonsDisabled = (disabled) => {
+  const startSyncBtn = document.getElementById('start_sync_btn')
+  const deleteConfigBtn = document.getElementById('delete_config_btn')
+  if (startSyncBtn) startSyncBtn.disabled = disabled
+  if (deleteConfigBtn) deleteConfigBtn.disabled = disabled
 }
 
 const saveConfiguration = async () => {
@@ -172,7 +218,8 @@ const saveConfiguration = async () => {
   const gristKeyElement = document.getElementById('grist_api_key')
   const grist_key = gristKeyElement.value
 
-  const isUpdate = !!window.otp_config_id
+  // Désactiver les boutons pendant la sauvegarde
+  setButtonsDisabled(true)
 
   const config = {
     otp_config_id: window.otp_config_id || undefined,
@@ -190,7 +237,7 @@ const saveConfiguration = async () => {
   if (dsToken) config.ds_api_token = dsToken
   if (grist_key) config.grist_api_key = grist_key
 
-  // Validation basique
+  // Validation basique - champs minimum pour sauvegarde partielle
   const requiredFields = [
     {key: 'demarche_number', name: 'Numéro de démarche'},
     {key: 'grist_base_url', name: 'URL de base Grist'},
@@ -198,22 +245,26 @@ const saveConfiguration = async () => {
     {key: 'grist_user_id', name: 'ID utilisateur Grist'}
   ]
 
-  if (!isUpdate) {
-    // Pour création, requérir tokens
-    requiredFields.push(
-      {key: 'ds_api_token', name: 'Token API Démarches Simplifiées'},
-      {key: 'grist_api_key', name: 'Clé API Grist'}
-    )
-  }
+  try {
+    // Vérification spécifique pour ds_api_token : obligatoire si pas en base
+    const currentConfig = await getConfiguration() //
 
-  for (const field of requiredFields) {
-    if (!config[field.key]) {
-      showNotification(`Le champ "${field.name}" est requis`, 'error')
+    if (!dsToken && !currentConfig.has_ds_token) {
+      showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
+      // Réactiver les boutons en cas d'erreur de validation
+      setButtonsDisabled(false)
       return
     }
-  }
 
-  try {
+    for (const field of requiredFields) {
+      if (!config[field.key]) {
+        showNotification(`Le champ "${field.name}" est requis`, 'error')
+        // Réactiver les boutons en cas d'erreur de validation
+        setButtonsDisabled(false)
+        return
+      }
+    }
+
     const response = await fetch('/api/config', {
       method: 'POST',
       headers: {
@@ -242,18 +293,24 @@ const saveConfiguration = async () => {
         gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
       }
        // Recharger la configuration pour mettre à jour les statuts
-       setTimeout(async () => {
-         const reloadedConfig = await loadConfiguration()
-         window.otp_config_id = reloadedConfig.otp_config_id
-         await loadAutoSyncState()
-         updateDeleteButton()
-       }, 500)
+        setTimeout(async () => {
+          const reloadedConfig = await loadConfiguration()
+          window.otp_config_id = reloadedConfig.otp_config_id
+          await loadAutoSyncState()
+          updateDeleteButton()
+        }, 500)
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
     }
+
+    // Réactiver les boutons après succès ou erreur
+    setButtonsDisabled(false)
+
   } catch (error) {
     console.error('Erreur:', error)
     showNotification('Erreur lors de la sauvegarde', 'error')
+    // Réactiver les boutons en cas d'exception
+    setButtonsDisabled(false)
   }
 }
 
@@ -263,6 +320,9 @@ const deleteConfig = async (configId = null) => {
 
   const confirmed = confirm('Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.')
   if (!confirmed) return
+
+  // Annuler toute sauvegarde auto en cours pour éviter les conflits
+  clearTimeout(window.saveTimeout)
 
   try {
     const response = await fetch(`/api/config/${configId}`, {
@@ -296,8 +356,12 @@ const updateDeleteButton = () => {
   }
 }
 
+// Exposer globalement pour accès depuis templates
+window.setButtonsDisabled = setButtonsDisabled
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    getConfiguration,
     checkConfiguration,
     loadConfiguration,
     saveConfiguration,

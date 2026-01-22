@@ -1,13 +1,12 @@
 /** @jest-environment jsdom */
 const {
+  getConfiguration,
   checkConfiguration,
   loadConfiguration,
   saveConfiguration,
   deleteConfig,
-  updateDeleteButton,
-  saveConfigAction
+  updateDeleteButton
 } = require('../../static/js/config.js')
-const { loadGroupes } = require('../../static/js/filters.js')
 
 // Mock the module that contains showNotification
 jest.mock('../../static/js/notifications.js', () => ({
@@ -23,12 +22,78 @@ jest.mock('../../static/js/filters.js', () => ({
   applyFilters: jest.fn()
 }))
 
+describe('getConfiguration', () => {
+  beforeEach(() => {
+    // Mock getGristContext
+    global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+
+    // Mock fetch
+    global.fetch = jest.fn()
+  })
+
+  it(
+    'returns config on successful fetch',
+    async () => {
+      const mockConfig = {
+        otp_config_id: 123,
+        demarche_number: 456,
+        has_ds_token: true,
+        has_grist_key: false
+      }
+
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue(mockConfig)
+      })
+
+      const result = await getConfiguration()
+
+      expect(fetch).toHaveBeenCalledWith('/api/config?test=1')
+      expect(result).toEqual(mockConfig)
+    }
+  )
+
+  it(
+    'throws error on fetch failure',
+    async () => {
+      fetch.mockResolvedValue({
+        ok: false,
+        status: 500
+      })
+
+      await expect(getConfiguration()).rejects.toThrow('Erreur HTTP 500')
+    }
+  )
+
+  it(
+    'throws error on network error',
+    async () => {
+      const error = new Error('Network error')
+      fetch.mockRejectedValue(error)
+
+      await expect(getConfiguration()).rejects.toThrow('Network error')
+    }
+  )
+})
+
 describe('checkConfiguration', () => {
   beforeEach(() => {
     // Setup DOM simulé
     document.body.innerHTML = `
       <div id="config_check_result"></div>
-      <button id="start_sync_btn"></button>`
+      <button id="start_sync_btn"></button>
+      <input id="demarche_number">
+      <input id="ds_api_token">
+      <input id="grist_api_key">`
+
+    // Set values explicitly
+    document.getElementById('demarche_number').value = '123'
+    document.getElementById('ds_api_token').value = ''
+    document.getElementById('grist_api_key').value = 'key'
+
+    // Reset window properties
+    window.has_ds_token = undefined
+    window.has_grist_key = undefined
 
     // Mock getGristContext
     global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
@@ -42,6 +107,7 @@ describe('checkConfiguration', () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore() // Restaure console.log
+    jest.clearAllTimers()
   })
 
   it(
@@ -49,11 +115,13 @@ describe('checkConfiguration', () => {
     async () => {
       // Mock réponse API valide
       fetch.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue({
           otp_config_id: 123,
           demarche_number: 123,
           grist_base_url: 'url',
           grist_doc_id: 'doc',
+          grist_user_id: 'user',
           has_ds_token: true,
           has_grist_key: true
         })
@@ -75,6 +143,7 @@ describe('checkConfiguration', () => {
     async () => {
       // Mock réponse API incomplète (champ manquant)
       fetch.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue({
           otp_config_id: 123,
           demarche_number: 123,
@@ -114,6 +183,65 @@ describe('checkConfiguration', () => {
       expect(document.getElementById('start_sync_btn').disabled).toBe(true)
       expect(showNotification).not.toHaveBeenCalled() // Erreur gérée dans le DOM
       expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la vérification de la configuration:', error)
+    }
+  )
+
+  it(
+    'configuration partielle valide (sans clé Grist)',
+    async () => {
+      // Mock réponse API partielle
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          otp_config_id: 123,
+          demarche_number: 123,
+          grist_base_url: 'https://grist.numerique.gouv.fr/api',
+          grist_doc_id: 'doc123',
+          grist_user_id: 'user123',
+          has_ds_token: true,
+          has_grist_key: false // Manquant mais acceptable
+        })
+      })
+
+      // Appel de la fonction
+      await checkConfiguration()
+
+      // Vérifications
+      const resultDiv = document.getElementById('config_check_result')
+      expect(resultDiv.innerHTML).toContain('Configuration complète')
+      expect(document.getElementById('start_sync_btn').disabled).toBe(false)
+      expect(showNotification).not.toHaveBeenCalled()
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'configuration partielle invalide (manque token DS)',
+    async () => {
+      // Mock réponse API incomplète
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          otp_config_id: 123,
+          demarche_number: 123,
+          grist_base_url: 'https://grist.numerique.gouv.fr/api',
+          grist_doc_id: 'doc123',
+          grist_user_id: 'user123',
+          has_ds_token: false, // Manquant
+          has_grist_key: true
+        })
+      })
+
+      // Appel de la fonction
+      await checkConfiguration()
+
+      // Vérifications
+      const resultDiv = document.getElementById('config_check_result')
+      expect(resultDiv.innerHTML).toContain('Configuration incomplète')
+      expect(resultDiv.innerHTML).toContain('has_ds_token') // Champ manquant listé
+      expect(document.getElementById('start_sync_btn').disabled).toBe(true)
+      expect(showNotification).not.toHaveBeenCalled()
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
     }
   )
 })
@@ -236,7 +364,10 @@ describe('loadConfiguration', () => {
       expect(document.getElementById('grist_base_url').value).toBe('http://localhost:8484/o/docs/api')
 
       // Vérifications des appels
-      expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors du chargement de la configuration:', error)
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'Erreur lors du chargement de la configuration:',
+        error
+      )
       expect(updateDSTokenStatus).not.toHaveBeenCalled()
       expect(updateGristKeyStatus).not.toHaveBeenCalled()
 
@@ -274,23 +405,32 @@ describe('saveConfiguration', () => {
         <div id="config_check_result"></div>
         <button id="start_sync_btn"></button>`
 
-      // Mock config
-      window.config = {
-        ds_api_token: 'old_token',
-        grist_api_key: 'old_key'
-      }
+       // Mock getGristContext
+       global.getGristContext = jest.fn().mockResolvedValue({ params: '' })
 
-      // Mock fetch
-      global.fetch = jest.fn().mockResolvedValue({
-        json: jest.fn().mockResolvedValue({ success: true })
-      })
+       // Mock fetch
+       global.fetch = jest.fn().mockImplementation((_, options) => {
+         if (options?.method === 'POST') {
+           return Promise.resolve({
+             json: () => Promise.resolve({ success: true })
+           })
+         } else {
+           return Promise.resolve({
+             ok: true,
+             json: () => Promise.resolve({ has_ds_token: false })
+           })
+         }
+       })
 
-      // Mock App
-      global.App = { showNotification: jest.fn() }
+       // Mock App
+       global.App = { showNotification: jest.fn() }
 
-      // Mock loadConfiguration
-      const mockLoadConfiguration = jest.fn()
-      global.loadConfiguration = mockLoadConfiguration
+       // Mock loadConfiguration
+       const mockLoadConfiguration = jest.fn().mockResolvedValue({
+         otp_config_id: 123,
+         has_ds_token: true
+       })
+       global.loadConfiguration = mockLoadConfiguration
 
       // Mock setTimeout
       jest.useFakeTimers()
@@ -304,7 +444,7 @@ describe('saveConfiguration', () => {
         headers: { 'Content-Type': 'application/json' }
       }))
 
-      const callArgs = fetch.mock.calls[0][1]
+      const callArgs = fetch.mock.calls[1][1]
       const body = JSON.parse(callArgs.body)
       expect(body).toEqual({
         ds_api_token: 'new_token',
@@ -319,7 +459,128 @@ describe('saveConfiguration', () => {
         filter_groups: '1'
       })
 
-      expect(showNotification).toHaveBeenCalledWith('Configuration sauvegardée avec succès', 'success')
+      expect(showNotification).toHaveBeenCalledWith(
+        'Configuration sauvegardée avec succès',
+        'success'
+      )
+    }
+  )
+
+  it(
+    'sauvegarde partielle sans clé API Grist',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `
+        <input id="ds_api_token" value="test_token">
+        <input id="demarche_number" value="123">
+        <input id="grist_base_url" value="https://grist.numerique.gouv.fr/api">
+        <input id="grist_api_key" value=""> <!-- Vide pour sauvegarde partielle -->
+        <input id="grist_doc_id" value="doc123">
+        <input id="grist_user_id" value="5">
+        <input id="date_debut" value="2023-01-01">
+        <input id="date_fin" value="2023-12-31">
+        <input type="checkbox" name="statuts" value="en_construction" checked>
+        <input type="checkbox" name="groupes" value="1" checked>
+        <div id="ds_token_status"></div>
+        <div id="grist_key_status"></div>
+        <div id="config_check_result"></div>
+        <button id="start_sync_btn"></button>`
+
+      // Mock App
+      global.App = { showNotification: jest.fn() }
+
+      // Mock getGristContext
+      global.getGristContext = jest.fn().mockResolvedValue({ params: '' })
+
+      // Mock fetch
+      global.fetch = jest.fn().mockImplementation((url, options) => {
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            json: () => Promise.resolve({ success: true })
+          })
+        } else {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ has_ds_token: false })
+          })
+        }
+      })
+
+      // Mock loadConfiguration
+      const mockLoadConfiguration = jest.fn().mockResolvedValue({
+        otp_config_id: 123,
+        has_ds_token: false
+      })
+      global.loadConfiguration = mockLoadConfiguration
+
+      // Mock setTimeout
+      jest.useFakeTimers()
+
+      // Appel
+      await saveConfiguration()
+
+      // Vérifications
+      expect(fetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }))
+
+      const callArgs = fetch.mock.calls[1][1]
+      const body = JSON.parse(callArgs.body)
+      
+      // Vérifier que la clé API Grist n'est pas incluse si vide
+      expect(body).toEqual({
+        otp_config_id: undefined,
+        ds_api_token: 'test_token',
+        demarche_number: '123',
+        grist_base_url: 'https://grist.numerique.gouv.fr/api',
+        grist_doc_id: 'doc123',
+        grist_user_id: '5',
+        filter_date_start: '2023-01-01',
+        filter_date_end: '2023-12-31',
+        filter_statuses: 'en_construction',
+        filter_groups: '1'
+      })
+
+      // Vérifier que grist_api_key n'est pas dans le body
+      expect(body.grist_api_key).toBeUndefined()
+      expect(showNotification).toHaveBeenCalledWith(
+        'Configuration sauvegardée avec succès',
+        'success'
+      )
+    }
+  )
+
+  it(
+    'échec sauvegarde si champ minimum manquant',
+    async () => {
+      // Setup DOM simulé
+      document.body.innerHTML = `
+        <input id="ds_api_token" value=""> <!-- Manquant -->
+        <input id="demarche_number" value="123">
+        <input id="grist_base_url" value="https://grist.numerique.gouv.fr/api">
+        <input id="grist_api_key" value="">
+        <input id="grist_doc_id" value="doc123">
+        <input id="grist_user_id" value="5">
+        <input id="date_debut" value="">
+        <input id="date_fin" value="">`
+
+      // Ni en formulaire ni en base de données
+      global.fetch = jest.fn().mockResolvedValue(
+        {
+          ok: true,
+          json: () => ({
+            has_ds_token: false
+          })
+        }
+      )
+
+      // Appel
+      await saveConfiguration()
+
+      // Vérifications
+      expect(fetch).toHaveBeenCalled()
+      expect(showNotification).toHaveBeenCalledWith('Le champ "Token API Démarches Simplifiées" est requis', 'error')
     }
   )
 })

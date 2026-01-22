@@ -3,8 +3,10 @@
 {% block title %}Accueil - 🦄 One Trick Pony DN to Grist{% endblock %}
 
 {% block content %}
-{% include 'configuration.html' %}
-{% include 'execution.html' %}
+<form id="config-form">
+  {% include 'configuration.html' %}
+  {% include 'execution.html' %}
+</form>
 {% endblock %}
 
 {% block scripts %}
@@ -13,6 +15,7 @@
 window.config = null
 let logsVisible = false
 let currentTaskId = null
+window.saveTimeout = null
 
 // ===== SOCKET.IO =====
 const socket = io()
@@ -34,9 +37,6 @@ socket.on('task_update', function(data) {
       currentTaskId = null
     }
   }
-})
-
-document.addEventListener('DOMContentLoaded', () => {
 })
 
 // ===== INITIALISATION DE LA PAGE =====
@@ -64,17 +64,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Charger la configuration et groupes
-  const loadedConfig = await loadConfiguration()
-  window.otp_config_id = loadedConfig.otp_config_id
+  window.otp_config_id = checkedConfig?.otp_config_id
   updateDeleteButton()
-  loadGroupes(window.otp_config_id)
-
-  // Initialiser les listeners automatiques pour les filtres
-  document.getElementById('date_debut').addEventListener('change', applyFilters)
-  document.getElementById('date_fin').addEventListener('change', applyFilters)
-  document.querySelectorAll('input[name="statuts"]').forEach(el => {
-    el.addEventListener('change', applyFilters)
-  })
+  await loadGroupes(window.otp_config_id)
+  await loadConfiguration()
 
   // Focus sur le premier champ si vide
   if (!window.otp_config_id) {
@@ -95,17 +88,58 @@ if (document.cookie.search('welcome') === -1) {
 
 // ===== ACTIONS DE SAUVEGARDE =====
 const saveConfigAction = async () => {
-  if (!await testGristConnection(true))
-    return false
+  setButtonsDisabled(true)
+  clearTimeout(saveTimeout)
+  saveTimeout = setTimeout(
+     async () => {
+       try {
+         const dsToken = document.getElementById('ds_api_token').value
+         const dsNumber = document.getElementById('demarche_number').value
+         const gristKey = document.getElementById('grist_api_key').value
 
-  if (!await testDemarchesConnection(true))
-    return false
+         const config = await getConfiguration()
 
-  await saveConfiguration()
-  await checkConfiguration()
-  const loadedConfig = await loadConfiguration()
-  window.otp_config_id = loadedConfig.otp_config_id
-  await loadGroupes(window.otp_config_id)
+         if ((!dsToken || !config.has_ds_token) && !dsNumber) {
+           console.log('Pas de sauvegarde sans token DN ni numéro de démarche')
+           return setButtonsDisabled(false)
+         }
+
+         // Vérification spécifique pour ds_api_token : obligatoire si pas en base
+         if (!dsToken && !config.has_ds_token) {
+           showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
+           return setButtonsDisabled(false)
+         }
+
+         if (!await testDemarchesConnection(true))
+           return setButtonsDisabled(false)
+
+         // Test connexion Grist seulement si clé présente
+         if (
+           (gristKey || config.has_grist_key)
+             && !await testGristConnection(true)
+         )
+           return setButtonsDisabled(false)
+
+         await saveConfiguration()
+         const checkedConfig = await checkConfiguration()
+         window.otp_config_id = checkedConfig.otp_config_id
+
+         await loadGroupes(window.otp_config_id)
+         await loadConfiguration()
+
+       } finally {
+         setButtonsDisabled(false)
+       }
+     }
+    , 1500
+  )
 }
+
+// ===== ACTIONS DE SAUVEGARDE AUTO =====
+const form = document.querySelector('form')
+form.addEventListener('input', () => {
+  updateButtonsState()
+  saveConfigAction()
+})
 </script>
 {% endblock %}

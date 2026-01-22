@@ -226,6 +226,13 @@ class ConfigManager:
                 if not grist_user_id or not grist_doc_id:
                     raise Exception("No grist user id or doc id")
 
+                # Validation des champs requis pour sauvegarde partielle
+                required_fields = ['ds_api_token', 'demarche_number', 'grist_base_url']
+                for field in required_fields:
+                    if not config.get(field):
+                        logger.error(f"Champ requis manquant: {field}")
+                        return False
+
                 # Vérifier si la configuration existe
                 cursor.execute("""
                     SELECT COUNT(*) FROM otp_configurations
