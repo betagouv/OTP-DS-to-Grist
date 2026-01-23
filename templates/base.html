@@ -206,6 +206,10 @@
           text-decoration: none;
           background-image: none;
         }
+
+        .fr-header__brand .fr-badge--info:before {
+          display: none;
+        }
     </style>
 </head>
 <body>
@@ -241,9 +245,12 @@
                         </div>
                         <div class="fr-header__service">
                             <a href="/" title="Accueil - One Trick Pony DS to Grist">
-                                <p class="fr-header__service-title">🦄 One Trick Pony DN to Grist</p>
+                                <span class="fr-header__service-title">
+                                  <span style="vertical-align: text-top; line-height: 22px;">🦄</span>
+                                  One Trick Pony DN to Grist<span class="fr-badge fr-badge--info fr-badge--sm fr-ml-1w">BETA</span>
+                                </span>
                             </a>
-                            <p class="fr-header__service-tagline">Synchronisation Démarche Numérique vers Grist</p>
+                            <p class="fr-header__service-tagline fr-mt-1w">Synchronisation Démarche Numérique vers Grist</p>
                         </div>
                     </div>
                 </div>
