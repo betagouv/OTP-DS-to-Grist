@@ -161,13 +161,11 @@ const loadConfiguration = async () => {
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
         </span>`
       dsApiTokenElement.placeholder = '****'
-      document.querySelector('#accordion-ds').setAttribute('aria-expanded', false)
     } else {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
         </span>`
       dsApiTokenElement.placeholder = ''
-      document.querySelector('#accordion-ds').setAttribute('aria-expanded', true)
     }
 
     if (config.has_grist_key) {
@@ -175,13 +173,11 @@ const loadConfiguration = async () => {
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
         </span>`
       gristApiKeyElement.placeholder = '****'
-      document.querySelector('#accordion-grist').setAttribute('aria-expanded', false)
     } else {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
         </span>`
       gristApiKeyElement.placeholder = ''
-      document.querySelector('#accordion-grist').setAttribute('aria-expanded', true)
     }
 
     window.has_ds_token = config.has_ds_token
