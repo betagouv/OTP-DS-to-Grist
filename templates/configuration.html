@@ -27,6 +27,10 @@
       <div class="fr-grid-row fr-grid-row--gutters">
         <div class="fr-col-12 fr-col-md-8">
           <h3>Renseignez l'API de votre démarche numérique</h3>
+          <div class="fr-mt-4w">
+            <div id="ds_test_result" class="fr-mt-2w"></div>
+          </div>
+
           <div class="fr-input-group">
             <label class="fr-label" for="ds_api_token">
               Token API * <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
@@ -49,10 +53,6 @@
           <input class="fr-input input-config" type="number" id="demarche_number" name="demarche_number" 
             placeholder="Ex: 12345" style="max-width: 200px;">
         </div>
-      </div>
-
-      <div class="fr-mt-4w">
-        <div id="ds_test_result" class="fr-mt-2w"></div>
       </div>
     </div>
   </div>
@@ -78,6 +78,10 @@
         </div>
         <div class="fr-col-12 fr-col-md-8">
           <h3>Renseignez l'API de Grist</h3>
+          <div class="fr-mt-4w">
+            <div id="grist_test_result" class="fr-mt-2w"></div>
+          </div>
+
           <div class="fr-input-group">
             <label class="fr-label" for="grist_api_key">
               Clé API Grist * <a href="{{ url_for('use_otp') }}#help-grist" class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
@@ -109,10 +113,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="fr-mt-4w">
-        <div id="grist_test_result" class="fr-mt-2w"></div>
       </div>
     </div>
   </div>
