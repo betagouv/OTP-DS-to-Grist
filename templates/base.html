@@ -187,6 +187,11 @@
         .fr-text--center {
           text-align: center;
         }
+
+        .fr-link--no-decoration {
+          text-decoration: none;
+          background-image: none;
+        }
     </style>
 </head>
 <body>
@@ -245,8 +250,8 @@
                             </a>
                         </li>
                         <li class="fr-nav__item">
-                            <a class="fr-nav__link" href="/utiliser-le-connecteur">
-                              Guide tutoriel
+                            <a class="fr-nav__link" href="{{ url_for('use_otp') }}">
+                              Aide
                             </a>
                         </li>
                     </ul>

@@ -20,16 +20,16 @@
 <!-- Configuration Démarches Simplifiées -->
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
-    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="false" aria-controls="accordion-1">1. API Démarches Simplifiées</button>
+    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="false" aria-controls="accordion-1">1. Démarche numérique</button>
   </h2>
   <div id="accordion-1" class="fr-collapse fr-accordion--light-grey fr-px-4w">
     <div class="fr-mt-4w">
       <div class="fr-grid-row fr-grid-row--gutters">
-        <div class="fr-col-12 fr-col-md-6">
+        <div class="fr-col-12 fr-col-md-8">
+          <h3>Renseignez l'API de votre démarche numérique</h3>
           <div class="fr-input-group">
             <label class="fr-label" for="ds_api_token">
-              Token API *
-              <span class="fr-hint-text">Votre token d'accès personnel à l'API</span>
+              Token API * <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
             </label>
             <input class="fr-input input-config" type="password" id="ds_api_token" name="ds_api_token">
             <div id="ds_token_status" class="fr-mt-1v"></div>
@@ -76,11 +76,11 @@
               value="https://grist.numerique.gouv.fr/api">
           </div>
         </div>
-        <div class="fr-col-12 fr-col-md-6">
+        <div class="fr-col-12 fr-col-md-8">
+          <h3>Renseignez l'API de votre démarche numérique</h3>
           <div class="fr-input-group">
             <label class="fr-label" for="grist_api_key">
-              Clé API Grist *
-              <span class="fr-hint-text">Clé d'accès à votre document Grist</span>
+              Clé API Grist * <a href="{{ url_for('use_otp') }}#help-grist" class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
             </label>
             <input class="fr-input input-config" type="password" id="grist_api_key" name="grist_api_key">
             <div id="grist_key_status" class="fr-mt-1v"></div>
