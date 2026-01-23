@@ -160,7 +160,7 @@ const loadConfiguration = async () => {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
         </span>`
-      dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
+      dsApiTokenElement.placeholder = '****'
       document.querySelector('#accordion-ds').setAttribute('aria-expanded', false)
     } else {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
@@ -174,7 +174,7 @@ const loadConfiguration = async () => {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
         </span>`
-      gristApiKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
+      gristApiKeyElement.placeholder = '****'
       document.querySelector('#accordion-grist').setAttribute('aria-expanded', false)
     } else {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
