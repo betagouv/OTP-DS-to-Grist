@@ -130,10 +130,6 @@
           border-color: var(--border-default-grey) !important;
         }
 
-        .fr-border-blue-france {
-          border-color: var(--blue-france-sun-113) !important;
-        }
-
         .fr-border-black {
           border-color: black !important;
         }
@@ -210,6 +206,31 @@
         .fr-header__brand .fr-badge--info:before {
           display: none;
         }
+
+        .otp-nav {
+          padding-top: 1em;
+          border-style: solid;
+          border-width: 1px;
+          border-color: var(--border-default-grey) !important;
+        }
+
+        .otp-nav ul {
+          display: flex;
+          flex-direction: row;
+          gap: 2rem;
+          list-style: none; 
+        }
+
+
+        .otp-nav .fr-link {
+          font-size: 0.875rem!important;
+        }
+
+        .otp-nav .active {
+          padding-bottom: 1em;
+          border-bottom: 2px solid var(--background-action-high-blue-france);
+          font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -256,9 +277,22 @@
                 </div>
             </div>
         </div>
-        
+
+        <nav class="otp-nav">
+          <div class="fr-container">
+          <ul class="otp-list-horizontal">
+            <li class="fr-nav-custom__item {% if request.path == '/' %}active{% endif %}">
+              <a class="fr-link" href="/">Synchroniser</a>
+            </li>
+            <li class="fr-nav-custom__item {% if request.endpoint == 'use_otp' %}active{% endif %}">
+              <a class="fr-link" href="{{ url_for('use_otp') }}">Aide</a>
+            </li>
+          </ul>
+          </div>
+        </nav>
+
         <!-- Navigation -->
-        <div class="fr-header__menu fr-modal" id="modal-menu" aria-labelledby="modal-menu">
+        <div style="display: none;" class="fr-header__menu fr-modal" id="modal-menu" aria-labelledby="modal-menu">
             <div class="fr-container">
                 <button class="fr-btn--close fr-btn" aria-controls="modal-menu" title="Fermer">
                     Fermer
