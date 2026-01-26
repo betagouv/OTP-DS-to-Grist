@@ -51,6 +51,10 @@ const startSync = async (otp_config_id) => {
     successCount = 0
     totalDossiers = 0
 
+    // Ferme les volets
+    document.getElementById('accordion-ds').setAttribute('aria-expanded', 'false')
+    document.getElementById('accordion-grist').setAttribute('aria-expanded', 'false')
+
     // Afficher la zone de progression
     document.getElementById('sync_controls').style.display = 'none'
     document.getElementById('sync_progress').style.display = 'block'
