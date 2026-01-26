@@ -161,15 +161,29 @@
           border: none !important;
         }
 
-        .fr-notice--warning {
-          background-color: var(--background-contrast-warning);
-          color: var(--text-default-warning);
+        .fr-notice {
           text-align: center;
         }
 
-        .fr-notice--warning .fr-notice__title:before {
-          content: "⚠️";
-          margin-right: 1rem;
+        .fr-notice--info .fr-notice__body:before {
+          display: none;
+        }
+
+        .fr-notice--info .fr-notice__body p:before {
+          content: "";
+          display: inline-block;
+          -webkit-mask-image: url(/static/img/fr--info-fill.svg);
+          mask-image: url(/static/img/fr--info-fill.svg);
+
+          width: var(--icon-size);
+          height: var(--icon-size);
+          background-color: currentColor;
+          --icon-size: 1.5rem;
+          flex: 0 0 auto;
+          vertical-align: calc((.75em - var(--icon-size)) * .5);
+
+          width:  1.5rem;
+          height: 1.5rem;
         }
 
         .fr-table {
@@ -192,15 +206,19 @@
           text-decoration: none;
           background-image: none;
         }
+
+        .fr-header__brand .fr-badge--info:before {
+          display: none;
+        }
     </style>
 </head>
 <body>
-    <div class="fr-notice fr-notice--warning">
+    <div class="fr-notice fr-notice--info">
       <div class="fr-container">
         <div class="fr-notice__body">
           <p>
-            <span class="fr-notice__title">Ce service est en phase d'expérimentation.</span>
-       Aidez-nous à l'améliorer, <a class="fr-link" href="https://tally.so/r/7RXeKa" target="_blank" rel="noopener noreferrer" aria-label="Ouvrir le formulaire de contact One Trick Pony (nouvel onglet)">donnez-nous votre avis!</a>.
+            <span class="fr-notice__title">Produit en expérimentation - </span>
+       Aidez-nous à l'améliorer, <a class="fr-link" href="https://tally.so/r/7RXeKa" target="_blank" rel="noopener noreferrer" aria-label="Ouvrir le formulaire de contact One Trick Pony (nouvel onglet)">donnez-nous votre avis !</a>
           </p>
         </div>
       </div>
@@ -227,9 +245,12 @@
                         </div>
                         <div class="fr-header__service">
                             <a href="/" title="Accueil - One Trick Pony DS to Grist">
-                                <p class="fr-header__service-title">🦄 One Trick Pony DN to Grist</p>
+                                <span class="fr-header__service-title">
+                                  <span style="vertical-align: text-top; line-height: 22px;">🦄</span>
+                                  One Trick Pony DN to Grist<span class="fr-badge fr-badge--info fr-badge--sm fr-ml-1w">BETA</span>
+                                </span>
                             </a>
-                            <p class="fr-header__service-tagline">Synchronisation Démarche Numérique vers Grist</p>
+                            <p class="fr-header__service-tagline fr-mt-1w">Synchronisation Démarche Numérique vers Grist</p>
                         </div>
                     </div>
                 </div>
