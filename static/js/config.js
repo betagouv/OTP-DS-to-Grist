@@ -160,7 +160,7 @@ const loadConfiguration = async () => {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
         </span>`
-      dsApiTokenElement.placeholder = '****'
+      dsApiTokenElement.placeholder = '************************************************************************************'
     } else {
       dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
@@ -172,7 +172,7 @@ const loadConfiguration = async () => {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
         </span>`
-      gristApiKeyElement.placeholder = '****'
+      gristApiKeyElement.placeholder = '****************************************'
     } else {
       gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
           <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
@@ -277,14 +277,14 @@ const saveConfiguration = async () => {
         document.getElementById('ds_token_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
             <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
           </span>`
-        dsApiTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
+        dsApiTokenElement.placeholder = '************************************************************************************'
       }
 
       if (grist_key) {
         document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
             <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
           </span>`
-        gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
+        gristKeyElement.placeholder = '****************************************'
       }
        // Recharger la configuration pour mettre à jour les statuts
         setTimeout(async () => {
