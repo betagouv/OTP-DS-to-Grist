@@ -91,6 +91,7 @@ describe('startSync', () => {
         <div id="logs_content"></div>
         <div id="accordion-ds"></div>
         <div id="accordion-grist"></div>
+        <div id="accordion-settings"></div>
       `
 
       // Mock getGristContext
