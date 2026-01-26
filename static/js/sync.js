@@ -56,7 +56,6 @@ const startSync = async (otp_config_id) => {
     document.getElementById('accordion-grist').setAttribute('aria-expanded', 'false')
 
     // Afficher la zone de progression
-    document.getElementById('sync_controls').style.display = 'none'
     document.getElementById('sync_progress').style.display = 'block'
     document.getElementById('sync_progress_container').style.display = 'block'
     document.getElementById('sync_result').style.display = 'none'
@@ -169,7 +168,6 @@ const updateTaskProgress = (task) => {
   // Gérer la fin de la tâche
   if (task.status === 'completed' || task.status === 'error') {
     document.getElementById('sync_result').style.display = 'block'
-    document.getElementById('sync_controls').style.display = 'block'
 
     const resultContent = document.getElementById('result_content')
 

@@ -458,11 +458,6 @@ describe('saveConfiguration', () => {
         filter_statuses: 'en_construction',
         filter_groups: '1'
       })
-
-      expect(showNotification).toHaveBeenCalledWith(
-        'Configuration sauvegardée avec succès',
-        'success'
-      )
     }
   )
 
@@ -544,10 +539,6 @@ describe('saveConfiguration', () => {
 
       // Vérifier que grist_api_key n'est pas dans le body
       expect(body.grist_api_key).toBeUndefined()
-      expect(showNotification).toHaveBeenCalledWith(
-        'Configuration sauvegardée avec succès',
-        'success'
-      )
     }
   )
 

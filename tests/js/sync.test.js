@@ -77,7 +77,7 @@ describe('startSync', () => {
       // Setup DOM simulé (comme dans beforeEach)
       document.body.innerHTML += `
         <div id="sync_progress_container" style="display: none;"></div>
-        <div id="sync_controls" style="display: block;"></div>
+        <div id="sync_controls"></div>
         <div id="sync_progress" style="display: none;"></div>
         <div id="sync_result" style="display: block;"></div>
         <div id="progress_bar" style="width: 50%;"></div>
@@ -88,7 +88,10 @@ describe('startSync', () => {
         <div id="processing_speed">1.0 dossiers/s</div>
         <div id="eta">5s</div>
         <div id="logs_count">2</div>
-        <div id="logs_content"></div>`
+        <div id="logs_content"></div>
+        <div id="accordion-ds"></div>
+        <div id="accordion-grist"></div>
+      `
 
       // Mock getGristContext
       global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1', docId: 'doc', userId: 'user' })
@@ -102,7 +105,6 @@ describe('startSync', () => {
       const taskId = await startSync(123)
 
       // Vérifications des éléments HTML modifiés
-      expect(document.getElementById('sync_controls').style.display).toBe('none')  // Masqué
       expect(document.getElementById('sync_progress').style.display).toBe('block') // Affiché
       expect(document.getElementById('sync_result').style.display).toBe('none')   // Masqué
       expect(document.getElementById('progress_bar').style.width).toBe('0%')     // Reset
@@ -165,7 +167,7 @@ describe('updateTaskProgress', () => {
         <div id="result_content"></div>
       </div>
     </div>
-    <div id="sync_controls" style="display: none;"></div>`
+    <div id="sync_controls"></div>`
 
     // Objet tâche simulé (complétée)
     const mockTask = { status: 'completed', message: 'Sync terminée', progress: 100 }
@@ -174,7 +176,6 @@ describe('updateTaskProgress', () => {
     updateTaskProgress(mockTask)
 
     // Vérifications
-    expect(document.getElementById('sync_controls').style.display).toBe('block')
     expect(document.getElementById('sync_result').style.display).toBe('block')
     expect(document.getElementById('result_content').innerHTML).toContain('Synchronisation terminée avec succès')
     expect(showNotification).toHaveBeenCalledWith('Synchronisation terminée avec succès!', 'success')
