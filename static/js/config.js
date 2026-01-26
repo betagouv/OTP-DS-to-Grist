@@ -272,8 +272,6 @@ const saveConfiguration = async () => {
     const result = await response.json()
 
     if (result.success) {
-      showNotification('Configuration sauvegardée avec succès', 'success')
-
       // Mettre à jour immédiatement le statut des tokens si saisis
       if (dsToken) {
         document.getElementById('ds_token_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
