@@ -60,6 +60,8 @@ const startSync = async (otp_config_id) => {
     document.getElementById('sync_progress_container').style.display = 'block'
     document.getElementById('sync_result').style.display = 'none'
 
+    document.getElementById('sync_progress_container').scrollIntoView({ behavior: 'smooth' });
+
     // Réinitialiser les compteurs et l'affichage
     logsCount = 0
     document.getElementById('logs_count').textContent = '0'
@@ -174,8 +176,6 @@ const updateTaskProgress = (task) => {
     // Déterminer le type de résultat en fonction des erreurs détectées
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
     const successRate = totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0
-
-    document.getElementById('sync_progress_container').scrollIntoView({ behavior: 'smooth' });
 
     if (task.status === 'completed' && !hasSignificantErrors) {
       resultContent.innerHTML = `<div class="fr-alert fr-alert--success">
