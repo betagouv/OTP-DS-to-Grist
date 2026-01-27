@@ -93,8 +93,13 @@
                 <!-- Logs en temps réel -->
                 <div class="fr-mb-4w">
                     <button class="fr-btn fr-btn--tertiary-no-outline" onclick="logsVisible = toggleLogs(logsVisible)">
+                        <i id="logs_toggle_icon" class="fas fa-chevron-down fr-mr-1w"></i>
                         <span id="logs_toggle_text">Afficher les logs</span>
                         (<span id="logs_count">0</span>)
+                    </button>
+                    <button class="fr-btn fr-btn--tertiary-no-outline fr-ml-1w" onclick="copyLogs()" id="copy_logs_btn" style="display: none;">
+                      <i class="fas fa-copy fr-mr-1w"></i>
+                      Copier les logs
                     </button>
                     <div id="logs_container" class="log-area fr-mt-2w" style="display: none; height: 300px;">
                         <div id="logs_content"></div>

@@ -1,5 +1,9 @@
-/** @jest-environment jsdom */  
-const { toggleLogs, extractStatsFromLog }  = require('../../static/js/logs.js')
+/** @jest-environment jsdom */
+const {
+  toggleLogs,
+  extractStatsFromLog,
+  copyLogs
+} = require('../../static/js/logs.js')
 
 describe(
   'toggleLogs',
@@ -159,6 +163,88 @@ describe(
         expect(global.totalDossiers).toBe(0)
         expect(global.successCount).toBe(0)
         expect(consoleLogSpy).toHaveBeenCalledWith(`Échecs détectés depuis taux de récupération: ${nbDossiers}`)
+      }
+    )
+  }
+)
+
+describe(
+  'copyLogs',
+  () => {
+    let clipboardWriteTextMock
+    let showNotificationMock
+    let consoleErrorSpy
+
+    beforeEach(() => {
+      // Setup DOM
+      document.body.innerHTML = `
+        <div id="logs_content">Sample log text</div>
+      `
+
+      // Mock navigator.clipboard
+      clipboardWriteTextMock = jest.fn()
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: clipboardWriteTextMock },
+        writable: true
+      })
+
+      // Mock showNotification
+      showNotificationMock = jest.fn()
+      global.showNotification = showNotificationMock
+
+      // Spy on console.error
+      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+      consoleErrorSpy.mockRestore()
+      jest.restoreAllMocks()
+    })
+
+    it(
+      'copies logs text to clipboard successfully',
+      async () => {
+        clipboardWriteTextMock.mockResolvedValue()
+
+        copyLogs()
+
+        await new Promise(resolve => setTimeout(resolve, 0)) // Wait for promise
+
+        expect(clipboardWriteTextMock).toHaveBeenCalledWith('Sample log text')
+        expect(showNotificationMock).toHaveBeenCalledWith('Logs copiés dans le presse-papiers', 'success')
+        expect(consoleErrorSpy).not.toHaveBeenCalled()
+      }
+    )
+
+    it(
+      'handles clipboard copy error',
+      async () => {
+        const error = new Error('Clipboard error')
+        clipboardWriteTextMock.mockRejectedValue(error)
+
+        copyLogs()
+
+        await new Promise(resolve => setTimeout(resolve, 0)) // Wait for promise
+
+        expect(clipboardWriteTextMock).toHaveBeenCalledWith('Sample log text')
+        expect(showNotificationMock).toHaveBeenCalledWith('Erreur lors de la copie des logs', 'error')
+        expect(consoleErrorSpy).toHaveBeenCalledWith('Erreur lors de la copie:', error)
+      }
+    )
+
+    it(
+      'uses textContent if innerText is not available',
+      () => {
+        // textContent and innerText are similar in jsdom, but test fallback
+        const logsElement = document.getElementById('logs_content')
+        logsElement.textContent = 'Text content'
+        logsElement.innerText = '' // Simulate no innerText
+
+        clipboardWriteTextMock.mockResolvedValue()
+
+        copyLogs()
+
+        expect(clipboardWriteTextMock).toHaveBeenCalledWith('Text content')
       }
     )
   }

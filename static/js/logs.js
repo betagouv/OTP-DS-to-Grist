@@ -152,6 +152,21 @@ const extractStatsFromLog = (message) => {
   }
 }
 
+const copyLogs = () => {
+  const logsContent = document.getElementById('logs_content')
+  const text = logsContent.textContent || logsContent.innerText
+  navigator.clipboard.writeText(text).then(() => {
+    showNotification('Logs copiés dans le presse-papiers', 'success')
+  }).catch(err => {
+    console.error('Erreur lors de la copie:', err)
+    showNotification('Erreur lors de la copie des logs', 'error')
+  })
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { toggleLogs, extractStatsFromLog }
+  module.exports = {
+    toggleLogs,
+    extractStatsFromLog,
+    copyLogs
+  }
 }
