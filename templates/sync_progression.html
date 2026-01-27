@@ -90,8 +90,9 @@
                 </div>
 
                 <!-- Logs en temps réel -->
-                <div class="fr-mb-4w">
-                    <button class="fr-btn fr-btn--tertiary-no-outline" onclick="logsVisible = toggleLogs(logsVisible)">
+                <div>
+                    <button type="button" class="fr-btn fr-btn--tertiary-no-outline" onclick="logsVisible = toggleLogs(logsVisible)">
+                        <i id="logs_toggle_icon" class="fas fa-chevron-down fr-mr-1w"></i>
                         <span id="logs_toggle_text">Afficher les logs</span>
                         (<span id="logs_count">0</span>)
                     </button>
