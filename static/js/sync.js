@@ -71,7 +71,6 @@ const startSync = async (otp_config_id) => {
     // Réinitialiser les statistiques
     document.getElementById('progress_bar').style.width = '0%'
     document.getElementById('progress_percentage').textContent = '0%'
-    document.getElementById('current_status').textContent = 'Initialisation...'
     document.getElementById('elapsed_time').textContent = '0s'
     document.getElementById('processed_count').textContent = '0'
     document.getElementById('processing_speed').textContent = '-'
@@ -96,9 +95,6 @@ const updateTaskProgress = (task) => {
   const progress = Math.round(task.progress || 0)
   document.getElementById('progress_bar').style.width = `${progress}%`
   document.getElementById('progress_percentage').textContent = `${progress}%`
-
-  // Mettre à jour le statut
-  document.getElementById('current_status').textContent = task.message || 'En cours...'
 
   // Mettre à jour le temps écoulé
   if (startTime) {

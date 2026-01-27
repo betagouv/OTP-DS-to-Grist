@@ -82,7 +82,6 @@ describe('startSync', () => {
         <div id="sync_result" style="display: block;"></div>
         <div id="progress_bar" style="width: 50%;"></div>
         <div id="progress_percentage">50%</div>
-        <div id="current_status">Test</div>
         <div id="elapsed_time">10s</div>
         <div id="processed_count">5</div>
         <div id="processing_speed">1.0 dossiers/s</div>
@@ -110,7 +109,6 @@ describe('startSync', () => {
       expect(document.getElementById('sync_result').style.display).toBe('none')   // Masqué
       expect(document.getElementById('progress_bar').style.width).toBe('0%')     // Reset
       expect(document.getElementById('progress_percentage').textContent).toBe('0%') // Reset
-      expect(document.getElementById('current_status').textContent).toBe('Initialisation...') // Reset
       expect(document.getElementById('elapsed_time').textContent).toBe('0s')     // Reset
       expect(document.getElementById('processed_count').textContent).toBe('0')   // Reset
       expect(document.getElementById('processing_speed').textContent).toBe('-')  // Reset
@@ -130,7 +128,6 @@ describe('updateTaskProgress', () => {
       // Setup DOM simulé
       document.body.innerHTML = `<div id="progress_bar" style="width: 0%;"></div>
         <div id="progress_percentage">0%</div>
-        <div id="current_status">Initialisation...</div>
         <div id="elapsed_time">0s</div>
         <div id="processed_count">0</div>
         <div id="processing_speed">-</div>
@@ -148,7 +145,6 @@ describe('updateTaskProgress', () => {
       // Vérifications
       expect(document.getElementById('progress_bar').style.width).toBe('50%')
       expect(document.getElementById('progress_percentage').textContent).toBe('50%')
-      expect(document.getElementById('current_status').textContent).toBe('Traitement en cours...')
       expect(formatDuration).toHaveBeenCalledWith(expect.closeTo(10, 0.1)) // Temps écoulé
   })
 
@@ -159,7 +155,6 @@ describe('updateTaskProgress', () => {
       <div id="sync_progress" style="display: block;">
         <div id="progress_percentage">0%</div>
         <div id="progress_bar" style="width: 0%;"></div>
-        <div id="current_status">Initialisation...</div>
         <div id="elapsed_time">0s</div>
         <div id="processing_speed">-</div>
         <div id="eta">-</div>
