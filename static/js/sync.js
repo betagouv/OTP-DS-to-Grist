@@ -51,11 +51,17 @@ const startSync = async (otp_config_id) => {
     successCount = 0
     totalDossiers = 0
 
+    // Ferme les volets
+    document.getElementById('accordion-ds').setAttribute('aria-expanded', 'false')
+    document.getElementById('accordion-grist').setAttribute('aria-expanded', 'false')
+    document.getElementById('accordion-settings').setAttribute('aria-expanded', 'false')
+
     // Afficher la zone de progression
-    document.getElementById('sync_controls').style.display = 'none'
     document.getElementById('sync_progress').style.display = 'block'
     document.getElementById('sync_progress_container').style.display = 'block'
     document.getElementById('sync_result').style.display = 'none'
+
+    document.getElementById('sync_progress_container').scrollIntoView({ behavior: 'smooth' });
 
     // Réinitialiser les compteurs et l'affichage
     logsCount = 0
@@ -65,7 +71,6 @@ const startSync = async (otp_config_id) => {
     // Réinitialiser les statistiques
     document.getElementById('progress_bar').style.width = '0%'
     document.getElementById('progress_percentage').textContent = '0%'
-    document.getElementById('current_status').textContent = 'Initialisation...'
     document.getElementById('elapsed_time').textContent = '0s'
     document.getElementById('processed_count').textContent = '0'
     document.getElementById('processing_speed').textContent = '-'
@@ -90,9 +95,6 @@ const updateTaskProgress = (task) => {
   const progress = Math.round(task.progress || 0)
   document.getElementById('progress_bar').style.width = `${progress}%`
   document.getElementById('progress_percentage').textContent = `${progress}%`
-
-  // Mettre à jour le statut
-  document.getElementById('current_status').textContent = task.message || 'En cours...'
 
   // Mettre à jour le temps écoulé
   if (startTime) {
@@ -165,15 +167,12 @@ const updateTaskProgress = (task) => {
   // Gérer la fin de la tâche
   if (task.status === 'completed' || task.status === 'error') {
     document.getElementById('sync_result').style.display = 'block'
-    document.getElementById('sync_controls').style.display = 'block'
 
     const resultContent = document.getElementById('result_content')
 
     // Déterminer le type de résultat en fonction des erreurs détectées
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
     const successRate = totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0
-
-    document.getElementById('sync_progress_container').scrollIntoView({ behavior: 'smooth' });
 
     if (task.status === 'completed' && !hasSignificantErrors) {
       resultContent.innerHTML = `<div class="fr-alert fr-alert--success">

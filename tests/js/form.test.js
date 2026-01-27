@@ -36,7 +36,7 @@ describe('updateDSTokenStatus', () => {
 
       expect(mockStatusElement.innerHTML).toContain('Token configuré')
       expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('Token déjà configuré (laissez vide pour conserver)')
+      expect(mockInput.placeholder).toBe('************************************************************************************')
     }
   )
 
@@ -50,7 +50,7 @@ describe('updateDSTokenStatus', () => {
 
       expect(mockStatusElement.innerHTML).toContain('Token configuré')
       expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('Token déjà configuré (laissez vide pour conserver)')
+      expect(mockInput.placeholder).toBe('************************************************************************************')
     }
   )
 
@@ -105,7 +105,7 @@ describe('updateGristKeyStatus', () => {
 
       expect(mockStatusElement.innerHTML).toContain('Clé API configurée')
       expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('Clé API déjà configurée (laissez vide pour conserver)')
+      expect(mockInput.placeholder).toBe('****************************************')
     }
   )
 
@@ -119,7 +119,7 @@ describe('updateGristKeyStatus', () => {
 
       expect(mockStatusElement.innerHTML).toContain('Clé API configurée')
       expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('Clé API déjà configurée (laissez vide pour conserver)')
+      expect(mockInput.placeholder).toBe('****************************************')
     }
   )
 

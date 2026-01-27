@@ -7,7 +7,7 @@ const updateDSTokenStatus = (config) => {
     dsTokenStatusElement.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
         <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
       </span>`
-    dsTokenElement.placeholder = 'Token déjà configuré (laissez vide pour conserver)'
+    dsTokenElement.placeholder = '************************************************************************************'
   } else {
     dsTokenStatusElement.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
         <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
@@ -24,7 +24,7 @@ const updateGristKeyStatus = (config) => {
     document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
       <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
     </span>`
-    gristKeyElement.placeholder = 'Clé API déjà configurée (laissez vide pour conserver)'
+    gristKeyElement.placeholder = '****************************************'
   } else {
     document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
       <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise

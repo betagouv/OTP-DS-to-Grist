@@ -4,6 +4,11 @@
         <div class="fr-card__content">
             <h2 class="fr-card__title">Synchronisation</h2>
             
+            <!-- Résultat final -->
+            <div id="sync_result" style="display: none;" class="fr-mt-4w">
+                <div id="result_content"></div>
+            </div>
+
             <!-- Progression -->
             <div id="sync_progress" style="display: none;" class="fr-mt-4w">
                 <div class="fr-mb-2w">
@@ -19,12 +24,6 @@
                         <div style="background-color: var(--blue-france-sun-113); height: 8px; border-radius: 4px; overflow: hidden;">
                             <div id="progress_bar" class="progress-bar" style="width: 0%; height: 100%; transition: width 0.3s ease;"></div>
                         </div>
-                    </div>
-                </div>
-                
-                <div class="fr-mb-2w">
-                    <div class="fr-alert fr-alert--info">
-                        <p id="current_status">Initialisation...</p>
                     </div>
                 </div>
 
@@ -91,8 +90,9 @@
                 </div>
 
                 <!-- Logs en temps réel -->
-                <div class="fr-mb-4w">
-                    <button class="fr-btn fr-btn--tertiary-no-outline" onclick="logsVisible = toggleLogs(logsVisible)">
+                <div>
+                    <button type="button" class="fr-btn fr-btn--tertiary-no-outline" onclick="logsVisible = toggleLogs(logsVisible)">
+                        <i id="logs_toggle_icon" class="fas fa-chevron-down fr-mr-1w"></i>
                         <span id="logs_toggle_text">Afficher les logs</span>
                         (<span id="logs_count">0</span>)
                     </button>
@@ -100,11 +100,6 @@
                         <div id="logs_content"></div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Résultat final -->
-            <div id="sync_result" style="display: none;" class="fr-mt-4w">
-                <div id="result_content"></div>
             </div>
         </div>
     </div>
