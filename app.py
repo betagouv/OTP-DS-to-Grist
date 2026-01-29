@@ -470,56 +470,46 @@ def get_available_groups(api_token, demarche_number):
 
 
 # Routes Flask
-
-@app.context_processor
-def inject_build_time():
-    return dict(build_time=datetime.now())
+CHANGELOG_PATH = os.path.join(os.path.dirname(__file__), "CHANGELOG.md")
+BASE_URL = "https://github.com/betagouv/OTP-DS-to-Grist/blob/main/CHANGELOG.md"
 
 
 @app.context_processor
 def inject_version_info():
-    def get_changelog_anchor(version):
-        anchor = f"{version.replace('.', '')}"
+    version = os.getenv("APP_VERSION")
+    if not version:
+        return dict(version_display="v inconnu", release_url="#")
 
-        try:
-            with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
-                content = f.read()
+    version_clean = version[1:] if version.startswith("v") else version
+    fallback_anchor = version_clean.replace(".", "")
 
-            for line in content.splitlines():
-                if not line.startswith(f'## [{version}]'):
-                    continue
+    # 0.6 → 0\.6(\.0)?
+    version_pattern = re.escape(version_clean)
+    if version_clean.count(".") == 1:
+        version_pattern += r"(?:\.0)?"
 
-                match = re.search(r'\((\d{4}-\d{2}-\d{2})\)', line)
-                if not match:
-                    continue
+    pattern = re.compile(
+        rf"^## \[(?P<version>{version_pattern})\]\([^)]+\) \((?P<date>\d{{4}}-\d{{2}}-\d{{2}})\)"
+    )
 
-                date = match.group(1)
-                anchor = f"{version.replace('.', '')}-{date}"
-                break
-        except Exception:
-            pass
-
-        return anchor
+    anchor = fallback_anchor
 
     try:
-        result = subprocess.run(
-            ['git', 'describe', '--tags', '--abbrev=0'],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=os.path.dirname(__file__)
-        )
-        tag = result.stdout.strip()
-        version_clean = tag[1:] if tag.startswith('v') else tag
-        anchor = get_changelog_anchor(version_clean)
+        with open(CHANGELOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                match = pattern.match(line)
+                if match:
+                    version_from_title = match.group("version").replace(".", "")
+                    date = match.group("date")
+                    anchor = f"{version_from_title}-{date}"
+                    break
+    except FileNotFoundError:
+        pass
 
-        base_url = "https://github.com/betagouv/OTP-DS-to-Grist/blob/main/CHANGELOG.md"
-        release_url = f"{base_url}#{anchor}"
-        version_display = f"v {version_clean}"
-
-        return dict(version_display=version_display, release_url=release_url)
-    except Exception:
-        return dict(version_display="v inconnu", release_url="#")
+    return dict(
+        version_display=f"v {version_clean}",
+        release_url=f"{BASE_URL}#{anchor}",
+    )
 
 
 @app.route('/')
