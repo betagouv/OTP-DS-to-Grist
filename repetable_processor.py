@@ -6,7 +6,7 @@ Ce module extrait, transforme et stocke les données des blocs répétables dans
 import json
 import requests
 import traceback
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional
 
 # Importer les fonctions de logging depuis le module principal
 try:
@@ -723,13 +723,13 @@ def get_existing_repetable_rows_improved_no_filter(client, table_id, dossier_num
                 record_id = record['id']
                 
                 # Vérifier que les champs requis sont présents
-                if all(key in fields for key in ['dossier_number', 'block_label']):
+                if 'dossier_number' in fields:
                     # Filtrer par dossier si un dossier_number est spécifié
                     if dossier_number is not None and str(fields['dossier_number']) != str(dossier_number):
                         continue
                         
                     current_dossier_number = str(fields['dossier_number'])
-                    block_label = fields['block_label']
+                    block_label = fields.get('block_label', '')  # ✅ Optionnel
                     
                     # Utiliser block_row_id s'il est disponible, sinon block_row_index
                     if 'block_row_id' in fields and fields['block_row_id']:
@@ -789,11 +789,13 @@ def get_existing_repetable_rows_improved_no_filter(client, table_id, dossier_num
                                 geo_key_alt = f"{current_dossier_number}_{block_label}_{base_id}_geo{geo_index}"
                                 records_dict[geo_key_alt.lower()] = record_id
         
-        # Afficher des statistiques détaillées sur les lignes trouvées pour ce dossier
-        filtered_count = sum(1 for key in records_dict.keys() if key.startswith(f"{dossier_number}_"))
-        log(f"  {filtered_count} clés d'identification trouvées pour les lignes de blocs répétables du dossier {dossier_number}")
-    
-    return records_dict
+        # Afficher des statistiques détaillées sur les lignes trouvées
+        if dossier_number is not None:
+            filtered_count = sum(1 for key in records_dict.keys() if key.startswith(f"{dossier_number}_"))
+            log(f"  {filtered_count} clés d'identification trouvées pour les lignes de blocs répétables du dossier {dossier_number}")
+        else:
+            log(f"  {len(records_dict)} clés d'identification trouvées pour tous les blocs répétables")
+            return records_dict
 
 def process_repetables_for_grist(client, dossier_data, table_id, column_types, problematic_ids=None):
     """
@@ -1086,6 +1088,7 @@ def process_repetables_for_grist(client, dossier_data, table_id, column_types, p
                     except Exception as e:
                         repetable_errors += 1
                         log_error(f"    Exception lors du traitement de la ligne {row_index+1} du bloc {block_label}: {str(e)}")
+                        import traceback
                         traceback.print_exc()
     
     # Traiter les blocs répétables directement depuis les données brutes
@@ -1106,249 +1109,410 @@ def process_repetables_for_grist(client, dossier_data, table_id, column_types, p
     
     return repetable_success, repetable_errors
 
-def process_repetables_batch(client, dossiers_data, table_id, column_types, problematic_ids=None, batch_size=50):
+def process_repetable_data_batch(client, dossier_data, table_id, column_types, problematic_ids=None):
     """
-    Traite les blocs répétables par lot pour plusieurs dossiers.
+    Traite les données d'UN SEUL bloc répétable pour un ou plusieurs dossiers.
+    Cette fonction est appelée pour chaque table de bloc répétable séparément.
+    
+    ✅ NOUVEAU : Version adaptée pour les tables séparées par bloc
     
     Args:
         client: Instance de GristClient
-        dossiers_data: Liste des données de dossiers avec leurs blocs répétables
-        table_id: ID de la table des blocs répétables
-        column_types: Types de colonnes
-        problematic_ids: IDs à filtrer
-        batch_size: Taille du lot pour les opérations d'upsert
+        dossier_data: Données du dossier (ou None si traitement par lot)
+        table_id: ID de la table Grist pour CE bloc spécifique
+        column_types: Liste des types de colonnes pour ce bloc (format: [{"id": "col", "type": "Text"}])
+        problematic_ids: IDs des descripteurs à filtrer
         
     Returns:
-        tuple: (success_count, error_count)
+        tuple: (nombre de succès, nombre d'erreurs)
     """
-    total_success = 0
-    total_errors = 0
-    
-    # Récupérer tous les enregistrements existants en une seule fois
-    existing_rows = get_existing_repetable_rows_improved_no_filter(client, table_id)    
-    log(f"  {len(existing_rows)} identifiants de lignes existantes récupérés pour tous les dossiers")
-    
-    # Collecter toutes les lignes à traiter
-    all_rows_to_update = []
-    all_rows_to_create = []
-    
-    # Fonction pour explorer les blocs répétables et extraire leurs données
-    def extract_repetable_rows(dossier_data):
-        rows_to_update = []
-        rows_to_create = []
+    # Si dossier_data est fourni, traiter un seul dossier
+    if dossier_data:
         dossier_number = dossier_data["number"]
+        log_verbose(f"Traitement des blocs répétables pour le dossier {dossier_number} dans la table {table_id}")
         
-        # Fonction pour traiter un champ répétable
-        def process_repetable_field(champ, is_annotation=False):
+        # Convertir column_types en dictionnaire si c'est une liste
+        if isinstance(column_types, list):
+            repetable_columns = {col["id"]: col["type"] for col in column_types}
+        else:
+            repetable_columns = column_types
+        
+        # Récupérer les enregistrements existants
+        existing_rows = get_existing_repetable_rows_improved_no_filter(client, table_id, dossier_number)
+        
+        success_count = 0
+        error_count = 0
+        
+        # Fonction pour traiter un bloc répétable
+        def process_block(champ):
+            nonlocal success_count, error_count
+            
             if champ["__typename"] != "RepetitionChamp":
                 return
-                
+            
             block_label = champ["label"]
             
             for row_index, row in enumerate(champ.get("rows", [])):
                 try:
-                    # Collecter d'abord toutes les données des champs de cette ligne
+                    # Collecter les données de la ligne
                     row_data = {}
                     geo_data_list = []
                     
                     if "champs" in row:
                         for field in row["champs"]:
-                            # Utiliser la fonction commune de filtrage
                             if should_skip_field_unified(field, problematic_ids):
-                                log_verbose(f"    Champ ignoré: {field.get('label', 'sans label')} (type: {field.get('__typename', 'unknown')})")
                                 continue
                             
                             field_label = field["label"]
                             normalized_label = normalize_column_name(field_label)
-
-
+                            
                             # Extraire la valeur
                             value, json_value = extract_field_value(field)
                             
-                            # Si les deux valeurs sont None, passer au champ suivant
                             if value is None and json_value is None:
                                 continue
                             
-                            # Ajouter au dictionnaire des données
-                            column_type = next((col["type"] for col in column_types if col["id"] == normalized_label), "Text")
+                            # Ajouter au dictionnaire
+                            column_type = repetable_columns.get(normalized_label, "Text")
                             row_data[normalized_label] = format_value_for_grist(value, column_type)
-                                
-                            # Traitement spécial pour les champs cartographiques
+                            
+                            # Traitement des champs cartographiques
                             if field["__typename"] == "CarteChamp" and field.get("geoAreas"):
                                 for geo_area in field.get("geoAreas", []):
                                     geo_data = extract_geo_data(geo_area)
                                     geo_data["field_name"] = normalized_label
                                     geo_data_list.append(geo_data)
                     
-                    # Récupérer l'ID de la ligne
+                    # ID de la ligne
                     row_id = row.get("id", f"row_{row_index}")
                     
-                    # Créer l'enregistrement avec les métadonnées de base
+                    # Enregistrement de base
                     base_record = {
                         "dossier_number": dossier_number,
-                        "block_label": block_label,
                         "block_row_index": row_index + 1,
                         "block_row_id": row_id
                     }
                     
-                    # Si nous avons des données géographiques, créer un enregistrement par géométrie
+                    # Traiter les géométries ou la ligne simple
+                    records_to_process = []
+                    
                     if geo_data_list:
+                        # Créer un enregistrement par géométrie
                         for geo_index, geo_data in enumerate(geo_data_list):
                             geo_record = base_record.copy()
                             geo_record.update(row_data)
                             
-                            # Créer un ID unique pour cette géométrie
                             geo_identifier = f"{row_id}_geo{geo_index+1}"
                             geo_record["block_row_id"] = geo_identifier
                             
                             # Ajouter les données géographiques
                             for key, value in geo_data.items():
-                                column_type = next((col["type"] for col in column_types if col["id"] == key), "Text")
+                                column_type = repetable_columns.get(key, "Text")
                                 geo_record[key] = format_value_for_grist(value, column_type)
                             
-                            # Générer différentes clés de recherche
-                            search_keys = [
-                                f"{dossier_number}_{block_label}_{geo_identifier}".lower(),
-                                f"{dossier_number}_{block_label}_{row_id}_geo{geo_index+1}".lower()
-                            ]
-                            
-                            field_name = geo_data.get("field_name", "")
-                            geo_id = geo_data.get("geo_id", "")
-                            if field_name and geo_id:
-                                search_keys.append(f"{dossier_number}_{block_label}_{field_name}_{geo_id}".lower())
-                            
-                            # Chercher si l'enregistrement existe déjà
-                            found_id = None
-                            for key in search_keys:
-                                if key in existing_rows:
-                                    found_id = existing_rows[key]
-                                    break
-                            
-                            if found_id:
-                                # Mise à jour
-                                rows_to_update.append({"id": found_id, "fields": geo_record})
-                            else:
-                                # Création
-                                rows_to_create.append({"fields": geo_record})
+                            records_to_process.append((geo_record, [
+                                f"{dossier_number}_{block_label}_{geo_identifier}",
+                                f"{dossier_number}_{block_label}_{row_id}_geo{geo_index+1}"
+                            ]))
                     else:
-                        # Cas sans données géographiques
+                        # Ligne simple sans géométrie
                         record = base_record.copy()
                         record.update(row_data)
                         
-                        # Générer différentes clés de recherche
-                        search_keys = [
-                            f"{dossier_number}_{block_label}_{row_id}".lower(),
-                            f"{dossier_number}_{block_label}_index_{row_index+1}".lower(),
+                        records_to_process.append((record, [
+                            f"{dossier_number}_{block_label}_{row_id}",
+                            f"{dossier_number}_{block_label}_index_{row_index+1}",
                             row_id
-                        ]
-                        
-                        # Chercher si l'enregistrement existe déjà
+                        ]))
+                    
+                    # Traiter chaque enregistrement
+                    for record, search_keys in records_to_process:
+                        # Chercher si existe déjà
                         found_id = None
                         for key in search_keys:
-                            if key in existing_rows:
-                                found_id = existing_rows[key]
+                            normalized_key = key.lower()
+                            if normalized_key in existing_rows:
+                                found_id = existing_rows[normalized_key]
                                 break
+                        
+                        # Upsert
+                        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
                         
                         if found_id:
                             # Mise à jour
-                            rows_to_update.append({"id": found_id, "fields": record})
+                            payload = {"records": [{"id": found_id, "fields": record}]}
+                            response = requests.patch(url, headers=client.headers, json=payload)
                         else:
                             # Création
-                            rows_to_create.append({"fields": record})
+                            payload = {"records": [{"fields": record}]}
+                            response = requests.post(url, headers=client.headers, json=payload)
+                        
+                        if response.status_code in [200, 201]:
+                            success_count += 1
+                        else:
+                            error_count += 1
+                            log_error(f"Erreur upsert: {response.status_code} - {response.text}")
                 
                 except Exception as e:
-                    log_error(f"Exception lors du traitement d'une ligne répétable: {str(e)}")
+                    error_count += 1
+                    log_error(f"Exception traitement ligne {row_index+1}: {str(e)}")
         
-        # Explorer les champs du dossier
+        # Traiter les champs
         for champ in dossier_data.get("champs", []):
-            # Vérifier aussi l'ID du champ principal
-            if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
-                continue
             if champ["__typename"] == "RepetitionChamp":
-                process_repetable_field(champ)
+                process_block(champ)
         
-        # Explorer les annotations (si présentes)
+        # Traiter les annotations
         for annotation in dossier_data.get("annotations", []):
-            # Vérifier aussi l'ID de l'annotation
-            if problematic_ids and annotation.get("champDescriptorId") in problematic_ids:
-                continue
             if annotation["__typename"] == "RepetitionChamp":
-                process_repetable_field(annotation, is_annotation=True)
-                
-        return rows_to_update, rows_to_create
+                process_block(annotation)
+        
+        return success_count, error_count
     
-    # Traiter tous les dossiers
+    else:
+        # Mode batch : appeler process_repetables_batch (à implémenter si nécessaire)
+        log_error("Mode batch non implémenté pour process_repetable_data_batch")
+        return 0, 0
+
+def process_repetables_batch(client, dossiers_data, table_ids_dict, column_types_dict, problematic_ids=None, batch_size=50):
+    """
+    Traite les blocs répétables par lot pour plusieurs dossiers.
+    ✅ VERSION ADAPTÉE : Supporte les tables séparées par bloc
+    
+    Args:
+        client: Instance de GristClient
+        dossiers_data: Liste des données de dossiers
+        table_ids_dict: Dict {block_label_normalized: table_id} 
+        column_types_dict: Dict {block_label_normalized: {"columns": [...]}}
+        problematic_ids: IDs à filtrer
+        batch_size: Taille du lot
+        
+    Returns:
+        tuple: (success_count, error_count)
+    """
+    total_success = 0
+    total_errors = 0
+
+     # ✅ NOUVEAU : Récupérer TOUTES les lignes existantes AVANT la boucle
+    existing_rows_by_block = {}
+    for block_key, table_id in table_ids_dict.items():
+        existing_rows_by_block[block_key] = get_existing_repetable_rows_improved_no_filter(
+            client, 
+            table_id,
+            None  # ✅ None = récupérer TOUTES les lignes de tous les dossiers
+        )
+    
+    # Grouper les dossiers et extraire les lignes par bloc
+    rows_by_block = {}  # {block_label_normalized: {"to_update": [], "to_create": [], "existing_rows": {}}}
+    
     for dossier_data in dossiers_data:
         try:
             dossier_number = dossier_data["number"]
-            rows_to_update, rows_to_create = extract_repetable_rows(dossier_data)
             
-            all_rows_to_update.extend(rows_to_update)
-            all_rows_to_create.extend(rows_to_create)
+            # Extraire les blocs répétables de ce dossier (champs + annotations)
+            all_champs = dossier_data.get("champs", []) + dossier_data.get("annotations", [])
             
-            log_verbose(f"  Dossier {dossier_number}: {len(rows_to_update)} mises à jour, {len(rows_to_create)} créations")
+            for champ in all_champs:
+                # Filtrer les blocs non répétables
+                if champ["__typename"] != "RepetitionChamp":
+                    continue
+                
+                # Filtrer les champs problématiques
+                if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
+                    continue
+                
+                block_label = champ["label"]
+                normalized_block = normalize_column_name(block_label)
+                
+                # Vérifier que ce bloc a une table
+                if normalized_block not in table_ids_dict:
+                    log_verbose(f"Bloc '{block_label}' ignoré (pas de table)")
+                    continue
+                
+                # ✅ MODIFIÉ : Utiliser le dictionnaire pré-chargé
+                if normalized_block not in rows_by_block:
+                    rows_by_block[normalized_block] = {
+                        "to_update": [],
+                        "to_create": [],
+                        "existing_rows": existing_rows_by_block.get(normalized_block, {})  # ✅ Utiliser le cache
+                    }
+                
+                # Obtenir les types de colonnes pour ce bloc
+                block_column_types = {col["id"]: col["type"] for col in column_types_dict[normalized_block]["columns"]}
+                
+                # Traiter chaque ligne du bloc répétable
+                for row_index, row in enumerate(champ.get("rows", [])):
+                    try:
+                        # Collecter les données de la ligne
+                        row_data = {}
+                        geo_data_list = []
+                        
+                        if "champs" in row:
+                            for field in row["champs"]:
+                                # Filtrer les champs problématiques
+                                if should_skip_field_unified(field, problematic_ids):
+                                    continue
+                                
+                                field_label = field["label"]
+                                normalized_label = normalize_column_name(field_label)
+                                
+                                # Extraire la valeur
+                                value, json_value = extract_field_value(field)
+                                
+                                if value is None and json_value is None:
+                                    continue
+                                
+                                # Ajouter au dictionnaire
+                                column_type = block_column_types.get(normalized_label, "Text")
+                                row_data[normalized_label] = format_value_for_grist(value, column_type)
+                                
+                                # Traitement des champs cartographiques
+                                if field["__typename"] == "CarteChamp" and field.get("geoAreas"):
+                                    for geo_area in field.get("geoAreas", []):
+                                        geo_data = extract_geo_data(geo_area)
+                                        geo_data["field_name"] = normalized_label
+                                        geo_data_list.append(geo_data)
+                        
+                        # ID de la ligne
+                        row_id = row.get("id", f"row_{row_index}")
+                        
+                        # Enregistrement de base
+                        base_record = {
+                            "dossier_number": dossier_number,
+                            "block_row_index": row_index + 1,
+                            "block_row_id": row_id
+                        }
+                        
+                        # Traiter les géométries ou la ligne simple
+                        if geo_data_list:
+                            # Créer un enregistrement par géométrie
+                            for geo_index, geo_data in enumerate(geo_data_list):
+                                geo_record = base_record.copy()
+                                geo_record.update(row_data)
+                                
+                                geo_identifier = f"{row_id}_geo{geo_index+1}"
+                                geo_record["block_row_id"] = geo_identifier
+                                
+                                # Ajouter les données géographiques
+                                for key, value in geo_data.items():
+                                    column_type = block_column_types.get(key, "Text")
+                                    geo_record[key] = format_value_for_grist(value, column_type)
+                                
+                                # Clés de recherche
+                                search_keys = [
+                                    f"{dossier_number}_{block_label}_{geo_identifier}".lower(),
+                                    f"{dossier_number}_{block_label}_{row_id}_geo{geo_index+1}".lower()
+                                ]
+                                
+                                field_name = geo_data.get("field_name", "")
+                                geo_id = geo_data.get("geo_id", "")
+                                if field_name and geo_id:
+                                    search_keys.append(f"{dossier_number}_{block_label}_{field_name}_{geo_id}".lower())
+                                
+                                # Chercher si existe
+                                found_id = None
+                                for key in search_keys:
+                                    if key in rows_by_block[normalized_block]["existing_rows"]:
+                                        found_id = rows_by_block[normalized_block]["existing_rows"][key]
+                                        break
+                                
+                                if found_id:
+                                    rows_by_block[normalized_block]["to_update"].append({"id": found_id, "fields": geo_record})
+                                else:
+                                    rows_by_block[normalized_block]["to_create"].append({"fields": geo_record})
+                        else:
+                            # Ligne simple sans géométrie
+                            record = base_record.copy()
+                            record.update(row_data)
+                            
+                            # Clés de recherche
+                            search_keys = [
+                                f"{dossier_number}_{block_label}_{row_id}".lower(),
+                                f"{dossier_number}_{block_label}_index_{row_index+1}".lower(),
+                                row_id
+                            ]
+                            
+                            # Chercher si existe
+                            found_id = None
+                            for key in search_keys:
+                                if key in rows_by_block[normalized_block]["existing_rows"]:
+                                    found_id = rows_by_block[normalized_block]["existing_rows"][key]
+                                    break
+                            
+                            if found_id:
+                                rows_by_block[normalized_block]["to_update"].append({"id": found_id, "fields": record})
+                            else:
+                                rows_by_block[normalized_block]["to_create"].append({"fields": record})
+                    
+                    except Exception as e:
+                        log_error(f"Erreur extraction ligne {row_index+1} du bloc '{block_label}': {str(e)}")
+                        total_errors += 1
+        
         except Exception as e:
-            log_error(f"Erreur lors de l'extraction des blocs répétables pour le dossier {dossier_data.get('number')}: {str(e)}")
+            log_error(f"Erreur extraction dossier {dossier_data.get('number')}: {str(e)}")
             total_errors += 1
     
-    # Traiter par lots - Normaliser d'abord tous les enregistrements
-    if all_rows_to_update:
-        # D'abord, collecter toutes les clés possibles
-        all_keys = set()
-        for record in all_rows_to_update:
-            all_keys.update(record["fields"].keys())
+    # Traiter chaque bloc séparément
+    for block_key, data in rows_by_block.items():
+        table_id = table_ids_dict[block_key]
         
-        # Normaliser tous les enregistrements
-        normalized_updates = []
-        for record in all_rows_to_update:
-            normalized_fields = {}
-            for key in all_keys:
-                normalized_fields[key] = record["fields"].get(key, None)
-            normalized_updates.append({"id": record["id"], "fields": normalized_fields})
+        log(f"Traitement du bloc '{block_key}': {len(data['to_update'])} MAJ, {len(data['to_create'])} créations")
         
-        # Maintenant traiter par lots
-        for i in range(0, len(normalized_updates), batch_size):
-            batch = normalized_updates[i:i+batch_size]
-            log(f"  Traitement du lot de mise à jour {i // batch_size + 1}/{len(normalized_updates) // batch_size + 1} ({len(batch)} lignes)")
+        # Traiter les mises à jour par lot
+        if data["to_update"]:
+            # Normaliser tous les enregistrements
+            all_keys = set()
+            for record in data["to_update"]:
+                all_keys.update(record["fields"].keys())
             
-            update_payload = {"records": batch}
-            url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-            response = requests.patch(url, headers=client.headers, json=update_payload)
+            normalized_updates = []
+            for record in data["to_update"]:
+                normalized_fields = {}
+                for key in all_keys:
+                    normalized_fields[key] = record["fields"].get(key, None)
+                normalized_updates.append({"id": record["id"], "fields": normalized_fields})
             
-            if response.status_code in [200, 201]:
-                total_success += len(batch)
-            else:
-                log_error(f"  Erreur lors de la mise à jour par lot: {response.status_code} - {response.text}")
+            # Traiter par lots
+            for i in range(0, len(normalized_updates), batch_size):
+                batch = normalized_updates[i:i+batch_size]
                 
-                # En cas d'échec, essayer individuellement
-                log("  Tentative de mise à jour individuelle...")
-                for individual_record in batch:
-                    individual_payload = {"records": [individual_record]}
-                    individual_response = requests.patch(url, headers=client.headers, json=individual_payload)
-                    
-                    if individual_response.status_code in [200, 201]:
-                        total_success += 1
-                    else:
-                        total_errors += 1
-    
-    if all_rows_to_create:
-        for i in range(0, len(all_rows_to_create), batch_size):
-            batch = all_rows_to_create[i:i+batch_size]
-            log(f"  Traitement du lot de création {i // batch_size + 1}/{len(all_rows_to_create) // batch_size + 1} ({len(batch)} lignes)")
-            
-            create_payload = {"records": batch}
-            url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-            response = requests.post(url, headers=client.headers, json=create_payload)
-            
-            if response.status_code in [200, 201]:
-                total_success += len(batch)
-            else:
-                # AUTO-FIX pour colonnes manquantes (version améliorée)
-                if response.status_code == 400 and "Invalid column" in response.text:
-                    log(f"    [AUTO-FIX] Erreur de colonne detectee, correction automatique...")
-                    success, final_response = auto_fix_missing_columns_optimized(client, table_id, create_payload)
-                    if success:
-                        total_success += len(batch)
+                update_payload = {"records": batch}
+                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
+                response = requests.patch(url, headers=client.headers, json=update_payload)
+                
+                if response.status_code in [200, 201]:
+                    total_success += len(batch)
+                else:
+                    log_error(f"Erreur MAJ lot: {response.status_code}")
+                    # Fallback individuel
+                    for individual in batch:
+                        individual_payload = {"records": [individual]}
+                        individual_response = requests.patch(url, headers=client.headers, json=individual_payload)
+                        if individual_response.status_code in [200, 201]:
+                            total_success += 1
+                        else:
+                            total_errors += 1
+        
+        # Traiter les créations par lot
+        if data["to_create"]:
+            for i in range(0, len(data["to_create"]), batch_size):
+                batch = data["to_create"][i:i+batch_size]
+                
+                create_payload = {"records": batch}
+                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
+                response = requests.post(url, headers=client.headers, json=create_payload)
+                
+                if response.status_code in [200, 201]:
+                    total_success += len(batch)
+                else:
+                    # AUTO-FIX pour colonnes manquantes
+                    if response.status_code == 400 and "Invalid column" in response.text:
+                        log(f"[AUTO-FIX] Correction colonnes manquantes...")
+                        success, final_response = auto_fix_missing_columns_optimized(client, table_id, create_payload)
+                        if success:
+                            total_success += len(batch)
+                        else:
+                            total_errors += len(batch)
                     else:
                         total_errors += len(batch)
     
