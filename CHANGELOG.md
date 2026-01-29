@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.6.0...v0.7.0) (2026-01-29)
+
+
+### Features
+
+* **Doc:** Nettoyage dd CHANGELOG ([#188](https://github.com/betagouv/OTP-DS-to-Grist/issues/188)) ([d48cf33](https://github.com/betagouv/OTP-DS-to-Grist/commit/d48cf33d5abe70ea6121de24d3aacf6f3d47099c))
+
 ## [0.6.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.5.0...v0.6.0) (2026-01-27)
 
 
