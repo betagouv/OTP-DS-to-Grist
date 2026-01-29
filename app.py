@@ -11,6 +11,8 @@ import requests
 from werkzeug.serving import WSGIRequestHandler
 import logging
 import atexit
+import subprocess
+import re
 from sqlalchemy import (create_engine)
 from sqlalchemy.orm import sessionmaker
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -468,10 +470,46 @@ def get_available_groups(api_token, demarche_number):
 
 
 # Routes Flask
+CHANGELOG_PATH = os.path.join(os.path.dirname(__file__), "CHANGELOG.md")
+BASE_URL = "https://github.com/betagouv/OTP-DS-to-Grist/blob/main/CHANGELOG.md"
+
 
 @app.context_processor
-def inject_build_time():
-    return dict(build_time=datetime.now())
+def inject_version_info():
+    version = os.getenv("APP_VERSION")
+    if not version:
+        return dict(version_display="v inconnu", release_url="#")
+
+    version_clean = version[1:] if version.startswith("v") else version
+    fallback_anchor = version_clean.replace(".", "")
+
+    # 0.6 → 0\.6(\.0)?
+    version_pattern = re.escape(version_clean)
+    if version_clean.count(".") == 1:
+        version_pattern += r"(?:\.0)?"
+
+    pattern = re.compile(
+        rf"^## \[(?P<version>{version_pattern})\]\([^)]+\) \((?P<date>\d{{4}}-\d{{2}}-\d{{2}})\)"
+    )
+
+    anchor = fallback_anchor
+
+    try:
+        with open(CHANGELOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                match = pattern.match(line)
+                if match:
+                    version_from_title = match.group("version").replace(".", "")
+                    date = match.group("date")
+                    anchor = f"{version_from_title}-{date}"
+                    break
+    except FileNotFoundError:
+        pass
+
+    return dict(
+        version_display=f"v {version_clean}",
+        release_url=f"{BASE_URL}#{anchor}",
+    )
 
 
 @app.route('/')
