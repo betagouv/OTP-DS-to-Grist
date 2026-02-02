@@ -603,6 +603,7 @@ def extract_repetable_blocks(dossier_data: Dict[str, Any], problematic_ids=None)
             for row_index, row in enumerate(champ.get("rows", [])):
                 row_data = {
                     "dossier_number": dossier_number,
+                    "block_id": champ.get("id"),
                     "block_label": block_label,
                     "block_row_index": row_index + 1,
                     "block_row_id": row.get("id")

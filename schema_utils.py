@@ -6,6 +6,7 @@ VERSION AMÉLIORÉE - Compatible avec le code existant
 Ajoute des fonctions optimisées tout en gardant les fonctions existantes
 CORRECTION : Gestion des doublons de noms de colonnes
 NOUVEAU : Tables séparées par bloc répétable
+CORRECTION : Format "fields" pour les colonnes dynamiques
 """
 
 import requests
@@ -375,6 +376,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     - Les PieceJustificativeChamp sont traités AVANT le filtrage
     - Gestion des doublons de noms de colonnes avec suffixes numériques
     - Tables séparées par bloc répétable
+    - FORMAT FIELDS pour les colonnes dynamiques
     
     FONCTION EXISTANTE - GARDÉE POUR COMPATIBILITÉ
     
@@ -483,9 +485,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                     for suffix in rib_suffixes:
                         rib_col_id = f"{normalized_label}_{suffix}"
                         if not any(col["id"] == rib_col_id for col in champ_columns):
+                            # ✅ FORMAT AVEC FIELDS
                             champ_columns.append({
                                 "id": rib_col_id,
-                                "type": "Text"
+                                "fields": {
+                                    "type": "Text",
+                                    "label": f"{champ_label} - {suffix}"
+                                }
                             })
                 
                 # Ajouter aussi la colonne principale pour le nom du fichier
@@ -496,9 +502,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                     normalized_label = f"{base_label}_{counter}"
                     counter += 1
                 
+                # ✅ FORMAT AVEC FIELDS
                 champ_columns.append({
                     "id": normalized_label,
-                    "type": "Text"
+                    "fields": {
+                        "type": "Text",
+                        "label": champ_label
+                    }
                 })
             
             # Maintenant filtrer les types problématiques
@@ -518,6 +528,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                 # Colonnes de base pour ce bloc
                 block_columns = [
                     {"id": "dossier_number", "type": "Int"},
+                    {"id": "block_id", "type": "Text"}, 
                     {"id": "block_row_index", "type": "Int"},
                     {"id": "block_row_id", "type": "Text"},
                 ]
@@ -593,9 +604,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                     normalized_label = f"{base_label}_{counter}"
                     counter += 1
                 
+                # ✅ FORMAT AVEC FIELDS
                 champ_columns.append({
                     "id": normalized_label,
-                    "type": column_type
+                    "fields": {
+                        "type": column_type,
+                        "label": champ_label
+                    }
                 })
             
             # ✨ Colonnes Commune
@@ -612,9 +627,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         commune_col_id = f"{base_col}_{counter}"
                         counter += 1
                     
+                    # ✅ FORMAT AVEC FIELDS
                     champ_columns.append({
                         "id": commune_col_id,
-                        "type": "Text"
+                        "fields": {
+                            "type": "Text",
+                            "label": f"{champ_label} - {suffix}"
+                        }
                     })
             
             # ✨ Colonnes Pays (nom et code)
@@ -631,9 +650,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         pays_col_id = f"{base_col}_{counter}"
                         counter += 1
                     
+                    # ✅ FORMAT AVEC FIELDS
                     champ_columns.append({
                         "id": pays_col_id,
-                        "type": "Text"
+                        "fields": {
+                            "type": "Text",
+                            "label": f"{champ_label} - {suffix}"
+                        }
                     })
             
             # ✨ Colonnes Région (nom et code)
@@ -650,9 +673,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         region_col_id = f"{base_col}_{counter}"
                         counter += 1
                     
+                    # ✅ FORMAT AVEC FIELDS
                     champ_columns.append({
                         "id": region_col_id,
-                        "type": "Text"
+                        "fields": {
+                            "type": "Text",
+                            "label": f"{champ_label} - {suffix}"
+                        }
                     })
 
             # ✨ Colonnes Département (nom et code)
@@ -669,9 +696,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         dept_col_id = f"{base_col}_{counter}"
                         counter += 1
                     
+                    # ✅ FORMAT AVEC FIELDS
                     champ_columns.append({
                         "id": dept_col_id,
-                        "type": "Text"
+                        "fields": {
+                            "type": "Text",
+                            "label": f"{champ_label} - {suffix}"
+                        }
                     })
 
     # Traiter les descripteurs d'annotations
@@ -679,18 +710,92 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         for descriptor in demarche_schema["activeRevision"]["annotationDescriptors"]:
             # Ignorer les types problématiques
             if descriptor["__typename"] in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"] or \
-               descriptor.get("type") in ["header_section", "explication"] or \
-               descriptor.get("id") in problematic_ids:
+            descriptor.get("type") in ["header_section", "explication"] or \
+            descriptor.get("id") in problematic_ids:
                 continue
                 
             champ_type = descriptor.get("type")
             champ_label = descriptor.get("label")
             
+            # ✅ NOUVEAU : Traitement des blocs répétables dans les annotations
+            if descriptor.get("__typename") == "RepetitionChampDescriptor" and "champDescriptors" in descriptor:
+                has_repetable_blocks = True
+
+                # Préfixe pour les blocs d'annotations
+                block_label = f"annotation_{descriptor.get('label')}"
+                normalized_block_label = normalize_column_name(block_label)
+                
+                # Colonnes de base pour ce bloc
+                block_columns = [
+                    {"id": "dossier_number", "type": "Int"},
+                    {"id": "block_id", "type": "Text"}, 
+                    {"id": "block_row_index", "type": "Int"},
+                    {"id": "block_row_id", "type": "Text"},
+                ]
+                
+                block_has_carto = False
+                
+                # Traiter les sous-champs du bloc répétable
+                for inner_descriptor in descriptor["champDescriptors"]:
+                    inner_type = inner_descriptor.get("type")
+                    inner_label = inner_descriptor.get("label")
+                    
+                    # Détecter les champs cartographiques
+                    if inner_type == "carte":
+                        has_carto_fields = True
+                        block_has_carto = True
+                    
+                    # Ajouter le champ normalisé
+                    normalized_label = normalize_column_name(inner_label)
+                    column_type = determine_column_type(inner_type, inner_descriptor.get("__typename"))
+                    
+                    # Gestion des doublons
+                    base_label = normalized_label
+                    counter = 1
+                    while any(col["id"] == normalized_label for col in block_columns):
+                        normalized_label = f"{base_label}_{counter}"
+                        counter += 1
+                    
+                    block_columns.append({
+                        "id": normalized_label,
+                        "type": column_type
+                    })
+                
+                # Ajouter les colonnes géographiques si nécessaire
+                if block_has_carto:
+                    geo_columns = [
+                        {"id": "geo_id", "type": "Text"},
+                        {"id": "geo_source", "type": "Text"},
+                        {"id": "geo_description", "type": "Text"},
+                        {"id": "geo_type", "type": "Text"},
+                        {"id": "geo_coordinates", "type": "Text"},
+                        {"id": "geo_wkt", "type": "Text"},
+                        {"id": "geo_commune", "type": "Text"},
+                        {"id": "geo_numero", "type": "Text"},
+                        {"id": "geo_section", "type": "Text"},
+                        {"id": "geo_prefixe", "type": "Text"},
+                        {"id": "geo_surface", "type": "Numeric"}
+                    ]
+                    
+                    for geo_col in geo_columns:
+                        if not any(col["id"] == geo_col["id"] for col in block_columns):
+                            block_columns.append(geo_col)
+                
+                # Stocker dans le dict avec le label normalisé comme clé
+                repetable_blocks[normalized_block_label] = {
+                    "original_label": block_label,
+                    "columns": block_columns
+                }
+                continue  # Passer au descripteur suivant
+            
+            # Pour les annotations simples (non répétables)
             # Pour les annotations, enlever le préfixe "annotation_" pour le nom de colonne
             if champ_label.startswith("annotation_"):
                 annotation_label = normalize_column_name(champ_label[11:])  # enlever "annotation_"
+                display_label = champ_label[11:]  # Label sans préfixe pour affichage
             else:
                 annotation_label = normalize_column_name(champ_label)
+                display_label = champ_label
             
             column_type = determine_column_type(champ_type, descriptor.get("__typename"))
             
@@ -701,9 +806,13 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                 annotation_label = f"{base_label}_{counter}"
                 counter += 1
             
+            # ✅ FORMAT AVEC FIELDS
             annotation_columns.append({
                 "id": annotation_label,
-                "type": column_type
+                "fields": {
+                    "type": column_type,
+                    "label": display_label
+                }
             })
 
     # Préparer le résultat

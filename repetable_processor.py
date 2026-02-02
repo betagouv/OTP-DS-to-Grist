@@ -944,6 +944,7 @@ def process_repetables_for_grist(client, dossier_data, table_id, column_types, p
                         # Créer l'enregistrement avec les métadonnées de base
                         base_record = {
                             "dossier_number": dossier_number,
+                            "block_id": champ.get("id"),
                             "block_label": block_label,
                             "block_row_index": row_index + 1,
                             "block_row_id": row_id
@@ -1189,6 +1190,7 @@ def process_repetable_data_batch(client, dossier_data, table_id, column_types, p
                     # Enregistrement de base
                     base_record = {
                         "dossier_number": dossier_number,
+                        "block_id": champ.get("id"),
                         "block_row_index": row_index + 1,
                         "block_row_id": row_id
                     }
@@ -1321,9 +1323,12 @@ def process_repetables_batch(client, dossiers_data, table_ids_dict, column_types
                 if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
                     continue
                 
-                block_label = champ["label"]
-                normalized_block = normalize_column_name(block_label)
                 
+                # Détecter si c'est une annotation en vérifiant si le champ vient de la liste annotations
+                is_annotation = champ in dossier_data.get("annotations", [])
+                block_label = f"annotation_{champ['label']}" if is_annotation else champ["label"]
+                normalized_block = normalize_column_name(block_label)
+
                 # Vérifier que ce bloc a une table
                 if normalized_block not in table_ids_dict:
                     log_verbose(f"Bloc '{block_label}' ignoré (pas de table)")
@@ -1379,6 +1384,7 @@ def process_repetables_batch(client, dossiers_data, table_ids_dict, column_types
                         # Enregistrement de base
                         base_record = {
                             "dossier_number": dossier_number,
+                            "block_id": champ.get("id"),
                             "block_row_index": row_index + 1,
                             "block_row_id": row_id
                         }

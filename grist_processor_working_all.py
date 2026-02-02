@@ -214,12 +214,12 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
     def determine_column_type(value):
         if value is None:
             return "Text"
+        elif isinstance(value, bool):
+            return "Bool"
         elif isinstance(value, int):
             return "Int"
         elif isinstance(value, float):
             return "Numeric"
-        elif isinstance(value, bool):
-            return "Bool"
         elif isinstance(value, (datetime, str)) and (
             isinstance(value, datetime) or 
             any(fmt in value for fmt in ["-", "T", ":"])
@@ -273,6 +273,13 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
             
             if champ_label not in unique_champ_columns:
                 column_type = determine_column_type(champ.get("value"))
+
+                # ← AJOUTE ICI
+            if champ.get("type") == "YesNoChamp":
+                print(f"DEBUG detect_column: {champ['label']}")
+                print(f"  Value: {champ.get('value')} (type: {type(champ.get('value'))})")
+                print(f"  Type déterminé: {column_type}")
+
                 unique_champ_columns[champ_label] = column_type
 
     
@@ -2183,7 +2190,10 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                 
                 # Préparer champ_record
                 champ_record = {"dossier_number": dossier_num}
-                champ_column_types = {col["id"]: col["type"] for col in column_types["champs"]}
+                champ_column_types = {
+                    col["id"]: col.get("type") or col.get("fields", {}).get("type", "Text")
+                    for col in column_types["champs"]
+                }
                 
                 champ_ids = []
                 for champ in flat_data["champs"]:
@@ -2193,9 +2203,8 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                     champ_record["champ_id"] = "_".join(champ_ids)
                 
                 for champ in flat_data["champs"]:
-                    if champ["type"] in ["HeaderSectionChamp", "ExplicationChamp"]:
+                    if champ.get("type") in ["HeaderSectionChamp", "ExplicationChamp"]:
                         continue
-                    
                     normalized_label = normalize_column_name(champ["label"])
                     value = champ.get("value", "")
                     if champ["type"] in ["CarteChamp", "AddressChamp", "SiretChamp"] and champ.get("json_value"):
@@ -2209,7 +2218,10 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                 
                 # Préparer annotation_record
                 annotation_record = {"dossier_number": dossier_num}
-                annotation_column_types = {col["id"]: col["type"] for col in column_types["annotations"]}
+                annotation_column_types = {
+                col["id"]: col.get("type") or col.get("fields", {}).get("type", "Text")
+                for col in column_types["annotations"]
+                }
                 
                 annotation_ids = []
                 for annotation in flat_data["annotations"]:
@@ -2424,14 +2436,19 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                         for record in existing_records:
                             fields = record.get('fields', {})
                             instructeur_id = fields.get('instructeur_id')
-                            if instructeur_id:
-                                existing_map[instructeur_id] = {
+                            groupe_id = fields.get('groupe_instructeur_id')
+                            if instructeur_id and groupe_id:
+                                composite_key = f"{instructeur_id}|{groupe_id}"
+                                existing_map[composite_key] = {
                                     'grist_id': record.get('id'),
                                     'fields': fields
                                 }
                         
                         # Créer un mapping des nouveaux instructeurs
-                        new_map = {r['instructeur_id']: r for r in instructeurs_records}
+                        new_map = {}
+                        for r in instructeurs_records:
+                            composite_key = f"{r['instructeur_id']}|{r['groupe_instructeur_id']}"
+                            new_map[composite_key] = r
                         
                         # Identifier les opérations nécessaires
                         to_delete = []  # Instructeurs qui n'existent plus dans l'API
@@ -2439,15 +2456,15 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                         to_update = []  # Instructeurs existants (on update pour être sûr)
                         
                         # Qui supprimer ?
-                        for instructeur_id, existing_data in existing_map.items():
-                            if instructeur_id not in new_map:
+                        for composite_key, existing_data in existing_map.items():
+                            if composite_key not in new_map:
                                 to_delete.append(existing_data['grist_id'])
                         
                         # Qui créer ou mettre à jour ?
-                        for instructeur_id, new_data in new_map.items():
-                            if instructeur_id in existing_map:
+                        for composite_key, new_data in new_map.items():
+                            if composite_key in existing_map:
                                 # Existe déjà - vérifier si les données ont changé
-                                existing_fields = existing_map[instructeur_id]['fields']
+                                existing_fields = existing_map[composite_key]['fields']
                                 
                                 # Comparer les champs importants
                                 needs_update = False
@@ -2459,7 +2476,7 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                                 
                                 if needs_update:
                                     to_update.append({
-                                        'id': existing_map[instructeur_id]['grist_id'],
+                                        'id': existing_map[composite_key]['grist_id'],
                                         'fields': new_data
                                     })
                             else:
@@ -2537,7 +2554,7 @@ def process_demarche_for_grist_optimized(client, demarche_number, parallel=True,
                 # Traiter chaque bloc
                 for block_label, rows in rows_by_block.items():
                     normalized_block = normalize_column_name(block_label)
-                    
+
                     if normalized_block in table_ids.get("repetable_blocks", {}):
                         block_table_id = table_ids["repetable_blocks"][normalized_block]
                         
