@@ -1,6 +1,5 @@
 import base64
 import json
-from typing import Dict, Any
 
 def decode_base64_id(base64_id: str) -> str:
     """
