@@ -1,12 +1,14 @@
 import hashlib
 import traceback
-import repetable_processor as rp
 import unicodedata
 import os
 import re
 import sys
 import json as json_module
 import requests
+import repetable_processor as rp
+import concurrent.futures
+import time
 from dotenv import load_dotenv
 from datetime import datetime
 from queries import get_demarche, get_dossier, dossier_to_flat_data
@@ -18,8 +20,6 @@ from schema_utils import (
     get_demarche_schema_enhanced
 )
 from constants import DEMARCHES_API_URL
-import concurrent.futures
-import time
 
 # Configuration du niveau de log
 LOG_LEVEL = int(os.getevent("LOG_LEVEL", "1"))
@@ -1996,9 +1996,10 @@ def process_demarche_for_grist_optimized(
 
                 if "demandeurs" in table_result:
                     table_ids["demandeurs"] = table_result["demandeurs"]
+
                 if "demandeur_type" in table_result:
                     table_ids["demandeur_type"] = table_result["demandeur_type"]
-                #  NOUVELLE LIGNE
+
                 if "instructeurs" in table_result:
                     table_ids["instructeurs"] = table_result["instructeurs"]
 
