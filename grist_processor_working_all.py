@@ -22,7 +22,7 @@ from schema_utils import (
 from constants import DEMARCHES_API_URL
 
 # Configuration du niveau de log
-LOG_LEVEL = int(os.getevent("LOG_LEVEL", "1"))
+LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
 
@@ -56,7 +56,7 @@ def get_optimized_schema(demarche_number):
         return get_demarche_schema(demarche_number)
 
 
-def log_schema_improvements(schema):
+def log_schema_improvements(schema, demarche_number):
     """Affiche les améliorations apportées par la nouvelle version"""
     if schema.get("metadata", {}).get("optimized"):
         log("AMÉLIORATIONS DÉTECTÉES:")

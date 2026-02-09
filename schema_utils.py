@@ -845,7 +845,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
 
     return result, problematic_ids
 
-def update_grist_tables_from_schema(client, demarche_number, column_types):
+def update_grist_tables_from_schema(client, demarche_number, column_types, problematic_ids=None):
     """
     Met à jour les tables Grist existantes en fonction du schéma actuel de la démarche,
     en ajoutant les nouvelles colonnes sans supprimer les données existantes.

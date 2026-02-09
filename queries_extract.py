@@ -3,7 +3,6 @@ import base64
 import json
 import requests
 from typing import Dict, Any, List
-from grist_processor_working_all import normalize_column_name
 from constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -605,6 +604,7 @@ def extract_repetable_blocks(
     Returns:
         Liste de dictionnaires représentant chaque ligne de bloc répétable
     """
+    from grist_processor_working_all import normalize_column_name
 
     repetable_rows = []
 
@@ -796,6 +796,8 @@ def dossier_to_flat_data(
     Returns:
         Dictionnaire avec les données du dossier en format plat
     """
+
+    from grist_processor_working_all import normalize_column_name
 
     # Informations de base du dossier
     flat_data = {
