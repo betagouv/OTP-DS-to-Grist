@@ -135,6 +135,7 @@ def create_demandeurs_pm_columns():
         # Métadonnées
         {"id": "dossier_number", "type": "Int"},
         {"id": "type", "type": "Text"},
+        {"id": "usager_email", "type": "Text"},
         # Identifiants de base
         {"id": "siret", "type": "Text"},
         {"id": "siren", "type": "Text"},
