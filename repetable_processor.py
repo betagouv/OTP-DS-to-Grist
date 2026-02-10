@@ -315,7 +315,7 @@ def normalize_key(key_string):
     return normalized
 
 
-def normalize_column_name(name, max_length=50):
+def normalize_column_name(name, max_length=200):
     """
     Normalise un nom de colonne pour Grist en garantissant des identifiants valides.
     Gère correctement les apostrophes et autres caractères spéciaux.
