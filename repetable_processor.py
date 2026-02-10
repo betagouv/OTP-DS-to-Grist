@@ -11,6 +11,7 @@ import json
 import requests
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
+from grist_processor_working_all import normalize_column_name
 
 try:
     from grist_processor_working_all import log, log_verbose, log_error
@@ -313,22 +314,6 @@ def normalize_key(key_string):
     normalized = re.sub(r'_+', '_', normalized.lower())
 
     return normalized
-
-
-def normalize_column_name(name, max_length=50):
-    """
-    Normalise un nom de colonne pour Grist en garantissant des identifiants valides.
-    Gère correctement les apostrophes et autres caractères spéciaux.
-
-    Args:
-        name: Le nom original de la colonne
-        max_length: Longueur maximale autorisée (défaut: 50)
-
-    Returns:
-        str: Nom de colonne normalisé pour Grist
-    """
-    if not name:
-        return "column"
 
     # Supprimer les espaces en début et fin, et remplacer les espaces consécutifs par un seul espace
 
