@@ -2,6 +2,7 @@
   "recommendations": [
     "ms-python.python",
     "ms-python.black-formatter",
+    "esbenp.prettier-vscode",
     "eamodio.gitlens",
     "mhutchie.git-graph",
     "aaron-bond.better-comments",
