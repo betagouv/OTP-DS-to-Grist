@@ -7,5 +7,10 @@
     "**/__pycache__": true,
     "**/.pytest_cache": true,
     "**/node_modules": true
-  }
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true
+  },
+  "black-formatter.args": ["--line-length", "88"]
 }
