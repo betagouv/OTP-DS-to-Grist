@@ -748,6 +748,14 @@ def api_schedule():
             ), 404
 
         if request.method == 'POST':
+            if not otp_config.grist_api_key:
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "Clé grist manquante"
+                    }
+                ), 403
+
             # Activer le planning
             schedule = db.query(UserSchedule).filter_by(
                 otp_config_id=otp_config.id
