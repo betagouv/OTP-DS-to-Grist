@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "📦 Installation complète",
+      "type": "shell",
+      "command": "echo \"📦 Installation des dépendances Python...\" && poetry install --with dev && echo \"✅ Dépendances Python installées\" && echo \"\" && echo \"📦 Installation des dépendances JavaScript...\" && npm install && echo \"✅ Dépendances JavaScript installées\"",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "🧪 Tests Python",
+      "type": "shell",
+      "command": "poetry run pytest",
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "🧪 Tests JS",
+      "type": "shell",
+      "command": "npm test",
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "npm: lint",
+      "type": "npm",
+      "script": "lint",
+      "options": {
+        "statusbar": {
+          "hide": true
+        }
+      }
+    },
+    {
+      "label": "npm: lint:fix",
+      "type": "npm",
+      "script": "lint:fix",
+      "options": {
+        "statusbar": {
+          "hide": true
+        }
+      }
+    },
+    {
+      "label": "npm: test",
+      "type": "npm",
+      "script": "test",
+      "options": {
+        "statusbar": {
+          "hide": true
+        }
+      }
+    }
+  ]
+}
