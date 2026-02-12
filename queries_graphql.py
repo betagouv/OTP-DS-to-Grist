@@ -1,7 +1,9 @@
 import requests
-import json
 import os
-from typing import Dict, Any, List, Optional
+from datetime import datetime
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from typing import Dict, Any, List
 from constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
@@ -22,6 +24,25 @@ fragment PersonneMoraleFragment on PersonneMorale {
         siren
         raisonSociale
         nomCommercial
+
+        # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
+        capitalSocial
+        codeEffectifEntreprise
+        formeJuridique
+        formeJuridiqueCode
+        numeroTvaIntracommunautaire
+        dateCreation
+        etatAdministratif
+    }
+
+    # ✅ NOUVEAU BLOC ASSOCIATION (pour les associations)
+    association {
+        rna
+        titre
+        objet
+        dateCreation
+        dateDeclaration
+        datePublication
     }
 }
 
@@ -40,8 +61,17 @@ fragment AddressFragment on Address {
     label
     type
     streetAddress
+
+    # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
+    streetNumber
+    streetName
     postalCode
     cityName
+    cityCode
+    departmentName
+    departmentCode
+    regionName
+    regionCode
 }
 
 fragment FileFragment on File {
@@ -191,6 +221,19 @@ fragment ChampFragment on Champ {
         files {
             ...FileFragment
         }
+        columns {
+            __typename
+            id
+            label
+            ... on TextColumn {
+                value
+            }
+            ... on AttachmentsColumn {
+                value {
+                    ...FileFragment
+                }
+            }
+        }
     }
     ... on AddressChamp {
         address {
@@ -304,7 +347,6 @@ fragment DossierFragment on Dossier {
     dateTraitement
     dateExpiration
     dateSuppressionParUsager
-    dateDerniereCorrectionEnAttente
     dateDerniereModificationChamps
     dateDerniereModificationAnnotations
     motivation
@@ -344,7 +386,13 @@ fragment DossierFragment on Dossier {
         ...ChampFragment
         ...RootChampFragment
     }
+    labels {
+        id
+        name
+        color
+    }
 }
+
 
 """ + COMMON_FRAGMENTS + SPECIALIZED_FRAGMENTS + CHAMP_FRAGMENTS
 
@@ -461,11 +509,6 @@ fragment DossierFragment on Dossier {
     datePassageEnConstruction
     datePassageEnInstruction
     dateTraitement
-    dateSuppressionParUsager
-    dateDerniereCorrectionEnAttente
-    dateDerniereModificationChamps
-    dateDerniereModificationAnnotations
-    motivation
     usager {
         email
     }
@@ -499,13 +542,43 @@ fragment DossierFragment on Dossier {
         ...RootChampFragment
     }
     labels {
-        id 
+        id
         name
         color
-    }    
+    }
 }
 
 """ + COMMON_FRAGMENTS + SPECIALIZED_FRAGMENTS + CHAMP_FRAGMENTS
+
+# ✅ SESSION GLOBALE (créée une seule fois)
+_session = None
+
+
+def get_session_with_retries():
+    """
+    Retourne une session HTTP avec retry (singleton).
+    La session est créée une seule fois et réutilisée.
+    """
+    global _session
+
+    if _session is None:
+        print("[RETRY] Création session avec retry automatique (3 tentatives, backoff 1s)")
+        _session = requests.Session()
+
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"],
+            raise_on_status=False
+        )
+
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        _session.mount("https://", adapter)
+        _session.mount("http://", adapter)
+
+    return _session
+
 
 # Fonctions d'API
 def get_dossier(dossier_number: int) -> Dict[str, Any]:
@@ -515,8 +588,10 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
     Ignore les erreurs de permission.
     """
     if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN dans le fichier .env")
-    
+        raise ValueError(
+            "Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN"
+        )
+
     # Variables pour la requête
     variables = {
         "dossierNumber": dossier_number,
@@ -526,72 +601,77 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
         "includeTraitements": True,
         "includeInstructeurs": True,
     }
-    
+
     # En-têtes pour la requête
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Content-Type": "application/json"
     }
-    
+
     # Exécution de la requête
-    response = requests.post(
+    session = get_session_with_retries()
+    response = session.post(
         API_URL,
         json={"query": query_get_dossier, "variables": variables},
         headers=headers
     )
-    
+
     # Vérification du code de statut
     response.raise_for_status()
-    
+
     # Analyse de la réponse JSON
     result = response.json()
-    
+
     # Vérifier les erreurs mais ne pas s'arrêter pour les erreurs de permission
     if "errors" in result:
         # Séparer les erreurs de permission des autres erreurs
         permission_errors = []
         other_errors = []
-        
+
         for error in result["errors"]:
             error_message = error.get("message", "Unknown error")
             if "permissions" in error_message:
                 permission_errors.append(error_message)
             else:
                 other_errors.append(error_message)
-        
+
         # Signaler les erreurs de permission mais continuer
         if permission_errors:
             print(f"Attention: Le dossier {dossier_number} a {len(permission_errors)} erreurs de permission")
-        
+
         # S'arrêter uniquement pour les autres types d'erreurs
         if other_errors:
             raise Exception(f"GraphQL errors: {', '.join(other_errors)}")
-    
+
     # Si les données sont nulles ou si le dossier est null à cause des permissions, retournez un dictionnaire vide
     if not result.get("data") or not result["data"].get("dossier"):
         print(f"Attention: Le dossier {dossier_number} n'est pas accessible ou n'existe pas")
         return {}
-    
+
     dossier = result["data"]["dossier"]
-    
+
     # Filtrer les champs indésirables
     filtered_dossier = dossier.copy()
-    
+
     # Filtrer les champs
     if "champs" in filtered_dossier:
         filtered_dossier["champs"] = [
-            champ for champ in filtered_dossier["champs"] 
+            champ for champ in filtered_dossier["champs"]
             if champ.get("__typename") not in ["HeaderSectionChamp", "ExplicationChamp"]
         ]
-    
+
     # Filtrer les annotations
     if "annotations" in filtered_dossier:
         filtered_dossier["annotations"] = [
-            annotation for annotation in filtered_dossier["annotations"] 
-            if annotation.get("__typename") not in ["HeaderSectionChamp", "ExplicationChamp"]
+            annotation for annotation in filtered_dossier["annotations"]
+            if annotation.get("__typename") not in [
+                "HeaderSectionChamp",
+                "ExplicationChamp"
+            ]
         ]
-    
+
     return filtered_dossier
+
 
 def get_demarche(demarche_number: int) -> Dict[str, Any]:
     """
@@ -599,8 +679,10 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
     Ignore les erreurs de permission sur certains dossiers ou champs.
     """
     if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN dans le fichier .env")
-    
+        raise ValueError(
+            "Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN"
+        )
+
     # Variables pour la requête
     variables = {
         "demarcheNumber": demarche_number,
@@ -612,96 +694,98 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
         "includeTraitements": True,
         "includeInstructeurs": True,
     }
-    
+
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Content-Type": "application/json"
     }
-    
-    response = requests.post(
+    # Exécution de la requête avec retry automatique
+    session = get_session_with_retries()
+    response = session.post(
         API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers
     )
-    
+
     response.raise_for_status()
     result = response.json()
-    
+
     # Ignorer les erreurs spécifiques liées aux permissions
     if "errors" in result:
         # Filtrer les erreurs pour ne conserver que celles qui ne sont pas liées aux permissions
         filtered_errors = []
         permission_errors_count = 0
-        
+
         for error in result["errors"]:
             error_message = error.get("message", "")
             if "permissions" in error_message or "hidden due to permissions" in error_message:
                 permission_errors_count += 1
             else:
                 filtered_errors.append(error_message)
-        
+
         # Afficher le nombre d'erreurs de permission, mais continuer le traitement
         if permission_errors_count > 0:
             print(f"Attention: {permission_errors_count} objets masqués en raison de restrictions de permissions")
-        
+
         # Ne lever une exception que pour les erreurs non liées aux permissions
         if filtered_errors:
             raise Exception(f"GraphQL errors: {', '.join(filtered_errors)}")
-    
+
     # Si aucune donnée n'est retournée, c'est un problème
     if not result.get("data") or not result["data"].get("demarche"):
         raise Exception(f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}")
-    
+
     demarche = result["data"]["demarche"]
-    
+    excluded_types = ["HeaderSectionChamp", "ExplicationChamp"]
+
     # Filtrer les descripteurs de champs dans la révision active
     if "activeRevision" in demarche and demarche["activeRevision"]:
         active_revision = demarche["activeRevision"]
-        
         # Filtrer les descripteurs de champs
         if "champDescriptors" in active_revision:
             active_revision["champDescriptors"] = [
                 descriptor for descriptor in active_revision["champDescriptors"]
-                if descriptor.get("type") not in ["HeaderSectionChamp", "ExplicationChamp"]
+                if descriptor.get("type") not in excluded_types
             ]
-        
+
         # Filtrer les descripteurs d'annotations
         if "annotationDescriptors" in active_revision:
             active_revision["annotationDescriptors"] = [
                 descriptor for descriptor in active_revision["annotationDescriptors"]
-                if descriptor.get("type") not in ["HeaderSectionChamp", "ExplicationChamp"]
+                if descriptor.get("type") not in excluded_types
             ]
-    
+
     # S'assurer que les structures de dossiers existent, même si vides
     if "dossiers" not in demarche:
         demarche["dossiers"] = {"nodes": []}
     elif not demarche["dossiers"] or "nodes" not in demarche["dossiers"]:
         demarche["dossiers"]["nodes"] = []
-    
+
     # Filtrer les champs problématiques dans les dossiers
     for dossier in demarche["dossiers"]["nodes"]:
         # Filtrer les champs de chaque dossier
         if "champs" in dossier:
             dossier["champs"] = [
                 champ for champ in dossier["champs"]
-                if champ.get("__typename") not in ["HeaderSectionChamp", "ExplicationChamp"]
+                if champ.get("__typename") not in excluded_types
             ]
-        
+
         # Filtrer les annotations de chaque dossier
         if "annotations" in dossier:
             dossier["annotations"] = [
                 annotation for annotation in dossier["annotations"]
-                if annotation.get("__typename") not in ["HeaderSectionChamp", "ExplicationChamp"]
+                if annotation.get("__typename") not in excluded_types
             ]
-    
+
     dossier_count = len(demarche["dossiers"]["nodes"])
     print(f"Démarche récupérée avec succès: {dossier_count} dossiers accessibles")
-    
+
     return demarche
 
+
 def get_demarche_dossiers_filtered(
-    demarche_number: int, 
-    date_debut: str = None, 
+    demarche_number: int,
+    date_debut: str = None,
     date_fin: str = None,
     groupes_instructeurs: List[str] = None,
     statuts: List[str] = None
@@ -709,59 +793,60 @@ def get_demarche_dossiers_filtered(
     """
     Récupère les dossiers avec filtrage côté serveur RÉEL.
     Utilise SEULEMENT les paramètres qui fonctionnent vraiment selon les tests.
-    
+
     PARAMÈTRES RÉELLEMENT SUPPORTÉS :
     [OK]createdSince: ISO8601DateTime (date de début)
     ❌ createdUntil: Non supporté
-    ❌ groupeInstructeurNumber: Non supporté  
+    ❌ groupeInstructeurNumber: Non supporté
     ❌ states: Non supporté
-    
+
     Les autres filtres seront appliqués côté client sur le résultat réduit.
     """
     if not API_TOKEN:
         raise ValueError("Le token d'API n'est pas configuré.")
-    
+
     # Seuls les filtres côté serveur qui fonctionnent
     server_filters = {}
     client_filters = {}
-    
+
     # [OK]FILTRE CÔTÉ SERVEUR : Date de début seulement
     if date_debut:
         if 'T' not in date_debut:
             date_debut += 'T00:00:00Z'
         server_filters['createdSince'] = date_debut
-        print(f"🗓️ Filtre serveur par date de début: {date_debut}")
-    
+        print(f"Filtre serveur par date de début: {date_debut}")
+
     # ❌ FILTRES CÔTÉ CLIENT : Tout le reste
     if date_fin:
         client_filters['date_fin'] = date_fin
-        print(f"🗓️ Filtre client par date de fin: {date_fin}")
-    
+        print(f"Filtre client par date de fin: {date_fin}")
+
     if groupes_instructeurs:
         client_filters['groupes_instructeurs'] = groupes_instructeurs
-        print(f"👥 Filtre client par groupes: {groupes_instructeurs}")
-    
+        print(f"Filtre client par groupes: {groupes_instructeurs}")
+
     if statuts:
         client_filters['statuts'] = statuts
-        print(f"📋 Filtre client par statuts: {statuts}")
-    
+        print(f"Filtre client par statuts: {statuts}")
+
     if server_filters:
         print(f"[FILTRAGE] Filtres côté serveur: {list(server_filters.keys())}")
+
     if client_filters:
-        print(f"💻 Filtres côté client: {list(client_filters.keys())}")
-    
+        print(f"Filtres côté client: {list(client_filters.keys())}")
+
     # Variables pour la requête (SIMPLIFIÉES)
     variables = {
         "demarcheNumber": demarche_number,
         "afterCursor": None,
         **server_filters  # Seulement createdSince
     }
-    
+
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Content-Type": "application/json"
     }
-    
+
     # Requête GraphQL MINIMALISTE qui fonctionne
     query_get_demarche = """
     query getDemarche(
@@ -828,144 +913,146 @@ def get_demarche_dossiers_filtered(
                         }
                     }
                     labels {
-                        id 
+                        id
                         name
                         color
-                    }    
+                    }
                 }
             }
         }
     }
     """
-    
+
     # Exécution de la requête
-    print(f"[RECHERCHE] Exécution requête avec filtres serveur supportés...")
-    
-    response = requests.post(
+    print("[RECHERCHE] Exécution requête avec filtres serveur supportés...")
+
+    # Exécution de la requête avec retry automatique
+    session = get_session_with_retries()  # ✅ AJOUTE CETTE LIGNE
+    response = session.post(
         API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers
     )
-    
+
     response.raise_for_status()
     result = response.json()
-    
+
     if "errors" in result:
         error_messages = [error.get("message", "Unknown error") for error in result["errors"]]
-        print(f"❌ Erreurs GraphQL: {error_messages}")
+        print(f"Erreurs GraphQL: {error_messages}")
         raise Exception(f"GraphQL errors: {', '.join(error_messages)}")
-    
+
     # Récupération avec pagination
     demarche_data = result["data"]["demarche"]
     dossiers = []
-    
+
     if "dossiers" in demarche_data and "nodes" in demarche_data["dossiers"]:
         dossiers = demarche_data["dossiers"]["nodes"]
         total_dossiers = len(dossiers)
         print(f"[OK]Première page récupérée: {total_dossiers} dossiers")
-        
+
         # Pagination
         has_next_page = demarche_data["dossiers"]["pageInfo"]["hasNextPage"]
         cursor = demarche_data["dossiers"]["pageInfo"]["endCursor"]
         page_num = 1
-        
+
         while has_next_page:
             page_num += 1
-            print(f"📄 Page {page_num}...")
-            
+            print(f"Page {page_num}...")
+
             variables["afterCursor"] = cursor
-            
-            next_response = requests.post(
+
+            session = get_session_with_retries()  # ✅ AJOUTE
+            next_response = session.post(  # ✅ CHANGE requests → session
                 API_URL,
                 json={"query": query_get_demarche, "variables": variables},
                 headers=headers
             )
-            
+
             next_response.raise_for_status()
             next_result = next_response.json()
-            
+
             if "errors" in next_result:
-                print(f"❌ Erreurs page {page_num}: {next_result['errors']}")
+                print(f"Erreurs page {page_num}: {next_result['errors']}")
                 break
-            
+
             next_demarche = next_result["data"]["demarche"]
-            
+
             if "dossiers" in next_demarche and "nodes" in next_demarche["dossiers"]:
                 new_dossiers = next_demarche["dossiers"]["nodes"]
                 dossiers.extend(new_dossiers)
                 total_dossiers += len(new_dossiers)
                 print(f"[OK]Page {page_num}: +{len(new_dossiers)} (total: {total_dossiers})")
-                
+
                 has_next_page = next_demarche["dossiers"]["pageInfo"]["hasNextPage"]
                 cursor = next_demarche["dossiers"]["pageInfo"]["endCursor"]
             else:
                 has_next_page = False
-    
+
     print(f"[SUCCES] Récupération côté serveur: {len(dossiers)} dossiers")
-    
+
     # ===========================================
     # FILTRAGE CÔTÉ CLIENT pour les autres critères
     # ===========================================
-    
+
     if not client_filters:
         print(f"[OK]Aucun filtre côté client - résultat final: {len(dossiers)} dossiers")
         return dossiers
-    
-    print(f"[FILTRAGE] Application des filtres côté client...")
+
+    print("[FILTRAGE] Application des filtres côté client...")
     dossiers_avant = len(dossiers)
     filtered_dossiers = []
-    
+
     for dossier in dossiers:
         # Filtre par date de fin
         if client_filters.get('date_fin'):
             date_fin_str = client_filters['date_fin']
             if 'T' not in date_fin_str:
                 date_fin_str += 'T23:59:59Z'
-            
+
             try:
-                from datetime import datetime
                 date_depot = datetime.fromisoformat(dossier['dateDepot'].replace('Z', '+00:00'))
                 date_limite_fin = datetime.fromisoformat(date_fin_str.replace('Z', '+00:00'))
-                
+
                 if date_depot > date_limite_fin:
                     continue
             except (ValueError, AttributeError, TypeError):
                 continue
-        
+
         # Filtre par groupe instructeur
         if client_filters.get('groupes_instructeurs'):
             groupes_cibles = client_filters['groupes_instructeurs']
             groupe_instructeur = dossier.get('groupeInstructeur')
-            
+
             if not groupe_instructeur:
                 continue
-                
+
             groupe_number = str(groupe_instructeur.get('number', ''))
             groupe_id = groupe_instructeur.get('id', '')
-            
+
             # Vérifier si le groupe correspond
             if not (groupe_number in groupes_cibles or groupe_id in groupes_cibles):
                 continue
-        
+
         # Filtre par statut
         if client_filters.get('statuts'):
             statuts_cibles = client_filters['statuts']
             if dossier.get('state') not in statuts_cibles:
                 continue
-        
+
         # Si tous les filtres passent, garder le dossier
         filtered_dossiers.append(dossier)
-    
+
     print(f"[OK]Filtrage côté client terminé: {len(filtered_dossiers)}/{dossiers_avant} dossiers conservés")
-    
+
     # Debug : Afficher quelques exemples
     if filtered_dossiers:
-        print(f"📊 Exemples de résultats finaux:")
+        print("Exemples de résultats finaux:")
         for i, dossier in enumerate(filtered_dossiers[:3]):
             groupe = dossier.get('groupeInstructeur', {})
             print(f"   {i+1}. Dossier {dossier['number']}: {dossier['dateDepot'][:10]} - {dossier['state']}")
             print(f"      Groupe: {groupe.get('number')} ({groupe.get('label', 'Sans label')})")
-    
+
     return filtered_dossiers
 
 
@@ -978,7 +1065,7 @@ def test_working_filter():
     Test avec SEULEMENT les paramètres qui fonctionnent
     """
     print("=== TEST avec seulement createdSince (qui fonctionne) ===")
-    
+
     query = """
     query testWorkingFilter($demarcheNumber: Int!, $createdSince: ISO8601DateTime) {
         demarche(number: $demarcheNumber) {
@@ -1004,36 +1091,37 @@ def test_working_filter():
         }
     }
     """
-    
+
     variables = {
         "demarcheNumber": 70018,
         "createdSince": "2025-06-15T00:00:00Z"
     }
-    
+
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Content-Type": "application/json"
     }
-    
-    response = requests.post(
+
+    session = get_session_with_retries()  # ✅ AJOUTE
+    response = session.post(
         API_URL,
         json={"query": query, "variables": variables},
         headers=headers
     )
-    
+
     if response.status_code == 200:
         result = response.json()
         if "errors" in result:
-            print(f"❌ Erreurs: {result['errors']}")
+            print(f"Erreurs: {result['errors']}")
         else:
             dossiers = result["data"]["demarche"]["dossiers"]["nodes"]
             print(f"[OK]SUCCESS! {len(dossiers)} dossiers après 2025-06-15")
-            
+
             for dossier in dossiers:
                 groupe = dossier['groupeInstructeur']
-                print(f"   📁 {dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}")
+                print(f"{dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}")
     else:
-        print(f"❌ Erreur HTTP: {response.status_code}")
+        print(f"Erreur HTTP: {response.status_code}")
 
 
 if __name__ == "__main__":
@@ -1051,21 +1139,22 @@ if __name__ == "__main__":
 - createdSince: ISO8601DateTime  # Date de début uniquement
 
 ❌ NON SUPPORTÉS côté serveur :
-- createdUntil                   # Date de fin  
+- createdUntil                   # Date de fin
 - groupeInstructeurNumber        # Groupe instructeur
 - states                         # Statuts des dossiers
 
-💻 SOLUTION HYBRIDE :
+SOLUTION HYBRIDE :
 1. Filtrer par date de début côté serveur (gain majeur)
 2. Filtrer le reste côté client sur le résultat réduit
 
 🎯 PERFORMANCE :
 Au lieu de récupérer 6450 dossiers puis tout filtrer,
-on récupère ~200 dossiers (après 2025-06-15) puis on filtre 
+on récupère ~200 dossiers (après 2025-06-15) puis on filtre
 seulement ceux-là par groupe et statut.
 
 GAIN ESTIMÉ : 30x plus rapide !
 """
+
 
 def get_demarche_dossiers(demarche_number: int):
     """
@@ -1075,22 +1164,26 @@ def get_demarche_dossiers(demarche_number: int):
     """
     return get_demarche_dossiers_filtered(demarche_number)
 
+
 def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
     """
     Récupère les données géométriques d'un dossier au format GeoJSON.
     """
     if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN dans le fichier .env")
-    
+        raise ValueError(
+            "Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN"
+        )
+
     base_url = API_URL.split('/api/')[0] if '/api/' in API_URL else "https://www.demarches-simplifiees.fr"
     url = f"{base_url}/dossiers/{dossier_number}/geojson"
-    
+
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Accept": "application/json"
     }
-    
-    response = requests.get(url, headers=headers)
+
+    session = get_session_with_retries()
+    response = session.get(url, headers=headers)
     response.raise_for_status()
-    
+
     return response.json()
