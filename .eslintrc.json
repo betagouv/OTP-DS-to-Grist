@@ -1,0 +1,27 @@
+{
+  "env": {
+    "browser": true,
+    "commonjs": true,
+    "es2021": true,
+    "jest": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": "latest"
+  },
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-arrow-callback": "warn",
+    "no-unused-vars": "warn",
+    "eqeqeq": ["error", "always"],
+    "no-console": ["warn", { "allow": ["error", "warn"] }],
+    "no-debugger": "error"
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    "static/js/socket.io.js",
+    ".venv/",
+    "**/*.min.js"
+  ]
+}

@@ -3,6 +3,7 @@
     "ms-python.python",
     "charliermarsh.ruff",
     "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
     "eamodio.gitlens",
     "mhutchie.git-graph",
     "aaron-bond.better-comments",
