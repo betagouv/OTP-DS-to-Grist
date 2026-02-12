@@ -1,7 +1,7 @@
 {
   "recommendations": [
     "ms-python.python",
-    "ms-python.black-formatter",
+    "charliermarsh.ruff",
     "esbenp.prettier-vscode",
     "eamodio.gitlens",
     "mhutchie.git-graph",
