@@ -23,6 +23,7 @@ from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
 from constants import DEMARCHES_API_URL
+from api_validator import test_demarches_api, test_grist_api, verify_api_connections
 
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler(executors={
@@ -309,109 +310,6 @@ def socketio_notify_callback(event_type, data):
 sync_task_manager = SyncTaskManager(
     notify_callback=socketio_notify_callback
 )
-
-
-def test_demarches_api(api_token, demarche_number=None):
-    """Teste la connexion à l'API Démarches Simplifiées"""
-    try:
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json"
-        }
-
-        if demarche_number:
-            query = """
-            query getDemarche($demarcheNumber: Int!) {
-                demarche(number: $demarcheNumber) {
-                    id
-                    number
-                    title
-                }
-            }
-            """
-            variables = {"demarcheNumber": int(demarche_number)}
-            response = requests.post(
-                DEMARCHES_API_URL,
-                json={
-                    "query": query,
-                    "variables": variables
-                },
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-        else:
-            query = """
-            query {
-                demarches(first: 1) {
-                    nodes {
-                        number
-                        title
-                    }
-                }
-            }
-            """
-            response = requests.post(
-                DEMARCHES_API_URL,
-                json={"query": query},
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-
-        if response.status_code == 200:
-            result = response.json()
-            if "errors" in result:
-                return False, f"Erreur API: {'; '.join(
-                    [
-                        e.get(
-                            'message',
-                            'Erreur inconnue'
-                        ) for e in result['errors']
-                    ]
-                )}"
-
-            if demarche_number and "data" in result and "demarche" in result["data"]:
-                demarche = result["data"]["demarche"]
-                if demarche:
-                    return True, f"Connexion réussie! Démarche trouvée: {demarche.get('title', 'Sans titre')}"
-                else:
-                    return False, f"Démarche {demarche_number} non trouvée."
-            elif "data" in result:
-                return True, "Connexion à l'API Démarches Simplifiées réussie!"
-            else:
-                return False, "Réponse API inattendue."
-        else:
-            return False, f"Erreur de connexion à l'API: {response.status_code} - {response.text}"
-    except requests.exceptions.Timeout:
-        return False, "Timeout: L'API met trop de temps à répondre"
-    except Exception as e:
-        return False, f"Erreur de connexion: {str(e)}"
-
-
-def test_grist_api(base_url, api_key, doc_id):
-    """Teste la connexion à l'API Grist"""
-    try:
-        headers = {"Authorization": f"Bearer {api_key}"}
-        if not base_url.endswith('/api'):
-            base_url = f"{base_url}/api" if base_url else "https://grist.numerique.gouv.fr/api"
-        url = f"{base_url}/docs/{doc_id}"
-
-        response = requests.get(url, headers=headers, timeout=10)
-
-        if response.status_code == 200:
-            try:
-                doc_info = response.json()
-                doc_name = doc_info.get('name', doc_id)
-                return True, f"Connexion à Grist réussie! Document: {doc_name}"
-            except Exception:
-                return True, f"Connexion à Grist réussie! Document ID: {doc_id}"
-        else:
-            return False, f"Erreur de connexion à Grist: {response.status_code} - {response.text}"
-    except requests.exceptions.Timeout:
-        return False, "Timeout: L'API Grist met trop de temps à répondre"
-    except Exception as e:
-        return False, f"Erreur de connexion: {str(e)}"
 
 
 def get_available_groups(api_token, demarche_number):
@@ -855,34 +753,15 @@ def test_current_config_connections(data):
         }), 400
 
     try:
-        # Tester les deux connexions
-        results = []
-
-        # Test Démarches Simplifiées
-        ds_success, ds_message = test_demarches_api(
+        # Utiliser la fonction centralisée pour tester les connexions
+        all_success, results = verify_api_connections(
             ds_api_token,
-            demarche_number
-        )
-        results.append({
-            "type": "demarches",
-            "success": ds_success,
-            "message": ds_message
-        })
-
-        # Test Grist
-        grist_success, grist_message = test_grist_api(
+            demarche_number,
             grist_base_url,
             grist_api_key,
             grist_doc_id
         )
-        results.append({
-            "type": "grist",
-            "success": grist_success,
-            "message": grist_message
-        })
 
-        # Déterminer le succès global
-        all_success = all(r["success"] for r in results)
         success_count = sum(1 for r in results if r["success"])
 
         return jsonify({

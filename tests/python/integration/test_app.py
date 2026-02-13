@@ -229,8 +229,8 @@ class TestEndpoints:
         assert data['success'] is False
         assert 'Configuration Grist incomplète' in data['message']
 
-    @patch('app.test_demarches_api')
-    @patch('app.test_grist_api')
+    @patch('api_validator.test_demarches_api')
+    @patch('api_validator.test_grist_api')
     def test_api_test_connection_no_params_success(self, mock_grist, mock_demarches, client):
         """Test sans paramètres - succès des deux connexions"""
         test_data = {
@@ -260,8 +260,8 @@ class TestEndpoints:
         assert data['results'][1]['type'] == 'grist'
         assert data['results'][1]['success'] is True
 
-    @patch('app.test_demarches_api')
-    @patch('app.test_grist_api')
+    @patch('api_validator.test_demarches_api')
+    @patch('api_validator.test_grist_api')
     def test_api_test_connection_no_params_partial_failure(self, mock_grist, mock_demarches, client):
         """Test sans paramètres - échec partiel"""
         test_data = {
