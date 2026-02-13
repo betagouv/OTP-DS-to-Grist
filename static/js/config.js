@@ -1,13 +1,15 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
+if (typeof testExternalConnections === 'undefined')
+  ({ testExternalConnections } = require('./connections.js'))
+
 const getConfiguration = async () => {
   // Récupérer le contexte Grist
   const gristContext = await getGristContext()
   const response = await fetch(`/api/config${gristContext.params}`)
-  if (!response.ok) {
+  if (!response.ok)
     throw new Error(`Erreur HTTP ${response.status}`)
-  }
 
   return await response.json()
 }
@@ -106,8 +108,11 @@ const loadConfiguration = async () => {
 
     const config = await getConfiguration()
 
+    // Pas vraiment utile
     if (!config)
       throw new Error('Configuration non trouvée')
+
+    testExternalConnections()
 
     // Déterminer si une configuration a été trouvée
     const hasConfig = !!config.otp_config_id

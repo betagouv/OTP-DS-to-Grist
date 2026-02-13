@@ -372,17 +372,19 @@ def get_available_groups(api_token, demarche_number):
 
 # Routes Flask
 
-def test_current_config_connections(data):
+def test_current_config_connections(otp_config_id):
     print('called')
     """
     Teste les connexions DS et Grist avec les paramètres fournis dans le body
     """
+    config = config_manager.load_config_by_id(otp_config_id)
+
     # Vérifier que les paramètres requis sont présents
-    ds_api_token = data.get('ds_api_token')
-    demarche_number = data.get('demarche_number')
-    grist_base_url = data.get('grist_base_url')
-    grist_api_key = data.get('grist_api_key')
-    grist_doc_id = data.get('grist_doc_id')
+    ds_api_token = config.get('ds_api_token')
+    demarche_number = config.get('demarche_number')
+    grist_base_url = config.get('grist_base_url')
+    grist_api_key = config.get('grist_api_key')
+    grist_doc_id = config.get('grist_doc_id')
 
     if not ds_api_token:
         return jsonify({
@@ -775,7 +777,7 @@ def api_test_connection():
             data.get('doc_id')
         )
     else:
-        return test_current_config_connections(data)
+        return test_current_config_connections(data.get('otp_config_id'))
 
     return jsonify({"success": success, "message": message})
 

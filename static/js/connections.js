@@ -232,11 +232,7 @@ const testExternalConnections = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ds_api_token: config.ds_api_token,
-        demarche_number: config.demarche_number,
-        grist_base_url: config.grist_base_url,
-        grist_api_key: config.grist_api_key,
-        grist_doc_id: config.grist_doc_id
+        otp_config_id: config.otp_config_id
       })
     })
 
