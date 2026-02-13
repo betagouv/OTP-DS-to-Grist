@@ -11,7 +11,6 @@ import requests
 from werkzeug.serving import WSGIRequestHandler
 import logging
 import atexit
-import subprocess
 import re
 from sqlalchemy import (create_engine)
 from sqlalchemy.orm import sessionmaker
@@ -806,8 +805,13 @@ def api_schedule():
 
 @app.route('/api/test-connection', methods=['POST'])
 def api_test_connection():
-    """API pour tester les connexions"""
-    data = request.get_json()
+    """
+    Route pour tester les connexions vers les autres API
+
+    Sans paramètres : teste toutes les APIs de la configuration courante
+    Avec type='demarches' ou 'grist' : teste uniquement l'API spécifiée
+    """
+    data = request.get_json() or {}
     connection_type = data.get('type')
 
     if connection_type == 'demarches':
@@ -822,11 +826,77 @@ def api_test_connection():
             data.get('doc_id')
         )
     else:
-        return jsonify(
-            {"success": False, "message": "Type de connexion invalide"}
-        ), 400
+        return test_current_config_connections(data)
 
     return jsonify({"success": success, "message": message})
+
+
+def test_current_config_connections(data):
+    """
+    Teste les connexions DS et Grist avec les paramètres fournis dans le body
+    """
+    # Vérifier que les paramètres requis sont présents
+    ds_api_token = data.get('ds_api_token')
+    demarche_number = data.get('demarche_number')
+    grist_base_url = data.get('grist_base_url')
+    grist_api_key = data.get('grist_api_key')
+    grist_doc_id = data.get('grist_doc_id')
+
+    if not ds_api_token:
+        return jsonify({
+            "success": False,
+            "message": "Token API Démarches Simplifiées non configuré"
+        }), 400
+
+    if not grist_api_key or not grist_base_url or not grist_doc_id:
+        return jsonify({
+            "success": False,
+            "message": "Configuration Grist incomplète"
+        }), 400
+
+    try:
+        # Tester les deux connexions
+        results = []
+
+        # Test Démarches Simplifiées
+        ds_success, ds_message = test_demarches_api(
+            ds_api_token,
+            demarche_number
+        )
+        results.append({
+            "type": "demarches",
+            "success": ds_success,
+            "message": ds_message
+        })
+
+        # Test Grist
+        grist_success, grist_message = test_grist_api(
+            grist_base_url,
+            grist_api_key,
+            grist_doc_id
+        )
+        results.append({
+            "type": "grist",
+            "success": grist_success,
+            "message": grist_message
+        })
+
+        # Déterminer le succès global
+        all_success = all(r["success"] for r in results)
+        success_count = sum(1 for r in results if r["success"])
+
+        return jsonify({
+            "success": all_success,
+            "message": f"{success_count}/{len(results)} tests réussis",
+            "results": results
+        })
+
+    except Exception as e:
+        logger.error(f"Erreur lors du test des connexions: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur lors du test des connexions: {str(e)}"
+        }), 500
 
 
 @app.route('/api/groups')

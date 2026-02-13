@@ -443,33 +443,29 @@ describe('testExternalConnections', () => {
   })
 
   it(
-    'shows warning when no APIs are configured',
-    async () => {
-      fetch.mockResolvedValueOnce({
-        json: () => Promise.resolve({
-          ds_api_token: '***',
-          grist_api_key: '***'
-        })
-      })
-
-      await testExternalConnections()
-
-      expect(mockResultDiv.innerHTML).toContain('Aucune API configurée pour le test')
-    }
-  )
-
-  it(
-    'tests DS connection successfully',
+    'tests both connections successfully',
     async () => {
       fetch
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             ds_api_token: 'valid-token',
-            demarche_number: '123'
+            demarche_number: '123',
+            grist_api_key: 'valid-key',
+            grist_base_url: 'https://grist.example.com',
+            grist_doc_id: 'doc123'
           })
         })
         .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            message: '2/2 tests réussis',
+            results: [
+              { type: 'demarches', success: true, message: 'DS OK' },
+              { type: 'grist', success: true, message: 'Grist OK' }
+            ]
+          })
         })
 
       await testExternalConnections()
@@ -481,18 +477,29 @@ describe('testExternalConnections', () => {
   )
 
   it(
-    'tests Grist connection with failure',
+    'shows partial failure results',
     async () => {
       fetch
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
+            ds_api_token: 'valid-token',
+            demarche_number: '123',
             grist_api_key: 'valid-key',
             grist_base_url: 'https://grist.example.com',
             grist_doc_id: 'doc123'
           })
         })
         .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: false, message: 'Grist failed' })
+          ok: true,
+          json: () => Promise.resolve({
+            success: false,
+            message: '1/2 tests réussis',
+            results: [
+              { type: 'demarches', success: true, message: 'DS OK' },
+              { type: 'grist', success: false, message: 'Grist failed' }
+            ]
+          })
         })
 
       await testExternalConnections()
@@ -504,14 +511,44 @@ describe('testExternalConnections', () => {
   )
 
   it(
+    'handles backend errors',
+    async () => {
+      fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            ds_api_token: 'valid-token',
+            demarche_number: '123',
+            grist_api_key: 'valid-key',
+            grist_base_url: 'https://grist.example.com',
+            grist_doc_id: 'doc123'
+          })
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          json: () => Promise.resolve({
+            success: false,
+            message: 'Token API Démarches Simplifiées non configuré'
+          })
+        })
+
+      await testExternalConnections()
+
+      expect(mockResultDiv.innerHTML).toContain('Token API Démarches Simplifiées non configuré')
+      expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
+    }
+  )
+
+  it(
     'handles fetch errors gracefully',
     async () => {
       fetch.mockRejectedValueOnce(new Error('Network error'))
 
       await testExternalConnections()
 
-      expect(mockResultDiv.innerHTML).toContain('Erreur lors des tests')
-      expect(mockResultDiv.innerHTML).toContain('Network error')
+      expect(mockResultDiv.innerHTML).toContain('Erreur: Network error')
+      expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
     }
   )
 
@@ -520,46 +557,62 @@ describe('testExternalConnections', () => {
     async () => {
       fetch
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
-            ds_api_token: 'token',
-            demarche_number: '123',
-            grist_api_key: 'key',
-            grist_base_url: 'base',
-            grist_doc_id: 'doc'
-          })
+          ds_api_token: 'valid-token',
+          demarche_number: '123',
+          grist_api_key: 'valid-key',
+          grist_base_url: 'https://grist.example.com',
+          grist_doc_id: 'doc123'
         })
-        .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+      })
+
+      // Deuxième appel : POST /api/test-connection
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          success: true,
+          message: '2/2 tests réussis',
+          results: [
+            { type: 'demarches', success: true, message: 'DS OK' },
+            { type: 'grist', success: true, message: 'Grist OK' }
+          ]
         })
-        .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: true, message: 'Grist OK' })
-        })
+      })
 
       await testExternalConnections()
 
-      expect(showNotification).toHaveBeenCalledWith('Tous les tests de connexion réussis (2/2)', 'success')
+      expect(showNotification).toHaveBeenCalledWith('Tous les tests réussis (2/2)', 'success')
     }
   )
 
   it(
     'shows warning notification for partial success',
     async () => {
-      fetch
-        .mockResolvedValueOnce({
-          json: () => Promise.resolve({
-            ds_api_token: 'token',
-            demarche_number: '123',
-            grist_api_key: 'key',
-            grist_base_url: 'base',
-            grist_doc_id: 'doc'
-          })
+      // Premier appel : GET /api/config
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          ds_api_token: 'valid-token',
+          demarche_number: '123',
+          grist_api_key: 'valid-key',
+          grist_base_url: 'https://grist.example.com',
+          grist_doc_id: 'doc123'
         })
-        .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: true, message: 'DS OK' })
+      })
+
+      // Deuxième appel : POST /api/test-connection
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          success: false,
+          message: '1/2 tests réussis',
+          results: [
+            { type: 'demarches', success: true, message: 'DS OK' },
+            { type: 'grist', success: false, message: 'Grist failed' }
+          ]
         })
-        .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: false, message: 'Grist failed' })
-        })
+      })
 
       await testExternalConnections()
 
