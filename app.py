@@ -22,8 +22,12 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
-from constants import DEMARCHES_API_URL
-from api_validator import test_demarches_api, test_grist_api, verify_api_connections
+from constants import CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
+from api_validator import (
+    test_demarches_api,
+    test_grist_api,
+    verify_api_connections
+)
 
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler(executors={
@@ -367,8 +371,55 @@ def get_available_groups(api_token, demarche_number):
 
 
 # Routes Flask
-CHANGELOG_PATH = os.path.join(os.path.dirname(__file__), "CHANGELOG.md")
-BASE_URL = "https://github.com/betagouv/OTP-DS-to-Grist/blob/main/CHANGELOG.md"
+
+def test_current_config_connections(data):
+    print('called')
+    """
+    Teste les connexions DS et Grist avec les paramètres fournis dans le body
+    """
+    # Vérifier que les paramètres requis sont présents
+    ds_api_token = data.get('ds_api_token')
+    demarche_number = data.get('demarche_number')
+    grist_base_url = data.get('grist_base_url')
+    grist_api_key = data.get('grist_api_key')
+    grist_doc_id = data.get('grist_doc_id')
+
+    if not ds_api_token:
+        return jsonify({
+            "success": False,
+            "message": "Token API Démarches Simplifiées non configuré"
+        }), 400
+
+    if not grist_api_key or not grist_base_url or not grist_doc_id:
+        return jsonify({
+            "success": False,
+            "message": "Configuration Grist incomplète"
+        }), 400
+
+    try:
+        # Utiliser la fonction centralisée pour tester les connexions
+        all_success, results = verify_api_connections(
+            ds_api_token,
+            demarche_number,
+            grist_base_url,
+            grist_api_key,
+            grist_doc_id
+        )
+
+        success_count = sum(1 for r in results if r["success"])
+
+        return jsonify({
+            "success": all_success,
+            "message": f"{success_count}/{len(results)} tests réussis",
+            "results": results
+        })
+
+    except Exception as e:
+        logger.error(f"Erreur lors du test des connexions: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Erreur lors du test des connexions: {str(e)}"
+        }), 500
 
 
 @app.context_processor
@@ -405,7 +456,7 @@ def inject_version_info():
 
     return dict(
         version_display=f"v {version_clean}",
-        release_url=f"{BASE_URL}#{anchor}",
+        release_url=f"{CHANGELOG_BASE_URL}#{anchor}",
     )
 
 
@@ -727,55 +778,6 @@ def api_test_connection():
         return test_current_config_connections(data)
 
     return jsonify({"success": success, "message": message})
-
-
-def test_current_config_connections(data):
-    """
-    Teste les connexions DS et Grist avec les paramètres fournis dans le body
-    """
-    # Vérifier que les paramètres requis sont présents
-    ds_api_token = data.get('ds_api_token')
-    demarche_number = data.get('demarche_number')
-    grist_base_url = data.get('grist_base_url')
-    grist_api_key = data.get('grist_api_key')
-    grist_doc_id = data.get('grist_doc_id')
-
-    if not ds_api_token:
-        return jsonify({
-            "success": False,
-            "message": "Token API Démarches Simplifiées non configuré"
-        }), 400
-
-    if not grist_api_key or not grist_base_url or not grist_doc_id:
-        return jsonify({
-            "success": False,
-            "message": "Configuration Grist incomplète"
-        }), 400
-
-    try:
-        # Utiliser la fonction centralisée pour tester les connexions
-        all_success, results = verify_api_connections(
-            ds_api_token,
-            demarche_number,
-            grist_base_url,
-            grist_api_key,
-            grist_doc_id
-        )
-
-        success_count = sum(1 for r in results if r["success"])
-
-        return jsonify({
-            "success": all_success,
-            "message": f"{success_count}/{len(results)} tests réussis",
-            "results": results
-        })
-
-    except Exception as e:
-        logger.error(f"Erreur lors du test des connexions: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": f"Erreur lors du test des connexions: {str(e)}"
-        }), 500
 
 
 @app.route('/api/groups')

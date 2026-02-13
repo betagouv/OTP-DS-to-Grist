@@ -129,7 +129,13 @@ def test_grist_api(base_url, api_key, doc_id):
         return False, f"Erreur de connexion: {str(e)}"
 
 
-def verify_api_connections(ds_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id):
+def verify_api_connections(
+    ds_token,
+    demarche_number,
+    grist_base_url,
+    grist_api_key,
+    grist_doc_id
+):
     """
     Teste les connexions aux deux APIs (DS et Grist)
     
@@ -147,7 +153,10 @@ def verify_api_connections(ds_token, demarche_number, grist_base_url, grist_api_
     results = []
     
     # Test Démarches Simplifiées
-    ds_success, ds_message = test_demarches_api(ds_token, demarche_number)
+    ds_success, ds_message = test_demarches_api(
+        ds_token,
+        demarche_number
+    )
     results.append({
         "type": "demarches",
         "success": ds_success,
@@ -155,7 +164,12 @@ def verify_api_connections(ds_token, demarche_number, grist_base_url, grist_api_
     })
     
     # Test Grist
-    grist_success, grist_message = test_grist_api(grist_base_url, grist_api_key, grist_doc_id)
+    grist_success, grist_message = test_grist_api(
+        grist_base_url,
+        grist_api_key,
+        grist_doc_id
+    )
+
     results.append({
         "type": "grist",
         "success": grist_success,
