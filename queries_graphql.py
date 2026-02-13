@@ -1,11 +1,13 @@
 import requests
 import os
+from dotenv import load_dotenv
 from datetime import datetime
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict, Any, List
 from constants import DEMARCHES_API_URL
 
+load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
 API_URL = DEMARCHES_API_URL
 
