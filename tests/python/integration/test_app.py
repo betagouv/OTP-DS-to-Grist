@@ -695,6 +695,27 @@ class TestErrorHandling:
         assert 'disabled' in data_resp['message']
 
     @patch('app.SessionLocal')
+    def test_api_schedule_post_missing_grist_key(self, mock_session, client):
+        """Test activation planning sans clé Grist"""
+        mock_db = mock_session.return_value
+        mock_config = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_config.id = 1
+        mock_config.grist_api_key = None  # Clé Grist manquante
+
+        data = {'otp_config_id': 1}
+
+        response = client.post(
+            '/api/schedule',
+            data=json.dumps(data),
+            content_type='application/json'
+        )
+        assert response.status_code == 403
+
+        data_resp = json.loads(response.data)
+        assert data_resp['success'] is False
+        assert 'Clé grist manquante' in data_resp['message']
+
+    @patch('app.SessionLocal')
     def test_api_schedule_missing_config(self, mock_session, client):
         """Test planning avec config manquante"""
         mock_db = mock_session.return_value

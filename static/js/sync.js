@@ -224,6 +224,13 @@ const toggleAutoSync = async (enabled) => {
       return
     }
 
+    if (!config.has_grist_key) {
+      showNotification('Clé grist manquante', 'error')
+      // Revert checkbox
+      document.getElementById('auto_sync_enabled').checked = false
+      return
+    }
+
     const method = enabled ? 'POST' : 'DELETE'
     const response = await fetch('/api/schedule', {
       method: method,
