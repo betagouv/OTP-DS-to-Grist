@@ -36,6 +36,7 @@ commitizen = "^4.12.1"
 poethepoet = "^0.40.0"
 pytest = "^9.0.2"
 pytest-cov = "^7.0.0"
+ruff = "^0.15.0"
 
 [tool.poe.tasks.dev]
 shell = "python app.py"
@@ -54,3 +55,9 @@ shell = "python3 -c \"import secrets, base64; print('ENCRYPTION_KEY=' + base64.u
 [tool.poe.tasks.test-coverage]
 help = "Lance les tests avec rapport de couverture"
 shell = "pytest --cov=. --cov-report=term"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["F"]
