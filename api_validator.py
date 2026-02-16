@@ -5,6 +5,9 @@ Fonctions pures, sans dépendance Flask, utilisables par app.py et les scripts C
 
 import requests
 from constants import DEMARCHES_API_URL
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def test_demarches_api(api_token, demarche_number=None):
@@ -91,7 +94,8 @@ def test_demarches_api(api_token, demarche_number=None):
     except requests.exceptions.Timeout:
         return False, "Timeout: L'API met trop de temps à répondre"
     except Exception as e:
-        return False, f"Erreur de connexion: {str(e)}"
+        logger.exception("Erreur inattendue lors du test de l'API Démarches Simplifiées")
+        return False, "Erreur de connexion à l'API Démarches Simplifiées"
 
 
 def test_grist_api(base_url, api_key, doc_id):
@@ -126,7 +130,8 @@ def test_grist_api(base_url, api_key, doc_id):
     except requests.exceptions.Timeout:
         return False, "Timeout: L'API Grist met trop de temps à répondre"
     except Exception as e:
-        return False, f"Erreur de connexion: {str(e)}"
+        logger.exception("Erreur inattendue lors du test de l'API Grist")
+        return False, "Erreur de connexion à l'API Grist"
 
 
 def verify_api_connections(

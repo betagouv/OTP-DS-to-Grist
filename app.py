@@ -417,10 +417,10 @@ def test_current_config_connections(otp_config_id):
         })
 
     except Exception as e:
-        logger.error(f"Erreur lors du test des connexions: {str(e)}")
+        logger.exception("Erreur lors du test des connexions")
         return jsonify({
             "success": False,
-            "message": f"Erreur lors du test des connexions: {str(e)}"
+            "message": "Une erreur interne est survenue lors du test des connexions"
         }), 500
 
 
