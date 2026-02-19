@@ -108,11 +108,9 @@ const loadConfiguration = async () => {
 
     const config = await getConfiguration()
 
-    // Pas vraiment utile
     if (!config)
       throw new Error('Configuration non trouvée')
 
-    testExternalConnections()
 
     // Déterminer si une configuration a été trouvée
     const hasConfig = !!config.otp_config_id
@@ -135,6 +133,8 @@ const loadConfiguration = async () => {
     document.getElementById('date_fin').value = hasConfig && config.filter_date_end || ''
 
     if (hasConfig) {
+      testExternalConnections()
+
       // Statuts
       const filterStatuses = config.filter_statuses ? config.filter_statuses.split(',') : []
       document.querySelectorAll('input[name="statuts"]').forEach(el => {

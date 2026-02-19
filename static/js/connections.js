@@ -228,6 +228,8 @@ const testExternalConnections = async () => {
 
     const config = await configResponse.json()
 
+    if (!config.otp_config_id) throw new Error('Pas de configuration trouvée')
+
     const response = await fetch('/api/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
