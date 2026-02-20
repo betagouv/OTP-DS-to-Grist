@@ -2513,9 +2513,9 @@ def process_demarche_for_grist_optimized(
                         # 1. Supprimer les instructeurs obsolètes
                         if to_delete:
                             delete_response = requests.post(
-                                f"{url}:delete",
+                                f"{url}/delete",
                                 headers=client.headers,
-                                json={"records": to_delete}
+                                json=to_delete
                             )
                             if delete_response.status_code in [200, 201]:
                                 log(f"  🗑️  {len(to_delete)} instructeur(s) supprimé(s)")
