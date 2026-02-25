@@ -40,18 +40,18 @@ if __name__ == "__main__":
         api_token = os.getenv("DEMARCHES_API_TOKEN")
         demarche_number = os.getenv("DEMARCHE_NUMBER")
 
-        if api_token:
-            print("Vérification de la connexion à l'API Démarches Simplifiées")
-            success, message = test_demarches_api(api_token, demarche_number)
-
-            if not success:
-                print(f"✗ Échec de la connexion: {message}")
-                exit(1)
-            else:
-                print(f"✓ {message}")
-        else:
+        if not api_token:
             print("⚠ Token API non défini, impossible de tester la connexion")
             exit(1)
+
+        print("Vérification de la connexion à l'API Démarches Simplifiées")
+        success, message = test_demarches_api(api_token, demarche_number)
+
+        if not success:
+            print(f"✗ Échec de la connexion: {message}")
+            exit(1)
+
+        print(f"✓ {message}")
 
         # Récupérer le numéro de démarche depuis le fichier .env
         demarche_number = os.getenv("DEMARCHE_NUMBER")

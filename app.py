@@ -22,7 +22,11 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
-from constants import CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
+from constants import (
+    GITHUB_CHANGELOG_BASE_URL,
+    CHANGELOG_PATH,
+    DEMARCHES_API_URL
+)
 from api_validator import (
     test_demarches_api,
     test_grist_api,
@@ -458,7 +462,7 @@ def inject_version_info():
 
     return dict(
         version_display=f"v {version_clean}",
-        release_url=f"{CHANGELOG_BASE_URL}#{anchor}",
+        release_url=f"{GITHUB_CHANGELOG_BASE_URL}#{anchor}",
     )
 
 

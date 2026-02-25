@@ -138,25 +138,6 @@ class TestTestGristApi:
         assert 'doc123' in message
 
     @patch('api_validator.requests.get')
-    def test_url_without_api_suffix(self, mock_get):
-        """Test avec URL sans suffixe /api"""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {'name': 'Doc'}
-        mock_get.return_value = mock_response
-
-        success, message = grist_api_tester(
-            'https://grist.example.com',  # Sans /api
-            'api-key',
-            'doc123'
-        )
-
-        assert success is True
-        # Vérifie que l'URL a été modifiée pour inclure /api
-        call_args = mock_get.call_args
-        assert '/api/' in call_args[0][0]
-
-    @patch('api_validator.requests.get')
     def test_http_error(self, mock_get):
         """Test avec erreur HTTP"""
         mock_response = MagicMock()

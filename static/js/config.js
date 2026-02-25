@@ -111,7 +111,6 @@ const loadConfiguration = async () => {
     if (!config)
       throw new Error('Configuration non trouvée')
 
-
     // Déterminer si une configuration a été trouvée
     const hasConfig = !!config.otp_config_id
 
