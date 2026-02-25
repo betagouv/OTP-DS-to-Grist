@@ -133,7 +133,7 @@ const loadConfiguration = async () => {
     document.getElementById('date_fin').value = hasConfig && config.filter_date_end || ''
 
     if (hasConfig) {
-      testExternalConnections()
+      testExternalConnections(true)
 
       // Statuts
       const filterStatuses = config.filter_statuses ? config.filter_statuses.split(',') : []

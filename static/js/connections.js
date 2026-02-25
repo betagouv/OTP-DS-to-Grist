@@ -217,9 +217,10 @@ const testWebSocket = () => {
   )
 }
 
-const testExternalConnections = async () => {
+const testExternalConnections = async (silent = false) => {
   const resultDiv = document.getElementById('external_tests_result')
-  resultDiv.innerHTML = '<div class="fr-alert fr-alert--info"><p>Test des connexions externes en cours...</p></div>'
+  if (!silent)
+    resultDiv.innerHTML = '<div class="fr-alert fr-alert--info"><p>Test des connexions externes en cours...</p></div>'
 
   try {
     const gristContext = await getGristContext()
@@ -246,22 +247,30 @@ const testExternalConnections = async () => {
       return
     }
 
-    const html = result.results.map(r => `
-      <div class="fr-col-12">
-        <div class="fr-alert ${r.success ? 'fr-alert--success' : 'fr-alert--error'}">
-          <h4 class="fr-alert__title">${r.type === 'demarches' ? 'Démarches Simplifiées' : 'Grist'}</h4>
-          <p>${r.message}</p>
+    const resultsToShow = silent 
+      ? result.results.filter(r => !r.success) 
+      : result.results
+
+    if (resultsToShow.length > 0) {
+      const html = resultsToShow.map(r => `
+        <div class="fr-col-12">
+          <div class="fr-alert ${r.success ? 'fr-alert--success' : 'fr-alert--error'}">
+            <h4 class="fr-alert__title">${r.type === 'demarches' ? 'Démarches Simplifiées' : 'Grist'}</h4>
+            <p>${r.message}</p>
+          </div>
         </div>
-      </div>
-    `).join('')
+      `).join('')
 
-    resultDiv.innerHTML = `<div class="fr-grid-row fr-grid-row--gutters">${html}</div>`
+      resultDiv.innerHTML = `<div class="fr-grid-row fr-grid-row--gutters">${html}</div>`
+    }
 
-    const successCount = result.results.filter(r => r.success).length
-    const msg = successCount === result.results.length
-      ? `Tous les tests réussis (${successCount}/${result.results.length})`
-      : `${successCount}/${result.results.length} connexions réussies`
-    showNotification(msg, successCount === result.results.length ? 'success' : 'warning')
+    if (!silent) {
+      const successCount = result.results.filter(r => r.success).length
+      const msg = successCount === result.results.length
+        ? `Tous les tests réussis (${successCount}/${result.results.length})`
+        : `${successCount}/${result.results.length} connexions réussies`
+      showNotification(msg, successCount === result.results.length ? 'success' : 'warning')
+    }
 
   } catch (error) {
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error"><p>Erreur: ${error.message}</p></div>`
