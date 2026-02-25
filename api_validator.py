@@ -10,13 +10,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def test_demarches_api(api_token, demarche_number=None):
+def test_demarches_api(api_token, demarche_number):
     """
     Teste la connexion à l'API Démarches Simplifiées
     
     Args:
         api_token: Token d'authentification DS
-        demarche_number: Numéro de démarche (optionnel)
+        demarche_number: Numéro de démarche
     
     Returns:
         tuple: (success: bool, message: str)
@@ -27,73 +27,61 @@ def test_demarches_api(api_token, demarche_number=None):
             "Content-Type": "application/json"
         }
 
-        if demarche_number:
-            query = """
-            query getDemarche($demarcheNumber: Int!) {
-                demarche(number: $demarcheNumber) {
-                    id
-                    number
-                    title
-                }
+        query = """
+        query getDemarche($demarcheNumber: Int!) {
+            demarche(number: $demarcheNumber) {
+                id
+                number
+                title
             }
-            """
-            variables = {"demarcheNumber": int(demarche_number)}
-            response = requests.post(
-                DEMARCHES_API_URL,
-                json={
-                    "query": query,
-                    "variables": variables
-                },
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-        else:
-            query = """
-            query {
-                demarches(first: 1) {
-                    nodes {
-                        number
-                        title
-                    }
-                }
-            }
-            """
-            response = requests.post(
-                DEMARCHES_API_URL,
-                json={"query": query},
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
+        }
+        """
+        variables = {"demarcheNumber": int(demarche_number)}
+        response = requests.post(
+            DEMARCHES_API_URL,
+            json={
+                "query": query,
+                "variables": variables
+            },
+            headers=headers,
+            timeout=10,
+            verify=True
+        )
 
-        if response.status_code == 200:
-            result = response.json()
-            if "errors" in result:
-                return False, f"Erreur API: {'; '.join(
-                    [
-                        e.get(
-                            'message',
-                            'Erreur inconnue'
-                        ) for e in result['errors']
-                    ]
-                )}"
+        result = response.json()
 
-            if demarche_number and "data" in result and "demarche" in result["data"]:
-                demarche = result["data"]["demarche"]
-                if demarche:
-                    return True, f"Connexion réussie! Démarche trouvée: {demarche.get('title', 'Sans titre')}"
-                else:
-                    return False, f"Démarche {demarche_number} non trouvée."
-            elif "data" in result:
-                return True, "Connexion à l'API Démarches Simplifiées réussie!"
-            else:
-                return False, "Réponse API inattendue."
-        else:
-            return False, f"Erreur de connexion à l'API: {response.status_code} - {response.text}"
+        if response.status_code != 200:
+            result.get('errors')
+            error_messages = [e.get('message', 'Erreur inconnue') for e in result['errors']]
+            error_text = '; '.join(error_messages)
+            if any("expired" in msg.lower() for msg in error_messages):
+                return False, "Token expiré"
+            return False, f"Erreur de connexion à l'API: {response.status_code} - {error_text}"
+
+        if "errors" in result:
+            return False, f"Erreur API: {'; '.join(
+                [
+                    e.get(
+                        'message',
+                        'Erreur inconnue'
+                    ) for e in result['errors']
+                ]
+            )}"
+
+        if "data" not in result or "demarche" not in result["data"]:
+            return False, "Réponse API inattendue."
+
+        demarche = result["data"]["demarche"]
+
+        if demarche:
+            return True, f"Connexion réussie! Démarche trouvée: {demarche.get('title', 'Sans titre')}"
+
+        return False, f"Démarche {demarche_number} non trouvée."
+
     except requests.exceptions.Timeout:
         return False, "Timeout: L'API met trop de temps à répondre"
-    except Exception as e:
+
+    except Exception:
         logger.exception("Erreur inattendue lors du test de l'API Démarches Simplifiées")
         return False, "Erreur de connexion à l'API Démarches Simplifiées"
 
@@ -129,7 +117,8 @@ def test_grist_api(base_url, api_key, doc_id):
             return False, f"Erreur de connexion à Grist: {response.status_code} - {response.text}"
     except requests.exceptions.Timeout:
         return False, "Timeout: L'API Grist met trop de temps à répondre"
-    except Exception as e:
+
+    except Exception:
         logger.exception("Erreur inattendue lors du test de l'API Grist")
         return False, "Erreur de connexion à l'API Grist"
 

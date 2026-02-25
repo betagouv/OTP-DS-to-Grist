@@ -2,7 +2,6 @@
 Tests unitaires pour api_validator.py
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 from api_validator import (
     test_demarches_api as demarches_api_tester,
@@ -37,25 +36,6 @@ class TestTestDemarchesApi:
         assert 'Test Démarche' in message
 
     @patch('api_validator.requests.post')
-    def test_success_without_demarche_number(self, mock_post):
-        """Test réussi sans numéro de démarche"""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            'data': {
-                'demarches': {
-                    'nodes': [{'number': 1, 'title': 'Test'}]
-                }
-            }
-        }
-        mock_post.return_value = mock_response
-
-        success, message = demarches_api_tester('token123')
-
-        assert success is True
-        assert 'Connexion à l\'API Démarches Simplifiées réussie' in message
-
-    @patch('api_validator.requests.post')
     def test_api_error(self, mock_post):
         """Test avec erreur API"""
         mock_response = MagicMock()
@@ -65,7 +45,7 @@ class TestTestDemarchesApi:
         }
         mock_post.return_value = mock_response
 
-        success, message = demarches_api_tester('invalid-token')
+        success, message = demarches_api_tester('invalid-token', '123')
 
         assert success is False
         assert 'Erreur API' in message
@@ -79,7 +59,7 @@ class TestTestDemarchesApi:
         mock_response.text = 'Unauthorized'
         mock_post.return_value = mock_response
 
-        success, message = demarches_api_tester('token123')
+        success, message = demarches_api_tester('token123', '123')
 
         assert success is False
         assert '401' in message
@@ -90,7 +70,7 @@ class TestTestDemarchesApi:
         from requests.exceptions import Timeout
         mock_post.side_effect = Timeout('Connection timed out')
 
-        success, message = demarches_api_tester('token123')
+        success, message = demarches_api_tester('token123', '123')
 
         assert success is False
         assert 'Timeout' in message
@@ -100,10 +80,23 @@ class TestTestDemarchesApi:
         """Test avec exception générique"""
         mock_post.side_effect = Exception('Network error')
 
-        success, message = demarches_api_tester('token123')
+        success, message = demarches_api_tester('token123', '123')
 
         assert success is False
         assert 'Erreur de connexion' in message
+
+    @patch('api_validator.requests.post')
+    def test_expired_token(self, mock_post):
+        """Test avec token expiré"""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.json.return_value = {
+            'errors': [{'message': 'Token expired'}]
+        }
+        mock_post.return_value = mock_response
+        success, message = demarches_api_tester('expired-token', '123')
+        assert success is False
+        assert 'Token expiré' in message
 
 
 class TestTestGristApi:
