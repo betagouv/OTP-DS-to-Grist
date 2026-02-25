@@ -449,6 +449,7 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
+            otp_config_id: 1,
             ds_api_token: 'valid-token',
             demarche_number: '123',
             grist_api_key: 'valid-key',
@@ -483,6 +484,7 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
+            otp_config_id: 1,
             ds_api_token: 'valid-token',
             demarche_number: '123',
             grist_api_key: 'valid-key',
@@ -517,6 +519,7 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
+            otp_config_id: 1,
             ds_api_token: 'valid-token',
             demarche_number: '123',
             grist_api_key: 'valid-key',
@@ -559,12 +562,13 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
-          ds_api_token: 'valid-token',
-          demarche_number: '123',
-          grist_api_key: 'valid-key',
-          grist_base_url: 'https://grist.example.com',
-          grist_doc_id: 'doc123'
-        })
+            otp_config_id: 1,
+            ds_api_token: 'valid-token',
+            demarche_number: '123',
+            grist_api_key: 'valid-key',
+            grist_base_url: 'https://grist.example.com',
+            grist_doc_id: 'doc123'
+          })
       })
 
       // Deuxième appel : POST /api/test-connection
@@ -593,6 +597,7 @@ describe('testExternalConnections', () => {
       fetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
+          otp_config_id: 1,
           ds_api_token: 'valid-token',
           demarche_number: '123',
           grist_api_key: 'valid-key',
