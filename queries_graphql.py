@@ -5,6 +5,7 @@ from datetime import datetime
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict, Any, List
+from queries_util import timed
 from constants import DEMARCHES_API_URL
 
 load_dotenv()
@@ -583,6 +584,7 @@ def get_session_with_retries():
 
 
 # Fonctions d'API
+@timed("get_dossier", "ds")
 def get_dossier(dossier_number: int) -> Dict[str, Any]:
     """
     Récupère les détails d'un dossier avec tous ses champs.
@@ -785,6 +787,7 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
     return demarche
 
 
+@timed("get_demarche_dossiers_filtered", "ds")
 def get_demarche_dossiers_filtered(
     demarche_number: int,
     date_debut: str = None,

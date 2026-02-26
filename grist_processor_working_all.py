@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from queries import get_demarche, get_dossier, dossier_to_flat_data
 from queries_graphql import get_demarche_dossiers_filtered
+from queries_util import get_timings
 from schema_utils import (
     get_demarche_schema,
     create_columns_from_schema,
@@ -44,13 +45,36 @@ def log_error(message):
     print(f"ERREUR: {message}")
 
 
+def print_api_timings():
+    timings = get_timings()
+    if not timings:
+        return
+
+    total_duration = sum(t["duration"] for t in timings)
+
+    print("\n" + "=" * 50)
+    print("[API] Résumé des requêtes:")
+    print("-" * 50)
+
+    for t in timings:
+        service = f"[{t['service']}] " if t.get("service") else ""
+        print(f"  {service}{t['function']}: {t['duration']:.2f}s")
+
+    print("-" * 50)
+    print(f"[API] Total: {len(timings)} requêtes en {total_duration:.2f}s")
+    print("=" * 50 + "\n")
+
+
 def get_optimized_schema(demarche_number):
     """
     Récupération optimisée du schéma avec fallback automatique.
     """
     try:
         log("Récupération optimisée du schéma")
-        return get_demarche_schema_enhanced(demarche_number, prefer_robust=True)
+        return get_demarche_schema_enhanced(
+            demarche_number,
+            prefer_robust=True
+        )
     except Exception as e:
         log_error(f"Erreur version optimisée: {e}")
         log("Fallback vers version classique")
@@ -2708,9 +2732,11 @@ def main():
         api_filters=api_filters  # Passer les filtres optimisés
     ):
         log(f"Traitement de la démarche {demarche_number} terminé avec succès")
+        print_api_timings()
         return 0
     else:
         log_error(f"Échec du traitement de la démarche {demarche_number}")
+        print_api_timings()
         return 1
 
 

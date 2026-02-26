@@ -1,48 +1,52 @@
 import base64
 import json
+import time
+from typing import List, Dict, Any, Callable
+
 
 def decode_base64_id(base64_id: str) -> str:
     """
     Décode un ID en Base64 utilisé par l'API GraphQL.
-    
+
     Args:
         base64_id: ID en format Base64
-        
+
     Returns:
         ID décodé
     """
     try:
         # Décodage Base64
         decoded = base64.b64decode(base64_id).decode('utf-8')
-        
+
         # Les IDs GraphQL sont souvent de la forme "TypeName:id"
         if ':' in decoded:
             return decoded.split(':')[-1]
-        
+
         # Extrait juste le nombre si le format est "Champ-123456"
         if '-' in decoded:
             return decoded.split('-')[-1]
-        
+
         return decoded
-    except:
+    except Exception:
         # Si le décodage échoue, retourne l'ID original
         return base64_id
+
 
 def format_complex_json_for_grist(json_value, max_length=10000):
     """
     Formate une valeur JSON complexe pour l'insertion dans Grist.
     Tronque si nécessaire et s'assure que la valeur est une chaîne.
-    
+
     Args:
         json_value: Valeur JSON à formater
         max_length: Longueur maximale de la chaîne résultante
-        
+
     Returns:
         Chaîne formatée pour Grist
     """
     if json_value is None:
         return None
-        
+
     try:
         json_str = json.dumps(json_value, ensure_ascii=False)
         # Tronquer si la chaîne est trop longue
@@ -56,49 +60,51 @@ def format_complex_json_for_grist(json_value, max_length=10000):
             str_value = str_value[:max_length] + "..."
         return str_value
 
+
 def associate_geojson_with_champs(geojson_data, champs):
     """
-    Associe les données GeoJSON aux champs par différentes méthodes de correspondance.
+    Associe les données GeoJSON
+    aux champs par différentes méthodes de correspondance.
     """
     # Dictionnaire pour stocker les associations
     associations = {}
-    
+
     # Dictionnaire pour indexer les champs par différents critères
     champs_by_numeric_id = {}
     champs_by_descriptor_id = {}
     champs_by_label = {}
-    
+
     # Indexer les champs
     for champ in champs:
         if champ["numeric_id"]:
             champs_by_numeric_id[champ["numeric_id"]] = champ
-        
+
         if champ["decoded_descriptor_id"]:
             champs_by_descriptor_id[champ["decoded_descriptor_id"]] = champ
-        
+
         champs_by_label[champ["base_label"]] = champ
-    
+
     # Parcourir les features GeoJSON
     for feature in geojson_data.get("features", []):
         properties = feature.get("properties", {})
-        
+
         # Extraire les identifiants
         champ_id = properties.get("champ_id")
         champ_label = properties.get("champ_label")
         champ_row = properties.get("champ_row", "")
-        
+
         # Priorité 1: Essayer de faire correspondre par ID numérique
         matched_champ = None
         if champ_id and str(champ_id) in champs_by_numeric_id:
             matched_champ = champs_by_numeric_id[str(champ_id)]
-        
+
         # Priorité 2: Essayer de faire correspondre par ID de descripteur
         if not matched_champ and champ_id:
             for c in champs:
                 if c["decoded_descriptor_id"] == str(champ_id):
                     matched_champ = c
                     break
-        
+
         # Priorité 3: Essayer de faire correspondre par label
         if not matched_champ and champ_label:
             for c in champs:
@@ -112,13 +118,43 @@ def associate_geojson_with_champs(geojson_data, champs):
                     else:
                         matched_champ = c
                         break
-        
+
         # Si une correspondance a été trouvée, ajouter la feature à l'association
         if matched_champ:
             champ_key = matched_champ["id"]
             if champ_key not in associations:
                 associations[champ_key] = []
-            
+
             associations[champ_key].append(feature)
-    
+
     return associations
+
+
+# Timing des requêtes API (pour statistiques et debugging)
+_timings: List[Dict[str, Any]] = []
+
+
+def timed(func_name: str, service: str = None) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                _timings.append({
+                    "service": service,
+                    "function": func_name,
+                    "duration": time.time() - start,
+                    "args": args,
+                    "kwargs": kwargs
+                })
+        return wrapper
+    return decorator
+
+
+def get_timings() -> List[Dict[str, Any]]:
+    return _timings.copy()
+
+
+def clear_timings():
+    _timings.clear()
