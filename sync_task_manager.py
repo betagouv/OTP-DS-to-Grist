@@ -32,7 +32,7 @@ class SyncTaskManager:
             config,
             progress_callback=None,
             log_callback=None
-    ):
+    ) -> dict:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
         """
@@ -345,14 +345,10 @@ class SyncTaskManager:
 
             result = task_function(*args, **kwargs)
 
-            # Vérifier le résultat pour déterminer le vrai statut
-            if result and isinstance(result, dict):
-                if result.get('success') is False:
-                    task_message = result.get('message', 'Tâche terminée avec des erreurs')
-                else:
-                    task_message = 'Tâche terminée avec succès'
+            if result.get('success') is False:
+                task_message = result.get('message', 'Tâche terminée avec des erreurs')
             else:
-                task_message = 'Tâche terminée'
+                task_message = 'Tâche terminée avec succès'
 
             self.tasks[task_id].update({
                 'status': 'completed',
