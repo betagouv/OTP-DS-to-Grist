@@ -34,27 +34,3 @@ Scalingo n'affiche que certaines informations par défaut. Pour avoir plus d'inf
 3. Puis afficher les derniers logs : `scalingo logs -a nom-de-lapp`
 
 Si nécessaire, *redémarrer* l'application par exemple après un changement d'environnement : `scalingo restart -a nom-de-lapp`
-
-## Avec Docker (optionnel)
-
-Créez un `Dockerfile` :
-
-```dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-EXPOSE 5000
-
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "app:app"]
-```
-
-Build et run :
-
-```bash
-docker build -t ds-to-grist .
-docker run -p 5000:5000 --env-file .env ds-to-grist
-```

@@ -82,7 +82,7 @@ ENCRYPTION_KEY='encrypt-key'
 
 # ▶️ Lancement de l'application
 
-## Mode développement
+## Mode développement sans Docker
 
 ```bash
 # Activer l'environnement virtuel si pas déjà fait
@@ -93,6 +93,72 @@ poe dev
 ```
 
 L'application sera accessible sur : **http://localhost:5000**
+
+### Tests
+
+```bash
+# Tests Python
+poe test
+
+# Tests JavaScript
+npm run test
+```
+
+## Mode développement avec Docker
+
+### Prérequis
+
+- **Docker** ([Télécharger Docker](https://www.docker.com/products/docker-desktop))
+- **Docker Compose** (inclus avec Docker Desktop)
+
+### Configuration
+
+1. Assurez-vous que votre fichier `.env` contient la variable `DOCKER_DATABASE_URL` :
+
+```bash
+# Vérifiez que cette ligne existe dans votre fichier .env
+DOCKER_DATABASE_URL=postgresql://otp_user:otp_password@db:5432/otp_ds
+```
+
+2. Lancer les services (PostgreSQL + Application) :
+
+```bash
+docker-compose up app
+```
+
+3. Pour arrêter les services :
+
+```bash
+docker-compose down
+```
+
+### Notes
+
+- **PostgreSQL** : Lancé automatiquement via Docker (port 5433 vers le conteneur)
+- **Logs** : Affichés dans le terminal
+
+### Tests
+
+```bash
+# Tests Python
+docker-compose run --rm app poe test
+
+# Tests JavaScript
+docker-compose run --rm app npm run test
+```
+
+### Dépannage Docker
+
+```bash
+# Rebuild de l'image après modification des dépendances
+docker-compose build app
+
+# Voir les logs en temps réel
+docker-compose logs -f app
+
+# Accéder au conteneur en interactif
+docker-compose run --rm app bash
+```
 
 ## Mode production locale
 
@@ -143,36 +209,38 @@ GROUPES_INSTRUCTEURS='120400'
 ## Problèmes courants
 
 ### Erreur : "Module not found"
+
+Solution : Vérifier l'environnement virtuel
+
 ```bash
-# Solution : Vérifier l'environnement virtuel
 pip list
 pip install -r requirements.txt
 ```
 
 ### Erreur : "Token invalid"
-```bash
-# Solutions :
-# 1. Vérifier la validité du token DS
-# 2. Vérifier les droits d'accès à la démarche
-# 3. Régénérer le token si expiré
-```
+
+Solutions :
+
+1. Vérifier la validité du token DS
+2. Vérifier les droits d'accès à la démarche
+3. Régénérer le token si expiré
 
 ### Erreur : "Document not found" (Grist)
-```bash
-# Solutions :
-# 1. Vérifier l'ID du document Grist
-# 2. Vérifier les droits d'accès au document
-# 3. Vérifier que la clé API est valide
-```
+
+Solutions :
+
+1. Vérifier l'ID du document Grist
+2. Vérifier les droits d'accès au document
+3. Vérifier que la clé API est valide
 
 ### Application lente/timeout
-```bash
-# Solutions :
-# 1. Réduire BATCH_SIZE dans .env
-# 2. Réduire MAX_WORKERS dans .env
-# 3. Vérifier la connexion internet
-# 4. Augmenter les timeouts dans le code
-```
+
+Solutions :
+
+1. Réduire BATCH_SIZE dans .env
+2. Réduire MAX_WORKERS dans .env
+3. Vérifier la connexion internet
+4. Augmenter les timeouts dans le code
 
 ## Logs de débogage
 
