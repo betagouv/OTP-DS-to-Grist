@@ -17,6 +17,6 @@ COPY --chown=appuser:appgroup . .
 
 USER appuser
 
-RUN poetry install --with dev
+RUN poetry config virtualenvs.in-project true && poetry install --with dev
 
 CMD ["poetry", "run", "poe", "dev"]
