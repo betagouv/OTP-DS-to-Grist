@@ -1,0 +1,19 @@
+{
+  "name": "OTP-DS-to-Grist",
+  "dockerComposeFile": [
+    "docker-compose.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "customizations": {
+    "vscode": {
+      "extensions": {
+        "recommendations": "../.vscode/extensions.json"
+      }
+    }
+  },
+  "forwardPorts": [5000, 5433],
+  "postCreateCommand": "poetry install --with dev",
+  "postStartCommand": "docker-compose up app",
+  "shutdownAction": "stopCompose"
+}
