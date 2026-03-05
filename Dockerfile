@@ -1,12 +1,9 @@
-FROM python:3.12-slim
-
-ARG UID=1000
-ARG GID=1000
+FROM nikolaik/python-nodejs:python3.12-nodejs22
 
 RUN pip install poetry
 
-RUN addgroup --gid $GID appgroup && \
-    adduser --uid $UID --gid $GID appuser
+RUN groupadd -g 1001 appgroup && \
+    useradd -m -u 1001 -g appgroup appuser
 
 RUN mkdir /app && chown appuser:appgroup /app
 
