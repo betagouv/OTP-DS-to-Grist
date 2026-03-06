@@ -1,0 +1,18 @@
+services:
+  app:
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://otp_user:otp_password@db:5432/otp_ds
+      - DOCKER_DATABASE_URL=postgresql://otp_user:otp_password@localhost:5433/otp_ds
+      - GRIST_API_KEY=${GRIST_API_KEY}
+      - GRIST_ORG=${GRIST_ORG}
+      - OTP_API_KEY=${OTP_API_KEY}
+      - OTP_API_SECRET=${OTP_API_SECRET}
+    env_file: []
+
+  db:
+    environment:
+      POSTGRES_DB: otp_ds
+      POSTGRES_USER: otp_user
+      POSTGRES_PASSWORD: otp_password
