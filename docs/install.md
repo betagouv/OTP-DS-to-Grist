@@ -53,8 +53,21 @@ cp .env.example .env
 
 Éditez le fichier `.env` avec vos paramètres.
 
+Configuration PostgreSQL (Docker)
 ```env
-# Configuration avancée
+POSTGRES_DB=db_name
+POSTGRES_USER=user
+POSTGRES_PASSWORD=
+DOCKER_DATABASE_URL=postgresql://user@localhorst:5432/db_name
+```
+
+Configuration PostgreSQL (local)
+```env
+DATABASE_URL=postgresql://user<:mot de passe ou vide>@host:port/db_name
+```
+
+Configuration avancée
+```env
 BATCH_SIZE='100'
 MAX_WORKERS='3'
 PARALLEL='True'
@@ -66,8 +79,17 @@ FLASK_SECRET_KEY=
 # True = dev, False = prod
 FLASK_DEBUG=False
 
-DATABASE_URL=postgresql://user<:mot de passe ou vide>@host:port/db_name
 ENCRYPTION_KEY='encrypt-key'
+
+# API Démarches Simplifiées
+DEMARCHES_API_URL=https://www.demarches-simplifiees.fr/api/v2/graphql
+DEMARCHES_API_TOKEN=VotreTokenAPI
+DEMARCHE_NUMBER=123456
+
+# API Grist
+GRIST_API_KEY=VotreCleAPI
+GRIST_BASE_URL=https://docs.getgrist.com/api
+GRIST_DOC_ID=VotreDocID
 ```
 
 ### FLASK_SECRET_KEY
@@ -113,11 +135,18 @@ npm run test
 
 ### Configuration
 
-1. Assurez-vous que votre fichier `.env` contient la variable `DOCKER_DATABASE_URL` :
+1. Assurez-vous que votre fichier `.env` contient les variables nécessaires :
 
 ```bash
-# Vérifiez que cette ligne existe dans votre fichier .env
+# Variables pour PostgreSQL et Docker
+POSTGRES_DB=otp_ds
+POSTGRES_USER=otp_user
+POSTGRES_PASSWORD=otp_password
 DOCKER_DATABASE_URL=postgresql://otp_user:otp_password@db:5432/otp_ds
+
+# Variables Flask
+FLASK_SECRET_KEY=votre_secret
+ENCRYPTION_KEY=votre_cle_encryption
 ```
 
 2. Lancer les services (PostgreSQL + Application) :
@@ -170,6 +199,40 @@ export FLASK_ENV=production  # Windows: set FLASK_ENV=production
 pip install gunicorn
 gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app
 ```
+
+## GitHub Codespaces
+
+Le projet peut être développé directement dans GitHub Codespaces sans installation locale.
+
+### Configuration requise
+
+Avant de créer un Codespace, configurez les secrets nécessaires :
+
+1. Allez sur **https://github.com/settings/codespaces**
+2. Ajoutez ces secrets :
+
+| Secret |
+|--------|
+| `POSTGRES_DB` |
+| `POSTGRES_USER` |
+| `POSTGRES_PASSWORD` |
+| `DOCKER_DATABASE_URL` |
+| `ENCRYPTION_KEY` |
+| `FLASK_SECRET_KEY` |
+
+### Création d'un Codespace
+
+1. Allez sur la page du dépôt GitHub
+2. Cliquez sur le bouton **Code** → puis **Codespaces**
+3. Cliquez sur **+**
+4. VS Code s'ouvrira dans le navigateur avec l'environnement configuré
+
+### Utilisation
+
+- L'application est automatiquement lancé
+- PostgreSQL est configuré et lancé automatiquement
+- Les ports sont exposés (5000 pour Flask, 5433 pour PostgreSQL)
+- Pour accéder à l'application, utilisez le lien dans la notification ou l'onglet "Ports"
 
 
 # 🔧 Configuration avancée
