@@ -61,7 +61,7 @@ POSTGRES_PASSWORD=
 DOCKER_DATABASE_URL=postgresql://user@localhorst:5432/db_name
 ```
 
-Configuration PostgreSQL (local)
+Configuration PostgreSQL (sans Docker)
 ```env
 DATABASE_URL=postgresql://user<:mot de passe ou vide>@host:port/db_name
 ```
@@ -135,19 +135,13 @@ npm run test
 
 ### Configuration
 
-1. Assurez-vous que votre fichier `.env` contient les variables nécessaires :
+1. Copiez le fichier d'exemple et configurez les variables d'environnement :
+   ```bash
+   cp .env.example .env
+   ```
+   Puis éditez `.env` avec vos valeurs.
 
-```bash
-# Variables pour PostgreSQL et Docker
-POSTGRES_DB=otp_ds
-POSTGRES_USER=otp_user
-POSTGRES_PASSWORD=otp_password
-DOCKER_DATABASE_URL=postgresql://otp_user:otp_password@db:5432/otp_ds
-
-# Variables Flask
-FLASK_SECRET_KEY=votre_secret
-ENCRYPTION_KEY=votre_cle_encryption
-```
+> **Note importante** : Avec `network_mode: host`, le container partage le réseau de la machine hôte. Cela permet d'accéder aux services locaux (Grist sur port 8484, PostgreSQL sur port 5433) via `localhost`.
 
 2. Lancer les services (PostgreSQL + Application) :
 
@@ -160,11 +154,6 @@ docker-compose up app
 ```bash
 docker-compose down
 ```
-
-### Notes
-
-- **PostgreSQL** : Lancé automatiquement via Docker (port 5433 vers le conteneur)
-- **Logs** : Affichés dans le terminal
 
 ### Tests
 
