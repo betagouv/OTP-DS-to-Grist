@@ -223,7 +223,7 @@ def detect_column_types_from_multiple_dossiers(
         {"id": "date_suppression", "type": "DateTime"},
         {"id": "label_names", "type": "Text"},
         {"id": "labels_json", "type": "Text"},
-        {"id": "suivi_par", "type": "Text"}  # ✅ NOUVELLE LIGNE
+        {"id": "suivi_par", "type": "Text"}
    ]
 
     # Colonnes de base pour la table des champs
