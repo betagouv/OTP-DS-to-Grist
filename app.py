@@ -11,7 +11,6 @@ import requests
 from werkzeug.serving import WSGIRequestHandler
 import logging
 import atexit
-import subprocess
 import re
 from sqlalchemy import (create_engine)
 from sqlalchemy.orm import sessionmaker
@@ -23,7 +22,16 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
-from constants import DEMARCHES_API_URL
+from constants import (
+    GITHUB_CHANGELOG_BASE_URL,
+    CHANGELOG_PATH,
+    DEMARCHES_API_URL
+)
+from api_validator import (
+    test_demarches_api,
+    test_grist_api,
+    verify_api_connections
+)
 
 # Instance globale du scheduler APScheduler
 scheduler = BackgroundScheduler(executors={
@@ -312,109 +320,6 @@ sync_task_manager = SyncTaskManager(
 )
 
 
-def test_demarches_api(api_token, demarche_number=None):
-    """Teste la connexion à l'API Démarches Simplifiées"""
-    try:
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json"
-        }
-
-        if demarche_number:
-            query = """
-            query getDemarche($demarcheNumber: Int!) {
-                demarche(number: $demarcheNumber) {
-                    id
-                    number
-                    title
-                }
-            }
-            """
-            variables = {"demarcheNumber": int(demarche_number)}
-            response = requests.post(
-                DEMARCHES_API_URL,
-                json={
-                    "query": query,
-                    "variables": variables
-                },
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-        else:
-            query = """
-            query {
-                demarches(first: 1) {
-                    nodes {
-                        number
-                        title
-                    }
-                }
-            }
-            """
-            response = requests.post(
-                DEMARCHES_API_URL,
-                json={"query": query},
-                headers=headers,
-                timeout=10,
-                verify=True
-            )
-
-        if response.status_code == 200:
-            result = response.json()
-            if "errors" in result:
-                return False, f"Erreur API: {'; '.join(
-                    [
-                        e.get(
-                            'message',
-                            'Erreur inconnue'
-                        ) for e in result['errors']
-                    ]
-                )}"
-
-            if demarche_number and "data" in result and "demarche" in result["data"]:
-                demarche = result["data"]["demarche"]
-                if demarche:
-                    return True, f"Connexion réussie! Démarche trouvée: {demarche.get('title', 'Sans titre')}"
-                else:
-                    return False, f"Démarche {demarche_number} non trouvée."
-            elif "data" in result:
-                return True, "Connexion à l'API Démarches Simplifiées réussie!"
-            else:
-                return False, "Réponse API inattendue."
-        else:
-            return False, f"Erreur de connexion à l'API: {response.status_code} - {response.text}"
-    except requests.exceptions.Timeout:
-        return False, "Timeout: L'API met trop de temps à répondre"
-    except Exception as e:
-        return False, f"Erreur de connexion: {str(e)}"
-
-
-def test_grist_api(base_url, api_key, doc_id):
-    """Teste la connexion à l'API Grist"""
-    try:
-        headers = {"Authorization": f"Bearer {api_key}"}
-        if not base_url.endswith('/api'):
-            base_url = f"{base_url}/api" if base_url else "https://grist.numerique.gouv.fr/api"
-        url = f"{base_url}/docs/{doc_id}"
-
-        response = requests.get(url, headers=headers, timeout=10)
-
-        if response.status_code == 200:
-            try:
-                doc_info = response.json()
-                doc_name = doc_info.get('name', doc_id)
-                return True, f"Connexion à Grist réussie! Document: {doc_name}"
-            except Exception:
-                return True, f"Connexion à Grist réussie! Document ID: {doc_id}"
-        else:
-            return False, f"Erreur de connexion à Grist: {response.status_code} - {response.text}"
-    except requests.exceptions.Timeout:
-        return False, "Timeout: L'API Grist met trop de temps à répondre"
-    except Exception as e:
-        return False, f"Erreur de connexion: {str(e)}"
-
-
 def get_available_groups(api_token, demarche_number):
     """Récupère les groupes instructeurs disponibles"""
     if not all([api_token, demarche_number]):
@@ -470,8 +375,57 @@ def get_available_groups(api_token, demarche_number):
 
 
 # Routes Flask
-CHANGELOG_PATH = os.path.join(os.path.dirname(__file__), "CHANGELOG.md")
-BASE_URL = "https://github.com/betagouv/OTP-DS-to-Grist/blob/main/CHANGELOG.md"
+
+def test_current_config_connections(otp_config_id):
+    print('called')
+    """
+    Teste les connexions DS et Grist avec les paramètres fournis dans le body
+    """
+    config = config_manager.load_config_by_id(otp_config_id)
+
+    # Vérifier que les paramètres requis sont présents
+    ds_api_token = config.get('ds_api_token')
+    demarche_number = config.get('demarche_number')
+    grist_base_url = config.get('grist_base_url')
+    grist_api_key = config.get('grist_api_key')
+    grist_doc_id = config.get('grist_doc_id')
+
+    if not ds_api_token:
+        return jsonify({
+            "success": False,
+            "message": "Token API Démarches Simplifiées non configuré"
+        }), 400
+
+    if not grist_api_key or not grist_base_url or not grist_doc_id:
+        return jsonify({
+            "success": False,
+            "message": "Configuration Grist incomplète"
+        }), 400
+
+    try:
+        # Utiliser la fonction centralisée pour tester les connexions
+        all_success, results = verify_api_connections(
+            ds_api_token,
+            demarche_number,
+            grist_base_url,
+            grist_api_key,
+            grist_doc_id
+        )
+
+        success_count = sum(1 for r in results if r["success"])
+
+        return jsonify({
+            "success": all_success,
+            "message": f"{success_count}/{len(results)} tests réussis",
+            "results": results
+        })
+
+    except Exception as e:
+        logger.exception("Erreur lors du test des connexions")
+        return jsonify({
+            "success": False,
+            "message": "Une erreur interne est survenue lors du test des connexions"
+        }), 500
 
 
 @app.context_processor
@@ -508,7 +462,7 @@ def inject_version_info():
 
     return dict(
         version_display=f"v {version_clean}",
-        release_url=f"{BASE_URL}#{anchor}",
+        release_url=f"{GITHUB_CHANGELOG_BASE_URL}#{anchor}",
     )
 
 
@@ -806,8 +760,13 @@ def api_schedule():
 
 @app.route('/api/test-connection', methods=['POST'])
 def api_test_connection():
-    """API pour tester les connexions"""
-    data = request.get_json()
+    """
+    Route pour tester les connexions vers les autres API
+
+    Sans paramètres : teste toutes les APIs de la configuration courante
+    Avec type='demarches' ou 'grist' : teste uniquement l'API spécifiée
+    """
+    data = request.get_json() or {}
     connection_type = data.get('type')
 
     if connection_type == 'demarches':
@@ -822,9 +781,7 @@ def api_test_connection():
             data.get('doc_id')
         )
     else:
-        return jsonify(
-            {"success": False, "message": "Type de connexion invalide"}
-        ), 400
+        return test_current_config_connections(data.get('otp_config_id'))
 
     return jsonify({"success": success, "message": message})
 

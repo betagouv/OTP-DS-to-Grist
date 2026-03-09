@@ -42,7 +42,11 @@ ruff = "^0.15.0"
 shell = "python app.py"
 
 [tool.poe.tasks.test]
-shell = "pytest"
+cmd = "pytest"
+
+[tool.poe.tasks.test-coverage]
+help = "Lance les tests avec rapport de couverture"
+cmd = "pytest --cov=. --cov-report=term"
 
 [tool.poe.tasks.generate-secret]
 help = "Génère une clé secrète sécurisée pour Flask"
@@ -51,10 +55,6 @@ shell = "python3 -c \"import secrets; print('FLASK_SECRET_KEY=' + secrets.token_
 [tool.poe.tasks.generate-encryption-key]
 help = "Génère une clé secrète de cryptage"
 shell = "python3 -c \"import secrets, base64; print('ENCRYPTION_KEY=' + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\""
-
-[tool.poe.tasks.test-coverage]
-help = "Lance les tests avec rapport de couverture"
-shell = "pytest --cov=. --cov-report=term"
 
 [tool.ruff]
 line-length = 88

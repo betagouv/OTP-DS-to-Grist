@@ -1,13 +1,15 @@
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
+if (typeof testExternalConnections === 'undefined')
+  ({ testExternalConnections } = require('./connections.js'))
+
 const getConfiguration = async () => {
   // Récupérer le contexte Grist
   const gristContext = await getGristContext()
   const response = await fetch(`/api/config${gristContext.params}`)
-  if (!response.ok) {
+  if (!response.ok)
     throw new Error(`Erreur HTTP ${response.status}`)
-  }
 
   return await response.json()
 }
@@ -130,6 +132,8 @@ const loadConfiguration = async () => {
     document.getElementById('date_fin').value = hasConfig && config.filter_date_end || ''
 
     if (hasConfig) {
+      testExternalConnections(true)
+
       // Statuts
       const filterStatuses = config.filter_statuses ? config.filter_statuses.split(',') : []
       document.querySelectorAll('input[name="statuts"]').forEach(el => {

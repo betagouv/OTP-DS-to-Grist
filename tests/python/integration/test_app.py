@@ -84,9 +84,7 @@ class TestEndpoints:
         assert data['success'] is True
         assert data['task_id'] == 'task_123'
 
-    @patch('app.SessionLocal')
-    @patch.object(ConfigManager, 'save_config')
-    def test_api_config_post_missing_field(self, mock_save, mock_session, client):
+    def test_api_config_post_missing_field(self, client):
         """Test de sauvegarde avec champ minimum manquant"""
         config_data = {
             'ds_api_token': '',  # Manquant
@@ -107,7 +105,12 @@ class TestEndpoints:
 
     @patch('app.SessionLocal')
     @patch.object(ConfigManager, 'save_config')
-    def test_api_config_post_partial_save_success(self, mock_save, mock_session, client):
+    def test_api_config_post_partial_save_success(
+        self,
+        mock_save,
+        mock_session,
+        client
+    ):
         """Test de sauvegarde partielle réussie (sans clé API Grist)"""
         mock_save.return_value = True
 
@@ -192,9 +195,20 @@ class TestEndpoints:
         assert data['success'] is False
         assert 'Erreur' in data['message']
 
-    def test_api_test_connection_invalid_type(self, client):
-        """Test avec type de connexion invalide"""
-        test_data = {'type': 'invalid'}
+    @patch.object(ConfigManager, 'load_config_by_id')
+    def test_api_test_connection_no_params_missing_ds_token(
+        self,
+        mock_load,
+        client
+    ):
+        """Test sans paramètres - token DS manquant dans le body"""
+        test_data = {
+            'grist_api_key': 'key',
+            'grist_base_url': 'https://grist.example.com',
+            'grist_doc_id': 'doc123'
+        }
+
+        mock_load.return_value = test_data
 
         response = client.post(
             '/api/test-connection',
@@ -205,7 +219,107 @@ class TestEndpoints:
         assert response.status_code == 400
         data = json.loads(response.data)
         assert data['success'] is False
-        assert 'invalide' in data['message']
+        assert 'Token API Démarches Simplifiées non configuré' in data['message']
+
+    @patch.object(ConfigManager, 'load_config_by_id')
+    def test_api_test_connection_no_params_missing_grist_config(
+        self,
+        mock_load,
+        client
+    ):
+        """Test sans paramètres - config Grist incomplète dans le body"""
+        test_data = {
+            'ds_api_token': 'valid-token',
+            'demarche_number': '123'
+        }
+
+        mock_load.return_value = test_data
+
+        response = client.post(
+            '/api/test-connection',
+            data=json.dumps(test_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert 'Configuration Grist incomplète' in data['message']
+
+    @patch('api_validator.test_demarches_api')
+    @patch('api_validator.test_grist_api')
+    @patch.object(ConfigManager, 'load_config_by_id')
+    def test_api_test_connection_no_params_success(
+        self,
+        mock_load,
+        mock_grist,
+        mock_demarches,
+        client
+    ):
+        """Test sans paramètres - succès des deux connexions"""
+        test_data = {
+            'ds_api_token': 'valid-token',
+            'demarche_number': '123',
+            'grist_api_key': 'valid-key',
+            'grist_base_url': 'https://grist.example.com',
+            'grist_doc_id': 'doc123'
+        }
+
+        mock_load.return_value = test_data
+        mock_demarches.return_value = (True, 'DS OK')
+        mock_grist.return_value = (True, 'Grist OK')
+
+        response = client.post(
+            '/api/test-connection',
+            data=json.dumps(test_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is True
+        assert data['message'] == '2/2 tests réussis'
+        assert len(data['results']) == 2
+        assert data['results'][0]['type'] == 'demarches'
+        assert data['results'][0]['success'] is True
+        assert data['results'][1]['type'] == 'grist'
+        assert data['results'][1]['success'] is True
+
+    @patch('api_validator.test_demarches_api')
+    @patch('api_validator.test_grist_api')
+    @patch.object(ConfigManager, 'load_config_by_id')
+    def test_api_test_connection_no_params_partial_failure(
+        self,
+        mock_load,
+        mock_grist,
+        mock_demarches,
+        client
+    ):
+        """Test sans paramètres - échec partiel"""
+        test_data = {
+            'ds_api_token': 'valid-token',
+            'demarche_number': '123',
+            'grist_api_key': 'valid-key',
+            'grist_base_url': 'https://grist.example.com',
+            'grist_doc_id': 'doc123'
+        }
+
+        mock_load.return_value = test_data
+        mock_demarches.return_value = (True, 'DS OK')
+        mock_grist.return_value = (False, 'Grist Error')
+
+        response = client.post(
+            '/api/test-connection',
+            data=json.dumps(test_data),
+            content_type='application/json'
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['success'] is False
+        assert data['message'] == '1/2 tests réussis'
+        assert data['results'][0]['success'] is True
+        assert data['results'][1]['success'] is False
 
     @patch.object(ConfigManager, 'load_config')
     @patch('app.get_available_groups')
