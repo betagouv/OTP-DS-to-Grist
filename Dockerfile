@@ -18,6 +18,9 @@ RUN apt-get update && \
 
 USER appuser
 
+RUN mkdir -p /home/appuser/build && \
+    echo 'source /home/appuser/build/.zshrc' >> ~/.zshenv
+
 RUN poetry config virtualenvs.in-project true && poetry install --with dev
 RUN npm install
 

@@ -18,6 +18,7 @@ services:
       - ./database:/app/database
       - ./templates:/app/templates
       - ./static:/app/static
+      - ./build:/home/appuser/build:ro
     environment:
       - PATH=/app/.venv/bin:$PATH
       - DATABASE_URL=${DOCKER_DATABASE_URL}
