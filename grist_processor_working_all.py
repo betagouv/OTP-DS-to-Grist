@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from queries import get_demarche, get_dossier, get_demarche_dossiers, dossier_to_flat_data, format_complex_json_for_grist
-rom queries_graphql import get_demarche_dossiers_filtered
+from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
 from schema_utils import (
     get_demarche_schema,
