@@ -793,7 +793,8 @@ def get_demarche_dossiers_filtered(
     date_debut: str = None,
     date_fin: str = None,
     groupes_instructeurs: List[str] = None,
-    statuts: List[str] = None
+    statuts: List[str] = None,
+    updated_since: str = None
 ) -> List[Dict[str, Any]]:
     """
     Récupère les dossiers avec filtrage côté serveur RÉEL.
