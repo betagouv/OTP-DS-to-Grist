@@ -222,9 +222,14 @@ Avant de créer un Codespace, configurez les secrets nécessaires :
 
 - L'application est automatiquement lancé
 - PostgreSQL est configuré et lancé automatiquement
-- Les ports sont exposés (5000 pour Flask, 5433 pour PostgreSQL)
-- Il est nécessaire de rendre l'url du port 5000 en Visibilité public, pour pouvoir l'utiliser comme widget
-- Pour accéder à l'application, utilisez le lien dans la notification ou l'onglet "Ports"
+- Une notification apparaît pour visiter l'url
+    - Une option est disponible dans cette fenêtre pour la rendre public
+    - **Il est nécessaire de rendre l'url du port 5000 en visibilité public, pour pouvoir l'utiliser comme widget**
+- Pour accéder à l'application, utiliser le lien dans la notification ou l'onglet "Ports"
+- Les modifications sont possibles directement dans l'éditeur, mais il faut relancer le build pour voir les modifications :
+    1. Cliquer sur le champs de recherche et commande en haut
+    2. Choisir "Commande d'affichage et d'exécution"
+    3. Commencer à taper "rebuild" et choisir "Rebuild container"
 
 
 # 🔧 Configuration avancée
