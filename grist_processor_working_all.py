@@ -2723,7 +2723,7 @@ def process_demarche_for_grist_optimized(
                 log(f"  Upsert par lot de {len(annotation_records)} enregistrements d'annotations...")
                 success = client.upsert_multiple_dossiers_in_grist(table_ids.get("annotations") , annotation_records, existing_records=cache_annotations)
                 
-               log(f"[TIMING] Après upsert annotations: {time.time() - batch_start:.1f}s")
+                log(f"[TIMING] Après upsert annotations: {time.time() - batch_start:.1f}s")
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
 
