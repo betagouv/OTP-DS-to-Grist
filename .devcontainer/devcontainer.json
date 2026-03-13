@@ -24,8 +24,43 @@
   },
   "customizations": {
     "vscode": {
+      "settings": {
+        "editor.formatOnSave": false,
+        "editor.rulers": [88],
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/.pytest_cache": true,
+          "**/node_modules": true
+        },
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true
+        },
+        "[javascript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode",
+          "editor.formatOnSave": true
+        },
+        "prettier.semi": false,
+        "prettier.singleQuote": true,
+        "prettier.trailingComma": "none",
+        "eslint.validate": ["javascript"],
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        }
+      },
       "extensions": [
-        "ms-python.python"
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "actboy168.tasks",
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        "aaron-bond.better-comments",
+        "pkief.material-icon-theme",
+        "ms-azuretools.vscode-docker"
       ]
     }
   },
