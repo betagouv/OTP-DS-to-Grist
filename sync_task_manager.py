@@ -32,7 +32,7 @@ class SyncTaskManager:
             config,
             progress_callback=None,
             log_callback=None
-    ):
+    ) -> dict:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
         """
@@ -299,7 +299,7 @@ class SyncTaskManager:
             return result
 
         except Exception as e:
-            error_msg = f"Erreur lors de la synchronisation: {str(e)}"
+            error_msg = "Erreur lors de la synchronisation"
             if log_callback:
                 log_callback(error_msg)
 
@@ -345,10 +345,15 @@ class SyncTaskManager:
 
             result = task_function(*args, **kwargs)
 
+            if result.get('success') is False:
+                task_message = result.get('message', 'Tâche terminée avec des erreurs')
+            else:
+                task_message = 'Tâche terminée avec succès'
+
             self.tasks[task_id].update({
                 'status': 'completed',
                 'progress': 100,
-                'message': 'Tâche terminée avec succès',
+                'message': task_message,
                 'result': result,
                 'end_time': time.time()
             })
@@ -356,9 +361,15 @@ class SyncTaskManager:
             self._emit_update(task_id)
 
         except Exception as e:
+            # Différencier les types d'erreurs pour un message utilisateur approprié
+            if isinstance(e, subprocess.CalledProcessError):
+                error_message = 'La synchronisation a échoué'
+            else:
+                error_message = f'Erreur: {str(e)}'
+
             self.tasks[task_id].update({
                 'status': 'error',
-                'message': f'Erreur: {str(e)}',
+                'message': error_message,
                 'error': str(e),
                 'end_time': time.time()
             })
