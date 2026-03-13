@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.6.0...v0.7.0) (2026-03-13)
+
+
+### Features
+
+* **Docker:** Mise en place de docker et codespace ([#220](https://github.com/betagouv/OTP-DS-to-Grist/issues/220)) ([6f8f3e3](https://github.com/betagouv/OTP-DS-to-Grist/commit/6f8f3e3b05bbdc7bae9e2a47859bdc7cb6f5c1a0))
+* **Doc:** Lien vers le tag du changelog ([#179](https://github.com/betagouv/OTP-DS-to-Grist/issues/179)) ([a29dcac](https://github.com/betagouv/OTP-DS-to-Grist/commit/a29dcac9cf5ccf88e4ca10e043e3e9e1824866a7))
+* **Doc:** Nettoyage dd CHANGELOG ([#188](https://github.com/betagouv/OTP-DS-to-Grist/issues/188)) ([d48cf33](https://github.com/betagouv/OTP-DS-to-Grist/commit/d48cf33d5abe70ea6121de24d3aacf6f3d47099c))
+* **Logs:** Mise en place du bouton pour copier les logs ([#171](https://github.com/betagouv/OTP-DS-to-Grist/issues/171)) ([e701918](https://github.com/betagouv/OTP-DS-to-Grist/commit/e7019182c9d9c3d20fd6f0491e20f39cb09066c5))
+
+
+### Bug Fixes
+
+* **Sync-auto:** Ne pas autoriser la sync auto sans clé grist ([#202](https://github.com/betagouv/OTP-DS-to-Grist/issues/202)) ([e0ff774](https://github.com/betagouv/OTP-DS-to-Grist/commit/e0ff7744a6e7e975aa07c5afb07c4bc63d4a2de1))
+* **Sync:** Afficher dans les logs les temps de requête vers l'api DN ([#217](https://github.com/betagouv/OTP-DS-to-Grist/issues/217)) ([21384d1](https://github.com/betagouv/OTP-DS-to-Grist/commit/21384d1e1f9cb295f70b4067d4cdd003e1d06e88))
+
 ## [0.6.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.5.0...v0.6.0) (2026-01-27)
 
 
