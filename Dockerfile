@@ -12,6 +12,10 @@ WORKDIR /app
 COPY --chown=appuser:appgroup pyproject.toml poetry.lock ./
 COPY --chown=appuser:appgroup . .
 
+RUN apt-get update && \
+    apt-get install -y bash-completion && \
+    rm -rf /var/lib/apt/lists/*
+
 USER appuser
 
 RUN poetry config virtualenvs.in-project true && poetry install --with dev
