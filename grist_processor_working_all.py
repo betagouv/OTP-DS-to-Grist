@@ -2302,7 +2302,7 @@ def process_demarche_for_grist_optimized(
                 log(f"Aucun dossier modifié ou ajouté depuis la dernière sync ({cursor_fr}) — Grist déjà à jour")
             else:
                 log("Aucun dossier ne correspond aux critères de filtrage")
-           elapsed_time = time.time() - start_time
+            elapsed_time = time.time() - start_time
             minutes = int(elapsed_time // 60)
             seconds = elapsed_time % 60
             log("\nTraitement terminé!")
