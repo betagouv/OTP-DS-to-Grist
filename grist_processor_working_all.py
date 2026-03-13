@@ -1,3 +1,4 @@
+
 import hashlib
 import traceback
 import unicodedata
@@ -10,9 +11,10 @@ import repetable_processor as rp
 import concurrent.futures
 import time
 from dotenv import load_dotenv
-from datetime import datetime
-from queries import get_demarche, get_dossier, dossier_to_flat_data
-from queries_graphql import get_demarche_dossiers_filtered
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from queries import get_demarche, get_dossier, get_demarche_dossiers, dossier_to_flat_data, format_complex_json_for_grist
+rom queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
 from schema_utils import (
     get_demarche_schema,
@@ -2294,8 +2296,13 @@ def process_demarche_for_grist_optimized(
 
         # Si aucun dossier ne correspond aux critères
         if total_dossiers == 0:
-            log("Aucun dossier ne correspond aux critères de filtrage")
-            elapsed_time = time.time() - start_time
+            if updated_since_cursor:
+                cursor_dt = datetime.strptime(updated_since_cursor, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                cursor_fr = cursor_dt.astimezone(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y à %H:%M:%S")
+                log(f"Aucun dossier modifié ou ajouté depuis la dernière sync ({cursor_fr}) — Grist déjà à jour")
+            else:
+                log("Aucun dossier ne correspond aux critères de filtrage")
+           elapsed_time = time.time() - start_time
             minutes = int(elapsed_time // 60)
             seconds = elapsed_time % 60
             log("\nTraitement terminé!")
@@ -2635,8 +2642,11 @@ def process_demarche_for_grist_optimized(
             log(f"[TIMING] Récupération API DS: {time.time() - batch_start:.1f}s")
 
             if not batch_dossiers_dict:
-                log_error(f"Aucun dossier n'a pu être récupéré pour le lot {batch_idx+1}")
-                continue
+                if skipped_count == len(batch):
+                    log(f"  Lot {batch_idx+1} entièrement skippé (tous les dossiers sont à jour)")
+                else:
+                    log_error(f"Aucun dossier n'a pu être récupéré pour le lot {batch_idx+1}")
+               continue
             
             # Préparer les dossiers EN PARALLÈLE
             log("Préparation des records en parallèle...")
@@ -2711,8 +2721,9 @@ def process_demarche_for_grist_optimized(
             annotation_records = [r for r in annotation_records if str(r.get("dossier_number")) not in skip_annotations]
             if annotation_records and table_ids.get("annotations"):
                 log(f"  Upsert par lot de {len(annotation_records)} enregistrements d'annotations...")
-
-                log(f"[TIMING] Après upsert annotations: {time.time() - batch_start:.1f}s")
+                success = client.upsert_multiple_dossiers_in_grist(table_ids.get("annotations") , annotation_records, existing_records=cache_annotations)
+                
+               log(f"[TIMING] Après upsert annotations: {time.time() - batch_start:.1f}s")
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
 
