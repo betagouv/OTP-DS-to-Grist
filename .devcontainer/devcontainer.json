@@ -1,0 +1,72 @@
+{
+  "name": "OTP-DS-to-Grist",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "./docker-compose.override.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "remoteEnv": {
+    "ENCRYPTION_KEY": "${localEnv:ENCRYPTION_KEY}",
+    "FLASK_SECRET_KEY": "${localEnv:FLASK_SECRET_KEY}",
+    "DOCKER_DATABASE_URL": "${localEnv:DOCKER_DATABASE_URL}"
+  },
+  "secrets": {
+    "ENCRYPTION_KEY": {
+      "description": "Encryption key for the application"
+    },
+    "FLASK_SECRET_KEY": {
+      "description": "Flask secret key"
+    },
+    "DOCKER_DATABASE_URL": {
+      "description": "Database connection URL"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": false,
+        "editor.rulers": [88],
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/.pytest_cache": true,
+          "**/node_modules": true
+        },
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true
+        },
+        "[javascript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode",
+          "editor.formatOnSave": true
+        },
+        "prettier.semi": false,
+        "prettier.singleQuote": true,
+        "prettier.trailingComma": "none",
+        "eslint.validate": ["javascript"],
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "git.autofetch": true
+      },
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "actboy168.tasks",
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        "aaron-bond.better-comments",
+        "pkief.material-icon-theme",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "forwardPorts": [5000],
+  "postCreateCommand": "poetry install --with dev && npm install",
+  "shutdownAction": "stopCompose"
+}

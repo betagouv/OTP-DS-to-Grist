@@ -35,6 +35,8 @@ poetry env activate
 ```bash
 poetry install
 poetry install --with dev # Pour profiter des outils de développement
+
+npm install
 ```
 
 ## 4. Créer la base de données
@@ -53,8 +55,21 @@ cp .env.example .env
 
 Éditez le fichier `.env` avec vos paramètres.
 
+Configuration PostgreSQL (Docker)
 ```env
-# Configuration avancée
+POSTGRES_DB=db_name
+POSTGRES_USER=user
+POSTGRES_PASSWORD=
+DOCKER_DATABASE_URL=postgresql://user@localhorst:5432/db_name
+```
+
+Configuration PostgreSQL (sans Docker)
+```env
+DATABASE_URL=postgresql://user<:mot de passe ou vide>@host:port/db_name
+```
+
+Configuration avancée
+```env
 BATCH_SIZE='100'
 MAX_WORKERS='3'
 PARALLEL='True'
@@ -66,8 +81,17 @@ FLASK_SECRET_KEY=
 # True = dev, False = prod
 FLASK_DEBUG=False
 
-DATABASE_URL=postgresql://user<:mot de passe ou vide>@host:port/db_name
 ENCRYPTION_KEY='encrypt-key'
+
+# API Démarches Simplifiées
+DEMARCHES_API_URL=https://www.demarches-simplifiees.fr/api/v2/graphql
+DEMARCHES_API_TOKEN=VotreTokenAPI
+DEMARCHE_NUMBER=123456
+
+# API Grist
+GRIST_API_KEY=VotreCleAPI
+GRIST_BASE_URL=https://docs.getgrist.com/api
+GRIST_DOC_ID=VotreDocID
 ```
 
 ### FLASK_SECRET_KEY
@@ -82,7 +106,7 @@ ENCRYPTION_KEY='encrypt-key'
 
 # ▶️ Lancement de l'application
 
-## Mode développement
+## Mode développement sans Docker
 
 ```bash
 # Activer l'environnement virtuel si pas déjà fait
@@ -94,6 +118,68 @@ poe dev
 
 L'application sera accessible sur : **http://localhost:5000**
 
+### Tests
+
+```bash
+# Tests Python
+poe test
+
+# Tests JavaScript
+npm run test
+```
+
+## Mode développement avec Docker
+
+### Prérequis
+
+- **Docker** ([Télécharger Docker](https://www.docker.com/products/docker-desktop))
+- **Docker Compose** (inclus avec Docker Desktop)
+
+### Configuration
+
+1. Copiez le fichier d'exemple et configurez les variables d'environnement :
+   ```bash
+   cp .env.example .env
+   ```
+   Puis éditez `.env` avec vos valeurs.
+
+> **Note importante** : Avec `network_mode: host`, le container partage le réseau de la machine hôte. Cela permet d'accéder aux services locaux (Grist sur port 8484, PostgreSQL sur port 5433) via `localhost`.
+
+2. Lancer les services (PostgreSQL + Application) :
+
+```bash
+docker-compose up app
+```
+
+3. Pour arrêter les services :
+
+```bash
+docker-compose down
+```
+
+### Tests
+
+```bash
+# Tests Python
+docker-compose run --rm app poe test
+
+# Tests JavaScript
+docker-compose run --rm app npm run test
+```
+
+### Dépannage Docker
+
+```bash
+# Rebuild de l'image après modification des dépendances
+docker-compose build app
+
+# Voir les logs en temps réel
+docker-compose logs -f app
+
+# Accéder au conteneur en interactif
+docker-compose run --rm app bash
+```
+
 ## Mode production locale
 
 ```bash
@@ -104,6 +190,46 @@ export FLASK_ENV=production  # Windows: set FLASK_ENV=production
 pip install gunicorn
 gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:5000 app:app
 ```
+
+## GitHub Codespaces
+
+Le projet peut être développé directement dans GitHub Codespaces sans installation locale.
+
+### Configuration requise
+
+Avant de créer un Codespace, configurez les secrets nécessaires :
+
+1. Allez sur **https://github.com/settings/codespaces**
+2. Ajoutez ces secrets :
+
+| Secret |
+|--------|
+| `POSTGRES_DB` |
+| `POSTGRES_USER` |
+| `POSTGRES_PASSWORD` |
+| `DOCKER_DATABASE_URL` |
+| `ENCRYPTION_KEY` |
+| `FLASK_SECRET_KEY` |
+
+### Création d'un Codespace
+
+1. Allez sur la page du dépôt GitHub
+2. Cliquez sur le bouton **Code** → puis **Codespaces**
+3. Cliquez sur **+**
+4. VS Code s'ouvrira dans le navigateur avec l'environnement configuré
+
+### Utilisation
+
+- L'application est automatiquement lancé
+- PostgreSQL est configuré et lancé automatiquement
+- Une notification apparaît pour visiter l'url
+    - Une option est disponible dans cette fenêtre pour la rendre public
+    - **Il est nécessaire de rendre l'url du port 5000 en visibilité public, pour pouvoir l'utiliser comme widget**
+- Pour accéder à l'application, utiliser le lien dans la notification ou l'onglet "Ports"
+- Les modifications sont possibles directement dans l'éditeur, mais il faut relancer le build pour voir les modifications :
+    1. Cliquer sur le champs de recherche et commande en haut
+    2. Choisir "Commande d'affichage et d'exécution"
+    3. Commencer à taper "rebuild" et choisir "Rebuild container"
 
 
 # 🔧 Configuration avancée
@@ -143,36 +269,38 @@ GROUPES_INSTRUCTEURS='120400'
 ## Problèmes courants
 
 ### Erreur : "Module not found"
+
+Solution : Vérifier l'environnement virtuel
+
 ```bash
-# Solution : Vérifier l'environnement virtuel
 pip list
 pip install -r requirements.txt
 ```
 
 ### Erreur : "Token invalid"
-```bash
-# Solutions :
-# 1. Vérifier la validité du token DS
-# 2. Vérifier les droits d'accès à la démarche
-# 3. Régénérer le token si expiré
-```
+
+Solutions :
+
+1. Vérifier la validité du token DS
+2. Vérifier les droits d'accès à la démarche
+3. Régénérer le token si expiré
 
 ### Erreur : "Document not found" (Grist)
-```bash
-# Solutions :
-# 1. Vérifier l'ID du document Grist
-# 2. Vérifier les droits d'accès au document
-# 3. Vérifier que la clé API est valide
-```
+
+Solutions :
+
+1. Vérifier l'ID du document Grist
+2. Vérifier les droits d'accès au document
+3. Vérifier que la clé API est valide
 
 ### Application lente/timeout
-```bash
-# Solutions :
-# 1. Réduire BATCH_SIZE dans .env
-# 2. Réduire MAX_WORKERS dans .env
-# 3. Vérifier la connexion internet
-# 4. Augmenter les timeouts dans le code
-```
+
+Solutions :
+
+1. Réduire BATCH_SIZE dans .env
+2. Réduire MAX_WORKERS dans .env
+3. Vérifier la connexion internet
+4. Augmenter les timeouts dans le code
 
 ## Logs de débogage
 
