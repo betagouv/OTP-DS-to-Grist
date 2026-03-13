@@ -36,7 +36,7 @@ commitizen = "^4.12.1"
 poethepoet = "^0.40.0"
 pytest = "^9.0.2"
 pytest-cov = "^7.0.0"
-ruff = "^0.15.0"
+ruff = "^0.15.5"
 
 [tool.poe.tasks.dev]
 shell = "python app.py"
