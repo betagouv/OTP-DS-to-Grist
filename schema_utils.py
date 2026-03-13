@@ -465,7 +465,8 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         {"id": "date_derniere_modification_annotations", "type": "DateTime"},
         {"id": "motivation", "type": "Text"},
         {"id": "label_names", "type": "Text"},
-        {"id": "labels_json", "type": "Text"}
+        {"id": "labels_json", "type": "Text"},
+        {"id": "suivi_par", "type": "Text"}, 
     ]
 
     # Colonnes de base pour la table des champs
@@ -1064,6 +1065,31 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         # Ajouter les blocs répétables si présents
         if has_repetable_blocks:
             result["repetable_blocks"] = repetable_table_ids
+
+        # Créer ou mettre à jour la table Sync_metadata
+        sync_metadata_table_id = "Sync_metadata"
+        sync_metadata_columns = [
+            {"id": "demarche_number", "type": "Int"},
+            {"id": "last_sync_at", "type": "Text"},
+            {"id": "updated_since_cursor", "type": "Text"},
+            {"id": "deleted_since_cursor", "type": "Text"},
+            {"id": "deleted_after_cursor", "type": "Text"},
+            {"id": "last_sync_status", "type": "Text"},
+            {"id": "last_sync_duration", "type": "Numeric"},
+        ]
+        
+        # Recharger la liste des tables pour inclure celles créées pendant cette exécution
+        fresh_tables = client.list_tables()
+        if isinstance(fresh_tables, dict) and 'tables' in fresh_tables:
+            fresh_tables = fresh_tables['tables']
+        sync_table = next((t for t in fresh_tables if t.get('id') == sync_metadata_table_id), None)
+        if not sync_table:
+            log(f"Création de la table {sync_metadata_table_id}")
+            client.create_table(sync_metadata_table_id, sync_metadata_columns)
+        else:
+            add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
+
+        result["sync_metadata"] = sync_metadata_table_id
 
         log(f"Mise à jour des tables terminée avec succès")
         return result
