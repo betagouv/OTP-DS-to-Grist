@@ -2646,7 +2646,7 @@ def process_demarche_for_grist_optimized(
                     log(f"  Lot {batch_idx+1} entièrement skippé (tous les dossiers sont à jour)")
                 else:
                     log_error(f"Aucun dossier n'a pu être récupéré pour le lot {batch_idx+1}")
-               continue
+                continue
             
             # Préparer les dossiers EN PARALLÈLE
             log("Préparation des records en parallèle...")
