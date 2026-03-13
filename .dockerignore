@@ -1,5 +1,6 @@
+*.pyc
+.env
+.git
 .venv
 __pycache__
-.git
-.env
-*.pyc
+node_modules

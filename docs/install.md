@@ -35,6 +35,8 @@ poetry env activate
 ```bash
 poetry install
 poetry install --with dev # Pour profiter des outils de développement
+
+npm install
 ```
 
 ## 4. Créer la base de données

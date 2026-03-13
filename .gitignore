@@ -1,7 +1,5 @@
-.venv
+*.pyc
 .env
+.venv
 __pycache__
 node_modules
-coverage
-.coverage
-htmlcov

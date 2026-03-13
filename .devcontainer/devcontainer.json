@@ -30,6 +30,6 @@
     }
   },
   "forwardPorts": [5000, 5433],
-  "postCreateCommand": "poetry install --with dev",
+  "postCreateCommand": "poetry install --with dev && npm install",
   "shutdownAction": "stopCompose"
 }
