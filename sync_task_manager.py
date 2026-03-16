@@ -125,13 +125,13 @@ class SyncTaskManager:
                 log_callback("====================================")
 
             if progress_callback:
-                progress_callback(10, "Configuration des variables d'environnement...")
+                progress_callback(25, "Configuration des variables d'environnement...")
 
             # Appliquer les variables d'environnement pour ce thread
             os.environ.update(env_copy)
 
             if progress_callback:
-                progress_callback(20, "Lancement du script de synchronisation...")
+                progress_callback(30, "Lancement du script de synchronisation...")
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(os.path.dirname(__file__), "grist_processor_working_all.py")
@@ -150,18 +150,18 @@ class SyncTaskManager:
 
             # Mots-clés pour estimer la progression
             progress_keywords = {
-                "Récupération de la démarche": (15, "Récupération des données de la démarche..."),
-                "Démarche trouvée": (20, "Démarche trouvée - Analyse des données..."),
-                "Nombre de dossiers trouvés": (25, "Dossiers trouvés - Préparation du traitement..."),
-                "Types de colonnes détectés": (35, "Analyse de la structure des données..."),
-                "Table dossiers": (45, "Création/mise à jour des tables Grist..."),
-                "Table champs": (50, "Configuration des champs..."),
-                "Traitement du lot": (60, "Traitement des dossiers..."),
+                "Récupération de la démarche": (35, "Récupération des données de la démarche..."),
+                "Démarche trouvée": (40, "Démarche trouvée - Analyse des données..."),
+                "Nombre de dossiers trouvés": (45, "Dossiers trouvés - Préparation du traitement..."),
+                "Types de colonnes détectés": (50, "Analyse de la structure des données..."),
+                "Table dossiers": (55, "Création/mise à jour des tables Grist..."),
+                "Table champs": (60, "Configuration des champs..."),
+                "Traitement du lot": (65, "Traitement des dossiers..."),
                 "Dossiers traités avec succès": (90, "Finalisation du traitement..."),
-                "Traitement terminé": (100, "Traitement terminé!")
+                "Traitement terminé": (98, "Traitement terminé!")
             }
 
-            current_progress = 20
+            current_progress = 30
 
             # Lire la sortie en temps réel
             for line in process.stdout.split('\n'):
@@ -282,7 +282,7 @@ class SyncTaskManager:
             )
 
             if progress_callback:
-                progress_callback(95, "Finalisation...")
+                progress_callback(99, "Finalisation...")
 
             if log_callback:
                 log_callback(f"Synchronisation terminée: {success_count} dossiers synchronisés, {error_count} erreurs")
