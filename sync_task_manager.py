@@ -150,22 +150,20 @@ class SyncTaskManager:
 
             # Mots-clés pour estimer la progression
             progress_keywords = {
-                "Configuration Grist": "Dossiers trouvés - Préparation du traitement...",
-                "Vérification des connexions aux APIs": "Analyse de la structure des données...",
-                "Récupéré à": "Création/mise à jour des tables Grist...",
-                "Mise à jour des tables Grist en préservant": "Configuration des champs...",
-                "Mise à jour des tables Grist pour la démarche": "Traitement des dossiers...",
-                "Mise à jour des colonnes de la table demandeurs": "Finalisation du traitement...",
-                "Mise à jour des colonnes de la table instructeurs": "Finalisation du traitement...",
-                "Récupération de tous les dossiers avec pagination": "Traitement terminé!",
-                "Récupération en parallèle": "Traitement terminé!",
-                "Récupération parallèle terminée": "Traitement terminé!",
-                "Préparation des records en parallèle": "Traitement terminé!",
-                "demandeurs traités": "Traitement terminé!",
-                "Après upsert demandeurs": "Traitement terminé!",
-                "Table instructeurs synchronisée": "Traitement terminé!",
-                "Récupération de tous les enregistrements": "Traitement terminé!",
-                "Traitement du bloc ": "Traitement terminé!",
+                "Configuration Grist": "Configuration Grist…",
+                "Vérification des connexions aux APIs": "Vérifications des APIs externes…",
+                "Récupéré à": "Récupérations des informations",
+                "Mise à jour des tables Grist en préservant": "Mise à jour des tables Grist 1…",
+                "Mise à jour des tables Grist pour la démarche": "Mise à jour des tables Grist 2…",
+                "Mise à jour des colonnes de la table demandeurs": "Mise à jour des colonnes 1…",
+                "Mise à jour des colonnes de la table instructeurs": "Mise à jour des colonnes 2…",
+                "Récupération de tous les dossiers avec pagination": "Récupération des dossiers…",
+                "Récupération parallèle terminée": "Récupération des dossiers terminée…",
+                "Préparation des records en parallèle": "Préparation des traitements…",
+                "demandeurs traités": "Traitement des demandeurs…",
+                "Table instructeurs synchronisée": "Traitement des instructeurs…",
+                "Récupération de tous les enregistrements": "Récupérations des enregistrements…",
+                "Traitement du bloc ": "Post traitement…",
             }
 
             PROGRESS_BEFORE_SCRIPT = 30
