@@ -95,6 +95,7 @@ const updateTaskProgress = (task) => {
   const progress = Math.round(task.progress || 0)
   document.getElementById('progress_bar').style.width = `${progress}%`
   document.getElementById('progress_percentage').textContent = `${progress}%`
+  document.getElementById('sync-progress-text').textContent = `${task.message}`
 
   // Mettre à jour le temps écoulé
   if (startTime) {
