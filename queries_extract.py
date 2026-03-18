@@ -930,4 +930,27 @@ def dossier_to_flat_data(
         "annotations": annotation_values,
         "repetable_rows": repetable_rows,
         "demandeur": demandeur_info,
+        "avis": extract_avis_from_dossier(dossier_data),
     }
+
+def extract_avis_from_dossier(dossier_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extrait les avis experts d'un dossier pour insertion dans Grist.
+    """
+    avis_list = dossier_data.get("avis", [])
+    dossier_number = dossier_data.get("number")
+    records = []
+
+    for avis in avis_list:
+        records.append({
+            "dossier_number": dossier_number,
+            "avis_id": avis.get("id", ""),
+            "instructeur_email": avis.get("claimant", {}).get("email", ""),
+            "expert_email": avis.get("expert", {}).get("email", ""),
+            "date_question": avis.get("dateQuestion", ""),
+            "date_reponse": avis.get("dateReponse", "") if avis.get("reponse") else "",
+            "question": avis.get("question", "") or "",
+            "reponse": avis.get("reponse", "") or "",
+        })
+
+    return records

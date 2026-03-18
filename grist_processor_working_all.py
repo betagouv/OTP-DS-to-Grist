@@ -2027,6 +2027,9 @@ def process_demarche_for_grist_optimized(
 
                 if "instructeurs" in table_result:
                     table_ids["instructeurs"] = table_result["instructeurs"]
+                
+                if "avis" in table_result:
+                    table_ids["avis"] = table_result["avis"]  # None si pas encore créée
 
             else:
                 # Méthode classique qui peut effacer des données
@@ -2623,6 +2626,56 @@ def process_demarche_for_grist_optimized(
                             log_error(f"  Erreur traitement bloc '{block_label}': {str(e)}")
 
             log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
+
+            # Traiter les avis du lot
+            all_avis_records = []
+            for dossier_data in batch_dossiers_dict.values():
+                avis = dossier_data.get("avis", [])
+                if avis:
+                    from queries_extract import extract_avis_from_dossier
+                    all_avis_records.extend(extract_avis_from_dossier(dossier_data))
+
+            if all_avis_records:
+                # Créer la table à la volée si elle n'existe pas encore
+                if not table_ids.get("avis"):
+                    log(f"  Création lazy de la table avis...")
+                    from schema_utils import create_avis_columns
+                    avis_table_id = f"Demarche_{demarche_number}_avis"
+                    result = client.create_table(avis_table_id, create_avis_columns())
+                    table_ids["avis"] = result['tables'][0].get('id')
+                    log(f"  Table avis créée: {table_ids['avis']}")
+
+                log(f"  Upsert de {len(all_avis_records)} avis...")
+                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_ids['avis']}/records"
+                
+                # Récupérer existants pour upsert par avis_id
+                existing_avis = {}
+                response = requests.get(url, headers=client.headers)
+                if response.status_code == 200:
+                    for record in response.json().get('records', []):
+                        avis_id = record.get('fields', {}).get('avis_id')
+                        if avis_id:
+                            existing_avis[avis_id] = record.get('id')
+
+                to_create = []
+                to_update = []
+                for avis in all_avis_records:
+                    avis_id = avis.get('avis_id')
+                    if avis_id in existing_avis:
+                        to_update.append({'id': existing_avis[avis_id], 'fields': avis})
+                    else:
+                        to_create.append(avis)
+
+                if to_create:
+                    requests.post(url, headers=client.headers,
+                                json={"records": [{"fields": r} for r in to_create]})
+                    log(f"   {len(to_create)} avis créé(s)")
+                if to_update:
+                    requests.patch(url, headers=client.headers,
+                                json={"records": to_update})
+                    log(f"   {len(to_update)} avis mis à jour")
+
+            log(f"[TIMING] Après avis: {time.time() - batch_start:.1f}s")
 
         # Calculer les statistiques finales
         elapsed_time = time.time() - start_time
