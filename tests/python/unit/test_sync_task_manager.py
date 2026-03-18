@@ -369,14 +369,9 @@ class TestSyncTaskManager:
         """Test le parsing de la progression depuis les logs"""
         mock_process = MagicMock()
         mock_process.returncode = 0
-        mock_process.stdout = """
-        Récupération de la démarche 12345
-        Démarche trouvée
-        Nombre de dossiers trouvés: 100
-        Progression: 25/100 dossiers
-        Progression: 50/100 dossiers
-        100 dossiers traités avec succès
-        """
+        mock_process.stdout = """Configuration Grist
+        Vérification des connexions aux APIs
+        100 dossiers traités avec succès"""
         mock_process.stderr = ""
         mock_subprocess.return_value = mock_process
 
@@ -392,11 +387,11 @@ class TestSyncTaskManager:
         )
 
         # Vérifier que la progression a été calculée correctement
-        # 25/100 = 60 + (30 * 0.25) = 67.5
-        # 50/100 = 60 + (30 * 0.50) = 75
         progress_values = [p[0] for p in progress_calls]
-        assert any(67 <= p <= 68 for p in progress_values)  # 25%
-        assert any(74 <= p <= 76 for p in progress_values)  # 50%
+        matching_34 = [p for p in progress_values if 34 <= p <= 35]
+        matching_39 = [p for p in progress_values if 39 <= p <= 40]
+        assert matching_34, f"Progression attendue ~34, recue: {progress_values}"
+        assert matching_39, f"Progression attendue ~40, recue: {progress_values}"
 
     @patch('subprocess.run')
     def test_environment_variables_setup(self, mock_subprocess):
