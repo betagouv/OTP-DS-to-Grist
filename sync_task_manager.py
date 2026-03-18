@@ -214,23 +214,6 @@ class SyncTaskManager:
                             progress_callback(current_progress, status_text)
                         break
 
-                # Détecter le pourcentage dans les lignes de progression
-                if "Progression:" in line and "/" in line:
-                    try:
-                        # Extraire X/Y du texte "Progression: X/Y dossiers"
-                        parts = line.split("Progression:")[1].strip().split("/")
-                        current = int(parts[0].strip())
-                        total = int(parts[1].split()[0].strip())
-
-                        if total > 0:
-                            batch_progress = 60 + (30 * (current / total))
-                            if batch_progress > current_progress:
-                                current_progress = batch_progress
-                                if progress_callback:
-                                    progress_callback(current_progress, f"Traitement des dossiers: {current}/{total}")
-                    except (ValueError, IndexError):
-                        pass
-
             # Traiter les erreurs
             if process.returncode != 0:
                 error_output = process.stderr
