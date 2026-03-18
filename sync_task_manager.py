@@ -150,40 +150,22 @@ class SyncTaskManager:
 
             # Mots-clés pour estimer la progression
             progress_keywords = {
-                "Configuration Grist": (
-                    33,
-                    "Dossiers trouvés - Préparation du traitement...",
-                ),
-                "Vérification des connexions aux APIs": (
-                    34,
-                    "Analyse de la structure des données...",
-                ),
-                "Récupéré à": (35, "Création/mise à jour des tables Grist..."),
-                "Mise à jour des tables Grist en préservant": (
-                    36,
-                    "Configuration des champs...",
-                ),
-                "Mise à jour des tables Grist pour la démarche": (
-                    37,
-                    "Traitement des dossiers...",
-                ),
-                "Mise à jour des colonnes de la table demandeurs": (38, "Finalisation du traitement..."),
-                "Mise à jour des colonnes de la table instructeurs": (38, "Finalisation du traitement..."),
-                "Récupération de tous les dossiers avec pagination": (
-                    39,
-                    "Traitement terminé!",
-                ),
-                "Récupération en parallèle": (40, "Traitement terminé!"),
-                "Récupération parallèle terminée": (41, "Traitement terminé!"),
-                "Préparation des records en parallèle": (
-                    42,
-                    "Traitement terminé!",
-                ),
-                "demandeurs traités": (43, "Traitement terminé!"),
-                "Après upsert demandeurs": (45, "Traitement terminé!"),
-                "Table instructeurs synchronisée": (46, "Traitement terminé!"),
-                "Récupération de tous les enregistrements": (46, "Traitement terminé!"),
-                "Traitement du bloc ": (47, "Traitement terminé!"),
+                "Configuration Grist": "Dossiers trouvés - Préparation du traitement...",
+                "Vérification des connexions aux APIs": "Analyse de la structure des données...",
+                "Récupéré à": "Création/mise à jour des tables Grist...",
+                "Mise à jour des tables Grist en préservant": "Configuration des champs...",
+                "Mise à jour des tables Grist pour la démarche": "Traitement des dossiers...",
+                "Mise à jour des colonnes de la table demandeurs": "Finalisation du traitement...",
+                "Mise à jour des colonnes de la table instructeurs": "Finalisation du traitement...",
+                "Récupération de tous les dossiers avec pagination": "Traitement terminé!",
+                "Récupération en parallèle": "Traitement terminé!",
+                "Récupération parallèle terminée": "Traitement terminé!",
+                "Préparation des records en parallèle": "Traitement terminé!",
+                "demandeurs traités": "Traitement terminé!",
+                "Après upsert demandeurs": "Traitement terminé!",
+                "Table instructeurs synchronisée": "Traitement terminé!",
+                "Récupération de tous les enregistrements": "Traitement terminé!",
+                "Traitement du bloc ": "Traitement terminé!",
             }
 
             PROGRESS_BEFORE_SCRIPT = 30
@@ -202,7 +184,7 @@ class SyncTaskManager:
                     log_callback(line.strip())
 
                 # Mettre à jour la progression
-                for keyword, (_, status_text) in progress_keywords.items():
+                for keyword, status_text in progress_keywords.items():
                     if keyword in line:
                         matched_keywords_count += 1
                         current_progress = PROGRESS_BEFORE_SCRIPT + (
