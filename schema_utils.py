@@ -217,6 +217,18 @@ def create_instructeurs_columns():
         {"id": "instructeur_email", "type": "Text"},
     ]
 
+def create_avis_columns():
+    return [
+        {"id": "dossier_number", "type": "Int"},
+        {"id": "avis_id", "type": "Text"},
+        {"id": "instructeur_email", "type": "Text"},
+        {"id": "expert_email", "type": "Text"},
+        {"id": "date_question", "type": "Text"},
+        {"id": "date_reponse", "type": "Text"},
+        {"id": "question", "type": "Text"},
+        {"id": "reponse", "type": "Text"},
+    ]
+
 # ========================================
 # FONCTIONS EXISTANTES - CORRIGÉES
 # ========================================
@@ -1047,6 +1059,17 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             log(f"Mise à jour des colonnes de la table instructeurs")
             instructeurs_columns = create_instructeurs_columns()
             add_missing_columns(instructeurs_table_id, instructeurs_columns)
+        
+        # Créer/mettre à jour la table avis (seulement si elle existe déjà)
+        avis_table_id = f"Demarche_{demarche_number}_avis"
+        avis_table = next((t for t in tables if t.get('id') == avis_table_id), None)
+
+        if avis_table:
+            log(f"Table avis existante trouvée: {avis_table_id}")
+            add_missing_columns(avis_table_id, create_avis_columns())
+        else:
+            log(f"Table avis non créée (sera créée au premier avis détecté)")
+            avis_table_id = None
 
         # Retourner les IDs des tables
         result = {
@@ -1054,7 +1077,8 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             "champs": champ_table_id,
             "demandeurs": demandeurs_table_id,
             "demandeur_type": demandeur_type,
-            "instructeurs": instructeurs_table_id
+            "instructeurs": instructeurs_table_id,
+            "avis": avis_table_id  # None si pas encore créée
         }
 
         # ✅ Ajouter annotations seulement si la table existe
