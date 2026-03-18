@@ -150,15 +150,60 @@ class SyncTaskManager:
 
             # Mots-clés pour estimer la progression
             progress_keywords = {
-                "Récupération de la démarche": (35, "Récupération des données de la démarche..."),
-                "Démarche trouvée": (40, "Démarche trouvée - Analyse des données..."),
-                "Nombre de dossiers trouvés": (45, "Dossiers trouvés - Préparation du traitement..."),
-                "Types de colonnes détectés": (50, "Analyse de la structure des données..."),
-                "Table dossiers": (55, "Création/mise à jour des tables Grist..."),
-                "Table champs": (60, "Configuration des champs..."),
-                "Traitement du lot": (65, "Traitement des dossiers..."),
-                "Dossiers traités avec succès": (90, "Finalisation du traitement..."),
-                "Traitement terminé": (98, "Traitement terminé!")
+                "CONFIGURATION DES FILTRES": (
+                    31, "Récupération des données de la démarche...",
+                ),
+                "Lancement du script": (
+                    32, "Démarche trouvée - Analyse des données..."
+                ),
+                "Configuration Grist": (
+                    33, "Dossiers trouvés - Préparation du traitement...",
+                ),
+                "Vérification des connexions aux APIs": (
+                    34, "Analyse de la structure des données...",
+                ),
+                "Récupéré à": (
+                    35, "Création/mise à jour des tables Grist..."
+                ),
+                "Mise à jour des tables Grist en préservant": (
+                    36, "Configuration des champs...",
+                ),
+                "Mise à jour des tables Grist pour la démarche": (
+                    37, "Traitement des dossiers...",
+                ),
+                "Mise à jour des colonnes": (
+                    38, "Finalisation du traitement..."
+                ),
+                "Récupération de tous les dossiers avec pagination": (
+                    39, "Traitement terminé!",
+                ),
+                "Récupération en parallèle": (
+                    40, "Traitement terminé!"
+                ),
+                "Récupération parallèle terminée": (
+                    41, "Traitement terminé!"
+                ),
+                "Récupération des enregistrements existants": (
+                    42, "Traitement terminé!",
+                ),
+                "Upsert par lot": (
+                    43, "Traitement terminé!"
+                ),
+                "Mise à jour par lot": (
+                    44, "Traitement terminé!"
+                ),
+                "Après upsert demandeurs": (
+                    45, "Traitement terminé!"
+                ),
+                "Table instructeurs synchronisée": (
+                    46, "Traitement terminé!"
+                ),
+                "Récupération de tous les enregistrements": (
+                    46, "Traitement terminé!"
+                ),
+                "Traitement du bloc ": (
+                    47, "Traitement terminé!"
+                ),
             }
 
             current_progress = 30
