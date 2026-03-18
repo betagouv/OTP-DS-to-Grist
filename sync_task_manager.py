@@ -150,66 +150,50 @@ class SyncTaskManager:
 
             # Mots-clés pour estimer la progression
             progress_keywords = {
-                "CONFIGURATION DES FILTRES": (
-                    31, "Récupération des données de la démarche...",
-                ),
-                "Lancement du script": (
-                    32, "Démarche trouvée - Analyse des données..."
-                ),
                 "Configuration Grist": (
-                    33, "Dossiers trouvés - Préparation du traitement...",
+                    33,
+                    "Dossiers trouvés - Préparation du traitement...",
                 ),
                 "Vérification des connexions aux APIs": (
-                    34, "Analyse de la structure des données...",
+                    34,
+                    "Analyse de la structure des données...",
                 ),
-                "Récupéré à": (
-                    35, "Création/mise à jour des tables Grist..."
-                ),
+                "Récupéré à": (35, "Création/mise à jour des tables Grist..."),
                 "Mise à jour des tables Grist en préservant": (
-                    36, "Configuration des champs...",
+                    36,
+                    "Configuration des champs...",
                 ),
                 "Mise à jour des tables Grist pour la démarche": (
-                    37, "Traitement des dossiers...",
+                    37,
+                    "Traitement des dossiers...",
                 ),
-                "Mise à jour des colonnes": (
-                    38, "Finalisation du traitement..."
-                ),
+                "Mise à jour des colonnes de la table demandeurs": (38, "Finalisation du traitement..."),
+                "Mise à jour des colonnes de la table instructeurs": (38, "Finalisation du traitement..."),
                 "Récupération de tous les dossiers avec pagination": (
-                    39, "Traitement terminé!",
+                    39,
+                    "Traitement terminé!",
                 ),
-                "Récupération en parallèle": (
-                    40, "Traitement terminé!"
+                "Récupération en parallèle": (40, "Traitement terminé!"),
+                "Récupération parallèle terminée": (41, "Traitement terminé!"),
+                "Préparation des records en parallèle": (
+                    42,
+                    "Traitement terminé!",
                 ),
-                "Récupération parallèle terminée": (
-                    41, "Traitement terminé!"
-                ),
-                "Récupération des enregistrements existants": (
-                    42, "Traitement terminé!",
-                ),
-                "Upsert par lot": (
-                    43, "Traitement terminé!"
-                ),
-                "Mise à jour par lot": (
-                    44, "Traitement terminé!"
-                ),
-                "Après upsert demandeurs": (
-                    45, "Traitement terminé!"
-                ),
-                "Table instructeurs synchronisée": (
-                    46, "Traitement terminé!"
-                ),
-                "Récupération de tous les enregistrements": (
-                    46, "Traitement terminé!"
-                ),
-                "Traitement du bloc ": (
-                    47, "Traitement terminé!"
-                ),
+                "demandeurs traités": (43, "Traitement terminé!"),
+                "Après upsert demandeurs": (45, "Traitement terminé!"),
+                "Table instructeurs synchronisée": (46, "Traitement terminé!"),
+                "Récupération de tous les enregistrements": (46, "Traitement terminé!"),
+                "Traitement du bloc ": (47, "Traitement terminé!"),
             }
 
-            current_progress = 30
+            PROGRESS_BEFORE_SCRIPT = 30
+            current_progress = PROGRESS_BEFORE_SCRIPT
+            PROGRESS_AFTER_SCRIPT = 99
+            matched_keywords_count = 0
+            steps = len(progress_keywords)
 
             # Lire la sortie en temps réel
-            for line in process.stdout.split('\n'):
+            for line in process.stdout.split("\n"):
                 if not line.strip():
                     continue
 
@@ -218,9 +202,14 @@ class SyncTaskManager:
                     log_callback(line.strip())
 
                 # Mettre à jour la progression
-                for keyword, (value, status_text) in progress_keywords.items():
-                    if keyword in line and value > current_progress:
-                        current_progress = value
+                for keyword, (_, status_text) in progress_keywords.items():
+                    if keyword in line:
+                        matched_keywords_count += 1
+                        current_progress = PROGRESS_BEFORE_SCRIPT + (
+                            (PROGRESS_AFTER_SCRIPT - PROGRESS_BEFORE_SCRIPT)
+                            * matched_keywords_count
+                            / steps
+                        )
                         if progress_callback:
                             progress_callback(current_progress, status_text)
                         break
