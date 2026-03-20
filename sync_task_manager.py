@@ -162,6 +162,11 @@ class SyncTaskManager:
                     progress_final = PROGRESS_BEFORE_SCRIPT + progress_pct * 0.2
                     if progress_callback:
                         progress_callback(progress_final, f"Progression: {progress_final:.1f}%")
+                elif line.startswith("Progression phase: "):
+                    progress_pct = float(line.split(": ")[1])
+                    progress_pct = min(progress_pct, 98)
+                    if progress_callback:
+                        progress_callback(progress_pct, line)
 
             # Traiter les erreurs
             if process.returncode != 0:
