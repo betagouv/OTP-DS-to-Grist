@@ -2415,8 +2415,13 @@ def process_demarche_for_grist_optimized(
                     if dossier_num:
                         if success:
                             successful_dossiers.add(str(dossier_num))
+                            status = "✓"
                         else:
                             failed_dossiers.add(str(dossier_num))
+                            status = "✗"
+
+                        current = len(successful_dossiers) + len(failed_dossiers)
+                        log(f"Progression pourcentage:{current / total_dossiers * 100}")
 
             champ_records = [
                 r
