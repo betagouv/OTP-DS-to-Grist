@@ -1468,7 +1468,7 @@ class GristClient:
 
     # 2. Ensuite, modifiez la méthode upsert_multiple_dossiers_in_grist de la classe GristClient
 
-    def upsert_multiple_dossiers_in_grist(self, table_id, dossiers_list, existing_records=None):
+    def upsert_multiple_dossiers_in_grist(self, table_id, dossiers_list, existing_records=None, column_cache=None):
         """
         Insère ou met à jour plusieurs dossiers en une seule requête.
         Version corrigée avec gestion appropriée des succès/échecs et cache optionnel.
@@ -1488,19 +1488,19 @@ class GristClient:
         else:
             log_verbose(f"Utilisation du cache: {len(existing_records)} enregistrements existants")
 
-        # Récupérer les colonnes existantes une seule fois
+        # Récupérer les colonnes existantes via le cache si disponible
         existing_columns = set()
         try:
-            url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
-            response = requests.get(url, headers=self.headers)
-
-            if response.status_code == 200:
-                columns_data = response.json()
-                if "columns" in columns_data:
-                    for col in columns_data["columns"]:
-                        existing_columns.add(col.get("id"))
-
-                log_verbose(f"Colonnes existantes dans la table {table_id}: {len(existing_columns)}")
+            if column_cache:
+                existing_columns = column_cache.get_columns(table_id)
+            else:
+                url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
+                response = requests.get(url, headers=self.headers)
+                if response.status_code == 200:
+                    columns_data = response.json()
+                    if "columns" in columns_data:
+                        for col in columns_data["columns"]:
+                            existing_columns.add(col.get("id"))
         except Exception as e:
             log_error(f"Erreur lors de la récupération des colonnes: {str(e)}")
 
@@ -2698,7 +2698,7 @@ def process_demarche_for_grist_optimized(
             dossier_records = [r for r in dossier_records if str(r.get("dossier_number") or r.get("number")) not in skip_dossiers]
             if dossier_records:
                 log(f"  Upsert par lot de {len(dossier_records)} dossiers...")
-                success = client.upsert_multiple_dossiers_in_grist(table_ids["dossier_table_id"], dossier_records, existing_records=cache_dossiers)
+                success = client.upsert_multiple_dossiers_in_grist(table_ids["dossier_table_id"], dossier_records, existing_records=cache_dossiers, column_cache=column_cache)
 
                 # Mettre à jour les ensembles de dossiers
                 for record in dossier_records:
@@ -2712,7 +2712,7 @@ def process_demarche_for_grist_optimized(
             champ_records = [r for r in champ_records if str(r.get("dossier_number")) not in skip_champs]
             if champ_records:
                 log(f"  Upsert par lot de {len(champ_records)} enregistrements de champs...")
-                success = client.upsert_multiple_dossiers_in_grist(table_ids["champ_table_id"], champ_records, existing_records=cache_champs)
+                success = client.upsert_multiple_dossiers_in_grist(table_ids["champ_table_id"], champ_records, existing_records=cache_champs, column_cache=column_cache)
                 if success:
                     total_success += len(champ_records)
                 else:
@@ -2723,7 +2723,7 @@ def process_demarche_for_grist_optimized(
             annotation_records = [r for r in annotation_records if str(r.get("dossier_number")) not in skip_annotations]
             if annotation_records and table_ids.get("annotations"):
                 log(f"  Upsert par lot de {len(annotation_records)} enregistrements d'annotations...")
-                success = client.upsert_multiple_dossiers_in_grist(table_ids.get("annotations") , annotation_records, existing_records=cache_annotations)
+                success = client.upsert_multiple_dossiers_in_grist(table_ids.get("annotations") , annotation_records, existing_records=cache_annotations, column_cache=column_cache)
 
                 log(f"[TIMING] Après upsert annotations: {time.time() - batch_start:.1f}s")
             elif annotation_records:
@@ -2750,7 +2750,7 @@ def process_demarche_for_grist_optimized(
                     success = client.upsert_multiple_dossiers_in_grist(
                         table_ids["demandeurs"],
                         demandeur_records,
-                        existing_records=cache_demandeurs
+                        existing_records=cache_demandeurs, column_cache=column_cache
                     )
                     if success:
                         log(f"   {len(demandeur_records)} demandeurs traités avec succès")
