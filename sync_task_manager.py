@@ -147,30 +147,7 @@ class SyncTaskManager:
                 env=env_copy,  # Utiliser l'environnement mis à jour
                 cwd=os.path.dirname(__file__)
             )
-
-            # Mots-clés pour estimer la progression
-            progress_keywords = {
-                "Configuration Grist": "Configuration Grist…",
-                "Vérification des connexions aux APIs": "Vérifications des APIs externes…",
-                "Récupéré à": "Récupérations des informations",
-                "Mise à jour des tables Grist en préservant": "Mise à jour des tables Grist 1…",
-                "Mise à jour des tables Grist pour la démarche": "Mise à jour des tables Grist 2…",
-                "Mise à jour des colonnes de la table demandeurs": "Mise à jour des colonnes 1…",
-                "Mise à jour des colonnes de la table instructeurs": "Mise à jour des colonnes 2…",
-                "Récupération de tous les dossiers avec pagination": "Récupération des dossiers…",
-                "Récupération parallèle terminée": "Récupération des dossiers terminée…",
-                "Préparation des records en parallèle": "Préparation des traitements…",
-                "demandeurs traités": "Traitement des demandeurs…",
-                "Table instructeurs synchronisée": "Traitement des instructeurs…",
-                "Récupération de tous les enregistrements": "Récupérations des enregistrements…",
-                "Traitement du bloc ": "Post traitement…",
-            }
-
             PROGRESS_BEFORE_SCRIPT = 30
-            current_progress = PROGRESS_BEFORE_SCRIPT
-            PROGRESS_AFTER_SCRIPT = 99
-            matched_keywords_count = 0
-            steps = len(progress_keywords)
 
             # Lire la sortie en temps réel
             for line in process.stdout.split("\n"):
@@ -180,19 +157,11 @@ class SyncTaskManager:
                 # Ajouter le log
                 if log_callback:
                     log_callback(line.strip())
-
-                # Mettre à jour la progression
-                for keyword, status_text in progress_keywords.items():
-                    if keyword in line:
-                        matched_keywords_count += 1
-                        current_progress = PROGRESS_BEFORE_SCRIPT + (
-                            (PROGRESS_AFTER_SCRIPT - PROGRESS_BEFORE_SCRIPT)
-                            * matched_keywords_count
-                            / steps
-                        )
-                        if progress_callback:
-                            progress_callback(current_progress, status_text)
-                        break
+                if line.startswith("Progression pourcentage:"):
+                    progress_pct = float(line.split(":")[1])
+                    progress_final = PROGRESS_BEFORE_SCRIPT + progress_pct * 0.2
+                    if progress_callback:
+                        progress_callback(progress_final, f"Progression: {progress_final:.1f}%")
 
             # Traiter les erreurs
             if process.returncode != 0:
