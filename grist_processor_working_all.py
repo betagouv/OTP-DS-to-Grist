@@ -2037,6 +2037,7 @@ def process_demarche_for_grist_optimized(
     """
     try:
         start_time = time.time()
+        sync_start_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Initialiser des ensembles pour suivre les dossiers traités
         successful_dossiers = set()
@@ -2314,7 +2315,7 @@ def process_demarche_for_grist_optimized(
                     demarche_number,
                     {
                         "last_sync_at": sync_end_time,
-                        "updated_since_cursor": sync_end_time,
+                        "updated_since_cursor": sync_start_time,
                         "last_sync_status": "success",
                         "last_sync_duration": round(elapsed_time, 1),
                     }
@@ -2826,7 +2827,7 @@ def process_demarche_for_grist_optimized(
                 demarche_number,
                 {
                     "last_sync_at": sync_end_time,
-                    "updated_since_cursor": sync_end_time,
+                    "updated_since_cursor": sync_start_time,
                     "last_sync_status": "success" if total_errors == 0 else "partial",
                     "last_sync_duration": round(elapsed_time, 1),
                 },
