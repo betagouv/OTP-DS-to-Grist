@@ -125,13 +125,13 @@ class SyncTaskManager:
                 log_callback("====================================")
 
             if progress_callback:
-                progress_callback(10, "Configuration des variables d'environnement...")
+                progress_callback(25, "Configuration des variables d'environnement...")
 
             # Appliquer les variables d'environnement pour ce thread
             os.environ.update(env_copy)
 
             if progress_callback:
-                progress_callback(20, "Lancement du script de synchronisation...")
+                progress_callback(30, "Lancement du script de synchronisation...")
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(os.path.dirname(__file__), "grist_processor_working_all.py")
@@ -147,55 +147,26 @@ class SyncTaskManager:
                 env=env_copy,  # Utiliser l'environnement mis à jour
                 cwd=os.path.dirname(__file__)
             )
-
-            # Mots-clés pour estimer la progression
-            progress_keywords = {
-                "Récupération de la démarche": (15, "Récupération des données de la démarche..."),
-                "Démarche trouvée": (20, "Démarche trouvée - Analyse des données..."),
-                "Nombre de dossiers trouvés": (25, "Dossiers trouvés - Préparation du traitement..."),
-                "Types de colonnes détectés": (35, "Analyse de la structure des données..."),
-                "Table dossiers": (45, "Création/mise à jour des tables Grist..."),
-                "Table champs": (50, "Configuration des champs..."),
-                "Traitement du lot": (60, "Traitement des dossiers..."),
-                "Dossiers traités avec succès": (90, "Finalisation du traitement..."),
-                "Traitement terminé": (100, "Traitement terminé!")
-            }
-
-            current_progress = 20
+            PROGRESS_BEFORE_SCRIPT = 30
 
             # Lire la sortie en temps réel
-            for line in process.stdout.split('\n'):
+            for line in process.stdout.split("\n"):
                 if not line.strip():
                     continue
 
                 # Ajouter le log
                 if log_callback:
                     log_callback(line.strip())
-
-                # Mettre à jour la progression
-                for keyword, (value, status_text) in progress_keywords.items():
-                    if keyword in line and value > current_progress:
-                        current_progress = value
-                        if progress_callback:
-                            progress_callback(current_progress, status_text)
-                        break
-
-                # Détecter le pourcentage dans les lignes de progression
-                if "Progression:" in line and "/" in line:
-                    try:
-                        # Extraire X/Y du texte "Progression: X/Y dossiers"
-                        parts = line.split("Progression:")[1].strip().split("/")
-                        current = int(parts[0].strip())
-                        total = int(parts[1].split()[0].strip())
-
-                        if total > 0:
-                            batch_progress = 60 + (30 * (current / total))
-                            if batch_progress > current_progress:
-                                current_progress = batch_progress
-                                if progress_callback:
-                                    progress_callback(current_progress, f"Traitement des dossiers: {current}/{total}")
-                    except (ValueError, IndexError):
-                        pass
+                if line.startswith("Progression pourcentage:"):
+                    progress_pct = float(line.split(":")[1])
+                    progress_final = PROGRESS_BEFORE_SCRIPT + progress_pct * 0.2
+                    if progress_callback:
+                        progress_callback(progress_final, f"Progression: {progress_final:.1f}%")
+                elif line.startswith("Progression phase: "):
+                    progress_pct = float(line.split(": ")[1])
+                    progress_pct = min(progress_pct, 98)
+                    if progress_callback:
+                        progress_callback(progress_pct, line)
 
             # Traiter les erreurs
             if process.returncode != 0:
@@ -276,7 +247,7 @@ class SyncTaskManager:
                 total_processed = success_count + error_count
 
             if progress_callback:
-                progress_callback(95, "Finalisation...")
+                progress_callback(99, "Finalisation...")
 
             if log_callback:
                 log_callback(f"Synchronisation terminée: {success_count} dossiers synchronisés, {error_count} erreurs")

@@ -40,6 +40,12 @@ def log_verbose(message):
     log(message, 2)
 
 
+def log_progress(phase_index, total_phases, phase_name):
+    """Log la progression pour une phase de synchronisation"""
+    progress = 50 + (phase_index / total_phases) * 50
+    log(f"Progression phase: {progress:.0f}")
+
+
 def log_error(message):
     """Log d'erreur (toujours affiché)"""
     print(f"ERREUR: {message}")
@@ -2413,8 +2419,15 @@ def process_demarche_for_grist_optimized(
                     if dossier_num:
                         if success:
                             successful_dossiers.add(str(dossier_num))
+                            status = "✓"
                         else:
                             failed_dossiers.add(str(dossier_num))
+                            status = "✗"
+
+                        current = len(successful_dossiers) + len(failed_dossiers)
+                        log(f"Progression pourcentage:{current / total_dossiers * 100}")
+
+            log_progress(1, 6, "dossiers")
 
             if champ_records:
                 log(f"  Upsert par lot de {len(champ_records)} enregistrements de champs...")
@@ -2425,6 +2438,7 @@ def process_demarche_for_grist_optimized(
                     total_errors += len(champ_records)
 
                 log(f"[TIMING] Après upsert champs: {time.time() - batch_start:.1f}s")
+                log_progress(2, 6, "champs")
 
             if annotation_records and table_ids.get("annotations"):
                 log(f"  Upsert par lot de {len(annotation_records)} enregistrements d'annotations...")
@@ -2433,6 +2447,8 @@ def process_demarche_for_grist_optimized(
                 log(f"[TIMING] Après upsert annotations: {time.time() - batch_start:.1f}s")
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
+
+            log_progress(3, 6, "annotations")
 
             # Traiter les demandeurs par lot
             if table_ids.get("demandeurs") and table_ids.get("demandeur_type"):
@@ -2461,6 +2477,7 @@ def process_demarche_for_grist_optimized(
                         log_error(f"   Erreur lors du traitement des demandeurs")
 
                 log(f"[TIMING] Après upsert demandeurs: {time.time() - batch_start:.1f}s")
+                log_progress(4, 6, "demandeurs")
 
                 # Traiter les instructeurs (niveau démarche - UNE FOIS)
                 if table_ids.get("instructeurs"):
@@ -2581,6 +2598,7 @@ def process_demarche_for_grist_optimized(
                         log("   Aucun instructeur trouvé pour cette démarche")
 
                 log(f"[TIMING] Après instructeurs: {time.time() - batch_start:.1f}s")
+                log_progress(5, 6, "instructeurs")
 
             # Traiter les blocs répétables si nécessaire (tables séparées par bloc)
             if column_types.get("has_repetable_blocks", False) and table_ids.get("repetable_blocks"):
@@ -2623,6 +2641,7 @@ def process_demarche_for_grist_optimized(
                             log_error(f"  Erreur traitement bloc '{block_label}': {str(e)}")
 
             log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
+            log_progress(6, 6, "répétables")
 
         # Calculer les statistiques finales
         elapsed_time = time.time() - start_time
