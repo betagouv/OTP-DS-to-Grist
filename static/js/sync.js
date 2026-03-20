@@ -15,10 +15,14 @@ const startSync = async (otp_config_id) => {
     date_depot_fin: document.getElementById('date_fin').value,
     statuts_dossiers: Array.from(
       document.querySelectorAll('input[name="statuts"]:checked')
-    ).map(el => el.value).join(','),
+    )
+      .map((el) => el.value)
+      .join(','),
     groupes_instructeurs: Array.from(
       document.querySelectorAll('input[name="groupes"]:checked')
-    ).map(el => el.value).join(',')
+    )
+      .map((el) => el.value)
+      .join(',')
   }
 
   const gristContext = await getGristContext()
@@ -29,7 +33,7 @@ const startSync = async (otp_config_id) => {
     const response = await fetch('/api/start-sync', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         otp_config_id,
@@ -41,8 +45,7 @@ const startSync = async (otp_config_id) => {
 
     const result = await response.json()
 
-    if (!result.success)
-      return showNotification(result.message, 'error')
+    if (!result.success) return showNotification(result.message, 'error')
 
     startTime = Date.now()
 
@@ -52,16 +55,24 @@ const startSync = async (otp_config_id) => {
     totalDossiers = 0
 
     // Ferme les volets
-    document.getElementById('accordion-ds').setAttribute('aria-expanded', 'false')
-    document.getElementById('accordion-grist').setAttribute('aria-expanded', 'false')
-    document.getElementById('accordion-settings').setAttribute('aria-expanded', 'false')
+    document
+      .getElementById('accordion-ds')
+      .setAttribute('aria-expanded', 'false')
+    document
+      .getElementById('accordion-grist')
+      .setAttribute('aria-expanded', 'false')
+    document
+      .getElementById('accordion-settings')
+      .setAttribute('aria-expanded', 'false')
 
     // Afficher la zone de progression
     document.getElementById('sync_progress').style.display = 'block'
     document.getElementById('sync_progress_container').style.display = 'block'
     document.getElementById('sync_result').style.display = 'none'
 
-    document.getElementById('sync_progress_container').scrollIntoView({ behavior: 'smooth' });
+    document
+      .getElementById('sync_progress_container')
+      .scrollIntoView({ behavior: 'smooth' })
 
     // Réinitialiser les compteurs et l'affichage
     logsCount = 0
@@ -99,10 +110,12 @@ const updateTaskProgress = (task) => {
   // Mettre à jour le temps écoulé
   if (startTime) {
     const elapsed = (Date.now() - startTime) / 1000
-    document.getElementById('elapsed_time').textContent = formatDuration(elapsed)
+    document.getElementById('elapsed_time').textContent =
+      formatDuration(elapsed)
 
     // Calculer la vitesse en dossiers/s et l'ETA seulement si on a des données valides
-    if (elapsed > 10 && successCount > 0) { // Attendre au moins 10 secondes pour un calcul stable
+    if (elapsed > 10 && successCount > 0) {
+      // Attendre au moins 10 secondes pour un calcul stable
       const dossiersPerSecond = successCount / elapsed
       processingSpeedElement.textContent = `${dossiersPerSecond.toFixed(1)} dossiers/s`
 
@@ -112,7 +125,8 @@ const updateTaskProgress = (task) => {
         const remainingProgress = 100 - progress
         const remainingTime = remainingProgress / progressRate
 
-        if (remainingTime > 0 && remainingTime < 86400) { // Limiter à 24h max
+        if (remainingTime > 0 && remainingTime < 86400) {
+          // Limiter à 24h max
           etaElement.textContent = formatDuration(remainingTime)
         } else {
           etaElement.textContent = '-'
@@ -136,13 +150,14 @@ const updateTaskProgress = (task) => {
     const newLogs = task.logs.slice(logsCount)
     const logsContent = document.getElementById('logs_content')
 
-    newLogs.forEach(log => {
+    newLogs.forEach((log) => {
       const logTime = new Date(log.timestamp * 1000).toLocaleTimeString()
       const message = log.message
 
       // Détecter les erreurs pour les mettre en couleur
-      const isError = message.toLowerCase().includes('erreur') || 
-        message.toLowerCase().includes('error') || 
+      const isError =
+        message.toLowerCase().includes('erreur') ||
+        message.toLowerCase().includes('error') ||
         message.toLowerCase().includes('échec') ||
         message.toLowerCase().includes('failed')
 
@@ -168,8 +183,7 @@ const updateTaskProgress = (task) => {
     }
 
     // Auto-scroll vers le bas si les logs sont visibles
-    if (logsVisible)
-      logsContent.scrollTop = logsContent.scrollHeight
+    if (logsVisible) logsContent.scrollTop = logsContent.scrollHeight
   }
 
   // Gérer la fin de la tâche
@@ -180,17 +194,30 @@ const updateTaskProgress = (task) => {
 
     // Déterminer le type de résultat en fonction des erreurs détectées
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
-    const successRate = totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0
+    const successRate =
+      totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0
 
     if (task.status === 'completed' && !hasSignificantErrors) {
-      resultContent.innerHTML = `<div class="fr-alert fr-alert--success">
-        <h3 class="fr-alert__title">Synchronisation terminée avec succès!</h3>
-        <p>${task.message}</p>
-        <p><strong>${successCount}</strong> dossiers traités avec succès</p>
-      </div>`
-
-      showNotification('Synchronisation terminée avec succès!', 'success')
-    } else if (task.status === 'completed' && hasSignificantErrors && successCount > 0) {
+      if (task.sync_reason === 'already_up_to_date') {
+        resultContent.innerHTML = `<div class="fr-alert fr-alert--info">
+          <h3 class="fr-alert__title">Grist déjà à jour</h3>
+          <p>Aucun dossier nouveau ou modifié depuis la dernière synchronisation.</p>
+          <p>${task.message}</p>
+        </div>`
+        showNotification('Grist déjà à jour', 'info')
+      } else {
+        resultContent.innerHTML = `<div class="fr-alert fr-alert--success">
+          <h3 class="fr-alert__title">Synchronisation terminée avec succès!</h3>
+          <p>${task.message}</p>
+          <p><strong>${successCount}</strong> dossiers traités avec succès</p>
+        </div>`
+        showNotification('Synchronisation terminée avec succès!', 'success')
+      }
+    } else if (
+      task.status === 'completed' &&
+      hasSignificantErrors &&
+      successCount > 0
+    ) {
       resultContent.innerHTML = ` <div class="fr-alert fr-alert--warning">
         <h3 class="fr-alert__title">Synchronisation terminée avec des erreurs</h3>
         <p>${task.message}</p>
@@ -207,7 +234,6 @@ const updateTaskProgress = (task) => {
       `
       showNotification('Erreur lors de la synchronisation', 'error')
     }
-
   }
 }
 
@@ -218,7 +244,10 @@ const toggleAutoSync = async (enabled) => {
     const config = await configResponse.json()
 
     if (!config.otp_config_id) {
-      showNotification('Configuration non sauvegardée. Veuillez sauvegarder la configuration avant d\'activer la synchronisation automatique.', 'error')
+      showNotification(
+        "Configuration non sauvegardée. Veuillez sauvegarder la configuration avant d'activer la synchronisation automatique.",
+        'error'
+      )
       // Revert checkbox
       document.getElementById('auto_sync_enabled').checked = false
       return
@@ -235,7 +264,7 @@ const toggleAutoSync = async (enabled) => {
     const response = await fetch('/api/schedule', {
       method: method,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         otp_config_id: config.otp_config_id
@@ -248,13 +277,19 @@ const toggleAutoSync = async (enabled) => {
       const status = enabled ? 'activée' : 'désactivée'
       showNotification(`Synchronisation automatique ${status}`, 'success')
     } else {
-      showNotification(result.message || 'Erreur lors de la modification', 'error')
+      showNotification(
+        result.message || 'Erreur lors de la modification',
+        'error'
+      )
       // Revert checkbox
       document.getElementById('auto_sync_enabled').checked = !enabled
     }
   } catch (error) {
     console.error('Erreur:', error)
-    showNotification('Erreur lors de la modification de la synchronisation automatique', 'error')
+    showNotification(
+      'Erreur lors de la modification de la synchronisation automatique',
+      'error'
+    )
     // Revert checkbox
     document.getElementById('auto_sync_enabled').checked = !enabled
   }
@@ -279,17 +314,27 @@ const loadAutoSyncState = async () => {
     checkbox.disabled = false
 
     // Check if schedule exists and is enabled
-    const response = await fetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
+    const response = await fetch(
+      `/api/schedule?otp_config_id=${config.otp_config_id}`
+    )
     const result = await response.json()
 
     checkbox.checked = result.enabled || false
 
     // Afficher le statut de la dernière synchronisation si activé
     if (result.enabled && result.last_run) {
-      const lastRunDate = new Date(result.last_run + '+00:00').toLocaleString('fr-FR')
-      const statusClass = result.last_status === 'success' ? 'fr-alert--success' : 'fr-alert--error'
+      const lastRunDate = new Date(result.last_run + '+00:00').toLocaleString(
+        'fr-FR'
+      )
+      const statusClass =
+        result.last_status === 'success'
+          ? 'fr-alert--success'
+          : 'fr-alert--error'
       const statusText = result.last_status === 'success' ? 'Succès' : 'Échec'
-      const icon = result.last_status === 'success' ? 'check-circle' : 'exclamation-triangle'
+      const icon =
+        result.last_status === 'success'
+          ? 'check-circle'
+          : 'exclamation-triangle'
 
       statusDiv.innerHTML = `
         <div class="fr-alert ${statusClass} fr-alert--sm">
@@ -301,10 +346,15 @@ const loadAutoSyncState = async () => {
       statusDiv.style.display = 'none'
     }
   } catch (error) {
-    console.error('Erreur lors du chargement de l\'état auto sync:', error)
+    console.error("Erreur lors du chargement de l'état auto sync:", error)
   }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { startSync, updateTaskProgress, toggleAutoSync, loadAutoSyncState }
+  module.exports = {
+    startSync,
+    updateTaskProgress,
+    toggleAutoSync,
+    loadAutoSyncState
+  }
 }

@@ -793,7 +793,8 @@ def get_demarche_dossiers_filtered(
     date_debut: str = None,
     date_fin: str = None,
     groupes_instructeurs: List[str] = None,
-    statuts: List[str] = None
+    statuts: List[str] = None,
+    updated_since: str = None
 ) -> List[Dict[str, Any]]:
     """
     Récupère les dossiers avec filtrage côté serveur RÉEL.
@@ -821,6 +822,12 @@ def get_demarche_dossiers_filtered(
         server_filters['createdSince'] = date_debut
         print(f"Filtre serveur par date de début: {date_debut}")
 
+    if updated_since:
+        if 'T' not in updated_since:
+            updated_since += 'T00:00:00Z'
+        server_filters['updatedSince'] = updated_since
+        print(f"Filtre serveur par date de modification: {updated_since}")
+    
     # ❌ FILTRES CÔTÉ CLIENT : Tout le reste
     if date_fin:
         client_filters['date_fin'] = date_fin
@@ -858,6 +865,7 @@ def get_demarche_dossiers_filtered(
         $demarcheNumber: Int!
         $afterCursor: String = null
         $createdSince: ISO8601DateTime = null
+        $updatedSince: ISO8601DateTime = null
     ) {
         demarche(number: $demarcheNumber) {
             id
@@ -867,6 +875,7 @@ def get_demarche_dossiers_filtered(
                 first: 100
                 after: $afterCursor
                 createdSince: $createdSince
+                updatedSince: $updatedSince
             ) {
                 pageInfo {
                     hasPreviousPage
