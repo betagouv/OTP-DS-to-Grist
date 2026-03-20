@@ -48,6 +48,12 @@ def log_verbose(message):
     log(message, 2)
 
 
+def log_progress(phase_index, total_phases, phase_name):
+    """Log la progression pour une phase de synchronisation"""
+    progress = 50 + (phase_index / total_phases) * 50
+    log(f"Progression phase: {progress:.0f}")
+
+
 def log_error(message):
     """Log d'erreur (toujours affiché)"""
     print(f"ERREUR: {message}")
@@ -2428,6 +2434,8 @@ def process_demarche_for_grist_optimized(
                 for r in champ_records
                 if str(r.get("dossier_number")) not in skip_champs
             ]
+            log_progress(1, 6, "dossiers")
+
             if champ_records:
                 log(
                     f"  Upsert par lot de {len(champ_records)} enregistrements de champs..."
@@ -2444,6 +2452,7 @@ def process_demarche_for_grist_optimized(
                     total_errors += len(champ_records)
 
                 log(f"[TIMING] Après upsert champs: {time.time() - batch_start:.1f}s")
+                log_progress(2, 6, "champs")
 
             annotation_records = [
                 r
@@ -2466,6 +2475,8 @@ def process_demarche_for_grist_optimized(
                 )
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
+
+            log_progress(3, 6, "annotations")
 
             # Traiter les demandeurs par lot
             if table_ids.get("demandeurs") and table_ids.get("demandeur_type"):
@@ -2569,6 +2580,7 @@ def process_demarche_for_grist_optimized(
                             )
 
             log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
+            log_progress(6, 6, "répétables")
 
             # Traiter les avis du lot
             all_avis_records = []
