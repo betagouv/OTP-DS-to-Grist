@@ -92,11 +92,10 @@ class SyncTaskManager:
             for config_key, env_key in env_mapping.items():
                 env_copy[env_key] = str(config.get(config_key, ''))
 
-            # ✅ Afficher les filtres effectivement utilisés (après définition)
+            # Afficher les filtres effectivement utilisés (après définition)
             if log_callback:
                 log_callback("=== CONFIGURATION DES FILTRES ===")
 
-                # Vérifier et afficher les variables d'environnement de la copie
                 date_debut = env_copy.get("DATE_DEPOT_DEBUT", "").strip()
                 date_fin = env_copy.get("DATE_DEPOT_FIN", "").strip()
                 statuts = env_copy.get("STATUTS_DOSSIERS", "").strip()
@@ -139,73 +138,56 @@ class SyncTaskManager:
             if log_callback:
                 log_callback(f"Lancement du script: {script_path}")
 
-            # Exécuter le script de synchronisation
-            process = subprocess.run(
+            # Exécuter le script de synchronisation en temps réel
+            process = subprocess.Popen(
                 [sys.executable, script_path],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                env=env_copy,  # Utiliser l'environnement mis à jour
+                env=env_copy,
                 cwd=os.path.dirname(__file__)
             )
 
-            # Mots-clés pour estimer la progression
-            progress_keywords = {
-                "Récupération de la démarche": (15, "Récupération des données de la démarche..."),
-                "Démarche trouvée": (20, "Démarche trouvée - Analyse des données..."),
-                "Nombre de dossiers trouvés": (25, "Dossiers trouvés - Préparation du traitement..."),
-                "Types de colonnes détectés": (35, "Analyse de la structure des données..."),
-                "Table dossiers": (45, "Création/mise à jour des tables Grist..."),
-                "Table champs": (50, "Configuration des champs..."),
-                "Traitement du lot": (60, "Traitement des dossiers..."),
-                "Dossiers traités avec succès": (90, "Finalisation du traitement..."),
-                "Traitement terminé": (100, "Traitement terminé!")
-            }
-
             current_progress = 20
+            stdout_lines = []
 
-            # Lire la sortie en temps réel
-            for line in process.stdout.split('\n'):
-                if not line.strip():
+            # Lire la sortie en temps réel ligne par ligne
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
                     continue
 
-                # Ajouter le log
+                stdout_lines.append(line)
+
                 if log_callback:
-                    log_callback(line.strip())
+                    log_callback(line)
 
-                # Mettre à jour la progression
-                for keyword, (value, status_text) in progress_keywords.items():
-                    if keyword in line and value > current_progress:
-                        current_progress = value
-                        if progress_callback:
-                            progress_callback(current_progress, status_text)
-                        break
-
-                # Détecter le pourcentage dans les lignes de progression
-                if "Progression:" in line and "/" in line:
+                # Parsing structuré [PROGRESS:]
+                if line.startswith("[PROGRESS:"):
                     try:
-                        # Extraire X/Y du texte "Progression: X/Y dossiers"
-                        parts = line.split("Progression:")[1].strip().split("/")
-                        current = int(parts[0].strip())
-                        total = int(parts[1].split()[0].strip())
-
-                        if total > 0:
-                            batch_progress = 60 + (30 * (current / total))
-                            if batch_progress > current_progress:
-                                current_progress = batch_progress
-                                if progress_callback:
-                                    progress_callback(current_progress, f"Traitement des dossiers: {current}/{total}")
-                    except (ValueError, IndexError):
+                        percent = int(line.split("[PROGRESS:")[1].split("]")[0])
+                        message = line.split("] ", 1)[1].strip() if "] " in line else ""
+                        if percent > current_progress:
+                            current_progress = percent
+                            if progress_callback:
+                                progress_callback(current_progress, message)
+                    except:
                         pass
 
-            # Traiter les erreurs
-            if process.returncode != 0:
-                error_output = process.stderr
-                if error_output and log_callback:
-                    for line in error_output.split('\n'):
-                        if line.strip():
-                            log_callback(f"ERREUR: {line.strip()}")
+            # Lire les erreurs
+            stderr_output = process.stderr.read()
+            if stderr_output and log_callback:
+                for line in stderr_output.split('\n'):
+                    if line.strip():
+                        log_callback(f"ERREUR: {line.strip()}")
 
-                raise subprocess.CalledProcessError(process.returncode, process.args)
+            returncode = process.wait()
+            process_stdout = '\n'.join(stdout_lines)
+
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, script_path)
 
             # Analyser le résultat
             success_count = 0
@@ -226,12 +208,10 @@ class SyncTaskManager:
 
                     num_str = parts[1].strip()
                     if "/" in num_str:
-                        # Format "X/Y"
                         success = int(num_str.split("/")[0].strip())
                         total = int(num_str.split("/")[1].strip())
                         return success, total
                     else:
-                        # Format "X"
                         success = int(num_str)
                         return success, None
                 except (ValueError, IndexError):
@@ -251,20 +231,17 @@ class SyncTaskManager:
                     return None
 
             # Parser la sortie pour extraire les statistiques
-            for line in process.stdout.split('\n'):
-                # Essayer de parser succès
+            for line in process_stdout.split('\n'):
                 success_parsed, total_parsed = _parse_success_count(line)
                 if success_parsed is not None:
                     success_count = success_parsed
                     if total_parsed is not None:
                         total_processed = total_parsed
 
-                # Essayer de parser erreurs
                 error_parsed = _parse_error_count(line)
                 if error_parsed is not None:
                     error_count = error_parsed
 
-                # Essayer de parser total (si présent dans logs)
                 if "Total dossiers traités:" in line:
                     try:
                         total_processed = int(line.split(":")[1].strip())
@@ -278,7 +255,7 @@ class SyncTaskManager:
             # Détecter si Grist était déjà à jour
             already_up_to_date = success_count == 0 and error_count == 0 and any(
                 "déjà à jour" in line or "Aucun dossier modifié" in line
-                for line in process.stdout.split('\n')
+                for line in process_stdout.split('\n')
             )
 
             if progress_callback:
@@ -333,7 +310,6 @@ class SyncTaskManager:
             'logs': []
         }
 
-        # Démarrer la tâche dans un thread séparé
         thread = threading.Thread(
             target=self._run_task,
             args=(task_id, task_function, *args),
@@ -346,7 +322,6 @@ class SyncTaskManager:
     def _run_task(self, task_id, task_function, *args, **kwargs):
         """Exécute une tâche avec gestion des erreurs"""
         try:
-            # Ajouter le callback de progression
             kwargs['progress_callback'] = lambda progress, message: self._update_progress(task_id, progress, message)
             kwargs['log_callback'] = lambda message: self._add_log(task_id, message)
 

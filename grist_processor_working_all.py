@@ -46,6 +46,9 @@ def log_error(message):
     """Log d'erreur (toujours affiché)"""
     print(f"ERREUR: {message}")
 
+def emit_progress(percent, message):
+    """Émet un marqueur de progression parseable par app.py"""
+    print(f"[PROGRESS:{percent}] {message}", flush=True)
 
 def print_api_timings():
     timings = get_timings()
@@ -1638,6 +1641,7 @@ def process_demarche_for_grist(client, demarche_number):
             doc_info = client.get_document_info()
             doc_name = doc_info.get("name", client.doc_id) if isinstance(doc_info, dict) else "Document ID " + client.doc_id
             log(f"Document Grist trouvé: {doc_name}")
+            emit_progress(5, "Connexion Grist vérifiée")
         except Exception as e:
             log_error(f"Erreur lors de la vérification du document Grist: {e}")
             return False
@@ -2067,6 +2071,7 @@ def process_demarche_for_grist_optimized(
                 demarche_schema = get_optimized_schema(demarche_number)
                 log_schema_improvements(demarche_schema, demarche_number)
                 log(f"Schéma récupéré avec succès pour la démarche: {demarche_schema['title']}")
+                emit_progress(10, "Schéma récupéré")
 
                 # Générer les définitions de colonnes à partir du schéma complet
                 column_types, problematic_descriptor_ids = create_columns_from_schema(demarche_schema, demarche_number)
@@ -2174,6 +2179,7 @@ def process_demarche_for_grist_optimized(
             log("Pas de cursor updatedSince → sync complète")
 
         # Log des table IDs
+        emit_progress(15, "Tables Grist prêtes")
         log(f"Tables utilisées pour l'importation:")
         log(f"  Table dossiers: {table_ids['dossier_table_id']}")
         log(f"  Table champs: {table_ids['champ_table_id']}")
@@ -2463,6 +2469,7 @@ def process_demarche_for_grist_optimized(
         if table_ids.get("instructeurs"):
             cache_instructeurs = client.get_existing_dossier_numbers(table_ids["instructeurs"])
         log(f"Cache global préchargé en {time.time() - start_cache:.1f}s")
+        emit_progress(20, "Cache chargé")
 
         # Construire les sets de dossiers à skipper par table
         skip_dossiers    = set()
@@ -2616,8 +2623,10 @@ def process_demarche_for_grist_optimized(
             else:
                 log("   Aucun instructeur trouvé pour cette démarche")
             log(f"[TIMING] Instructeurs synchronisés en {time.time() - start_cache:.1f}s")
+            emit_progress(25, "Instructeurs synchronisés")
         for batch_idx, batch in enumerate(dossier_batches):
             log(f"Traitement du lot {batch_idx+1}/{batch_count} ({len(batch)} dossiers)...")
+            emit_progress(25 + int(70 * batch_idx / batch_count), f"Lot {batch_idx+1}/{batch_count}...")
             batch_start = time.time()
 
             # Filtrer les dossiers à fetcher (skip si inchangé sur toutes les tables)
@@ -2836,6 +2845,7 @@ def process_demarche_for_grist_optimized(
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
+        emit_progress(100, "Synchronisation terminée")
         return total_success > 0 or schema_method_successful
 
     except Exception as e:
