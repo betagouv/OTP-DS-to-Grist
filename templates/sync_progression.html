@@ -1,4 +1,11 @@
 <!-- Zone d'exécution -->
+<style>
+@keyframes gallop {
+  from { background-position: 0px 0; }
+  to   { background-position: -252px 0; }
+}
+</style>
+
 <div id="sync_progress_container" class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border" style="display: none;">
     <div class="fr-card__body">
         <div class="fr-card__content">
@@ -20,9 +27,14 @@
                             <span id="progress_percentage" class="fr-badge fr-badge--blue-ecume">0%</span>
                         </div>
                     </div>
-                    <div class="fr-mt-1w">
-                        <div style="background-color: var(--blue-france-sun-113); height: 8px; border-radius: 4px; overflow: hidden;">
-                            <div id="progress_bar" class="progress-bar" style="width: 0%; height: 100%; transition: width 0.3s ease;"></div>
+                    <div class="fr-mt-1w" style="position: relative; height: 48px;">
+                        <!-- Piste de progression -->
+                        <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 8px; background-color: var(--blue-france-sun-113); border-radius: 4px; overflow: hidden;">
+                            <div id="progress_bar" class="progress-bar" style="width: 0%; height: 100%; background-color: #000091; transition: width 0.3s ease;"></div>
+                        </div>
+                        <!-- Poney -->
+                        <div id="pony-wrapper" style="position: absolute; bottom: 8px; left: 0; width: 42px; height: 40px; overflow: hidden; will-change: left; z-index: 10;">
+                            <div id="pony" aria-hidden="true" style="width: 42px; height: 40px; background-image: url('/static/img/pony-sprite-small.png'); background-repeat: no-repeat; background-size: 252px 40px; background-position: 0 0; animation: gallop 0.6s steps(6, end) infinite; animation-play-state: paused;"></div>
                         </div>
                     </div>
                     <div class="fr-mt-1w">
