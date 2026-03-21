@@ -107,6 +107,10 @@ const updateTaskProgress = (task) => {
   document.getElementById('progress_bar').style.width = `${progress}%`
   document.getElementById('progress_percentage').textContent = `${progress}%`
 
+  // Mettre à jour le message de statut
+  const statusEl = document.getElementById('current_status')
+  if (statusEl) statusEl.textContent = task.message || 'En cours...'
+
   // Mettre à jour le temps écoulé
   if (startTime) {
     const elapsed = (Date.now() - startTime) / 1000
