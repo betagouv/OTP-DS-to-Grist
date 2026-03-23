@@ -275,6 +275,12 @@ class SyncTaskManager:
             if total_processed == 0:
                 total_processed = success_count + error_count
 
+            # Détecter si Grist était déjà à jour
+            already_up_to_date = success_count == 0 and error_count == 0 and any(
+                "déjà à jour" in line or "Aucun dossier modifié" in line
+                for line in process.stdout.split('\n')
+            )
+
             if progress_callback:
                 progress_callback(95, "Finalisation...")
 
@@ -284,6 +290,7 @@ class SyncTaskManager:
             # Préparer le résultat
             result = {
                 'success': error_count == 0,
+                'sync_reason': 'already_up_to_date' if already_up_to_date else 'synced',
                 'message': f"Synchronisation terminée: {success_count}/{total_processed} dossiers synchronisés" if error_count == 0 else f"Synchronisation terminée avec {error_count} erreurs sur {total_processed} dossiers",
                 'dossier_count': total_processed,
                 'success_count': success_count,
@@ -350,6 +357,7 @@ class SyncTaskManager:
                 'progress': 100,
                 'message': 'Tâche terminée avec succès',
                 'result': result,
+                'sync_reason': result.get('sync_reason', 'synced'),
                 'end_time': time.time()
             })
 
