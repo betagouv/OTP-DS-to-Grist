@@ -465,6 +465,10 @@ def inject_version_info():
         release_url=f"{GITHUB_CHANGELOG_BASE_URL}#{anchor}",
     )
 
+@app.context_processor
+def inject_env_name():
+    return dict(env_name=os.getenv('ENV', ''))
+
 
 @app.route('/')
 def index():
