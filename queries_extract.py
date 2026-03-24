@@ -160,15 +160,10 @@ def extract_champ_values(
         elif champ["__typename"] == "PieceJustificativeChamp":
             files = champ.get("files", [])
             value = ", ".join([f["filename"] for f in files]) if files else None
-            json_value = None  #
+            json_value = None
 
             columns = champ.get("columns", [])
             if columns:
-                # Vérifier si c'est un champ RIB
-                is_rib_field = (
-                    "rib" in champ["label"].lower() or "iban" in champ["label"].lower()
-                )
-
                 for col in columns:
                     col_typename = col.get("__typename")
                     col_label = col.get("label", "")

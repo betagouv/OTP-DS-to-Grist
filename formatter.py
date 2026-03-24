@@ -1,8 +1,18 @@
 import json
+from typing import Optional
 
 
-def unwrap_json_list(raw):
-    """Convertit '["a", "b"]' en 'a, b', laisse les strings normales intactes."""
+# Fix: Convertit '["a", "b"]' en 'a, b', laisse les strings normales intactes.
+# Nécessaire car les anciennes démarches DS retournent les valeurs de listes
+# déroulantes comme chaînes simples, tandis que les nouvelles les retournent
+# sous forme de chaînes JSON encodées.
+def unwrap_json_list(raw: Optional[str]) -> Optional[str]:
+    """
+    Convertit '["a", "b"]' en 'a, b', laisse les strings normales intactes.
+    Nécessaire car les anciennes démarches DS retournent les valeurs de listes
+    déroulantes comme chaînes simples, tandis que les nouvelles les retournent
+    sous forme de chaînes JSON encodées.
+    """
     if isinstance(raw, str) and raw.startswith("["):
         try:
             parsed = json.loads(raw)
