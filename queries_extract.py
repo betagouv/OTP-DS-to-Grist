@@ -4,6 +4,7 @@ import json
 import requests
 from typing import Dict, Any, List
 from constants import DEMARCHES_API_URL
+from formatter import unwrap_json_list
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -64,18 +65,6 @@ def format_complex_json_for_grist(json_value, max_length=10000):
         if len(str_value) > max_length:
             str_value = str_value[:max_length] + "..."
         return str_value
-
-
-def unwrap_json_list(raw):
-    """Convertit '["a", "b"]' en 'a, b', laisse les strings normales intactes."""
-    if isinstance(raw, str) and raw.startswith("["):
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list):
-                return ", ".join(str(v) for v in parsed)
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return raw
 
 
 def extract_champ_values(
