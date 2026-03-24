@@ -24,6 +24,7 @@ from schema_utils import (
 )
 from constants import DEMARCHES_API_URL
 from api_validator import verify_api_connections
+from queries_extract import unwrap_json_list
 
 # Configuration du niveau de log
 LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
@@ -1938,6 +1939,10 @@ def process_demarche_for_grist(client, demarche_number):
                 for dossier_data in dossier_batch_data:
                     exclude_repetition = False  # On veut les blocs répétables
                     flat_data = dossier_to_flat_data(dossier_data, exclude_repetition_champs=exclude_repetition, problematic_ids=problematic_descriptor_ids)
+                    # Fix unwrap
+                    for champ in flat_data["champs"]:
+                        if isinstance(champ.get("value"), str) and champ.get("value", "").startswith("["):
+                            champ["value"] = unwrap_json_list(champ["value"])
                     if flat_data.get("repetable_rows"):
                         all_repetable_rows.extend(flat_data["repetable_rows"])
 
@@ -2345,6 +2350,11 @@ def process_demarche_for_grist_optimized(
             try:
                 exclude_repetition = column_types.get("has_repetable_blocks", False)
                 flat_data = dossier_to_flat_data(dossier_data, exclude_repetition_champs=exclude_repetition, problematic_ids=problematic_descriptor_ids)
+
+                # Fix unwrap
+                for champ in flat_data["champs"]:
+                    if isinstance(champ.get("value"), str) and champ.get("value", "").startswith("["):
+                        champ["value"] = unwrap_json_list(champ["value"])
 
                 # Préparer dossier_record
                 dossier_info = flat_data["dossier"]

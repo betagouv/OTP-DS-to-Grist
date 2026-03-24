@@ -65,7 +65,16 @@ def format_complex_json_for_grist(json_value, max_length=10000):
             str_value = str_value[:max_length] + "..."
         return str_value
 
-
+def unwrap_json_list(raw):
+    """Convertit '["a", "b"]' en 'a, b', laisse les strings normales intactes."""
+    if isinstance(raw, str) and raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return ", ".join(str(v) for v in parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return raw
 def extract_champ_values(
     champ: Dict[str, Any],
     prefix: str = "",
@@ -137,20 +146,24 @@ def extract_champ_values(
             json_value = {"primaryValue": primary, "secondaryValue": secondary}
         elif champ["__typename"] == "MultipleDropDownListChamp":
             values_list = champ.get("values", [])
-            value = ", ".join(values_list) if values_list else None
+            if values_list:
+                value = ", ".join(values_list)
+            else:
+                value = unwrap_json_list(champ.get("stringValue") or champ.get("value"))
             json_value = values_list
         elif champ["__typename"] == "DropDownListChamp":
-            value = champ.get("stringValue")
-        # Correctif à apporter dans queries_extract.py
-        # Remplacer la section après "elif champ["__typename"] == "PieceJustificativeChamp":"
-
+            raw = champ.get("stringValue") or champ.get("value")
+            value = unwrap_json_list(raw)
         elif champ["__typename"] == "PieceJustificativeChamp":
             files = champ.get("files", [])
             value = ", ".join([f['filename'] for f in files]) if files else None
-            json_value = None  # ✅ On garde l'initialisation ici
-
+            json_value = None #
+            
             columns = champ.get("columns", [])
             if columns:
+                # Vérifier si c'est un champ RIB
+                is_rib_field = "rib" in champ['label'].lower() or "iban" in champ['label'].lower()
+                
                 for col in columns:
                     col_typename = col.get("__typename")
                     col_label = col.get("label", "")
