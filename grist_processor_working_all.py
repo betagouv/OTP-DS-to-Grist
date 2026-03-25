@@ -33,6 +33,7 @@ from formatter import unwrap_json_list
 LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
+PROGRESS_START = 35
 
 
 def log(message, level=1):
@@ -46,8 +47,10 @@ def log_verbose(message):
     log(message, 2)
 
 
-def log_progress(phase_name, increment=1, *, ceiling=98, _state=[35]):
+def log_progress(phase_name, increment=1, *, ceiling=98, _state=[PROGRESS_START], reset=False):
     """Log la progression pour une phase de synchronisation"""
+    if reset:
+        _state[0] = PROGRESS_START
     _state[0] = min(_state[0] + increment, ceiling)
     log(f"Progression: {_state[0]} - {phase_name}")
 
@@ -918,7 +921,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"Récupération des enregistrements existants depuis {url}")
-        log_progress("Récupération des enregistrements existants")
+        log_progress("Récupération des enregistrements existants", reset=True)
 
         response = requests.get(url, headers=self.headers)
         if response.status_code != 200:
