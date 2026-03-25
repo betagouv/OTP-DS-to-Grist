@@ -147,7 +147,6 @@ class SyncTaskManager:
                 env=env_copy,  # Utiliser l'environnement mis à jour
                 cwd=os.path.dirname(__file__)
             )
-            PROGRESS_BEFORE_SCRIPT = 30
 
             # Lire la sortie en temps réel
             for line in process.stdout.split("\n"):
@@ -157,16 +156,13 @@ class SyncTaskManager:
                 # Ajouter le log
                 if log_callback:
                     log_callback(line.strip())
-                if line.startswith("Progression pourcentage:"):
-                    progress_pct = float(line.split(":")[1])
-                    progress_final = PROGRESS_BEFORE_SCRIPT + progress_pct * 0.2
+
+                if line.startswith("Progression: "):
+                    parts = line.split(": ", 1)[1].split(" - ")
+                    progress_value = float(parts[0])
+                    phase_name = parts[1] if len(parts) > 1 else ""
                     if progress_callback:
-                        progress_callback(progress_final, f"Progression: {progress_final:.1f}%")
-                elif line.startswith("Progression phase: "):
-                    progress_pct = float(line.split(": ")[1])
-                    progress_pct = min(progress_pct, 98)
-                    if progress_callback:
-                        progress_callback(progress_pct, line)
+                        progress_callback(progress_value, f"{phase_name}")
 
             # Traiter les erreurs
             if process.returncode != 0:

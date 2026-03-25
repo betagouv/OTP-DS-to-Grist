@@ -10,14 +10,12 @@ import repetable_processor as rp
 import concurrent.futures
 import time
 from dotenv import load_dotenv
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from queries import (
     get_demarche,
     get_dossier,
-    get_demarche_dossiers,
     dossier_to_flat_data,
-    format_complex_json_for_grist,
 )
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
@@ -48,10 +46,10 @@ def log_verbose(message):
     log(message, 2)
 
 
-def log_progress(phase_index, total_phases, phase_name):
+def log_progress(phase_name, increment=1, *, ceiling=98, _state=[35]):
     """Log la progression pour une phase de synchronisation"""
-    progress = 50 + (phase_index / total_phases) * 50
-    log(f"Progression phase: {progress:.0f}")
+    _state[0] = min(_state[0] + increment, ceiling)
+    log(f"Progression: {_state[0]} - {phase_name}")
 
 
 def log_error(message):
@@ -920,6 +918,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"Récupération des enregistrements existants depuis {url}")
+        log_progress("Récupération des enregistrements existants")
 
         response = requests.get(url, headers=self.headers)
         if response.status_code != 200:
@@ -1658,6 +1657,7 @@ def process_demarche_for_grist_optimized(
         problematic_descriptor_ids = set()
         column_types = None
         schema_method_successful = False
+        log_progress(f"Récupération du schéma complet de la démarche {demarche_number}...")
 
         # Essayer d'abord la méthode basée sur le schéma
         log(f"Récupération du schéma complet de la démarche {demarche_number}...")
@@ -2335,6 +2335,7 @@ def process_demarche_for_grist_optimized(
                 batch_dossiers_dict = {}
 
             log(f"[TIMING] Récupération API DS: {time.time() - batch_start:.1f}s")
+            log_progress("Communication API DN")
 
             if not batch_dossiers_dict:
                 if skipped_count == len(batch):
@@ -2421,13 +2422,12 @@ def process_demarche_for_grist_optimized(
                     if dossier_num:
                         if success:
                             successful_dossiers.add(str(dossier_num))
-                            status = "✓"
                         else:
                             failed_dossiers.add(str(dossier_num))
-                            status = "✗"
 
                         current = len(successful_dossiers) + len(failed_dossiers)
                         log(f"Progression pourcentage:{current / total_dossiers * 100}")
+                        log_progress(f"Mise à jour des dossiers...")
 
             champ_records = [
                 r
@@ -2452,7 +2452,7 @@ def process_demarche_for_grist_optimized(
                     total_errors += len(champ_records)
 
                 log(f"[TIMING] Après upsert champs: {time.time() - batch_start:.1f}s")
-                log_progress(2, 6, "champs")
+                log_progress(f"Mise à jour des enregistrements de champs...")
 
             annotation_records = [
                 r
@@ -2476,7 +2476,7 @@ def process_demarche_for_grist_optimized(
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
 
-            log_progress(3, 6, "annotations")
+            log_progress(f"Mise à jour des annotations...")
 
             # Traiter les demandeurs par lot
             if table_ids.get("demandeurs") and table_ids.get("demandeur_type"):
@@ -2580,7 +2580,7 @@ def process_demarche_for_grist_optimized(
                             )
 
             log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
-            log_progress(6, 6, "répétables")
+            log_progress(f"Traitement des champs répétables...")
 
             # Traiter les avis du lot
             all_avis_records = []
@@ -2709,6 +2709,7 @@ def main():
         [ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id]
     ):
         log("Vérification des connexions aux APIs...")
+        log_progress("Vérification des connexions aux APIs...")
         success, results = verify_api_connections(
             ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id
         )
