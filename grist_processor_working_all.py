@@ -52,7 +52,7 @@ def log_progress(phase_name, increment=1, *, ceiling=98, _state=[PROGRESS_START]
     if reset:
         _state[0] = PROGRESS_START
     _state[0] = min(_state[0] + increment, ceiling)
-    log(f"Progression: {_state[0]} - {phase_name}")
+    print(f"Progression: {_state[0]} - {phase_name}", flush=True)
 
 
 def log_error(message):
@@ -921,7 +921,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"Récupération des enregistrements existants depuis {url}")
-        log_progress("Récupération des enregistrements existants", reset=True)
+        log_progress("Récupération des enregistrements existants")
 
         response = requests.get(url, headers=self.headers)
         if response.status_code != 200:
@@ -1660,7 +1660,7 @@ def process_demarche_for_grist_optimized(
         problematic_descriptor_ids = set()
         column_types = None
         schema_method_successful = False
-        log_progress(f"Récupération du schéma complet de la démarche {demarche_number}...")
+        log_progress(f"Récupération du schéma complet de la démarche {demarche_number}...", reset=True)
 
         # Essayer d'abord la méthode basée sur le schéma
         log(f"Récupération du schéma complet de la démarche {demarche_number}...")
