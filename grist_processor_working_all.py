@@ -52,7 +52,7 @@ def log_progress(phase_name, increment=1, *, ceiling=98, _state=[PROGRESS_START]
     if reset:
         _state[0] = PROGRESS_START
     _state[0] = min(_state[0] + increment, ceiling)
-    print(f"Progression: {_state[0]} - {phase_name}", flush=True)
+    print(f"Progression: {_state[0]} - {phase_name}...", flush=True)
 
 
 def log_error(message):
@@ -1660,7 +1660,7 @@ def process_demarche_for_grist_optimized(
         problematic_descriptor_ids = set()
         column_types = None
         schema_method_successful = False
-        log_progress(f"Récupération du schéma complet de la démarche {demarche_number}...", reset=True)
+        log_progress(f"Récupération du schéma complet de la démarche {demarche_number}", reset=True)
 
         # Essayer d'abord la méthode basée sur le schéma
         log(f"Récupération du schéma complet de la démarche {demarche_number}...")
@@ -2430,7 +2430,7 @@ def process_demarche_for_grist_optimized(
 
                         current = len(successful_dossiers) + len(failed_dossiers)
                         log(f"Progression pourcentage:{current / total_dossiers * 100}")
-                        log_progress(f"Mise à jour des dossiers...")
+                        log_progress("Mise à jour des dossiers")
 
             champ_records = [
                 r
@@ -2455,7 +2455,7 @@ def process_demarche_for_grist_optimized(
                     total_errors += len(champ_records)
 
                 log(f"[TIMING] Après upsert champs: {time.time() - batch_start:.1f}s")
-                log_progress(f"Mise à jour des enregistrements de champs...")
+                log_progress("Mise à jour des enregistrements de champs")
 
             annotation_records = [
                 r
@@ -2479,7 +2479,7 @@ def process_demarche_for_grist_optimized(
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
 
-            log_progress(f"Mise à jour des annotations...")
+            log_progress("Mise à jour des annotations")
 
             # Traiter les demandeurs par lot
             if table_ids.get("demandeurs") and table_ids.get("demandeur_type"):
@@ -2521,6 +2521,129 @@ def process_demarche_for_grist_optimized(
                 log(
                     f"[TIMING] Après upsert demandeurs: {time.time() - batch_start:.1f}s"
                 )
+                log_progress("Mise à jour des demandeurs")
+
+                # Traiter les instructeurs (niveau démarche - UNE FOIS)
+                if table_ids.get("instructeurs"):
+                    log(f"  Récupération des instructeurs de la démarche {demarche_number}...")
+
+                    from queries_extract import extract_instructeurs_from_demarche
+                    instructeurs_records = extract_instructeurs_from_demarche(demarche_number)
+
+                    if instructeurs_records:
+                        log(f"  {len(instructeurs_records)} instructeur(s) trouvé(s)")
+
+                        # Récupérer les enregistrements existants
+                        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_ids['instructeurs']}/records"
+                        response = requests.get(url, headers=client.headers)
+
+                        existing_records = []
+                        if response.status_code == 200:
+                            existing_records = response.json().get('records', [])
+
+                        #  UPSERT INTELLIGENT - Créer un mapping par instructeur_id
+                        existing_map = {}
+                        for record in existing_records:
+                            fields = record.get('fields', {})
+                            instructeur_id = fields.get('instructeur_id')
+                            groupe_id = fields.get('groupe_instructeur_id')
+                            if instructeur_id and groupe_id:
+                                composite_key = f"{instructeur_id}|{groupe_id}"
+                                existing_map[composite_key] = {
+                                    'grist_id': record.get('id'),
+                                    'fields': fields
+                                }
+
+                        # Créer un mapping des nouveaux instructeurs
+                        new_map = {}
+                        for r in instructeurs_records:
+                            composite_key = f"{r['instructeur_id']}|{r['groupe_instructeur_id']}"
+                            new_map[composite_key] = r
+
+                        # Identifier les opérations nécessaires
+                        to_delete = []  # Instructeurs qui n'existent plus dans l'API
+                        to_create = []  # Nouveaux instructeurs
+                        to_update = []  # Instructeurs existants (on update pour être sûr)
+
+                        # Qui supprimer ?
+                        for composite_key, existing_data in existing_map.items():
+                            if composite_key not in new_map:
+                                to_delete.append(existing_data['grist_id'])
+
+                        # Qui créer ou mettre à jour ?
+                        for composite_key, new_data in new_map.items():
+                            if composite_key in existing_map:
+                                # Existe déjà - vérifier si les données ont changé
+                                existing_fields = existing_map[composite_key]['fields']
+
+                                # Comparer les champs importants
+                                needs_update = False
+                                for key in ['groupe_instructeur_id', 'groupe_instructeur_number',
+                                        'groupe_instructeur_label', 'instructeur_email']:
+                                    if existing_fields.get(key) != new_data.get(key):
+                                        needs_update = True
+                                        break
+
+                                if needs_update:
+                                    to_update.append({
+                                        'id': existing_map[composite_key]['grist_id'],
+                                        'fields': new_data
+                                    })
+                            else:
+                                # N'existe pas encore
+                                to_create.append(new_data)
+
+                        # Appliquer les changements
+                        operations_count = 0
+
+                        # 1. Supprimer les instructeurs obsolètes
+                        if to_delete:
+                            delete_response = requests.post(
+                                f"{url}:delete",
+                                headers=client.headers,
+                                json={"records": to_delete}
+                            )
+                            if delete_response.status_code in [200, 201]:
+                                log(f"  🗑️  {len(to_delete)} instructeur(s) supprimé(s)")
+                                operations_count += len(to_delete)
+                            else:
+                                log_error(f"   Erreur suppression instructeurs: {delete_response.text}")
+
+                        # 2. Mettre à jour les instructeurs existants
+                        if to_update:
+                            update_response = requests.patch(
+                                url,
+                                headers=client.headers,
+                                json={"records": to_update}
+                            )
+                            if update_response.status_code in [200, 201]:
+                                log(f"   {len(to_update)} instructeur(s) mis à jour")
+                                operations_count += len(to_update)
+                            else:
+                                log_error(f"   Erreur mise à jour instructeurs: {update_response.text}")
+
+                        # 3. Créer les nouveaux instructeurs
+                        if to_create:
+                            create_payload = {"records": [{"fields": r} for r in to_create]}
+                            create_response = requests.post(url, headers=client.headers, json=create_payload)
+                            if create_response.status_code in [200, 201]:
+                                log(f"   {len(to_create)} instructeur(s) créé(s)")
+                                operations_count += len(to_create)
+                            else:
+                                log_error(f"   Erreur création instructeurs: {create_response.text}")
+
+                        # Résumé
+                        if operations_count == 0:
+                            log(f"   Table instructeurs à jour (aucun changement)")
+                        else:
+                            log(f"   Table instructeurs synchronisée ({operations_count} opération(s))")
+
+                    else:
+                        log("   Aucun instructeur trouvé pour cette démarche")
+
+                log(f"[TIMING] Après instructeurs: {time.time() - batch_start:.1f}s")
+                log_progress("Traitement des instructeurs")
+>>>>>>> 4723c02 (feat(Progression): Wording)
 
             # Traiter les blocs répétables si nécessaire (tables séparées par bloc)
             if column_types.get("has_repetable_blocks", False) and table_ids.get(
@@ -2583,7 +2706,7 @@ def process_demarche_for_grist_optimized(
                             )
 
             log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
-            log_progress(f"Traitement des champs répétables...")
+            log_progress("Traitement des champs répétables")
 
             # Traiter les avis du lot
             all_avis_records = []
@@ -2712,7 +2835,7 @@ def main():
         [ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id]
     ):
         log("Vérification des connexions aux APIs...")
-        log_progress("Vérification des connexions aux APIs...")
+        log_progress("Vérification des connexions aux APIs")
         success, results = verify_api_connections(
             ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id
         )
