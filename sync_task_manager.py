@@ -140,18 +140,20 @@ class SyncTaskManager:
                 log_callback(f"Lancement du script: {script_path}")
 
             # Exécuter le script de synchronisation
-            process = subprocess.run(
+            process = subprocess.Popen(
                 [sys.executable, script_path],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                env=env_copy,  # Utiliser l'environnement mis à jour
+                env=env_copy,
                 cwd=os.path.dirname(__file__)
             )
 
             # Lire la sortie en temps réel
-            for line in process.stdout.split("\n"):
+            for line in iter(process.stdout.readline, ''):
                 if not line.strip():
                     continue
+                line = line.strip()
 
                 # Ajouter le log
                 if log_callback:
@@ -362,6 +364,7 @@ class SyncTaskManager:
             'task_id': task_id,
             'task': self.tasks[task_id]
         })
+        time.sleep(0)
 
     def get_task(self, task_id):
         """Récupère les informations d'une tâche"""
