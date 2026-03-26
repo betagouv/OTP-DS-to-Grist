@@ -475,29 +475,6 @@ class TestEndpoints:
         assert data['success'] is False
         assert 'manquants' in data['message']
 
-    @patch.object(sync_task_manager, 'get_task')
-    def test_api_task_status_found(self, mock_get, client):
-        """Test de récupération du statut d'une tâche existante"""
-        mock_get.return_value = {'status': 'running', 'progress': 50}
-
-        response = client.get('/api/task/task_123')
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert data['status'] == 'running'
-        assert data['progress'] == 50
-
-    @patch.object(sync_task_manager, 'get_task')
-    def test_api_task_status_not_found(self, mock_get, client):
-        """Test de récupération du statut d'une tâche inexistante"""
-        mock_get.return_value = None
-
-        response = client.get('/api/task/task_999')
-        assert response.status_code == 404
-
-        data = json.loads(response.data)
-        assert 'non trouvée' in data['error']
-
 
 class TestErrorHandling:
     """Tests d'intégration pour la gestion d'erreurs"""

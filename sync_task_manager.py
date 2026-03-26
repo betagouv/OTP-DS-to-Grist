@@ -149,11 +149,13 @@ class SyncTaskManager:
                 cwd=os.path.dirname(__file__)
             )
 
+            output_lines = []
             # Lire la sortie en temps réel
             for line in iter(process.stdout.readline, ''):
                 if not line.strip():
                     continue
                 line = line.strip()
+                output_lines.append(line)
 
                 if line.startswith("Progression: "):
                     parts = line.split(": ", 1)[1].split(" - ")
@@ -164,7 +166,6 @@ class SyncTaskManager:
                 elif log_callback:
                     log_callback(line.strip())
 
-            stdout_content = process.stdout.read()
             process.wait()
 
             # Traiter les erreurs
@@ -221,7 +222,7 @@ class SyncTaskManager:
                     return None
 
             # Parser la sortie pour extraire les statistiques
-            for line in stdout_content.split('\n'):
+            for line in output_lines:
                 # Essayer de parser succès
                 success_parsed, total_parsed = _parse_success_count(line)
                 if success_parsed is not None:
@@ -248,7 +249,7 @@ class SyncTaskManager:
             # Détecter si Grist était déjà à jour
             already_up_to_date = success_count == 0 and error_count == 0 and any(
                 "déjà à jour" in line or "Aucun dossier modifié" in line
-                for line in stdout_content.split('\n')
+                for line in output_lines
             )
 
             if progress_callback:
