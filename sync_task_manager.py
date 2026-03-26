@@ -84,7 +84,7 @@ class SyncTaskManager:
 
             if progress_callback:
                 progress_callback(
-                    20,
+                    15,
                     "Chargement des données depuis Démarches Simplifiées..."
                 )
 
@@ -125,13 +125,13 @@ class SyncTaskManager:
                 log_callback("====================================")
 
             if progress_callback:
-                progress_callback(25, "Configuration des variables d'environnement...")
+                progress_callback(20, "Configuration des variables d'environnement...")
 
             # Appliquer les variables d'environnement pour ce thread
             os.environ.update(env_copy)
 
             if progress_callback:
-                progress_callback(30, "Lancement du script de synchronisation...")
+                progress_callback(25, "Lancement du script de synchronisation...")
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(os.path.dirname(__file__), "grist_processor_working_all.py")

@@ -33,7 +33,7 @@ from formatter import unwrap_json_list
 LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
-PROGRESS_START = 35
+PROGRESS_START = 30
 
 
 def log(message, level=1):
@@ -47,7 +47,7 @@ def log_verbose(message):
     log(message, 2)
 
 
-def log_progress(phase_name, increment=1, *, ceiling=98, _state=[PROGRESS_START], reset=False):
+def log_progress(phase_name, increment=0.5, *, ceiling=98, _state=[PROGRESS_START], reset=False):
     """Log la progression pour une phase de synchronisation"""
     if reset:
         _state[0] = PROGRESS_START
