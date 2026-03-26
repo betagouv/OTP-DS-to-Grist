@@ -968,16 +968,6 @@ def api_start_sync():
         ), 500
 
 
-@app.route('/api/task/<task_id>')
-def api_task_status(task_id):
-    """API pour récupérer le statut d'une tâche"""
-    task = sync_task_manager.get_task(task_id)
-    if task:
-        return jsonify(task)
-    else:
-        return jsonify({"error": "Tâche non trouvée"}), 404
-
-
 @app.route('/execution')
 def execution():
     """Page d'exécution et de suivi"""
