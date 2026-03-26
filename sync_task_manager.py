@@ -155,16 +155,14 @@ class SyncTaskManager:
                     continue
                 line = line.strip()
 
-                # Ajouter le log
-                if log_callback:
-                    log_callback(line.strip())
-
                 if line.startswith("Progression: "):
                     parts = line.split(": ", 1)[1].split(" - ")
                     progress_value = float(parts[0])
                     phase_name = parts[1] if len(parts) > 1 else ""
                     if progress_callback:
                         progress_callback(progress_value, f"{phase_name}")
+                elif log_callback:
+                    log_callback(line.strip())
 
             # Traiter les erreurs
             if process.returncode != 0:
