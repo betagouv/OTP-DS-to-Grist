@@ -1,8 +1,3 @@
-# tests/python/unit/test_unwrap_json_list.py
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../"))
-
 from queries_extract import unwrap_json_list
 
 def test_liste_json_simple():
@@ -19,7 +14,3 @@ def test_string_vide():
 
 def test_json_invalide():
     assert unwrap_json_list("[pas du json]") == "[pas du json]"
-
-if __name__ == "__main__":
-    import pytest
-    pytest.main([__file__, "-v"])
