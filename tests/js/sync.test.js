@@ -132,6 +132,7 @@ describe('updateTaskProgress', () => {
     () => {
       // Setup DOM simulé
       document.body.innerHTML = `<div id="progress_bar" style="width: 0%;"></div>
+        <span id="sync-progress-text">Progression</span>
         <div id="progress_percentage">0%</div>
         <div id="elapsed_time">0s</div>
         <div id="processed_count">0</div>
@@ -158,6 +159,7 @@ describe('updateTaskProgress', () => {
     // Setup DOM simulé
     document.body.innerHTML = `<div id="sync_progress_container">
       <div id="sync_progress" style="display: block;">
+        <span id="sync-progress-text">Progression</span>
         <div id="progress_percentage">0%</div>
         <div id="progress_bar" style="width: 0%;"></div>
         <div id="elapsed_time">0s</div>

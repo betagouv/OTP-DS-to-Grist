@@ -84,7 +84,7 @@ class SyncTaskManager:
 
             if progress_callback:
                 progress_callback(
-                    20,
+                    15,
                     "Chargement des données depuis Démarches Simplifiées..."
                 )
 
@@ -125,13 +125,13 @@ class SyncTaskManager:
                 log_callback("====================================")
 
             if progress_callback:
-                progress_callback(10, "Configuration des variables d'environnement...")
+                progress_callback(20, "Configuration des variables d'environnement...")
 
             # Appliquer les variables d'environnement pour ce thread
             os.environ.update(env_copy)
 
             if progress_callback:
-                progress_callback(20, "Lancement du script de synchronisation...")
+                progress_callback(25, "Lancement du script de synchronisation...")
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(os.path.dirname(__file__), "grist_processor_working_all.py")
@@ -140,66 +140,37 @@ class SyncTaskManager:
                 log_callback(f"Lancement du script: {script_path}")
 
             # Exécuter le script de synchronisation
-            process = subprocess.run(
+            process = subprocess.Popen(
                 [sys.executable, script_path],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                env=env_copy,  # Utiliser l'environnement mis à jour
+                env=env_copy,
                 cwd=os.path.dirname(__file__)
             )
 
-            # Mots-clés pour estimer la progression
-            progress_keywords = {
-                "Récupération de la démarche": (15, "Récupération des données de la démarche..."),
-                "Démarche trouvée": (20, "Démarche trouvée - Analyse des données..."),
-                "Nombre de dossiers trouvés": (25, "Dossiers trouvés - Préparation du traitement..."),
-                "Types de colonnes détectés": (35, "Analyse de la structure des données..."),
-                "Table dossiers": (45, "Création/mise à jour des tables Grist..."),
-                "Table champs": (50, "Configuration des champs..."),
-                "Traitement du lot": (60, "Traitement des dossiers..."),
-                "Dossiers traités avec succès": (90, "Finalisation du traitement..."),
-                "Traitement terminé": (100, "Traitement terminé!")
-            }
-
-            current_progress = 20
-
+            output_lines = []
             # Lire la sortie en temps réel
-            for line in process.stdout.split('\n'):
+            for line in iter(process.stdout.readline, ''):
                 if not line.strip():
                     continue
+                line = line.strip()
+                output_lines.append(line)
 
-                # Ajouter le log
-                if log_callback:
+                if line.startswith("Progression: "):
+                    parts = line.split(": ", 1)[1].split(" - ")
+                    progress_value = float(parts[0])
+                    phase_name = parts[1] if len(parts) > 1 else ""
+                    if progress_callback:
+                        progress_callback(progress_value, f"{phase_name}")
+                elif log_callback:
                     log_callback(line.strip())
 
-                # Mettre à jour la progression
-                for keyword, (value, status_text) in progress_keywords.items():
-                    if keyword in line and value > current_progress:
-                        current_progress = value
-                        if progress_callback:
-                            progress_callback(current_progress, status_text)
-                        break
-
-                # Détecter le pourcentage dans les lignes de progression
-                if "Progression:" in line and "/" in line:
-                    try:
-                        # Extraire X/Y du texte "Progression: X/Y dossiers"
-                        parts = line.split("Progression:")[1].strip().split("/")
-                        current = int(parts[0].strip())
-                        total = int(parts[1].split()[0].strip())
-
-                        if total > 0:
-                            batch_progress = 60 + (30 * (current / total))
-                            if batch_progress > current_progress:
-                                current_progress = batch_progress
-                                if progress_callback:
-                                    progress_callback(current_progress, f"Traitement des dossiers: {current}/{total}")
-                    except (ValueError, IndexError):
-                        pass
+            process.wait()
 
             # Traiter les erreurs
             if process.returncode != 0:
-                error_output = process.stderr
+                error_output = process.stderr.read()
                 if error_output and log_callback:
                     for line in error_output.split('\n'):
                         if line.strip():
@@ -251,7 +222,7 @@ class SyncTaskManager:
                     return None
 
             # Parser la sortie pour extraire les statistiques
-            for line in process.stdout.split('\n'):
+            for line in output_lines:
                 # Essayer de parser succès
                 success_parsed, total_parsed = _parse_success_count(line)
                 if success_parsed is not None:
@@ -278,11 +249,11 @@ class SyncTaskManager:
             # Détecter si Grist était déjà à jour
             already_up_to_date = success_count == 0 and error_count == 0 and any(
                 "déjà à jour" in line or "Aucun dossier modifié" in line
-                for line in process.stdout.split('\n')
+                for line in output_lines
             )
 
             if progress_callback:
-                progress_callback(95, "Finalisation...")
+                progress_callback(99, "Finalisation...")
 
             if log_callback:
                 log_callback(f"Synchronisation terminée: {success_count} dossiers synchronisés, {error_count} erreurs")
@@ -395,6 +366,7 @@ class SyncTaskManager:
             'task_id': task_id,
             'task': self.tasks[task_id]
         })
+        time.sleep(0)
 
     def get_task(self, task_id):
         """Récupère les informations d'une tâche"""
