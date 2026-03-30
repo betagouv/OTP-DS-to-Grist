@@ -23,7 +23,7 @@
     "lint:fix": "eslint static/js/ --fix"
   },
   "devDependencies": {
-    "baseline-browser-mapping": "^2.10.10",
+    "baseline-browser-mapping": "^2.10.12",
     "eslint": "^10.1.0",
     "jest": "^30.3.0",
     "jest-environment-jsdom": "^30.3.0"
