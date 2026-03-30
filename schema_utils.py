@@ -945,7 +945,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
                 add_response = requests.post(url, headers=client.headers, json=add_payload)
 
                 if add_response.status_code == 200:
-                    log(f"Colonnes ajoutées avec succès")
+                    log("Colonnes ajoutées avec succès")
                 else:
                     log_error(f"Erreur lors de l'ajout des colonnes: {add_response.status_code}")
 
@@ -1018,7 +1018,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
                 repetable_table_ids[block_key] = table_id
 
         #  NOUVEAU : Créer ou mettre à jour la table demandeurs
-        log(f"Création/mise à jour de la table demandeurs...")
+        log("Création/mise à jour de la table demandeurs...")
         demandeurs_table_id = f"Demarche_{demarche_number}_demandeurs"
 
         # Détecter le type et créer les colonnes
@@ -1041,11 +1041,11 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             demandeurs_table = demandeurs_table_result['tables'][0]
             demandeurs_table_id = demandeurs_table.get('id')
         else:
-            log(f"Mise à jour des colonnes de la table demandeurs")
+            log("Mise à jour des colonnes de la table demandeurs")
             add_missing_columns(demandeurs_table_id, demandeurs_columns)
 
         # Créer/mettre à jour la table instructeurs
-        log(f"Création/mise à jour de la table instructeurs...")
+        log("Création/mise à jour de la table instructeurs...")
         instructeurs_table_id = f"Demarche_{demarche_number}_instructeurs"
         instructeurs_table = next((t for t in tables if t.get('id') == instructeurs_table_id), None)
 
@@ -1056,7 +1056,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             instructeurs_table = instructeurs_table_result['tables'][0]
             instructeurs_table_id = instructeurs_table.get('id')
         else:
-            log(f"Mise à jour des colonnes de la table instructeurs")
+            log("Mise à jour des colonnes de la table instructeurs")
             instructeurs_columns = create_instructeurs_columns()
             add_missing_columns(instructeurs_table_id, instructeurs_columns)
         
@@ -1068,7 +1068,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             log(f"Table avis existante trouvée: {avis_table_id}")
             add_missing_columns(avis_table_id, create_avis_columns())
         else:
-            log(f"Table avis non créée (sera créée au premier avis détecté)")
+            log("Table avis non créée (sera créée au premier avis détecté)")
             avis_table_id = None
 
         # Retourner les IDs des tables
@@ -1088,8 +1088,34 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         # Ajouter les blocs répétables si présents
         if has_repetable_blocks:
             result["repetable_blocks"] = repetable_table_ids
+        
+        # Créer ou mettre à jour la table Sync_metadata
+        sync_metadata_table_id = "Sync_metadata"
+        sync_metadata_columns = [
+            {"id": "demarche_number", "type": "Int"},
+            {"id": "last_sync_at", "type": "Text"},
+            {"id": "updated_since_cursor", "type": "Text"},
+            {"id": "deleted_since_cursor", "type": "Text"},
+            {"id": "deleted_after_cursor", "type": "Text"},
+            {"id": "last_sync_status", "type": "Text"},
+            {"id": "last_sync_duration", "type": "Numeric"},
+            {"id": "force_full_sync", "type": "Bool", "fields": {"type": "Bool", "isFormula": False, "formula": ""}},
+        ]
+        
+        # Recharger la liste des tables pour les inclure celles créées pendant cette exécution
+        fresh_tables = client.list_tables()
+        if isinstance(fresh_tables, dict) and 'tables' in fresh_tables:
+            fresh_tables = fresh_tables['tables']
+        sync_table = next((t for t in fresh_tables if t.get('id') == sync_metadata_table_id), None)
+        if not sync_table:
+            log(f"Création de la table {sync_metadata_table_id}")
+            client.create_table(sync_metadata_table_id, sync_metadata_columns)
+        else:
+            add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
 
-        log(f"Mise à jour des tables terminée avec succès")
+        result["sync_metadata"] = sync_metadata_table_id
+
+        log("Mise à jour des tables terminée avec succès")
         return result
 
     except Exception as e:
@@ -1141,7 +1167,7 @@ def get_demarche_schema_robust(demarche_number: int) -> Dict[str, Any]:
             "problematic_ids": problematic_ids  # STOCKER LES IDs DANS LE SCHÉMA
         }
 
-        print(f"Schéma récupéré:")
+        print("Schéma récupéré:")
         print(f"Champs utiles: {len(cleaned_schema['activeRevision']['champDescriptors'])}")
         print(f"Annotations: {len(cleaned_schema['activeRevision']['annotationDescriptors'])}")
         print(f"Champs problématiques détectés: {len(problematic_ids)}")  #  LOG
