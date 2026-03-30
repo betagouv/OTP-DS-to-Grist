@@ -217,6 +217,18 @@ def create_instructeurs_columns():
         {"id": "instructeur_email", "type": "Text"},
     ]
 
+def create_avis_columns():
+    return [
+        {"id": "dossier_number", "type": "Int"},
+        {"id": "avis_id", "type": "Text"},
+        {"id": "instructeur_email", "type": "Text"},
+        {"id": "expert_email", "type": "Text"},
+        {"id": "date_question", "type": "Text"},
+        {"id": "date_reponse", "type": "Text"},
+        {"id": "question", "type": "Text"},
+        {"id": "reponse", "type": "Text"},
+    ]
+
 # ========================================
 # FONCTIONS EXISTANTES - CORRIGÉES
 # ========================================
@@ -465,8 +477,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         {"id": "date_derniere_modification_annotations", "type": "DateTime"},
         {"id": "motivation", "type": "Text"},
         {"id": "label_names", "type": "Text"},
-        {"id": "labels_json", "type": "Text"},
-        {"id": "suivi_par", "type": "Text"}, 
+        {"id": "labels_json", "type": "Text"}
     ]
 
     # Colonnes de base pour la table des champs
@@ -1048,6 +1059,17 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             log(f"Mise à jour des colonnes de la table instructeurs")
             instructeurs_columns = create_instructeurs_columns()
             add_missing_columns(instructeurs_table_id, instructeurs_columns)
+        
+        # Créer/mettre à jour la table avis (seulement si elle existe déjà)
+        avis_table_id = f"Demarche_{demarche_number}_avis"
+        avis_table = next((t for t in tables if t.get('id') == avis_table_id), None)
+
+        if avis_table:
+            log(f"Table avis existante trouvée: {avis_table_id}")
+            add_missing_columns(avis_table_id, create_avis_columns())
+        else:
+            log(f"Table avis non créée (sera créée au premier avis détecté)")
+            avis_table_id = None
 
         # Retourner les IDs des tables
         result = {
@@ -1055,7 +1077,8 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             "champs": champ_table_id,
             "demandeurs": demandeurs_table_id,
             "demandeur_type": demandeur_type,
-            "instructeurs": instructeurs_table_id
+            "instructeurs": instructeurs_table_id,
+            "avis": avis_table_id  # None si pas encore créée
         }
 
         # ✅ Ajouter annotations seulement si la table existe
@@ -1065,32 +1088,6 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         # Ajouter les blocs répétables si présents
         if has_repetable_blocks:
             result["repetable_blocks"] = repetable_table_ids
-
-        # Créer ou mettre à jour la table Sync_metadata
-        sync_metadata_table_id = "Sync_metadata"
-        sync_metadata_columns = [
-            {"id": "demarche_number", "type": "Int"},
-            {"id": "last_sync_at", "type": "Text"},
-            {"id": "updated_since_cursor", "type": "Text"},
-            {"id": "deleted_since_cursor", "type": "Text"},
-            {"id": "deleted_after_cursor", "type": "Text"},
-            {"id": "last_sync_status", "type": "Text"},
-            {"id": "last_sync_duration", "type": "Numeric"},
-            {"id": "force_full_sync", "type": "Bool", "fields": {"type": "Bool", "isFormula": False, "formula": ""}},
-        ]
-        
-        # Recharger la liste des tables pour inclure celles créées pendant cette exécution
-        fresh_tables = client.list_tables()
-        if isinstance(fresh_tables, dict) and 'tables' in fresh_tables:
-            fresh_tables = fresh_tables['tables']
-        sync_table = next((t for t in fresh_tables if t.get('id') == sync_metadata_table_id), None)
-        if not sync_table:
-            log(f"Création de la table {sync_metadata_table_id}")
-            client.create_table(sync_metadata_table_id, sync_metadata_columns)
-        else:
-            add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
-
-        result["sync_metadata"] = sync_metadata_table_id
 
         log(f"Mise à jour des tables terminée avec succès")
         return result
