@@ -1107,6 +1107,7 @@ class GristClient:
                     "deleted_after_cursor": fields.get("deleted_after_cursor"),
                     "last_sync_status": fields.get("last_sync_status"),
                     "last_sync_duration": fields.get("last_sync_duration"),
+                    "force_full_sync": fields.get("force_full_sync", False),
                 }
 
         return None  # première sync
@@ -2187,10 +2188,13 @@ def process_demarche_for_grist_optimized(
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
-        updated_since_cursor = sync_meta.get("updated_since_cursor") if sync_meta else None
+        force_full_sync = sync_meta.get("force_full_sync", False) if sync_meta else False
+        updated_since_cursor = None if force_full_sync else (sync_meta.get("updated_since_cursor") if sync_meta else None)
         sync_meta_grist_id = sync_meta.get("grist_id") if sync_meta else None
-        if updated_since_cursor:
-            log(f"updatedSince cursor trouvé: {updated_since_cursor}")
+        if force_full_sync:
+            log("force_full_sync activé → sync complète forcée")
+        elif updated_since_cursor:
+            log("updatedSince cursor trouvé: {updated_since_cursor}")
         else:
             log("Pas de cursor updatedSince → sync complète")
 
@@ -2339,6 +2343,7 @@ def process_demarche_for_grist_optimized(
                         "updated_since_cursor": sync_start_time,
                         "last_sync_status": "success",
                         "last_sync_duration": round(elapsed_time, 1),
+                        "force_full_sync": False,
                     }
                 )
             except Exception as e:
