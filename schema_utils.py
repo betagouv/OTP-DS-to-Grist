@@ -1076,6 +1076,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             {"id": "deleted_after_cursor", "type": "Text"},
             {"id": "last_sync_status", "type": "Text"},
             {"id": "last_sync_duration", "type": "Numeric"},
+            {"id": "force_full_sync", "type": "Bool", "fields": {"type": "Bool", "isFormula": False, "formula": ""}},
         ]
         
         # Recharger la liste des tables pour inclure celles créées pendant cette exécution
