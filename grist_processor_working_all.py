@@ -2496,8 +2496,8 @@ def process_demarche_for_grist_optimized(
         skip_annotations = set()
         grist_dates = {}
 
-        if updated_since_cursor:
-            log("updatedSince actif → comparaison de dates skippée (tous les dossiers listés sont potentiellement modifiés)")
+        if updated_since_cursor or force_full_sync:
+            log("updatedSince actif ou force_full_sync → comparaison de dates skippée (tous les dossiers listés sont potentiellement modifiés)")
         else:
             log("Construction des sets de skip par dates de modification...")
             grist_dates = client.get_existing_dossier_dates(table_ids["dossier_table_id"])
