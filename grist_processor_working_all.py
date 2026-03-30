@@ -2917,6 +2917,7 @@ def process_demarche_for_grist_optimized(
                     "updated_since_cursor": sync_start_time,
                     "last_sync_status": "success" if total_errors == 0 else "partial",
                     "last_sync_duration": round(elapsed_time, 1),
+                    "force_full_sync": False,
                 },
                 existing_grist_id=sync_meta_grist_id
             )
