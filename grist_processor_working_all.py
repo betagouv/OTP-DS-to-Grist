@@ -3019,9 +3019,11 @@ def main():
         api_filters=api_filters  # Passer les filtres optimisés
     ):
         log(f"Traitement de la démarche {demarche_number} terminé avec succès")
+        print_api_timings()
         return 0
     else:
         log_error(f"Échec du traitement de la démarche {demarche_number}")
+        print_api_timings()
         return 1
 
 
