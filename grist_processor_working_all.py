@@ -32,7 +32,7 @@ from api_validator import verify_api_connections
 LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
-PROGRESS_START = 30
+PROGRESS_START = 2
 
 
 def log(message, level=1):
@@ -47,7 +47,7 @@ def log_verbose(message):
 
 
 def log_progress(
-    phase_name, increment=0.5, *, ceiling=98, _state=[PROGRESS_START], reset=False
+    phase_name, increment=0.1, *, ceiling=5, _state=[PROGRESS_START], reset=False
 ):
     """Log la progression pour une phase de synchronisation"""
     if reset:
@@ -3161,7 +3161,14 @@ def process_demarche_for_grist_optimized(
                         else:
                             failed_dossiers.add(str(dossier_num))
 
-                        log_progress("Mise à jour des dossiers")
+                # Après la boucle for record
+                pct_reel = min(
+                    95, 5 + int(90 * len(successful_dossiers) / total_dossiers)
+                )
+                print(
+                    f"Progression: {pct_reel} - Lot {batch_idx + 1}/{batch_count} traité...",
+                    flush=True,
+                )
 
             champ_records = [
                 r
