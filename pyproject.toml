@@ -35,7 +35,7 @@ package-mode = false
 commitizen = "^4.13.9"
 poethepoet = "^0.42.1"
 pytest = "^9.0.2"
-pytest-cov = "^7.0.0"
+pytest-cov = "^7.1.0"
 ruff = "^0.15.7"
 
 [tool.poe.tasks.dev]
