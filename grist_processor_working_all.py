@@ -63,10 +63,6 @@ def print_api_timings():
     print("[API] Résumé des requêtes:")
     print("-" * 50)
 
-    for t in timings:
-        service = f"[{t['service']}] " if t.get("service") else ""
-        print(f"  {service}{t['function']}: {t['duration']:.2f}s")
-
     print("-" * 50)
     print(f"[API] Total: {len(timings)} requêtes en {total_duration:.2f}s")
     print("=" * 50 + "\n")
