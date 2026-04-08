@@ -27,12 +27,13 @@ from schema_utils import (
 )
 from constants import DEMARCHES_API_URL
 from api_validator import verify_api_connections
+from utils.log_progress import LogProgress
+log_progress = LogProgress(ceiling=98)
 
 # Configuration du niveau de log
 LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
-PROGRESS_START = 2
 
 
 def log(message, level=1):
@@ -44,21 +45,6 @@ def log(message, level=1):
 def log_verbose(message):
     """Log uniquement en mode verbose"""
     log(message, 2)
-
-
-def log_progress(
-    phase_name,
-    *,
-    increment=0.1,
-    ceiling=98,
-    _state=[PROGRESS_START],
-    reset=False
-):
-    """Log la progression pour une phase de synchronisation"""
-    if reset:
-        _state[0] = PROGRESS_START
-    _state[0] = min(_state[0] + increment, ceiling)
-    print(f"Progression: {_state[0]} - {phase_name}...", flush=True)
 
 
 def log_error(message):
@@ -1071,7 +1057,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"Récupération des enregistrements existants depuis {url}")
-        log_progress("Récupération des enregistrements existants")
+        log_progress.log("Récupération des enregistrements existants")
 
         response = requests.get(url, headers=self.headers)
         if response.status_code != 200:
@@ -1760,7 +1746,7 @@ class GristClient:
             create_response = requests.post(
                 create_url, headers=self.headers, json=create_payload
             )
-            log_progress("Écriture dans Grist")
+            log_progress.log("Écriture dans Grist")
 
             if create_response.status_code in [200, 201]:
                 log(
@@ -2140,7 +2126,7 @@ def process_demarche_for_grist(client, demarche_number):
             # 1. Table des dossiers
             if dossier_records:
                 log(f"  Upsert par lot de {len(dossier_records)} dossiers...")
-                log_progress("Mise à jour de la table des dossiers")
+                log_progress.log("Mise à jour de la table des dossiers")
                 success = client.upsert_multiple_dossiers_in_grist(
                     table_ids["dossier_table_id"],
                     dossier_records,
@@ -2352,7 +2338,7 @@ def process_demarche_for_grist_optimized(
         problematic_descriptor_ids = set()
         column_types = None
         schema_method_successful = False
-        log_progress(
+        log_progress.log(
             f"Récupération du schéma complet de la démarche {demarche_number}",
             reset=True,
         )
@@ -3076,7 +3062,7 @@ def process_demarche_for_grist_optimized(
                 batch_dossiers_dict = {}
 
             log(f"[TIMING] Récupération API DS: {time.time() - batch_start:.1f}s")
-            log_progress("Communication API DN")
+            log_progress.log("Communication API DN")
 
             if not batch_dossiers_dict:
                 if skipped_count == len(batch):
@@ -3196,7 +3182,7 @@ def process_demarche_for_grist_optimized(
                     total_errors += len(champ_records)
 
                 log(f"[TIMING] Après upsert champs: {time.time() - batch_start:.1f}s")
-                log_progress("Mise à jour des enregistrements de champs")
+                log_progress.log("Mise à jour des enregistrements de champs")
 
             annotation_records = [
                 r
@@ -3220,7 +3206,7 @@ def process_demarche_for_grist_optimized(
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
 
-            log_progress("Mise à jour des annotations")
+            log_progress.log("Mise à jour des annotations")
 
             # Traiter les demandeurs par lot
             if table_ids.get("demandeurs") and table_ids.get("demandeur_type"):
@@ -3262,7 +3248,7 @@ def process_demarche_for_grist_optimized(
                 log(
                     f"[TIMING] Après upsert demandeurs: {time.time() - batch_start:.1f}s"
                 )
-                log_progress("Mise à jour des demandeurs")
+                log_progress.log("Mise à jour des demandeurs")
 
             # Traiter les blocs répétables si nécessaire (tables séparées par bloc)
             if column_types.get("has_repetable_blocks", False) and table_ids.get(
@@ -3325,7 +3311,7 @@ def process_demarche_for_grist_optimized(
                             )
 
             log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
-            log_progress("Traitement des champs répétables")
+            log_progress.log("Traitement des champs répétables")
 
             # Traiter les avis du lot
             all_avis_records = []
@@ -3377,7 +3363,7 @@ def process_demarche_for_grist_optimized(
 
             if all_avis_records:
                 log(f"[TIMING] Après avis: {time.time() - batch_start:.1f}s")
-                log_progress("Traitement de la table Avis")
+                log_progress.log("Traitement de la table Avis")
 
         # Calculer les statistiques finales
         elapsed_time = time.time() - start_time
@@ -3456,7 +3442,7 @@ def main():
         [ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id]
     ):
         log("Vérification des connexions aux APIs...")
-        log_progress("Vérification des connexions aux APIs")
+        log_progress.log("Vérification des connexions aux APIs")
         success, results = verify_api_connections(
             ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id
         )
