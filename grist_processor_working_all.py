@@ -817,7 +817,7 @@ def get_dossier_labels(dossier_number):
     result = response.json()
 
     if "errors" in result:
-        log_error(f"Erreurs GraphQL lors de la récupération des labels")
+        log_error("Erreurs GraphQL lors de la récupération des labels")
         return None
 
     return result.get("data", {}).get("dossier", {}).get("labels", [])
@@ -961,7 +961,7 @@ def add_id_columns_based_on_annotations(client, table_id, annotations):
             if response.status_code != 200:
                 log_error(f"Erreur lors de l'ajout des colonnes d'ID: {response.text}")
             else:
-                log(f"Colonnes d'ID ajoutées avec succès")
+                log("Colonnes d'ID ajoutées avec succès")
 
                 return [col["id"] for col in columns_to_add]
 
@@ -1107,6 +1107,7 @@ class GristClient:
                     "deleted_after_cursor": fields.get("deleted_after_cursor"),
                     "last_sync_status": fields.get("last_sync_status"),
                     "last_sync_duration": fields.get("last_sync_duration"),
+                    "force_full_sync": fields.get("force_full_sync", False),
                 }
 
         return None  # première sync
@@ -1283,15 +1284,11 @@ class GristClient:
             # FILTRAGE EXPLICITE DES COLONNES PROBLÉMATIQUES
             # Retirer toutes les colonnes qui pourraient correspondre à HeaderSectionChamp et ExplicationChamp
             filtered_champ_columns = column_types.get("champs", [])
-            for col in column_types.get("champs", []):
-                col_id = col.get("id", "").lower()
             # Remplacer les colonnes originales par les colonnes filtrées
             column_types["champs"] = filtered_champ_columns
 
             # Filtrage similaire pour les colonnes d'annotations
             filtered_annotation_columns = column_types.get("annotations", [])
-            for col in column_types.get("annotations", []):
-                col_id = col.get("id", "").lower()
             # Remplacer les colonnes originales par les colonnes filtrées
             column_types["annotations"] = filtered_annotation_columns
 
@@ -1704,7 +1701,7 @@ def process_demarche_for_grist(client, demarche_number):
         has_repetable_blocks = column_types.get("has_repetable_blocks", False)
         has_carto_fields = column_types.get("has_carto_fields", False)
 
-        log(f"Types de colonnes détectés:")
+        log("Types de colonnes détectés:")
         log(f"  - Colonnes dossiers: {len(column_types['dossier'])}")
         log(f"  - Colonnes champs: {len(column_types['champs'])}")
         log(f"  - Colonnes annotations: {len(column_types['annotations'])}")
@@ -1718,14 +1715,14 @@ def process_demarche_for_grist(client, demarche_number):
         table_ids = client.create_or_clear_grist_tables(demarche_number, column_types)
 
         # Log des table IDs
-        log(f"Tables utilisées pour l'importation:")
+        log("Tables utilisées pour l'importation:")
         log(f"  Table dossiers: {table_ids['dossier_table_id']}")
         log(f"  Table champs: {table_ids['champ_table_id']}")
         log(f"  Table annotations: {table_ids['annotation_table_id']}")
         if table_ids.get('repetable_table_id'):
             log(f"  Table blocs répétables: {table_ids['repetable_table_id']}")
         else:
-            log_verbose(f"  Table blocs répétables: Non créée (aucun bloc répétable détecté)")
+            log_verbose("  Table blocs répétables: Non créée (aucun bloc répétable détecté)")
 
         # Nouvelle logique de traitement par lots
         batch_size = 100  # Ajustez selon les performances
@@ -2098,7 +2095,7 @@ def process_demarche_for_grist_optimized(
                 has_carto_fields = column_types.get("has_carto_fields", False)
 
                 log(f"Identificateurs de {len(problematic_descriptor_ids)} descripteurs problématiques à filtrer")
-                log(f"Types de colonnes détectés à partir du schéma:")
+                log("Types de colonnes détectés à partir du schéma:")
                 log(f"  - Colonnes dossiers: {len(column_types['dossier'])}")
                 log(f"  - Colonnes champs: {len(column_types['champs'])}")
                 log(f"  - Colonnes annotations: {len(column_types['annotations'])}")
@@ -2142,6 +2139,9 @@ def process_demarche_for_grist_optimized(
 
                 if "instructeurs" in table_result:
                     table_ids["instructeurs"] = table_result["instructeurs"]
+
+                if "avis" in table_result:
+                    table_ids["avis"] = table_result["avis"]  # None si pas encore créée
 
             else:
                 # Méthode classique qui peut effacer des données
@@ -2188,15 +2188,18 @@ def process_demarche_for_grist_optimized(
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
-        updated_since_cursor = sync_meta.get("updated_since_cursor") if sync_meta else None
+        force_full_sync = sync_meta.get("force_full_sync", False) if sync_meta else False
+        updated_since_cursor = None if force_full_sync else (sync_meta.get("updated_since_cursor") if sync_meta else None)
         sync_meta_grist_id = sync_meta.get("grist_id") if sync_meta else None
-        if updated_since_cursor:
-            log(f"updatedSince cursor trouvé: {updated_since_cursor}")
+        if force_full_sync:
+            log("force_full_sync activé → sync complète forcée")
+        elif updated_since_cursor:
+            log("updatedSince cursor trouvé: {updated_since_cursor}")
         else:
             log("Pas de cursor updatedSince → sync complète")
 
         # Log des table IDs
-        log(f"Tables utilisées pour l'importation:")
+        log("Tables utilisées pour l'importation:")
         log(f"  Table dossiers: {table_ids['dossier_table_id']}")
         log(f"  Table champs: {table_ids['champ_table_id']}")
         log(f"  Table annotations: {table_ids['annotation_table_id']}")
@@ -2205,7 +2208,7 @@ def process_demarche_for_grist_optimized(
 
         # Récupération des dossiers
         if api_filters and api_filters:
-            log(f"[FILTRAGE] Récupération optimisée des dossiers avec filtres côté serveur...")
+            log("[FILTRAGE] Récupération optimisée des dossiers avec filtres côté serveur...")
             if api_filters.get('groupes_instructeurs'):
                 log(f"Filtre par groupes instructeurs (numéros): {', '.join(map(str, api_filters['groupes_instructeurs']))}")
             if api_filters.get('statuts'):
@@ -2229,7 +2232,7 @@ def process_demarche_for_grist_optimized(
             filtered_dossiers = all_dossiers
 
         else:
-            log(f"[ATTENTION] Récupération classique de tous les dossiers (pas de filtres optimisés)")
+            log("[ATTENTION] Récupération classique de tous les dossiers (pas de filtres optimisés)")
 
             # Récupérer les filtres depuis les variables d'environnement pour compatibilité
             date_debut_str = os.getenv("DATE_DEPOT_DEBUT", "")
@@ -2269,7 +2272,7 @@ def process_demarche_for_grist_optimized(
 
             # Récupérer tous les dossiers puis filtrer côté client
             from queries_graphql import get_demarche_dossiers
-            log(f"Récupération de tous les dossiers avec pagination...")
+            log("Récupération de tous les dossiers avec pagination...")
             if updated_since_cursor:
                 log(f"Récupération filtrée avec updatedSince: {updated_since_cursor}")
                 all_dossiers = get_demarche_dossiers_filtered(
@@ -2340,6 +2343,7 @@ def process_demarche_for_grist_optimized(
                         "updated_since_cursor": sync_start_time,
                         "last_sync_status": "success",
                         "last_sync_duration": round(elapsed_time, 1),
+                        "force_full_sync": False,
                     }
                 )
             except Exception as e:
@@ -2492,8 +2496,8 @@ def process_demarche_for_grist_optimized(
         skip_annotations = set()
         grist_dates = {}
 
-        if updated_since_cursor:
-            log("updatedSince actif → comparaison de dates skippée (tous les dossiers listés sont potentiellement modifiés)")
+        if updated_since_cursor or force_full_sync:
+            log("updatedSince actif ou force_full_sync → comparaison de dates skippée (tous les dossiers listés sont potentiellement modifiés)")
         else:
             log("Construction des sets de skip par dates de modification...")
             grist_dates = client.get_existing_dossier_dates(table_ids["dossier_table_id"])
@@ -2631,7 +2635,7 @@ def process_demarche_for_grist_optimized(
                         log_error(f"   Erreur création instructeurs: {create_response.text}")
 
                 if operations_count == 0:
-                    log(f"   Table instructeurs à jour (aucun changement)")
+                    log("   Table instructeurs à jour (aucun changement)")
                 else:
                     log(f"   Table instructeurs synchronisée ({operations_count} opération(s))")
 
@@ -2695,7 +2699,7 @@ def process_demarche_for_grist_optimized(
                         annotation_records.append(result["annotation"])
                         all_annotations_for_columns.extend(result["annotations_list"])
                     else:
-                        log_error(f"Résultat None pour un dossier")  # ← AJOUTE CE LOG
+                        log_error("Résultat None pour un dossier")  # ← AJOUTE CE LOG
 
             log(f"Records préparés: {len(dossier_records)} dossiers, {len(champ_records)} champs, {len(annotation_records)} annotations")  # ← AJOUTE APRÈS LA BOUCLE
             log(f"[TIMING] Préparation parallèle: {time.time() - start_prep:.1f}s")
@@ -2785,7 +2789,7 @@ def process_demarche_for_grist_optimized(
                     if success:
                         log(f"   {len(demandeur_records)} demandeurs traités avec succès")
                     else:
-                        log_error(f"   Erreur lors du traitement des demandeurs")
+                        log_error("   Erreur lors du traitement des demandeurs")
 
                 log(f"[TIMING] Après upsert demandeurs: {time.time() - batch_start:.1f}s")
                 log_progress("Mise à jour des demandeurs")
@@ -2837,6 +2841,58 @@ def process_demarche_for_grist_optimized(
             log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
             log_progress("Traitement des champs répétables")
 
+            # Traiter les avis du lot
+            all_avis_records = []
+            for dossier_data in batch_dossiers_dict.values():
+                avis = dossier_data.get("avis", [])
+                if avis:
+                    from queries_extract import extract_avis_from_dossier
+                    all_avis_records.extend(extract_avis_from_dossier(dossier_data))
+
+            if all_avis_records:
+                # Créer la table à la volée si elle n'existe pas encore
+                if not table_ids.get("avis"):
+                    log("  Création lazy de la table avis...")
+                    from schema_utils import create_avis_columns
+                    avis_table_id = f"Demarche_{demarche_number}_avis"
+                    result = client.create_table(avis_table_id, create_avis_columns())
+                    table_ids["avis"] = result['tables'][0].get('id')
+                    log(f"  Table avis créée: {table_ids['avis']}")
+
+                log(f"  Upsert de {len(all_avis_records)} avis...")
+                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_ids['avis']}/records"
+                
+                # Récupérer existants pour upsert par avis_id
+                existing_avis = {}
+                response = requests.get(url, headers=client.headers)
+                if response.status_code == 200:
+                    for record in response.json().get('records', []):
+                        avis_id = record.get('fields', {}).get('avis_id')
+                        if avis_id:
+                            existing_avis[avis_id] = record.get('id')
+
+                to_create = []
+                to_update = []
+                for avis in all_avis_records:
+                    avis_id = avis.get('avis_id')
+                    if avis_id in existing_avis:
+                        to_update.append({'id': existing_avis[avis_id], 'fields': avis})
+                    else:
+                        to_create.append(avis)
+
+                if to_create:
+                    requests.post(url, headers=client.headers,
+                                json={"records": [{"fields": r} for r in to_create]})
+                    log(f"   {len(to_create)} avis créé(s)")
+                if to_update:
+                    requests.patch(url, headers=client.headers,
+                                json={"records": to_update})
+                    log(f"   {len(to_update)} avis mis à jour")
+
+            if all_avis_records:
+                log(f"[TIMING] Après avis: {time.time() - batch_start:.1f}s")
+                log_progress("Traitement de la table Avis")
+
         # Calculer les statistiques finales
         elapsed_time = time.time() - start_time
         minutes = int(elapsed_time // 60)
@@ -2862,6 +2918,7 @@ def process_demarche_for_grist_optimized(
                     "updated_since_cursor": sync_start_time,
                     "last_sync_status": "success" if total_errors == 0 else "partial",
                     "last_sync_duration": round(elapsed_time, 1),
+                    "force_full_sync": False,
                 },
                 existing_grist_id=sync_meta_grist_id
             )
@@ -2894,7 +2951,7 @@ def main():
 
     # Masquer partiellement la clé API par sécurité
     api_key_masked = grist_api_key[:4] + "..." + grist_api_key[-4:] if len(grist_api_key) > 8 else "***"
-    log(f"Configuration Grist:")
+    log("Configuration Grist:")
     log(f"  URL de base: {grist_base_url}")
     log(f"  Clé API: {api_key_masked}")
     log(f"  ID du document: {grist_doc_id}")
