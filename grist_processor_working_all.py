@@ -3152,15 +3152,6 @@ def process_demarche_for_grist_optimized(
                         else:
                             failed_dossiers.add(str(dossier_num))
 
-                # Après la boucle for record
-                pct_reel = min(
-                    95, 5 + int(90 * len(successful_dossiers) / total_dossiers)
-                )
-                print(
-                    f"Progression: {pct_reel} - Lot {batch_idx + 1}/{batch_count} traité...",
-                    flush=True,
-                )
-
             champ_records = [
                 r
                 for r in champ_records
