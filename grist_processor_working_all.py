@@ -47,7 +47,12 @@ def log_verbose(message):
 
 
 def log_progress(
-    phase_name, increment=0.1, *, ceiling=5, _state=[PROGRESS_START], reset=False
+    phase_name,
+    *,
+    increment=0.1,
+    ceiling=98,
+    _state=[PROGRESS_START],
+    reset=False
 ):
     """Log la progression pour une phase de synchronisation"""
     if reset:
