@@ -23,6 +23,7 @@ API_URL = DEMARCHES_API_URL
 # DÉTECTION DU TYPE DE DEMANDEUR
 # ========================================
 
+
 def detect_demandeur_type(demarche_number: int) -> Optional[str]:
     """
     Détecte le type de demandeur (PersonnePhysique ou PersonneMorale)
@@ -56,7 +57,7 @@ def detect_demandeur_type(demarche_number: int) -> Optional[str]:
 
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     try:
@@ -64,33 +65,46 @@ def detect_demandeur_type(demarche_number: int) -> Optional[str]:
             API_URL,
             json={
                 "query": query,
-                "variables": {"demarcheNumber": int(demarche_number)}
+                "variables": {"demarcheNumber": int(demarche_number)},
             },
             headers=headers,
-            timeout=30
+            timeout=30,
         )
 
         response.raise_for_status()
         result = response.json()
 
         if "errors" in result:
-            print(f"⚠️  Erreur lors de la détection du type de demandeur pour la démarche {demarche_number}")
+            print(
+                f"⚠️  Erreur lors de la détection du type de demandeur pour la démarche {demarche_number}"
+            )
             return None
 
-        dossiers = result.get("data", {}).get("demarche", {}).get("dossiers", {}).get("nodes", [])
+        dossiers = (
+            result.get("data", {})
+            .get("demarche", {})
+            .get("dossiers", {})
+            .get("nodes", [])
+        )
 
         if dossiers and len(dossiers) > 0:
             demandeur = dossiers[0].get("demandeur", {})
             demandeur_type = demandeur.get("__typename")
 
-            if demandeur_type in ["PersonnePhysique", "PersonneMorale", "PersonneMoraleIncomplete"]:
+            if demandeur_type in [
+                "PersonnePhysique",
+                "PersonneMorale",
+                "PersonneMoraleIncomplete",
+            ]:
                 # PersonneMoraleIncomplete est traité comme PersonneMorale
                 if demandeur_type == "PersonneMoraleIncomplete":
                     return "PersonneMorale"
                 return demandeur_type
 
         # Aucun dossier trouvé
-        print(f"ℹ️  Aucun dossier trouvé pour la démarche {demarche_number}, type par défaut: PersonneMorale")
+        print(
+            f"ℹ️  Aucun dossier trouvé pour la démarche {demarche_number}, type par défaut: PersonneMorale"
+        )
         return "PersonneMorale"  # Par défaut si aucun dossier
 
     except Exception as e:
@@ -101,6 +115,7 @@ def detect_demandeur_type(demarche_number: int) -> Optional[str]:
 # ========================================
 # CRÉATION DES COLONNES DEMANDEURS
 # ========================================
+
 
 def create_demandeurs_pp_columns():
     """
@@ -142,7 +157,6 @@ def create_demandeurs_pm_columns():
         {"id": "siege_social", "type": "Bool"},
         {"id": "naf", "type": "Text"},
         {"id": "libelle_naf", "type": "Text"},
-
         # Entreprise (champs enrichis SIRENE)
         {"id": "raison_sociale", "type": "Text"},
         {"id": "nom_commercial", "type": "Text"},
@@ -153,7 +167,6 @@ def create_demandeurs_pm_columns():
         {"id": "numero_tva_intracommunautaire", "type": "Text"},
         {"id": "date_creation", "type": "Date"},
         {"id": "etat_administratif", "type": "Text"},
-
         # Association (si applicable)
         {"id": "rna", "type": "Text"},
         {"id": "titre_association", "type": "Text"},
@@ -161,7 +174,6 @@ def create_demandeurs_pm_columns():
         {"id": "date_creation_association", "type": "Date"},
         {"id": "date_declaration_association", "type": "Date"},
         {"id": "date_publication_association", "type": "Date"},
-
         # Adresse enrichie
         {"id": "adresse_label", "type": "Text"},
         {"id": "adresse_type", "type": "Text"},
@@ -211,11 +223,11 @@ def create_instructeurs_columns():
         {"id": "groupe_instructeur_id", "type": "Text"},
         {"id": "groupe_instructeur_number", "type": "Int"},
         {"id": "groupe_instructeur_label", "type": "Text"},
-
         # Instructeur
         {"id": "instructeur_id", "type": "Text"},
         {"id": "instructeur_email", "type": "Text"},
     ]
+
 
 def create_avis_columns():
     return [
@@ -228,6 +240,7 @@ def create_avis_columns():
         {"id": "question", "type": "Text"},
         {"id": "reponse", "type": "Text"},
     ]
+
 
 # ========================================
 # FONCTIONS EXISTANTES - CORRIGÉES
@@ -311,17 +324,14 @@ def get_demarche_schema(demarche_number):
 
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # Exécuter la requête
     response = requests.post(
         API_URL,
-        json={
-            "query": query,
-            "variables": {"demarcheNumber": int(demarche_number)}
-        },
-        headers=headers
+        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
+        headers=headers,
     )
 
     # Vérifier le code de statut
@@ -335,7 +345,10 @@ def get_demarche_schema(demarche_number):
         filtered_errors = []
         for error in result["errors"]:
             error_message = error.get("message", "")
-            if "permissions" not in error_message and "hidden due to permissions" not in error_message:
+            if (
+                "permissions" not in error_message
+                and "hidden due to permissions" not in error_message
+            ):
                 filtered_errors.append(error_message)
 
         if filtered_errors:
@@ -343,13 +356,17 @@ def get_demarche_schema(demarche_number):
 
     # Si aucune donnée n'est retournée, c'est un problème
     if not result.get("data") or not result["data"].get("demarche"):
-        raise Exception(f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}")
+        raise Exception(
+            f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}"
+        )
 
     demarche = result["data"]["demarche"]
 
     # Vérifier que activeRevision existe
     if not demarche.get("activeRevision"):
-        raise Exception(f"Aucune révision active trouvée pour la démarche {demarche_number}")
+        raise Exception(
+            f"Aucune révision active trouvée pour la démarche {demarche_number}"
+        )
 
     return demarche
 
@@ -375,12 +392,17 @@ def get_problematic_descriptor_ids_from_schema(demarche_schema):
     def explore_descriptors(descriptors):
         for descriptor in descriptors:
             #  CORRECTION : "piece_justificative" RETIRÉ
-            if descriptor.get("__typename") in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"] or \
-               descriptor.get("type") in ["header_section", "explication"]:
+            if descriptor.get("__typename") in [
+                "HeaderSectionChampDescriptor",
+                "ExplicationChampDescriptor",
+            ] or descriptor.get("type") in ["header_section", "explication"]:
                 problematic_ids.add(descriptor.get("id"))
 
             # Explorer les descripteurs dans les blocs répétables
-            if descriptor.get("__typename") == "RepetitionChampDescriptor" and "champDescriptors" in descriptor:
+            if (
+                descriptor.get("__typename") == "RepetitionChampDescriptor"
+                and "champDescriptors" in descriptor
+            ):
                 explore_descriptors(descriptor["champDescriptors"])
 
     # Explorer les descripteurs de champs et d'annotations
@@ -389,7 +411,9 @@ def get_problematic_descriptor_ids_from_schema(demarche_schema):
             explore_descriptors(demarche_schema["activeRevision"]["champDescriptors"])
 
         if "annotationDescriptors" in demarche_schema["activeRevision"]:
-            explore_descriptors(demarche_schema["activeRevision"]["annotationDescriptors"])
+            explore_descriptors(
+                demarche_schema["activeRevision"]["annotationDescriptors"]
+            )
 
     return problematic_ids
 
@@ -415,18 +439,26 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     """
     # IMPORT LOCAL pour éviter la dépendance circulaire
     from grist_processor_working_all import normalize_column_name, log
+
     #  NOUVEAU : Logging optionnel
     if demarche_number:
         log(f"Création des colonnes pour la démarche {demarche_number}")
 
     #  RÉCUPÉRER LES IDs DEPUIS LES MÉTADONNÉES SI DISPONIBLES
-    if "metadata" in demarche_schema and "problematic_ids" in demarche_schema["metadata"]:
+    if (
+        "metadata" in demarche_schema
+        and "problematic_ids" in demarche_schema["metadata"]
+    ):
         problematic_ids = demarche_schema["metadata"]["problematic_ids"]
-        log(f"Identificateurs de {len(problematic_ids)} descripteurs problématiques (depuis métadonnées)")
+        log(
+            f"Identificateurs de {len(problematic_ids)} descripteurs problématiques (depuis métadonnées)"
+        )
     else:
         # Fallback : essayer de les extraire du schéma (déjà nettoyé = 0)
         problematic_ids = get_problematic_descriptor_ids_from_schema(demarche_schema)
-        log(f"Identificateurs de {len(problematic_ids)} descripteurs problématiques à filtrer")
+        log(
+            f"Identificateurs de {len(problematic_ids)} descripteurs problématiques à filtrer"
+        )
 
     # Fonction pour déterminer le type de colonne Grist
     def determine_column_type(champ_type, typename=None):
@@ -457,7 +489,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
             "region": "Text",
             "pays": "Text",
             "carte": "Text",
-            "repetition": "Text"
+            "repetition": "Text",
         }
         return type_mapping.get(champ_type, "Text")
 
@@ -477,7 +509,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         {"id": "date_derniere_modification_annotations", "type": "DateTime"},
         {"id": "motivation", "type": "Text"},
         {"id": "label_names", "type": "Text"},
-        {"id": "labels_json", "type": "Text"}
+        {"id": "labels_json", "type": "Text"},
     ]
 
     # Colonnes de base pour la table des champs
@@ -497,7 +529,9 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     has_carto_fields = False
 
     # Traiter les descripteurs de champs
-    if demarche_schema.get("activeRevision") and demarche_schema["activeRevision"].get("champDescriptors"):
+    if demarche_schema.get("activeRevision") and demarche_schema["activeRevision"].get(
+        "champDescriptors"
+    ):
         for descriptor in demarche_schema["activeRevision"]["champDescriptors"]:
             champ_type = descriptor.get("type")
             champ_label = descriptor.get("label")
@@ -513,13 +547,15 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         rib_col_id = f"{normalized_label}_{suffix}"
                         if not any(col["id"] == rib_col_id for col in champ_columns):
                             # ✅ FORMAT AVEC FIELDS
-                            champ_columns.append({
-                                "id": rib_col_id,
-                                "fields": {
-                                    "type": "Text",
-                                    "label": f"{champ_label} - {suffix}"
+                            champ_columns.append(
+                                {
+                                    "id": rib_col_id,
+                                    "fields": {
+                                        "type": "Text",
+                                        "label": f"{champ_label} - {suffix}",
+                                    },
                                 }
-                            })
+                            )
 
                 # Ajouter aussi la colonne principale pour le nom du fichier
                 #  GESTION DES DOUBLONS
@@ -530,22 +566,27 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                     counter += 1
 
                 # ✅ FORMAT AVEC FIELDS
-                champ_columns.append({
-                    "id": normalized_label,
-                    "fields": {
-                        "type": "Text",
-                        "label": champ_label
+                champ_columns.append(
+                    {
+                        "id": normalized_label,
+                        "fields": {"type": "Text", "label": champ_label},
                     }
-                })
+                )
 
             # Maintenant filtrer les types problématiques
-            if descriptor["__typename"] in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"] or \
-               descriptor.get("type") in ["header_section", "explication"] or \
-               descriptor.get("id") in problematic_ids:
+            if (
+                descriptor["__typename"]
+                in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"]
+                or descriptor.get("type") in ["header_section", "explication"]
+                or descriptor.get("id") in problematic_ids
+            ):
                 continue
 
             # Traitement spécial pour les blocs répétables
-            if descriptor.get("__typename") == "RepetitionChampDescriptor" and "champDescriptors" in descriptor:
+            if (
+                descriptor.get("__typename") == "RepetitionChampDescriptor"
+                and "champDescriptors" in descriptor
+            ):
                 has_repetable_blocks = True
 
                 #  NOUVEAU : Créer une entrée par bloc
@@ -574,7 +615,9 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
 
                     # Ajouter le champ normalisé à la table des blocs répétables
                     normalized_label = normalize_column_name(inner_label)
-                    column_type = determine_column_type(inner_type, inner_descriptor.get("__typename"))
+                    column_type = determine_column_type(
+                        inner_type, inner_descriptor.get("__typename")
+                    )
 
                     #  GESTION DES DOUBLONS pour ce bloc (utiliser block_columns)
                     base_label = normalized_label
@@ -583,10 +626,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         normalized_label = f"{base_label}_{counter}"
                         counter += 1
 
-                    block_columns.append({
-                        "id": normalized_label,
-                        "type": column_type
-                    })
+                    block_columns.append({"id": normalized_label, "type": column_type})
 
                 # Ajouter les colonnes géographiques si nécessaire pour CE bloc
                 if block_has_carto:
@@ -601,7 +641,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         {"id": "geo_numero", "type": "Text"},
                         {"id": "geo_section", "type": "Text"},
                         {"id": "geo_prefixe", "type": "Text"},
-                        {"id": "geo_surface", "type": "Numeric"}
+                        {"id": "geo_surface", "type": "Numeric"},
                     ]
 
                     for geo_col in geo_columns:
@@ -611,7 +651,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                 #  STOCKER dans le dict avec le label normalisé comme clé
                 repetable_blocks[normalized_block_label] = {
                     "original_label": block_label,
-                    "columns": block_columns
+                    "columns": block_columns,
                 }
 
             # Détecter les champs cartographiques au niveau principal
@@ -622,7 +662,9 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
             # MAIS PAS pour les PieceJustificativeChamp car déjà traités ci-dessus
             if descriptor.get("__typename") != "PieceJustificativeChampDescriptor":
                 normalized_label = normalize_column_name(champ_label)
-                column_type = determine_column_type(champ_type, descriptor.get("__typename"))
+                column_type = determine_column_type(
+                    champ_type, descriptor.get("__typename")
+                )
 
                 #  GESTION DES DOUBLONS
                 base_label = normalized_label
@@ -632,18 +674,23 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                     counter += 1
 
                 # ✅ FORMAT AVEC FIELDS
-                champ_columns.append({
-                    "id": normalized_label,
-                    "fields": {
-                        "type": column_type,
-                        "label": champ_label
+                champ_columns.append(
+                    {
+                        "id": normalized_label,
+                        "fields": {"type": column_type, "label": champ_label},
                     }
-                })
+                )
 
             # ✨ Colonnes Commune
             if descriptor.get("__typename") == "CommuneChampDescriptor":
                 normalized_label = normalize_column_name(champ_label)
-                commune_suffixes = ["nom", "code_postal", "departement", "code_insee", "code_departement"]
+                commune_suffixes = [
+                    "nom",
+                    "code_postal",
+                    "departement",
+                    "code_insee",
+                    "code_departement",
+                ]
                 for suffix in commune_suffixes:
                     commune_col_id = f"{normalized_label}_{suffix}"
 
@@ -655,13 +702,15 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         counter += 1
 
                     # ✅ FORMAT AVEC FIELDS
-                    champ_columns.append({
-                        "id": commune_col_id,
-                        "fields": {
-                            "type": "Text",
-                            "label": f"{champ_label} - {suffix}"
+                    champ_columns.append(
+                        {
+                            "id": commune_col_id,
+                            "fields": {
+                                "type": "Text",
+                                "label": f"{champ_label} - {suffix}",
+                            },
                         }
-                    })
+                    )
 
             # ✨ Colonnes Pays (nom et code)
             if descriptor.get("__typename") == "PaysChampDescriptor":
@@ -678,13 +727,15 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         counter += 1
 
                     # ✅ FORMAT AVEC FIELDS
-                    champ_columns.append({
-                        "id": pays_col_id,
-                        "fields": {
-                            "type": "Text",
-                            "label": f"{champ_label} - {suffix}"
+                    champ_columns.append(
+                        {
+                            "id": pays_col_id,
+                            "fields": {
+                                "type": "Text",
+                                "label": f"{champ_label} - {suffix}",
+                            },
                         }
-                    })
+                    )
 
             # ✨ Colonnes Région (nom et code)
             if descriptor.get("__typename") == "RegionChampDescriptor":
@@ -701,13 +752,15 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         counter += 1
 
                     # ✅ FORMAT AVEC FIELDS
-                    champ_columns.append({
-                        "id": region_col_id,
-                        "fields": {
-                            "type": "Text",
-                            "label": f"{champ_label} - {suffix}"
+                    champ_columns.append(
+                        {
+                            "id": region_col_id,
+                            "fields": {
+                                "type": "Text",
+                                "label": f"{champ_label} - {suffix}",
+                            },
                         }
-                    })
+                    )
 
             # ✨ Colonnes Département (nom et code)
             if descriptor.get("__typename") == "DepartementChampDescriptor":
@@ -724,20 +777,25 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         counter += 1
 
                     # ✅ FORMAT AVEC FIELDS
-                    champ_columns.append({
-                        "id": dept_col_id,
-                        "fields": {
-                            "type": "Text",
-                            "label": f"{champ_label} - {suffix}"
+                    champ_columns.append(
+                        {
+                            "id": dept_col_id,
+                            "fields": {
+                                "type": "Text",
+                                "label": f"{champ_label} - {suffix}",
+                            },
                         }
-                    })
+                    )
 
     # Traiter les descripteurs d'annotations
-    if demarche_schema.get("activeRevision") and demarche_schema["activeRevision"].get("annotationDescriptors"):
+    if demarche_schema.get("activeRevision") and demarche_schema["activeRevision"].get(
+        "annotationDescriptors"
+    ):
         for descriptor in demarche_schema["activeRevision"]["annotationDescriptors"]:
             # Ignorer les types problématiques
             if (
-                descriptor["__typename"] in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"]
+                descriptor["__typename"]
+                in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"]
                 or descriptor.get("type") in ["header_section", "explication"]
                 or descriptor.get("id") in problematic_ids
             ):
@@ -747,7 +805,10 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
             champ_label = descriptor.get("label")
 
             # ✅ NOUVEAU : Traitement des blocs répétables dans les annotations
-            if descriptor.get("__typename") == "RepetitionChampDescriptor" and "champDescriptors" in descriptor:
+            if (
+                descriptor.get("__typename") == "RepetitionChampDescriptor"
+                and "champDescriptors" in descriptor
+            ):
                 has_repetable_blocks = True
 
                 # Préfixe pour les blocs d'annotations
@@ -776,7 +837,9 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
 
                     # Ajouter le champ normalisé
                     normalized_label = normalize_column_name(inner_label)
-                    column_type = determine_column_type(inner_type, inner_descriptor.get("__typename"))
+                    column_type = determine_column_type(
+                        inner_type, inner_descriptor.get("__typename")
+                    )
 
                     # Gestion des doublons
                     base_label = normalized_label
@@ -785,10 +848,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         normalized_label = f"{base_label}_{counter}"
                         counter += 1
 
-                    block_columns.append({
-                        "id": normalized_label,
-                        "type": column_type
-                    })
+                    block_columns.append({"id": normalized_label, "type": column_type})
 
                 # Ajouter les colonnes géographiques si nécessaire
                 if block_has_carto:
@@ -803,7 +863,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         {"id": "geo_numero", "type": "Text"},
                         {"id": "geo_section", "type": "Text"},
                         {"id": "geo_prefixe", "type": "Text"},
-                        {"id": "geo_surface", "type": "Numeric"}
+                        {"id": "geo_surface", "type": "Numeric"},
                     ]
 
                     for geo_col in geo_columns:
@@ -813,20 +873,24 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                 # Stocker dans le dict avec le label normalisé comme clé
                 repetable_blocks[normalized_block_label] = {
                     "original_label": block_label,
-                    "columns": block_columns
+                    "columns": block_columns,
                 }
                 continue  # Passer au descripteur suivant
 
             # Pour les annotations simples (non répétables)
             # Pour les annotations, enlever le préfixe "annotation_" pour le nom de colonne
             if champ_label.startswith("annotation_"):
-                annotation_label = normalize_column_name(champ_label[11:])  # enlever "annotation_"
+                annotation_label = normalize_column_name(
+                    champ_label[11:]
+                )  # enlever "annotation_"
                 display_label = champ_label[11:]  # Label sans préfixe pour affichage
             else:
                 annotation_label = normalize_column_name(champ_label)
                 display_label = champ_label
 
-            column_type = determine_column_type(champ_type, descriptor.get("__typename"))
+            column_type = determine_column_type(
+                champ_type, descriptor.get("__typename")
+            )
 
             #  GESTION DES DOUBLONS pour annotations
             base_label = annotation_label
@@ -836,13 +900,12 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                 counter += 1
 
             # ✅ FORMAT AVEC FIELDS
-            annotation_columns.append({
-                "id": annotation_label,
-                "fields": {
-                    "type": column_type,
-                    "label": display_label
+            annotation_columns.append(
+                {
+                    "id": annotation_label,
+                    "fields": {"type": column_type, "label": display_label},
                 }
-            })
+            )
 
     # Préparer le résultat
     result = {
@@ -850,15 +913,20 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         "champs": champ_columns,
         "annotations": annotation_columns,
         "has_repetable_blocks": has_repetable_blocks,
-        "has_carto_fields": has_carto_fields
+        "has_carto_fields": has_carto_fields,
     }
 
     if has_repetable_blocks:
-        result["repetable_blocks"] = repetable_blocks  # NOUVEAU : dict au lieu d'une liste
+        result["repetable_blocks"] = (
+            repetable_blocks  # NOUVEAU : dict au lieu d'une liste
+        )
 
     return result, problematic_ids
 
-def update_grist_tables_from_schema(client, demarche_number, column_types, problematic_ids=None):
+
+def update_grist_tables_from_schema(
+    client, demarche_number, column_types, problematic_ids=None
+):
     """
     Met à jour les tables Grist existantes en fonction du schéma actuel de la démarche,
     en ajoutant les nouvelles colonnes sans supprimer les données existantes.
@@ -877,7 +945,9 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
     from grist_processor_working_all import log, log_error
 
     try:
-        log(f"Mise à jour des tables Grist pour la démarche {demarche_number} d'après le schéma...")
+        log(
+            f"Mise à jour des tables Grist pour la démarche {demarche_number} d'après le schéma..."
+        )
 
         # Noms des tables
         dossier_table_id = f"Demarche_{demarche_number}_dossiers"
@@ -889,8 +959,8 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         tables = client.list_tables()
 
         #  CORRECTION : Extraire la liste des tables
-        if isinstance(tables, dict) and 'tables' in tables:
-            tables = tables['tables']
+        if isinstance(tables, dict) and "tables" in tables:
+            tables = tables["tables"]
 
         # Trouver les tables existantes
         dossier_table = None
@@ -898,19 +968,21 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         annotation_table = None
 
         for table in tables:
-            table_id = table.get('id', '').lower()
+            table_id = table.get("id", "").lower()
             if table_id == dossier_table_id.lower():
                 dossier_table = table
-                dossier_table_id = table.get('id')
+                dossier_table_id = table.get("id")
                 log(f"Table dossiers existante trouvée avec l'ID {dossier_table_id}")
             elif table_id == champ_table_id.lower():
                 champ_table = table
-                champ_table_id = table.get('id')
+                champ_table_id = table.get("id")
                 log(f"Table champs existante trouvée avec l'ID {champ_table_id}")
             elif table_id == annotation_table_id.lower():
                 annotation_table = table
-                annotation_table_id = table.get('id')
-                log(f"Table annotations existante trouvée avec l'ID {annotation_table_id}")
+                annotation_table_id = table.get("id")
+                log(
+                    f"Table annotations existante trouvée avec l'ID {annotation_table_id}"
+                )
 
         # Fonction pour ajouter les colonnes manquantes à une table
         def add_missing_columns(table_id, all_columns):
@@ -922,7 +994,9 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             response = requests.get(url, headers=client.headers)
 
             if response.status_code != 200:
-                log_error(f"Erreur lors de la récupération des colonnes: {response.status_code}")
+                log_error(
+                    f"Erreur lors de la récupération des colonnes: {response.status_code}"
+                )
                 return
 
             columns_data = response.json()
@@ -940,21 +1014,29 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
 
             # Ajouter les colonnes manquantes
             if missing_columns:
-                log(f"Ajout de {len(missing_columns)} colonnes manquantes à la table {table_id}")
+                log(
+                    f"Ajout de {len(missing_columns)} colonnes manquantes à la table {table_id}"
+                )
                 add_payload = {"columns": missing_columns}
-                add_response = requests.post(url, headers=client.headers, json=add_payload)
+                add_response = requests.post(
+                    url, headers=client.headers, json=add_payload
+                )
 
                 if add_response.status_code == 200:
                     log("Colonnes ajoutées avec succès")
                 else:
-                    log_error(f"Erreur lors de l'ajout des colonnes: {add_response.status_code}")
+                    log_error(
+                        f"Erreur lors de l'ajout des colonnes: {add_response.status_code}"
+                    )
 
         # Créer ou mettre à jour la table des dossiers
         if not dossier_table:
             log(f"Création de la table {dossier_table_id}")
-            dossier_table_result = client.create_table(dossier_table_id, column_types["dossier"])
-            dossier_table = dossier_table_result['tables'][0]
-            dossier_table_id = dossier_table.get('id')
+            dossier_table_result = client.create_table(
+                dossier_table_id, column_types["dossier"]
+            )
+            dossier_table = dossier_table_result["tables"][0]
+            dossier_table_id = dossier_table.get("id")
         else:
             add_missing_columns(dossier_table_id, column_types["dossier"])
 
@@ -963,11 +1045,11 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             log(f"Création de la table {champ_table_id}")
             base_columns = [
                 {"id": "dossier_number", "type": "Int"},
-                {"id": "champ_id", "type": "Text"}
+                {"id": "champ_id", "type": "Text"},
             ]
             champ_table_result = client.create_table(champ_table_id, base_columns)
-            champ_table = champ_table_result['tables'][0]
-            champ_table_id = champ_table.get('id')
+            champ_table = champ_table_result["tables"][0]
+            champ_table_id = champ_table.get("id")
 
             # Ajouter toutes les colonnes spécifiques
             add_missing_columns(champ_table_id, column_types["champs"])
@@ -977,12 +1059,16 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         # Créer ou mettre à jour la table des annotations
         if not annotation_table:
             # ✅ NOUVELLE CONDITION : Ne créer que s'il y a des annotations
-            if len(column_types["annotations"]) > 1:  # > 1 car il y a toujours dossier_number
+            if (
+                len(column_types["annotations"]) > 1
+            ):  # > 1 car il y a toujours dossier_number
                 log(f"Création de la table {annotation_table_id}")
                 base_columns = [{"id": "dossier_number", "type": "Int"}]
-                annotation_table_result = client.create_table(annotation_table_id, base_columns)
-                annotation_table = annotation_table_result['tables'][0]
-                annotation_table_id = annotation_table.get('id')
+                annotation_table_result = client.create_table(
+                    annotation_table_id, base_columns
+                )
+                annotation_table = annotation_table_result["tables"][0]
+                annotation_table_id = annotation_table.get("id")
 
                 # Ajouter toutes les colonnes spécifiques
                 add_missing_columns(annotation_table_id, column_types["annotations"])
@@ -1001,16 +1087,20 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
                 # Chercher si la table existe déjà
                 existing_table = None
                 for table in tables:
-                    if table.get('id', '').lower() == table_id.lower():
+                    if table.get("id", "").lower() == table_id.lower():
                         existing_table = table
-                        table_id = table.get('id')
-                        log(f"Table répétable '{block_info['original_label']}' existante trouvée: {table_id}")
+                        table_id = table.get("id")
+                        log(
+                            f"Table répétable '{block_info['original_label']}' existante trouvée: {table_id}"
+                        )
                         break
 
                 if not existing_table:
-                    log(f"Création de la table {table_id} pour le bloc '{block_info['original_label']}'")
+                    log(
+                        f"Création de la table {table_id} pour le bloc '{block_info['original_label']}'"
+                    )
                     table_result = client.create_table(table_id, block_info["columns"])
-                    table_id = table_result['tables'][0].get('id')
+                    table_id = table_result["tables"][0].get("id")
                 else:
                     # Ajouter les colonnes manquantes
                     add_missing_columns(table_id, block_info["columns"])
@@ -1028,18 +1118,20 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         # Chercher si la table existe
         demandeurs_table = None
         for table in tables:
-            if table.get('id', '').lower() == demandeurs_table_id.lower():
+            if table.get("id", "").lower() == demandeurs_table_id.lower():
                 demandeurs_table = table
-                demandeurs_table_id = table.get('id')
+                demandeurs_table_id = table.get("id")
                 log(f"Table demandeurs existante trouvée: {demandeurs_table_id}")
                 break
 
         # Créer ou mettre à jour
         if not demandeurs_table:
             log(f"Création de la table {demandeurs_table_id} (type: {demandeur_type})")
-            demandeurs_table_result = client.create_table(demandeurs_table_id, demandeurs_columns)
-            demandeurs_table = demandeurs_table_result['tables'][0]
-            demandeurs_table_id = demandeurs_table.get('id')
+            demandeurs_table_result = client.create_table(
+                demandeurs_table_id, demandeurs_columns
+            )
+            demandeurs_table = demandeurs_table_result["tables"][0]
+            demandeurs_table_id = demandeurs_table.get("id")
         else:
             log("Mise à jour des colonnes de la table demandeurs")
             add_missing_columns(demandeurs_table_id, demandeurs_columns)
@@ -1047,22 +1139,26 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         # Créer/mettre à jour la table instructeurs
         log("Création/mise à jour de la table instructeurs...")
         instructeurs_table_id = f"Demarche_{demarche_number}_instructeurs"
-        instructeurs_table = next((t for t in tables if t.get('id') == instructeurs_table_id), None)
+        instructeurs_table = next(
+            (t for t in tables if t.get("id") == instructeurs_table_id), None
+        )
 
         if not instructeurs_table:
             log(f"Création de la table {instructeurs_table_id}")
             instructeurs_columns = create_instructeurs_columns()
-            instructeurs_table_result = client.create_table(instructeurs_table_id, instructeurs_columns)
-            instructeurs_table = instructeurs_table_result['tables'][0]
-            instructeurs_table_id = instructeurs_table.get('id')
+            instructeurs_table_result = client.create_table(
+                instructeurs_table_id, instructeurs_columns
+            )
+            instructeurs_table = instructeurs_table_result["tables"][0]
+            instructeurs_table_id = instructeurs_table.get("id")
         else:
             log("Mise à jour des colonnes de la table instructeurs")
             instructeurs_columns = create_instructeurs_columns()
             add_missing_columns(instructeurs_table_id, instructeurs_columns)
-        
+
         # Créer/mettre à jour la table avis (seulement si elle existe déjà)
         avis_table_id = f"Demarche_{demarche_number}_avis"
-        avis_table = next((t for t in tables if t.get('id') == avis_table_id), None)
+        avis_table = next((t for t in tables if t.get("id") == avis_table_id), None)
 
         if avis_table:
             log(f"Table avis existante trouvée: {avis_table_id}")
@@ -1078,7 +1174,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
             "demandeurs": demandeurs_table_id,
             "demandeur_type": demandeur_type,
             "instructeurs": instructeurs_table_id,
-            "avis": avis_table_id  # None si pas encore créée
+            "avis": avis_table_id,  # None si pas encore créée
         }
 
         # ✅ Ajouter annotations seulement si la table existe
@@ -1113,6 +1209,36 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
         else:
             add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
 
+        # Créer ou mettre à jour la table Sync_metadata
+        sync_metadata_table_id = "Sync_metadata"
+        sync_metadata_columns = [
+            {"id": "demarche_number", "type": "Int"},
+            {"id": "last_sync_at", "type": "Text"},
+            {"id": "updated_since_cursor", "type": "Text"},
+            {"id": "deleted_since_cursor", "type": "Text"},
+            {"id": "deleted_after_cursor", "type": "Text"},
+            {"id": "last_sync_status", "type": "Text"},
+            {"id": "last_sync_duration", "type": "Numeric"},
+            {
+                "id": "force_full_sync",
+                "type": "Bool",
+                "fields": {"type": "Bool", "isFormula": False, "formula": ""},
+            },
+        ]
+
+        # Recharger la liste des tables pour les inclure celles créées pendant cette exécution
+        fresh_tables = client.list_tables()
+        if isinstance(fresh_tables, dict) and "tables" in fresh_tables:
+            fresh_tables = fresh_tables["tables"]
+        sync_table = next(
+            (t for t in fresh_tables if t.get("id") == sync_metadata_table_id), None
+        )
+        if not sync_table:
+            log(f"Création de la table {sync_metadata_table_id}")
+            client.create_table(sync_metadata_table_id, sync_metadata_columns)
+        else:
+            add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
+
         result["sync_metadata"] = sync_metadata_table_id
 
         log("Mise à jour des tables terminée avec succès")
@@ -1121,6 +1247,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types, probl
     except Exception as e:
         log_error(f"Erreur lors de la mise à jour des tables: {str(e)}")
         raise
+
 
 # ========================================
 # FONCTIONS OPTIMISÉES (Version robuste)
@@ -1149,7 +1276,9 @@ def get_demarche_schema_robust(demarche_number: int) -> Dict[str, Any]:
 
         active_revision = demarche.get("activeRevision")
         if not active_revision:
-            raise Exception(f"Aucune révision active pour la démarche {demarche_number}")
+            raise Exception(
+                f"Aucune révision active pour la démarche {demarche_number}"
+            )
 
         #  EXTRAIRE LES IDs PROBLÉMATIQUES AVANT LE NETTOYAGE
         problematic_ids = get_problematic_descriptor_ids_from_schema(demarche)
@@ -1159,17 +1288,22 @@ def get_demarche_schema_robust(demarche_number: int) -> Dict[str, Any]:
 
         # Ajout de métadonnées
         from datetime import datetime
+
         cleaned_schema["metadata"] = {
             "revision_id": active_revision.get("id"),
             "date_publication": active_revision.get("datePublication"),
             "retrieved_at": datetime.now().isoformat(),
             "optimized": True,
-            "problematic_ids": problematic_ids  # STOCKER LES IDs DANS LE SCHÉMA
+            "problematic_ids": problematic_ids,  # STOCKER LES IDs DANS LE SCHÉMA
         }
 
         print("Schéma récupéré:")
-        print(f"Champs utiles: {len(cleaned_schema['activeRevision']['champDescriptors'])}")
-        print(f"Annotations: {len(cleaned_schema['activeRevision']['annotationDescriptors'])}")
+        print(
+            f"Champs utiles: {len(cleaned_schema['activeRevision']['champDescriptors'])}"
+        )
+        print(
+            f"Annotations: {len(cleaned_schema['activeRevision']['annotationDescriptors'])}"
+        )
         print(f"Champs problématiques détectés: {len(problematic_ids)}")  #  LOG
 
         return cleaned_schema
@@ -1182,6 +1316,7 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
     """
     Nettoie automatiquement les descripteurs en filtrant les champs problématiques.
     """
+
     def filter_descriptors(descriptors: List[Dict], context: str = "") -> List[Dict]:
         filtered = []
         problematic_count = 0
@@ -1191,16 +1326,20 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
             descriptor_type = descriptor.get("type", "")
 
             # Filtrer les types problématiques (SANS piece_justificative)
-            if typename in ["HeaderSectionChampDescriptor", "ExplicationChampDescriptor"] or \
-               descriptor_type in ["header_section", "explication"]:
+            if typename in [
+                "HeaderSectionChampDescriptor",
+                "ExplicationChampDescriptor",
+            ] or descriptor_type in ["header_section", "explication"]:
                 problematic_count += 1
                 continue
 
             # Traitement spécial pour les blocs répétables
-            if typename == "RepetitionChampDescriptor" and "champDescriptors" in descriptor:
+            if (
+                typename == "RepetitionChampDescriptor"
+                and "champDescriptors" in descriptor
+            ):
                 filtered_sub_descriptors = filter_descriptors(
-                    descriptor["champDescriptors"],
-                    f"{context}_repetable"
+                    descriptor["champDescriptors"], f"{context}_repetable"
                 )
                 descriptor["champDescriptors"] = filtered_sub_descriptors
 
@@ -1218,15 +1357,13 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
     # Filtrer les descripteurs de champs
     if "champDescriptors" in active_revision:
         active_revision["champDescriptors"] = filter_descriptors(
-            active_revision["champDescriptors"],
-            "champs"
+            active_revision["champDescriptors"], "champs"
         )
 
     # Filtrer les descripteurs d'annotations
     if "annotationDescriptors" in active_revision:
         active_revision["annotationDescriptors"] = filter_descriptors(
-            active_revision["annotationDescriptors"],
-            "annotations"
+            active_revision["annotationDescriptors"], "annotations"
         )
 
     return cleaned_demarche
