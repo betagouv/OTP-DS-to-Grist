@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.7.0...v0.7.1) (2026-04-09)
+
+
+### Bug Fixes
+
+* **Progression:** Suppression des détails unitaires des temps d'appels ([#273](https://github.com/betagouv/OTP-DS-to-Grist/issues/273)) ([71ed16e](https://github.com/betagouv/OTP-DS-to-Grist/commit/71ed16ecd139aefbea73af1eba8c1b69ae08c5a0))
+
 ## [0.7.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.6.0...v0.7.0) (2026-04-08)
 
 
