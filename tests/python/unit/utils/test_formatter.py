@@ -1,4 +1,4 @@
-from queries_extract import unwrap_json_list
+from utils.formatter import unwrap_json_list
 
 def test_liste_json_simple():
     assert unwrap_json_list('["Axe 1 : Transitions climatiques"]') == "Axe 1 : Transitions climatiques"
