@@ -9,11 +9,12 @@ NOUVEAU : Tables séparées par bloc répétable
 CORRECTION : Format "fields" pour les colonnes dynamiques
 """
 
-import requests
-from typing import Dict, List, Any, Optional
-
 # Importer les configurations nécessaires
 import os
+from typing import Any, Dict, List, Optional
+
+import requests
+
 from constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -135,6 +136,7 @@ def create_demandeurs_pp_columns():
         {"id": "prenom_mandataire", "type": "Text"},
         {"id": "nom_mandataire", "type": "Text"},
         {"id": "depose_par_un_tiers", "type": "Bool"},
+        {"id": "connection_usager", "type": "Text"},
     ]
 
 
@@ -187,6 +189,7 @@ def create_demandeurs_pm_columns():
         {"id": "code_departement", "type": "Text"},
         {"id": "region", "type": "Text"},
         {"id": "code_region", "type": "Text"},
+        {"id": "connection_usager", "type": "Text"},
     ]
 
 
@@ -438,7 +441,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         tuple: (dict définitions des colonnes, set IDs problématiques)
     """
     # IMPORT LOCAL pour éviter la dépendance circulaire
-    from grist_processor_working_all import normalize_column_name, log
+    from grist_processor_working_all import log, normalize_column_name
 
     #  NOUVEAU : Logging optionnel
     if demarche_number:
@@ -1184,7 +1187,7 @@ def update_grist_tables_from_schema(
         # Ajouter les blocs répétables si présents
         if has_repetable_blocks:
             result["repetable_blocks"] = repetable_table_ids
-        
+
         # Créer ou mettre à jour la table Sync_metadata
         sync_metadata_table_id = "Sync_metadata"
         sync_metadata_columns = [
@@ -1195,14 +1198,20 @@ def update_grist_tables_from_schema(
             {"id": "deleted_after_cursor", "type": "Text"},
             {"id": "last_sync_status", "type": "Text"},
             {"id": "last_sync_duration", "type": "Numeric"},
-            {"id": "force_full_sync", "type": "Bool", "fields": {"type": "Bool", "isFormula": False, "formula": ""}},
+            {
+                "id": "force_full_sync",
+                "type": "Bool",
+                "fields": {"type": "Bool", "isFormula": False, "formula": ""},
+            },
         ]
-        
+
         # Recharger la liste des tables pour les inclure celles créées pendant cette exécution
         fresh_tables = client.list_tables()
-        if isinstance(fresh_tables, dict) and 'tables' in fresh_tables:
-            fresh_tables = fresh_tables['tables']
-        sync_table = next((t for t in fresh_tables if t.get('id') == sync_metadata_table_id), None)
+        if isinstance(fresh_tables, dict) and "tables" in fresh_tables:
+            fresh_tables = fresh_tables["tables"]
+        sync_table = next(
+            (t for t in fresh_tables if t.get("id") == sync_metadata_table_id), None
+        )
         if not sync_table:
             log(f"Création de la table {sync_metadata_table_id}")
             client.create_table(sync_metadata_table_id, sync_metadata_columns)
@@ -1380,4 +1389,6 @@ def get_demarche_schema_enhanced(demarche_number: int, prefer_robust: bool = Tru
             print(f"Fallback vers version classique suite à: {e}")
             return get_demarche_schema(demarche_number)
     else:
+        return get_demarche_schema(demarche_number)
+        return get_demarche_schema(demarche_number)
         return get_demarche_schema(demarche_number)
