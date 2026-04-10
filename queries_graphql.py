@@ -1,12 +1,14 @@
-import requests
 import os
-from dotenv import load_dotenv
 from datetime import datetime
+from typing import Any, Dict, List
+
+import requests
+from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from typing import Dict, Any, List
-from queries_util import timed
+
 from constants import DEMARCHES_API_URL
+from queries_util import timed
 
 load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
@@ -305,7 +307,8 @@ fragment ChampFragment on Champ {
 """
 
 # Requête pour un dossier spécifique
-query_get_dossier = """
+query_get_dossier = (
+    """
 query getDossier(
     $dossierNumber: Int!
     $includeChamps: Boolean = true
@@ -352,6 +355,7 @@ fragment DossierFragment on Dossier {
     dateExpiration
     dateSuppressionParUsager
     dateDerniereModificationChamps
+    dateAccuseLectureAgreement
     dateDerniereModificationAnnotations
     motivation
     usager {
@@ -411,10 +415,15 @@ fragment DossierFragment on Dossier {
 }
 
 
-""" + COMMON_FRAGMENTS + SPECIALIZED_FRAGMENTS + CHAMP_FRAGMENTS
+"""
+    + COMMON_FRAGMENTS
+    + SPECIALIZED_FRAGMENTS
+    + CHAMP_FRAGMENTS
+)
 
 # Requête pour une démarche OPTIMISÉE avec filtres côté serveur
-query_get_demarche = """
+query_get_demarche = (
+    """
 query getDemarche(
     $demarcheNumber: Int!
     $includeChamps: Boolean = true
@@ -560,7 +569,7 @@ fragment DossierFragment on Dossier {
         ...RootChampFragment
     }
     labels {
-        id 
+        id
         name
         color
     }
@@ -580,7 +589,11 @@ fragment DossierFragment on Dossier {
 }
 
 
-""" + COMMON_FRAGMENTS + SPECIALIZED_FRAGMENTS + CHAMP_FRAGMENTS
+"""
+    + COMMON_FRAGMENTS
+    + SPECIALIZED_FRAGMENTS
+    + CHAMP_FRAGMENTS
+)
 
 # ✅ SESSION GLOBALE (créée une seule fois)
 _session = None
@@ -594,7 +607,9 @@ def get_session_with_retries():
     global _session
 
     if _session is None:
-        print("[RETRY] Création session avec retry automatique (3 tentatives, backoff 1s)")
+        print(
+            "[RETRY] Création session avec retry automatique (3 tentatives, backoff 1s)"
+        )
         _session = requests.Session()
 
         retry_strategy = Retry(
@@ -602,7 +617,7 @@ def get_session_with_retries():
             backoff_factor=1,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET", "POST"],
-            raise_on_status=False
+            raise_on_status=False,
         )
 
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -639,7 +654,7 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
     # En-têtes pour la requête
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # Exécution de la requête
@@ -647,7 +662,7 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
     response = session.post(
         API_URL,
         json={"query": query_get_dossier, "variables": variables},
-        headers=headers
+        headers=headers,
     )
 
     # Vérification du code de statut
@@ -671,7 +686,9 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
 
         # Signaler les erreurs de permission mais continuer
         if permission_errors:
-            print(f"Attention: Le dossier {dossier_number} a {len(permission_errors)} erreurs de permission")
+            print(
+                f"Attention: Le dossier {dossier_number} a {len(permission_errors)} erreurs de permission"
+            )
 
         # S'arrêter uniquement pour les autres types d'erreurs
         if other_errors:
@@ -679,7 +696,9 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
 
     # Si les données sont nulles ou si le dossier est null à cause des permissions, retournez un dictionnaire vide
     if not result.get("data") or not result["data"].get("dossier"):
-        print(f"Attention: Le dossier {dossier_number} n'est pas accessible ou n'existe pas")
+        print(
+            f"Attention: Le dossier {dossier_number} n'est pas accessible ou n'existe pas"
+        )
         return {}
 
     dossier = result["data"]["dossier"]
@@ -690,18 +709,18 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
     # Filtrer les champs
     if "champs" in filtered_dossier:
         filtered_dossier["champs"] = [
-            champ for champ in filtered_dossier["champs"]
+            champ
+            for champ in filtered_dossier["champs"]
             if champ.get("__typename") not in ["HeaderSectionChamp", "ExplicationChamp"]
         ]
 
     # Filtrer les annotations
     if "annotations" in filtered_dossier:
         filtered_dossier["annotations"] = [
-            annotation for annotation in filtered_dossier["annotations"]
-            if annotation.get("__typename") not in [
-                "HeaderSectionChamp",
-                "ExplicationChamp"
-            ]
+            annotation
+            for annotation in filtered_dossier["annotations"]
+            if annotation.get("__typename")
+            not in ["HeaderSectionChamp", "ExplicationChamp"]
         ]
 
     return filtered_dossier
@@ -731,14 +750,14 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
 
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     # Exécution de la requête avec retry automatique
     session = get_session_with_retries()
     response = session.post(
         API_URL,
         json={"query": query_get_demarche, "variables": variables},
-        headers=headers
+        headers=headers,
     )
 
     response.raise_for_status()
@@ -752,14 +771,19 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
 
         for error in result["errors"]:
             error_message = error.get("message", "")
-            if "permissions" in error_message or "hidden due to permissions" in error_message:
+            if (
+                "permissions" in error_message
+                or "hidden due to permissions" in error_message
+            ):
                 permission_errors_count += 1
             else:
                 filtered_errors.append(error_message)
 
         # Afficher le nombre d'erreurs de permission, mais continuer le traitement
         if permission_errors_count > 0:
-            print(f"Attention: {permission_errors_count} objets masqués en raison de restrictions de permissions")
+            print(
+                f"Attention: {permission_errors_count} objets masqués en raison de restrictions de permissions"
+            )
 
         # Ne lever une exception que pour les erreurs non liées aux permissions
         if filtered_errors:
@@ -767,7 +791,9 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
 
     # Si aucune donnée n'est retournée, c'est un problème
     if not result.get("data") or not result["data"].get("demarche"):
-        raise Exception(f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}")
+        raise Exception(
+            f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}"
+        )
 
     demarche = result["data"]["demarche"]
     excluded_types = ["HeaderSectionChamp", "ExplicationChamp"]
@@ -778,14 +804,16 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
         # Filtrer les descripteurs de champs
         if "champDescriptors" in active_revision:
             active_revision["champDescriptors"] = [
-                descriptor for descriptor in active_revision["champDescriptors"]
+                descriptor
+                for descriptor in active_revision["champDescriptors"]
                 if descriptor.get("type") not in excluded_types
             ]
 
         # Filtrer les descripteurs d'annotations
         if "annotationDescriptors" in active_revision:
             active_revision["annotationDescriptors"] = [
-                descriptor for descriptor in active_revision["annotationDescriptors"]
+                descriptor
+                for descriptor in active_revision["annotationDescriptors"]
                 if descriptor.get("type") not in excluded_types
             ]
 
@@ -800,14 +828,16 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
         # Filtrer les champs de chaque dossier
         if "champs" in dossier:
             dossier["champs"] = [
-                champ for champ in dossier["champs"]
+                champ
+                for champ in dossier["champs"]
                 if champ.get("__typename") not in excluded_types
             ]
 
         # Filtrer les annotations de chaque dossier
         if "annotations" in dossier:
             dossier["annotations"] = [
-                annotation for annotation in dossier["annotations"]
+                annotation
+                for annotation in dossier["annotations"]
                 if annotation.get("__typename") not in excluded_types
             ]
 
@@ -824,7 +854,7 @@ def get_demarche_dossiers_filtered(
     date_fin: str = None,
     groupes_instructeurs: List[str] = None,
     statuts: List[str] = None,
-    updated_since: str = None
+    updated_since: str = None,
 ) -> List[Dict[str, Any]]:
     """
     Récupère les dossiers avec filtrage côté serveur RÉEL.
@@ -847,28 +877,28 @@ def get_demarche_dossiers_filtered(
 
     # [OK]FILTRE CÔTÉ SERVEUR : Date de début seulement
     if date_debut:
-        if 'T' not in date_debut:
-            date_debut += 'T00:00:00Z'
-        server_filters['createdSince'] = date_debut
+        if "T" not in date_debut:
+            date_debut += "T00:00:00Z"
+        server_filters["createdSince"] = date_debut
         print(f"Filtre serveur par date de début: {date_debut}")
 
     if updated_since:
-        if 'T' not in updated_since:
-            updated_since += 'T00:00:00Z'
-        server_filters['updatedSince'] = updated_since
+        if "T" not in updated_since:
+            updated_since += "T00:00:00Z"
+        server_filters["updatedSince"] = updated_since
         print(f"Filtre serveur par date de modification: {updated_since}")
-    
+
     # ❌ FILTRES CÔTÉ CLIENT : Tout le reste
     if date_fin:
-        client_filters['date_fin'] = date_fin
+        client_filters["date_fin"] = date_fin
         print(f"Filtre client par date de fin: {date_fin}")
 
     if groupes_instructeurs:
-        client_filters['groupes_instructeurs'] = groupes_instructeurs
+        client_filters["groupes_instructeurs"] = groupes_instructeurs
         print(f"Filtre client par groupes: {groupes_instructeurs}")
 
     if statuts:
-        client_filters['statuts'] = statuts
+        client_filters["statuts"] = statuts
         print(f"Filtre client par statuts: {statuts}")
 
     if server_filters:
@@ -881,12 +911,12 @@ def get_demarche_dossiers_filtered(
     variables = {
         "demarcheNumber": demarche_number,
         "afterCursor": None,
-        **server_filters  # Seulement createdSince
+        **server_filters,  # Seulement createdSince
     }
 
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     # Requête GraphQL MINIMALISTE qui fonctionne
@@ -975,14 +1005,16 @@ def get_demarche_dossiers_filtered(
     response = session.post(
         API_URL,
         json={"query": query_get_demarche, "variables": variables},
-        headers=headers
+        headers=headers,
     )
 
     response.raise_for_status()
     result = response.json()
 
     if "errors" in result:
-        error_messages = [error.get("message", "Unknown error") for error in result["errors"]]
+        error_messages = [
+            error.get("message", "Unknown error") for error in result["errors"]
+        ]
         print(f"Erreurs GraphQL: {error_messages}")
         raise Exception(f"GraphQL errors: {', '.join(error_messages)}")
 
@@ -1010,7 +1042,7 @@ def get_demarche_dossiers_filtered(
             next_response = session.post(  # ✅ CHANGE requests → session
                 API_URL,
                 json={"query": query_get_demarche, "variables": variables},
-                headers=headers
+                headers=headers,
             )
 
             next_response.raise_for_status()
@@ -1026,7 +1058,9 @@ def get_demarche_dossiers_filtered(
                 new_dossiers = next_demarche["dossiers"]["nodes"]
                 dossiers.extend(new_dossiers)
                 total_dossiers += len(new_dossiers)
-                print(f"[OK]Page {page_num}: +{len(new_dossiers)} (total: {total_dossiers})")
+                print(
+                    f"[OK]Page {page_num}: +{len(new_dossiers)} (total: {total_dossiers})"
+                )
 
                 has_next_page = next_demarche["dossiers"]["pageInfo"]["hasNextPage"]
                 cursor = next_demarche["dossiers"]["pageInfo"]["endCursor"]
@@ -1040,7 +1074,9 @@ def get_demarche_dossiers_filtered(
     # ===========================================
 
     if not client_filters:
-        print(f"[OK]Aucun filtre côté client - résultat final: {len(dossiers)} dossiers")
+        print(
+            f"[OK]Aucun filtre côté client - résultat final: {len(dossiers)} dossiers"
+        )
         return dossiers
 
     print("[FILTRAGE] Application des filtres côté client...")
@@ -1049,14 +1085,18 @@ def get_demarche_dossiers_filtered(
 
     for dossier in dossiers:
         # Filtre par date de fin
-        if client_filters.get('date_fin'):
-            date_fin_str = client_filters['date_fin']
-            if 'T' not in date_fin_str:
-                date_fin_str += 'T23:59:59Z'
+        if client_filters.get("date_fin"):
+            date_fin_str = client_filters["date_fin"]
+            if "T" not in date_fin_str:
+                date_fin_str += "T23:59:59Z"
 
             try:
-                date_depot = datetime.fromisoformat(dossier['dateDepot'].replace('Z', '+00:00'))
-                date_limite_fin = datetime.fromisoformat(date_fin_str.replace('Z', '+00:00'))
+                date_depot = datetime.fromisoformat(
+                    dossier["dateDepot"].replace("Z", "+00:00")
+                )
+                date_limite_fin = datetime.fromisoformat(
+                    date_fin_str.replace("Z", "+00:00")
+                )
 
                 if date_depot > date_limite_fin:
                     continue
@@ -1064,38 +1104,44 @@ def get_demarche_dossiers_filtered(
                 continue
 
         # Filtre par groupe instructeur
-        if client_filters.get('groupes_instructeurs'):
-            groupes_cibles = client_filters['groupes_instructeurs']
-            groupe_instructeur = dossier.get('groupeInstructeur')
+        if client_filters.get("groupes_instructeurs"):
+            groupes_cibles = client_filters["groupes_instructeurs"]
+            groupe_instructeur = dossier.get("groupeInstructeur")
 
             if not groupe_instructeur:
                 continue
 
-            groupe_number = str(groupe_instructeur.get('number', ''))
-            groupe_id = groupe_instructeur.get('id', '')
+            groupe_number = str(groupe_instructeur.get("number", ""))
+            groupe_id = groupe_instructeur.get("id", "")
 
             # Vérifier si le groupe correspond
             if not (groupe_number in groupes_cibles or groupe_id in groupes_cibles):
                 continue
 
         # Filtre par statut
-        if client_filters.get('statuts'):
-            statuts_cibles = client_filters['statuts']
-            if dossier.get('state') not in statuts_cibles:
+        if client_filters.get("statuts"):
+            statuts_cibles = client_filters["statuts"]
+            if dossier.get("state") not in statuts_cibles:
                 continue
 
         # Si tous les filtres passent, garder le dossier
         filtered_dossiers.append(dossier)
 
-    print(f"[OK]Filtrage côté client terminé: {len(filtered_dossiers)}/{dossiers_avant} dossiers conservés")
+    print(
+        f"[OK]Filtrage côté client terminé: {len(filtered_dossiers)}/{dossiers_avant} dossiers conservés"
+    )
 
     # Debug : Afficher quelques exemples
     if filtered_dossiers:
         print("Exemples de résultats finaux:")
         for i, dossier in enumerate(filtered_dossiers[:3]):
-            groupe = dossier.get('groupeInstructeur', {})
-            print(f"   {i+1}. Dossier {dossier['number']}: {dossier['dateDepot'][:10]} - {dossier['state']}")
-            print(f"      Groupe: {groupe.get('number')} ({groupe.get('label', 'Sans label')})")
+            groupe = dossier.get("groupeInstructeur", {})
+            print(
+                f"   {i + 1}. Dossier {dossier['number']}: {dossier['dateDepot'][:10]} - {dossier['state']}"
+            )
+            print(
+                f"      Groupe: {groupe.get('number')} ({groupe.get('label', 'Sans label')})"
+            )
 
     return filtered_dossiers
 
@@ -1103,6 +1149,7 @@ def get_demarche_dossiers_filtered(
 # ================================================
 # SCRIPT DE TEST SIMPLE qui fonctionne
 # ================================================
+
 
 def test_working_filter():
     """
@@ -1136,21 +1183,16 @@ def test_working_filter():
     }
     """
 
-    variables = {
-        "demarcheNumber": 70018,
-        "createdSince": "2025-06-15T00:00:00Z"
-    }
+    variables = {"demarcheNumber": 70018, "createdSince": "2025-06-15T00:00:00Z"}
 
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     session = get_session_with_retries()  # ✅ AJOUTE
     response = session.post(
-        API_URL,
-        json={"query": query, "variables": variables},
-        headers=headers
+        API_URL, json={"query": query, "variables": variables}, headers=headers
     )
 
     if response.status_code == 200:
@@ -1162,8 +1204,10 @@ def test_working_filter():
             print(f"[OK]SUCCESS! {len(dossiers)} dossiers après 2025-06-15")
 
             for dossier in dossiers:
-                groupe = dossier['groupeInstructeur']
-                print(f"{dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}")
+                groupe = dossier["groupeInstructeur"]
+                print(
+                    f"{dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}"
+                )
     else:
         print(f"Erreur HTTP: {response.status_code}")
 
@@ -1218,16 +1262,21 @@ def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
             "Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN"
         )
 
-    base_url = API_URL.split('/api/')[0] if '/api/' in API_URL else "https://www.demarches-simplifiees.fr"
+    base_url = (
+        API_URL.split("/api/")[0]
+        if "/api/" in API_URL
+        else "https://www.demarches-simplifiees.fr"
+    )
     url = f"{base_url}/dossiers/{dossier_number}/geojson"
 
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Accept": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {API_TOKEN}", "Accept": "application/json"}
 
     session = get_session_with_retries()
     response = session.get(url, headers=headers)
     response.raise_for_status()
+
+    return response.json()
+
+    return response.json()
 
     return response.json()
