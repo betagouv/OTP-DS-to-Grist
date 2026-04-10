@@ -162,6 +162,7 @@ class SyncTaskManager:
                         log_callback(line)
 
             stderr_output = process.stderr.read()
+
             if stderr_output and log_callback:
                 for line in stderr_output.split("\n"):
                     if line.strip():
@@ -171,13 +172,11 @@ class SyncTaskManager:
 
             # Traiter les erreurs
             if process.returncode != 0:
-                error_output = process.stderr.read()
-                if error_output and log_callback:
-                    for line in error_output.split("\n"):
-                        if line.strip():
-                            log_callback(f"ERREUR: {line.strip()}")
-
-                raise subprocess.CalledProcessError(process.returncode, process.args)
+                raise subprocess.CalledProcessError(
+                    process.returncode,
+                    process.args,
+                    stderr=stderr_output
+                )
 
             # Analyser le résultat
             success_count = 0
@@ -286,11 +285,13 @@ class SyncTaskManager:
             return result
 
         except Exception as e:
-            error_msg = f"Erreur lors de la synchronisation: {str(e)}"
-            if log_callback:
-                log_callback(error_msg)
+            if isinstance(e, subprocess.CalledProcessError):
+                error_msg = f"Erreur lors de la synchronisation: {e.stderr.strip() or str(e)}"
+            else:
+                error_msg = f"Erreur lors de la synchronisation: {str(e)}"
 
             if log_callback:
+                log_callback(error_msg)
                 log_callback(traceback.format_exc())
 
             return {

@@ -342,6 +342,7 @@ class TestSyncTaskManager:
         # Vérifier que l'erreur est bien gérée
         assert result["success"] is False
         assert "Erreur lors de la synchronisation" in result["message"]
+        assert "Script error occurred" in result["message"]
         assert "traceback" in result
 
     def test_run_synchronization_task_exception_handling(self):
