@@ -5,6 +5,7 @@ import subprocess
 import sys
 import traceback
 from datetime import datetime, timezone
+from utils.sync_result_parser import parse_success_count, parse_error_count
 
 
 class SyncTaskManager:
@@ -184,54 +185,17 @@ class SyncTaskManager:
             total_processed = 0
             errors_list = []
 
-            # Fonctions helper pour parsing
-            def _parse_success_count(line):
-                """Extrait le nombre de succès depuis une ligne de log"""
-                if "Dossiers traités avec succès:" not in line:
-                    return None, None
-
-                try:
-                    parts = line.split(":", 1)
-                    if len(parts) <= 1:
-                        return None, None
-
-                    num_str = parts[1].strip()
-                    if "/" in num_str:
-                        # Format "X/Y"
-                        success = int(num_str.split("/")[0].strip())
-                        total = int(num_str.split("/")[1].strip())
-                        return success, total
-                    else:
-                        # Format "X"
-                        success = int(num_str)
-                        return success, None
-                except (ValueError, IndexError):
-                    return None, None
-
-            def _parse_error_count(line):
-                """Extrait le nombre d'erreurs depuis une ligne de log"""
-                if "Dossiers en échec:" not in line:
-                    return None
-
-                try:
-                    parts = line.split(":", 1)
-                    if len(parts) <= 1:
-                        return None
-                    return int(parts[1].strip())
-                except (ValueError, IndexError):
-                    return None
-
             # Parser la sortie pour extraire les statistiques
             for line in output_lines:
                 # Essayer de parser succès
-                success_parsed, total_parsed = _parse_success_count(line)
+                success_parsed, total_parsed = parse_success_count(line)
                 if success_parsed is not None:
                     success_count = success_parsed
                     if total_parsed is not None:
                         total_processed = total_parsed
 
                 # Essayer de parser erreurs
-                error_parsed = _parse_error_count(line)
+                error_parsed = parse_error_count(line)
                 if error_parsed is not None:
                     error_count = error_parsed
 
