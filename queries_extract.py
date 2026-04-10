@@ -4,7 +4,7 @@ import json
 import requests
 from typing import Dict, Any, List
 from constants import DEMARCHES_API_URL
-from formatter import unwrap_json_list
+from utils.formatter import unwrap_json_list
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL

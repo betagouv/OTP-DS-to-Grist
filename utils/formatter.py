@@ -7,11 +7,15 @@ def unwrap_json_list(raw: str) -> str:
     déroulantes comme chaînes simples, tandis que les nouvelles les retournent
     sous forme de chaînes JSON encodées.
     """
-    if isinstance(raw, str) and raw.startswith("["):
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, list):
-                return ", ".join(str(v) for v in parsed)
-        except (json.JSONDecodeError, TypeError):
-            pass
+    if not raw.startswith("["):
+        return raw
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+    if isinstance(parsed, list):
+        return ", ".join(str(v) for v in parsed)
+
     return raw
