@@ -12,6 +12,17 @@ def build_environment(config: dict) -> dict:
     """
     env = os.environ.copy()
     
+    required_keys = [
+        "ds_api_token",
+        "demarche_number",
+        "grist_api_key",
+        "grist_doc_id"
+    ]
+    missing_keys = [key for key in required_keys if key not in config]
+
+    if missing_keys:
+        raise ValueError(f"Clés manquantes dans la config: {missing_keys}")
+
     # Appliquer les filtres
     if config.get("filter_date_start"):
         env["DATE_DEPOT_DEBUT"] = config["filter_date_start"]

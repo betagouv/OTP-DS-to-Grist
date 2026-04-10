@@ -5,8 +5,8 @@ import subprocess
 import sys
 import traceback
 from datetime import datetime, timezone
-from utils.sync_result_parser import parse_output
-from utils.environment_config import build_environment
+from sync.sync_result_parser import parse_output
+from sync.environment_config import build_environment
 
 class SyncTaskManager:
     """

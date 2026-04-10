@@ -296,6 +296,8 @@ class TestSyncTaskManager:
         config = {
             "ds_api_token": "test_token",
             "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
             "filter_date_start": "2024-01-01",
             "filter_date_end": "2024-12-31",
             "filter_statuses": "en_construction,en_instruction",
@@ -328,7 +330,12 @@ class TestSyncTaskManager:
             "", "Script error occurred", returncode=1
         )
 
-        config = {"ds_api_token": "test_token", "demarche_number": "12345"}
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
 
         log_calls = []
 
@@ -347,7 +354,12 @@ class TestSyncTaskManager:
 
     def test_run_synchronization_task_exception_handling(self):
         """Test run_synchronization_task avec exception générale"""
-        config = {"ds_api_token": "test_token"}
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
 
         log_calls = []
 
@@ -372,7 +384,12 @@ class TestSyncTaskManager:
         Progression: 39 - Préparation du traitement
         100 dossiers traités avec succès""")
 
-        config = {"ds_api_token": "test_token"}
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
 
         progress_calls = []
 
@@ -398,6 +415,8 @@ class TestSyncTaskManager:
         config = {
             "ds_api_token": "new_token",
             "demarche_number": "99999",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
             "grist_base_url": "https://new.grist.com",
         }
 
@@ -418,7 +437,12 @@ class TestSyncTaskManager:
         Total dossiers traités: 100
         """)
 
-        config = {"ds_api_token": "test_token"}
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
 
         result = self.manager.run_synchronization_task(config)
 

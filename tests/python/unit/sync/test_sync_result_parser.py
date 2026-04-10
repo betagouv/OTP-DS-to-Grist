@@ -1,4 +1,4 @@
-from utils.sync_result_parser import (
+from sync.sync_result_parser import (
     _parse_success_count,
     _parse_error_count,
     parse_output,
