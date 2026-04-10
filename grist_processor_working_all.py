@@ -1,33 +1,32 @@
+import concurrent.futures
 import hashlib
-import traceback
-import unicodedata
+import json as json_module
 import os
 import re
 import sys
-import json as json_module
-import requests
-import repetable_processor as rp
-import concurrent.futures
 import time
-from dotenv import load_dotenv
+import traceback
+import unicodedata
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from queries import (
-    get_demarche,
-    get_dossier,
-    dossier_to_flat_data,
-)
+
+import requests
+from dotenv import load_dotenv
+
+import repetable_processor as rp
+from api_validator import verify_api_connections
+from constants import DEMARCHES_API_URL
+from queries import dossier_to_flat_data, get_demarche, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
 from schema_utils import (
-    get_demarche_schema,
     create_columns_from_schema,
-    update_grist_tables_from_schema,
+    get_demarche_schema,
     get_demarche_schema_enhanced,
+    update_grist_tables_from_schema,
 )
-from constants import DEMARCHES_API_URL
-from api_validator import verify_api_connections
 from utils.log_progress import LogProgress
+
 log_progress = LogProgress(ceiling=98)
 
 # Configuration du niveau de log
@@ -226,6 +225,7 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
         {"id": "label_names", "type": "Text"},
         {"id": "labels_json", "type": "Text"},
         {"id": "suivi_par", "type": "Text"},
+        {"id": "date_accuse_lecture", "type": "DateTime"},
     ]
 
     # Colonnes de base pour la table des champs
@@ -508,6 +508,7 @@ def extract_demandeur_data(dossier, demandeur_type):
             "prenom_mandataire": dossier.get("prenomMandataire", ""),
             "nom_mandataire": dossier.get("nomMandataire", ""),
             "depose_par_un_tiers": dossier.get("deposeParUnTiers", False),
+            "connection_usager": dossier.get("connectionUsager"),
         }
 
     # PersonneMorale
@@ -565,6 +566,7 @@ def extract_demandeur_data(dossier, demandeur_type):
         "code_departement": address.get("departmentCode"),
         "region": address.get("regionName"),
         "code_region": address.get("regionCode"),
+        "connection_usager": dossier.get("connectionUsager"),
     }
 
 
@@ -2493,8 +2495,14 @@ def process_demarche_for_grist_optimized(
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
-        force_full_sync = sync_meta.get("force_full_sync", False) if sync_meta else False
-        updated_since_cursor = None if force_full_sync else (sync_meta.get("updated_since_cursor") if sync_meta else None)
+        force_full_sync = (
+            sync_meta.get("force_full_sync", False) if sync_meta else False
+        )
+        updated_since_cursor = (
+            None
+            if force_full_sync
+            else (sync_meta.get("updated_since_cursor") if sync_meta else None)
+        )
         sync_meta_grist_id = sync_meta.get("grist_id") if sync_meta else None
         if force_full_sync:
             log("force_full_sync activé → sync complète forcée")
@@ -2591,6 +2599,7 @@ def process_demarche_for_grist_optimized(
 
             # Récupérer tous les dossiers puis filtrer côté client
             from queries_graphql import get_demarche_dossiers
+
             log("Récupération de tous les dossiers avec pagination...")
             if updated_since_cursor:
                 log(f"Récupération filtrée avec updatedSince: {updated_since_cursor}")
@@ -2673,7 +2682,7 @@ def process_demarche_for_grist_optimized(
                         "last_sync_status": "success",
                         "last_sync_duration": round(elapsed_time, 1),
                         "force_full_sync": False,
-                    }
+                    },
                 )
             except Exception as e:
                 log_error(f"Erreur sauvegarde Sync_metadata: {e}")
@@ -2858,7 +2867,9 @@ def process_demarche_for_grist_optimized(
         grist_dates = {}
 
         if updated_since_cursor or force_full_sync:
-            log("updatedSince actif ou force_full_sync → comparaison de dates skippée (tous les dossiers listés sont potentiellement modifiés)")
+            log(
+                "updatedSince actif ou force_full_sync → comparaison de dates skippée (tous les dossiers listés sont potentiellement modifiés)"
+            )
         else:
             log("Construction des sets de skip par dates de modification...")
             grist_dates = client.get_existing_dossier_dates(
@@ -3306,6 +3317,7 @@ def process_demarche_for_grist_optimized(
                 avis = dossier_data.get("avis", [])
                 if avis:
                     from queries_extract import extract_avis_from_dossier
+
                     all_avis_records.extend(extract_avis_from_dossier(dossier_data))
 
             if all_avis_records:
@@ -3313,39 +3325,44 @@ def process_demarche_for_grist_optimized(
                 if not table_ids.get("avis"):
                     log("  Création lazy de la table avis...")
                     from schema_utils import create_avis_columns
+
                     avis_table_id = f"Demarche_{demarche_number}_avis"
                     result = client.create_table(avis_table_id, create_avis_columns())
-                    table_ids["avis"] = result['tables'][0].get('id')
+                    table_ids["avis"] = result["tables"][0].get("id")
                     log(f"  Table avis créée: {table_ids['avis']}")
 
                 log(f"  Upsert de {len(all_avis_records)} avis...")
                 url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_ids['avis']}/records"
-                
+
                 # Récupérer existants pour upsert par avis_id
                 existing_avis = {}
                 response = requests.get(url, headers=client.headers)
                 if response.status_code == 200:
-                    for record in response.json().get('records', []):
-                        avis_id = record.get('fields', {}).get('avis_id')
+                    for record in response.json().get("records", []):
+                        avis_id = record.get("fields", {}).get("avis_id")
                         if avis_id:
-                            existing_avis[avis_id] = record.get('id')
+                            existing_avis[avis_id] = record.get("id")
 
                 to_create = []
                 to_update = []
                 for avis in all_avis_records:
-                    avis_id = avis.get('avis_id')
+                    avis_id = avis.get("avis_id")
                     if avis_id in existing_avis:
-                        to_update.append({'id': existing_avis[avis_id], 'fields': avis})
+                        to_update.append({"id": existing_avis[avis_id], "fields": avis})
                     else:
                         to_create.append(avis)
 
                 if to_create:
-                    requests.post(url, headers=client.headers,
-                                json={"records": [{"fields": r} for r in to_create]})
+                    requests.post(
+                        url,
+                        headers=client.headers,
+                        json={"records": [{"fields": r} for r in to_create]},
+                    )
                     log(f"   {len(to_create)} avis créé(s)")
                 if to_update:
-                    requests.patch(url, headers=client.headers,
-                                json={"records": to_update})
+                    requests.patch(
+                        url, headers=client.headers, json={"records": to_update}
+                    )
                     log(f"   {len(to_update)} avis mis à jour")
 
             if all_avis_records:
@@ -3491,4 +3508,5 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.exit(main())
     sys.exit(main())
