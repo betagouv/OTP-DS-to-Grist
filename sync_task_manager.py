@@ -6,6 +6,7 @@ import sys
 import traceback
 from datetime import datetime, timezone
 from utils.sync_result_parser import parse_output
+from utils.environment_config import build_environment
 
 class SyncTaskManager:
     """
@@ -37,41 +38,11 @@ class SyncTaskManager:
             if progress_callback:
                 progress_callback(5, "Préparation de l'environnement...")
 
-            # Mettre à jour les variables d'environnement avec la configuration
-            env_mapping = {
-                "ds_api_token": "DEMARCHES_API_TOKEN",
-                "demarche_number": "DEMARCHE_NUMBER",
-                "grist_base_url": "GRIST_BASE_URL",
-                "grist_api_key": "GRIST_API_KEY",
-                "grist_doc_id": "GRIST_DOC_ID",
-                "grist_user_id": "GRIST_USER_ID",
-                # Filtres depuis la configuration DB
-                "filter_date_start": "DATE_DEPOT_DEBUT",
-                "filter_date_end": "DATE_DEPOT_FIN",
-                "filter_statuses": "STATUTS_DOSSIERS",
-                "filter_groups": "GROUPES_INSTRUCTEURS",
-            }
-
             # Copie de l'environnement pour éviter la pollution globale
-            env_copy = os.environ.copy()
+            env_copy = build_environment(config)
 
             if progress_callback:
                 progress_callback(10, "Configuration des variables d'environnement...")
-
-            # Mettre à jour les variables d'environnement avec les filtres
-            if config.get("filter_date_start"):
-                env_copy["DATE_DEPOT_DEBUT"] = config["filter_date_start"]
-            if config.get("filter_date_end"):
-                env_copy["DATE_DEPOT_FIN"] = config["filter_date_end"]
-            if config.get("filter_statuses"):
-                env_copy["STATUTS_DOSSIERS"] = config["filter_statuses"]
-            if config.get("filter_groups"):
-                env_copy["GROUPES_INSTRUCTEURS"] = config["filter_groups"]
-
-            # Appliquer la configuration à l'environnement
-            for key, env_key in env_mapping.items():
-                if key in config:
-                    env_copy[env_key] = config[key]
 
             # Appliquer les variables d'environnement pour ce thread
             os.environ.update(env_copy)
@@ -80,10 +51,6 @@ class SyncTaskManager:
                 progress_callback(
                     15, "Chargement des données depuis Démarches Simplifiées..."
                 )
-
-            # Définir les filtres dans la copie d'environnement (pas dans l'environnement global)
-            for config_key, env_key in env_mapping.items():
-                env_copy[env_key] = str(config.get(config_key, ""))
 
             # ✅ Afficher les filtres effectivement utilisés (après définition)
             if log_callback:
