@@ -5,8 +5,7 @@ import subprocess
 import sys
 import traceback
 from datetime import datetime, timezone
-from utils.sync_result_parser import parse_success_count, parse_error_count
-
+from utils.sync_result_parser import parse_output
 
 class SyncTaskManager:
     """
@@ -179,69 +178,17 @@ class SyncTaskManager:
                     stderr=stderr_output
                 )
 
-            # Analyser le résultat
-            success_count = 0
-            error_count = 0
-            total_processed = 0
-            errors_list = []
-
-            # Parser la sortie pour extraire les statistiques
-            for line in output_lines:
-                # Essayer de parser succès
-                success_parsed, total_parsed = parse_success_count(line)
-                if success_parsed is not None:
-                    success_count = success_parsed
-                    if total_parsed is not None:
-                        total_processed = total_parsed
-
-                # Essayer de parser erreurs
-                error_parsed = parse_error_count(line)
-                if error_parsed is not None:
-                    error_count = error_parsed
-
-                # Essayer de parser total (si présent dans logs)
-                if "Total dossiers traités:" in line:
-                    try:
-                        total_processed = int(line.split(":")[1].strip())
-                    except (ValueError, IndexError):
-                        pass
-
-            # Calculer total si pas déjà extrait
-            if total_processed == 0:
-                total_processed = success_count + error_count
-
-            # Détecter si Grist était déjà à jour
-            already_up_to_date = (
-                success_count == 0
-                and error_count == 0
-                and any(
-                    "déjà à jour" in line or "Aucun dossier modifié" in line
-                    for line in output_lines
-                )
-            )
+            result = parse_output(output_lines)
 
             if progress_callback:
                 progress_callback(99, "Finalisation...")
 
             if log_callback:
                 log_callback(
-                    f"Synchronisation terminée: {success_count} dossiers synchronisés, {error_count} erreurs"
+                    "Synchronisation terminée: "
+                    f"{result['success_count']} dossiers synchronisés"
+                    f", {result['error_count']} erreurs"
                 )
-
-            # Préparer le résultat
-            result = {
-                "success": error_count == 0,
-                "sync_reason": "already_up_to_date" if already_up_to_date else "synced",
-                "message": f"Synchronisation terminée: {success_count}/{total_processed} dossiers synchronisés"
-                if error_count == 0
-                else f"Synchronisation terminée avec {error_count} erreurs sur {total_processed} dossiers",
-                "dossier_count": total_processed,
-                "success_count": success_count,
-                "error_count": error_count,
-                "total_processed": total_processed,
-                "errors": errors_list,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
 
             if progress_callback:
                 progress_callback(100, result["message"])
