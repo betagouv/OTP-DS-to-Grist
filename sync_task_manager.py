@@ -7,6 +7,8 @@ import traceback
 from datetime import datetime, timezone
 from sync.sync_result_parser import parse_output
 from sync.environment_config import build_environment
+from sync.error_parser import extract_error_parts
+
 
 class SyncTaskManager:
     """
@@ -34,6 +36,9 @@ class SyncTaskManager:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
         """
+
+        output_lines = []
+
         try:
             if progress_callback:
                 progress_callback(5, "Préparation de l'environnement...")
@@ -111,7 +116,6 @@ class SyncTaskManager:
                 cwd=os.path.dirname(__file__),
             )
 
-            output_lines = []
             for line in iter(process.stdout.readline, ""):
                 if not line.strip():
                     continue
@@ -163,8 +167,11 @@ class SyncTaskManager:
             return result
 
         except Exception as e:
-            if isinstance(e, subprocess.CalledProcessError):
-                error_msg = f"Erreur lors de la synchronisation: {e.stderr.strip() or str(e)}"
+            error_parts = extract_error_parts(e, output_lines)
+            if error_parts:
+                error_msg = f"Erreur lors de la synchronisation: {'; '.join(error_parts)}"
+            elif isinstance(e, subprocess.CalledProcessError):
+                error_msg = f"Erreur lors de la synchronisation: {str(e)}"
             else:
                 error_msg = f"Erreur lors de la synchronisation: {str(e)}"
 
