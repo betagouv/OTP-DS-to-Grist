@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-def _parse_success_count(line):
+
+def _parse_success_count(line: str) -> tuple[int | None, int | None]:
     """Extrait le nombre de succès depuis une ligne de log"""
     if "Dossiers traités avec succès:" not in line:
         return None, None
@@ -11,19 +12,21 @@ def _parse_success_count(line):
             return None, None
 
         num_str = parts[1].strip()
+
         if "/" in num_str:
             # Format "X/Y"
             success = int(num_str.split("/")[0].strip())
             total = int(num_str.split("/")[1].strip())
             return success, total
-        else:
-            # Format "X"
-            success = int(num_str)
-            return success, None
+
+        # Format "X"
+        success = int(num_str)
+        return success, None
     except (ValueError, IndexError):
         return None, None
 
-def _parse_error_count(line):
+
+def _parse_error_count(line: str) -> int | None:
     """Extrait le nombre d'erreurs depuis une ligne de log"""
     if "Dossiers en échec:" not in line:
         return None
@@ -36,14 +39,15 @@ def _parse_error_count(line):
     except (ValueError, IndexError):
         return None
 
+
 def parse_output(output_lines: list[str]) -> dict:
     """
     Parse les lignes de log et retourne les statistiques de synchronisation.
     Args:
         output_lines: Liste des lignes de sortie du script de synchronisation
     Returns:
-        dict avec: success, sync_reason, message, dossier_count, 
-                   success_count, error_count, total_processed, 
+        dict avec: success, sync_reason, message, dossier_count,
+                   success_count, error_count, total_processed,
                    errors, timestamp, already_up_to_date
     """
     success_count = 0
