@@ -377,7 +377,6 @@ def get_available_groups(api_token, demarche_number):
 # Routes Flask
 
 def test_current_config_connections(otp_config_id):
-    print('called')
     """
     Teste les connexions DS et Grist avec les paramètres fournis dans le body
     """

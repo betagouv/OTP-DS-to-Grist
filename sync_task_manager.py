@@ -5,6 +5,9 @@ import subprocess
 import sys
 import traceback
 from datetime import datetime, timezone
+from sync.sync_result_parser import parse_output
+from sync.environment_config import build_environment
+from sync.error_parser import extract_error_parts
 
 
 class SyncTaskManager:
@@ -33,45 +36,18 @@ class SyncTaskManager:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
         """
+
+        output_lines = []
+
         try:
             if progress_callback:
                 progress_callback(5, "Préparation de l'environnement...")
 
-            # Mettre à jour les variables d'environnement avec la configuration
-            env_mapping = {
-                "ds_api_token": "DEMARCHES_API_TOKEN",
-                "demarche_number": "DEMARCHE_NUMBER",
-                "grist_base_url": "GRIST_BASE_URL",
-                "grist_api_key": "GRIST_API_KEY",
-                "grist_doc_id": "GRIST_DOC_ID",
-                "grist_user_id": "GRIST_USER_ID",
-                # Filtres depuis la configuration DB
-                "filter_date_start": "DATE_DEPOT_DEBUT",
-                "filter_date_end": "DATE_DEPOT_FIN",
-                "filter_statuses": "STATUTS_DOSSIERS",
-                "filter_groups": "GROUPES_INSTRUCTEURS",
-            }
-
             # Copie de l'environnement pour éviter la pollution globale
-            env_copy = os.environ.copy()
+            env_copy = build_environment(config)
 
             if progress_callback:
                 progress_callback(10, "Configuration des variables d'environnement...")
-
-            # Mettre à jour les variables d'environnement avec les filtres
-            if config.get("filter_date_start"):
-                env_copy["DATE_DEPOT_DEBUT"] = config["filter_date_start"]
-            if config.get("filter_date_end"):
-                env_copy["DATE_DEPOT_FIN"] = config["filter_date_end"]
-            if config.get("filter_statuses"):
-                env_copy["STATUTS_DOSSIERS"] = config["filter_statuses"]
-            if config.get("filter_groups"):
-                env_copy["GROUPES_INSTRUCTEURS"] = config["filter_groups"]
-
-            # Appliquer la configuration à l'environnement
-            for key, env_key in env_mapping.items():
-                if key in config:
-                    env_copy[env_key] = config[key]
 
             # Appliquer les variables d'environnement pour ce thread
             os.environ.update(env_copy)
@@ -80,10 +56,6 @@ class SyncTaskManager:
                 progress_callback(
                     15, "Chargement des données depuis Démarches Simplifiées..."
                 )
-
-            # Définir les filtres dans la copie d'environnement (pas dans l'environnement global)
-            for config_key, env_key in env_mapping.items():
-                env_copy[env_key] = str(config.get(config_key, ""))
 
             # ✅ Afficher les filtres effectivement utilisés (après définition)
             if log_callback:
@@ -144,7 +116,6 @@ class SyncTaskManager:
                 cwd=os.path.dirname(__file__),
             )
 
-            output_lines = []
             for line in iter(process.stdout.readline, ""):
                 if not line.strip():
                     continue
@@ -162,6 +133,7 @@ class SyncTaskManager:
                         log_callback(line)
 
             stderr_output = process.stderr.read()
+
             if stderr_output and log_callback:
                 for line in stderr_output.split("\n"):
                     if line.strip():
@@ -171,114 +143,23 @@ class SyncTaskManager:
 
             # Traiter les erreurs
             if process.returncode != 0:
-                error_output = process.stderr.read()
-                if error_output and log_callback:
-                    for line in error_output.split("\n"):
-                        if line.strip():
-                            log_callback(f"ERREUR: {line.strip()}")
-
-                raise subprocess.CalledProcessError(process.returncode, process.args)
-
-            # Analyser le résultat
-            success_count = 0
-            error_count = 0
-            total_processed = 0
-            errors_list = []
-
-            # Fonctions helper pour parsing
-            def _parse_success_count(line):
-                """Extrait le nombre de succès depuis une ligne de log"""
-                if "Dossiers traités avec succès:" not in line:
-                    return None, None
-
-                try:
-                    parts = line.split(":", 1)
-                    if len(parts) <= 1:
-                        return None, None
-
-                    num_str = parts[1].strip()
-                    if "/" in num_str:
-                        # Format "X/Y"
-                        success = int(num_str.split("/")[0].strip())
-                        total = int(num_str.split("/")[1].strip())
-                        return success, total
-                    else:
-                        # Format "X"
-                        success = int(num_str)
-                        return success, None
-                except (ValueError, IndexError):
-                    return None, None
-
-            def _parse_error_count(line):
-                """Extrait le nombre d'erreurs depuis une ligne de log"""
-                if "Dossiers en échec:" not in line:
-                    return None
-
-                try:
-                    parts = line.split(":", 1)
-                    if len(parts) <= 1:
-                        return None
-                    return int(parts[1].strip())
-                except (ValueError, IndexError):
-                    return None
-
-            # Parser la sortie pour extraire les statistiques
-            for line in output_lines:
-                # Essayer de parser succès
-                success_parsed, total_parsed = _parse_success_count(line)
-                if success_parsed is not None:
-                    success_count = success_parsed
-                    if total_parsed is not None:
-                        total_processed = total_parsed
-
-                # Essayer de parser erreurs
-                error_parsed = _parse_error_count(line)
-                if error_parsed is not None:
-                    error_count = error_parsed
-
-                # Essayer de parser total (si présent dans logs)
-                if "Total dossiers traités:" in line:
-                    try:
-                        total_processed = int(line.split(":")[1].strip())
-                    except (ValueError, IndexError):
-                        pass
-
-            # Calculer total si pas déjà extrait
-            if total_processed == 0:
-                total_processed = success_count + error_count
-
-            # Détecter si Grist était déjà à jour
-            already_up_to_date = (
-                success_count == 0
-                and error_count == 0
-                and any(
-                    "déjà à jour" in line or "Aucun dossier modifié" in line
-                    for line in output_lines
+                raise subprocess.CalledProcessError(
+                    process.returncode,
+                    process.args,
+                    stderr=stderr_output
                 )
-            )
+
+            result = parse_output(output_lines)
 
             if progress_callback:
                 progress_callback(99, "Finalisation...")
 
             if log_callback:
                 log_callback(
-                    f"Synchronisation terminée: {success_count} dossiers synchronisés, {error_count} erreurs"
+                    "Synchronisation terminée: "
+                    f"{result['success_count']} dossiers synchronisés"
+                    f", {result['error_count']} erreurs"
                 )
-
-            # Préparer le résultat
-            result = {
-                "success": error_count == 0,
-                "sync_reason": "already_up_to_date" if already_up_to_date else "synced",
-                "message": f"Synchronisation terminée: {success_count}/{total_processed} dossiers synchronisés"
-                if error_count == 0
-                else f"Synchronisation terminée avec {error_count} erreurs sur {total_processed} dossiers",
-                "dossier_count": total_processed,
-                "success_count": success_count,
-                "error_count": error_count,
-                "total_processed": total_processed,
-                "errors": errors_list,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
 
             if progress_callback:
                 progress_callback(100, result["message"])
@@ -286,11 +167,16 @@ class SyncTaskManager:
             return result
 
         except Exception as e:
-            error_msg = f"Erreur lors de la synchronisation: {str(e)}"
-            if log_callback:
-                log_callback(error_msg)
+            error_parts = extract_error_parts(e, output_lines)
+            if error_parts:
+                error_msg = f"Erreur lors de la synchronisation: {'; '.join(error_parts)}"
+            elif isinstance(e, subprocess.CalledProcessError):
+                error_msg = f"Erreur lors de la synchronisation: {str(e)}"
+            else:
+                error_msg = f"Erreur lors de la synchronisation: {str(e)}"
 
             if log_callback:
+                log_callback(error_msg)
                 log_callback(traceback.format_exc())
 
             return {
