@@ -1052,7 +1052,3 @@ def extract_avis_from_dossier(dossier_data: Dict[str, Any]) -> List[Dict[str, An
         )
 
     return records
-
-    return records
-
-    return records
