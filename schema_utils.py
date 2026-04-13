@@ -1392,5 +1392,3 @@ def get_demarche_schema_enhanced(demarche_number: int, prefer_robust: bool = Tru
             return get_demarche_schema(demarche_number)
     else:
         return get_demarche_schema(demarche_number)
-        return get_demarche_schema(demarche_number)
-        return get_demarche_schema(demarche_number)
