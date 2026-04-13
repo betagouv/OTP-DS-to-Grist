@@ -1276,7 +1276,3 @@ def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
     response.raise_for_status()
 
     return response.json()
-
-    return response.json()
-
-    return response.json()
