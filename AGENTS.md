@@ -14,12 +14,12 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 
 Ce projet a été initialement créé par un non-développeur avec assistance IA.
 
-Il en résulte du code spaghetti et des opportunités de refactoring régulières.
+Il en résulte un code à remanier et des opportunités de refactoring régulières.
 
 **Merci de :**
 - Proposer des remaniements (refactoring) quand une opportunité est identifiée
 - Simplifier le code quand une meilleure approche est trouvée
-- Ne pas hésiter à réorganiser les fichiers si ça améliore la structure
+- Ne pas hésiter à réorganiser les fichiers si ça améliore la structure et regroupe des responsabilités
 
 ---
 
