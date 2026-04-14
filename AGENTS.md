@@ -20,3 +20,12 @@ Il en résulte du code spaghetti et des opportunités de refactoring régulière
 - Proposer des remaniements (refactoring) quand une opportunité est identifiée
 - Simplifier le code quand une meilleure approche est trouvée
 - Ne pas hésiter à réorganiser les fichiers si ça améliore la structure
+
+---
+
+## Instructions pendant l'exploration
+
+Lire le fichier `README.md` présent dans chaque dossier pour comprendre :
+- Le rôle du module
+- Son utilité dans l'architecture
+- Les conventions spécifiques au dossier
