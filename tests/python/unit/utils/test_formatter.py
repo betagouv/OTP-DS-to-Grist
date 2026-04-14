@@ -34,3 +34,14 @@ def test_liste_nombres():
 
 def test_liste_types_mixtes():
     assert unwrap_json_list('[1, "a"]') == "1, a"
+
+
+def test_none_en_entree():
+    assert unwrap_json_list(None) is None
+
+
+def test_valeur_par_defaut_none():
+    champ = {}
+    raw = champ.get("stringValue") or champ.get("value")
+    result = unwrap_json_list(raw)
+    assert result is None
