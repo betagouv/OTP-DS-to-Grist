@@ -4,7 +4,7 @@ Ce dossier contient la gestion centralisée de la configuration de l'application
 
 ## Rôle
 
-Permet de charger et sauvegarder la configuration utilisateur depuis la base de données, avec chiffrement des données sensibles.
+Permet de gérer la configuration utilisateur depuis la base de données, avec chiffrement des données sensibles.
 À découper si besoin dans ce même dossier.
 
 ## Utilisation
