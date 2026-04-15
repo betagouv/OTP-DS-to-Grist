@@ -1,25 +1,32 @@
 # Tests
 
+## Recommandations
+
+En cas de bug, essayer de le reproduire via un test unitaire, puis, en même temps ou après faire le fix.
+Cela nous permet de cranter la non réapparition du bug.
+
 ## Python
 
-Les tests sont organisés en deux catégories.
+Ces tests sont organisés en deux catégories.
 
 ### unit/
 
 Tests **fonction par fonction** qui utilisent des **mocks** pour simuler les dépendances externes (API, DB, fichiers).
-Ces tests vérifient qu une fonction fait exactement ce qu on attend, sans effet de bord.
+Ces tests vérifient qu'une fonction fait exactement ce qu'on attend, sans effet de bord.
 
 ### integration/
 
 Tests qui utilisent des **composants réels** (client Flask, DB).
-Ces tests vérifient que les pièces s assemblent correctement.
+Ces tests vérifient que les pièces s'assemblent correctement.
+Pour le moment, contient surtout des tests de route d'API Flask.
 
 ### Commandes
+
 ```sh
-poe test
-pytest tests/python/unit/
-pytest tests/python/integration/
-pytest -k "nom_du_test"
+poe test # Lancer tout les tests
+pytest tests/python/unit/ # Lancer seulement les tests unitaires
+pytest tests/python/integration/ # Lancer seulement les tests d'intégration
+pytest -k "nom_du_test"  # Lancer un test spécifique
 ```
 
 ### Conventions
@@ -30,13 +37,13 @@ pytest -k "nom_du_test"
 
 ## JavaScript
 
-Les tests utilisent Jest. Il n y a que des tests unitaires.
+Ces tests utilisent Jest. Il n y a que des tests unitaires.
 
 ### Commandes
-```sh
 
-npm test
-npm test -- --watch
+```sh
+npm test # Lancer tout les tests
+npm test -- --watch # Même chose mais avec réexécution automatique à chanque modification de fichier
 ```
 
 ### Conventions
