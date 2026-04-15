@@ -128,6 +128,8 @@ poe test
 npm run test
 ```
 
+Voir [tests/README.md](../tests/README.md) pour les commandes et conventions.
+
 ## Mode développement avec Docker
 
 ### Prérequis
@@ -166,6 +168,8 @@ docker-compose run --rm app poe test
 # Tests JavaScript
 docker-compose run --rm app npm run test
 ```
+
+Voir [tests/README.md](../tests/README.md) pour les commandes et conventions.
 
 ### Dépannage Docker
 
