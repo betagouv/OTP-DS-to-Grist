@@ -4,7 +4,6 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 
 ## Préférences utilisateur
 
-- L'utilisateur parle en français - répondre en français
 - Lancer les tests associés après chaque modification
 - Demander des clarifications pour toute ambiguïté
 - En cas de demande impliquant beaucoup de modifications, proposer un plan en étapes.
@@ -28,3 +27,16 @@ Lire le fichier `README.md` présent dans chaque dossier pour comprendre :
 - Le rôle du module
 - Son utilité dans l'architecture
 - Les conventions spécifiques au dossier
+
+## Conventions
+
+Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
+Conventions de nommage : standards Python (PEP 8) et JS.
+
+## Tests
+
+Voir `tests/README.md` pour les commandes et conventions.
+
+## Documentations
+
+Consulter `docs/` pour les guides techniques.
