@@ -29,6 +29,34 @@ class TestBuildEnvironment:
         env = build_environment(config)
         assert env["GROUPES_INSTRUCTEURS"] == "1,2,3"
 
+    def test_filter_date_start_absent_ecrase_env_parent(self, monkeypatch):
+        """Régression: filter absent doit écraser env parent avec valeur vide"""
+        monkeypatch.setenv("DATE_DEPOT_DEBUT", "2023-01-01")
+        config = DEFAULT_CONFIG.copy()
+        env = build_environment(config)
+        assert env["DATE_DEPOT_DEBUT"] == ""
+
+    def test_filter_date_end_absent_ecrase_env_parent(self, monkeypatch):
+        """Régression: filter absent doit écraser env parent avec valeur vide"""
+        monkeypatch.setenv("DATE_DEPOT_FIN", "2023-12-31")
+        config = DEFAULT_CONFIG.copy()
+        env = build_environment(config)
+        assert env["DATE_DEPOT_FIN"] == ""
+
+    def test_filter_statuses_absent_ecrase_env_parent(self, monkeypatch):
+        """Régression: filter absent doit écraser env parent avec valeur vide"""
+        monkeypatch.setenv("STATUTS_DOSSIERS", "accepte,refuse")
+        config = DEFAULT_CONFIG.copy()
+        env = build_environment(config)
+        assert env["STATUTS_DOSSIERS"] == ""
+
+    def test_filter_groups_absent_ecrase_env_parent(self, monkeypatch):
+        """Régression: filter absent doit écraser env parent avec valeur vide"""
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "120382")
+        config = DEFAULT_CONFIG.copy()
+        env = build_environment(config)
+        assert env["GROUPES_INSTRUCTEURS"] == ""
+
     def test_mapping_ds_api_token(self):
         config = {**DEFAULT_CONFIG, "ds_api_token": "abc123"}
         env = build_environment(config)

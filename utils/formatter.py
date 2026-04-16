@@ -1,5 +1,6 @@
 import json
 
+
 def unwrap_json_list(raw: str) -> str:
     """
     Convertit '["a", "b"]' en 'a, b', laisse les strings normales intactes.
@@ -7,12 +8,12 @@ def unwrap_json_list(raw: str) -> str:
     déroulantes comme chaînes simples, tandis que les nouvelles les retournent
     sous forme de chaînes JSON encodées.
     """
-    if not raw.startswith("["):
+    if not isinstance(raw, str) or not raw.startswith("["):
         return raw
 
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return raw
 
     if isinstance(parsed, list):
