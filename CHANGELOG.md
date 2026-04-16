@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.7.0...v0.8.0) (2026-04-16)
+
+
+### Features
+
+* **Documentation:** Nouveau README pour le dossier sync ([#282](https://github.com/betagouv/OTP-DS-to-Grist/issues/282)) ([6d84153](https://github.com/betagouv/OTP-DS-to-Grist/commit/6d841533d4fac106e276576e0921f750e6faeb61))
+
+
+### Bug Fixes
+
+* **Progression:** Suppression des détails unitaires des temps d'appels ([#273](https://github.com/betagouv/OTP-DS-to-Grist/issues/273)) ([71ed16e](https://github.com/betagouv/OTP-DS-to-Grist/commit/71ed16ecd139aefbea73af1eba8c1b69ae08c5a0))
+
 ## [0.7.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.6.0...v0.7.0) (2026-04-08)
 
 
