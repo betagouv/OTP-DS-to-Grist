@@ -1,10 +1,12 @@
-import os
 import base64
 import json
+import os
+from typing import Any, Dict, List
+
 import requests
-from typing import Dict, Any, List
-from constants import DEMARCHES_API_URL
+
 from utils.formatter import unwrap_json_list
+from constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -887,6 +889,7 @@ def dossier_to_flat_data(
         "date_expiration": dossier_data.get("dateExpiration"),
         "date_traitement": dossier_data.get("dateTraitement"),
         "date_suppression_par_usager": dossier_data.get("dateSuppressionParUsager"),
+        "date_accuse_lecture": dossier_data.get("dateAccuseLectureAgreement"),
     }
 
     # Ajouter les informations sur les labels (étiquettes)
@@ -1023,6 +1026,7 @@ def dossier_to_flat_data(
         "avis": extract_avis_from_dossier(dossier_data),
     }
 
+
 def extract_avis_from_dossier(dossier_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Extrait les avis experts d'un dossier pour insertion dans Grist.
@@ -1032,15 +1036,19 @@ def extract_avis_from_dossier(dossier_data: Dict[str, Any]) -> List[Dict[str, An
     records = []
 
     for avis in avis_list:
-        records.append({
-            "dossier_number": dossier_number,
-            "avis_id": avis.get("id", ""),
-            "instructeur_email": avis.get("claimant", {}).get("email", ""),
-            "expert_email": avis.get("expert", {}).get("email", ""),
-            "date_question": avis.get("dateQuestion", ""),
-            "date_reponse": avis.get("dateReponse", "") if avis.get("reponse") else "",
-            "question": avis.get("question", "") or "",
-            "reponse": avis.get("reponse", "") or "",
-        })
+        records.append(
+            {
+                "dossier_number": dossier_number,
+                "avis_id": avis.get("id", ""),
+                "instructeur_email": avis.get("claimant", {}).get("email", ""),
+                "expert_email": avis.get("expert", {}).get("email", ""),
+                "date_question": avis.get("dateQuestion", ""),
+                "date_reponse": avis.get("dateReponse", "")
+                if avis.get("reponse")
+                else "",
+                "question": avis.get("question", "") or "",
+                "reponse": avis.get("reponse", "") or "",
+            }
+        )
 
     return records
