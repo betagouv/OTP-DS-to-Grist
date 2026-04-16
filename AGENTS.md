@@ -28,6 +28,10 @@ Lire le fichier `README.md` présent dans chaque dossier pour comprendre :
 - Son utilité dans l'architecture
 - Les conventions spécifiques au dossier
 
+## Conventions
+
+Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
+
 ## Documentations
 
 Consulter `docs/` pour les guides techniques.
