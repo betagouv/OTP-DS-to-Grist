@@ -31,6 +31,11 @@ Lire le fichier `README.md` présent dans chaque dossier pour comprendre :
 ## Conventions
 
 Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
+Conventions de nommage : standards Python (PEP 8) et JS.
+
+## Tests
+
+Voir `tests/README.md` pour les commandes et conventions.
 
 ## Documentations
 
