@@ -10,6 +10,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
@@ -52,9 +55,6 @@ def scheduled_sync_job(otp_config_id, sync_manager, notify_callback=None):
         - Notification WebSocket : uniquement pour success: false.
         - Désactivation du planning : uniquement pour les exceptions.
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
     logger.info(
         f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}"
     )
@@ -208,9 +208,6 @@ def reload_scheduler_jobs(sync_manager, notify_callback=None):
     Exécutée au démarrage et après activation/désactivation de plannings,
     pour éviter des jobs persistant pour des configs modifiées ou supprimées
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
     logger.info("Rechargement des jobs du scheduler...")
 
     try:
