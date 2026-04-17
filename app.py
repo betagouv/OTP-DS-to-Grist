@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
-from sync_task_manager import SyncTaskManager
+from sync.sync_manager import SyncManager
 from constants import (
     GITHUB_CHANGELOG_BASE_URL,
     CHANGELOG_PATH,
@@ -315,7 +315,7 @@ def socketio_notify_callback(event_type, data):
 
 
 # Instance globale du gestionnaire de synchronisations
-sync_task_manager = SyncTaskManager(
+sync_task_manager = SyncManager(
     notify_callback=socketio_notify_callback
 )
 
