@@ -792,15 +792,22 @@ class TestErrorHandling:
         assert data["success"] is False
         assert "non trouvée" in data["message"]
 
-    @pytest.mark.skip(reason="Function moved to sync.scheduled_sync")
-    @patch("app.SessionLocal")
-    def test_scheduled_sync_job_success(self, mock_session):
+    @patch("sync.scheduled_sync.create_engine")
+    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.config_manager.load_config_by_id")
+    def test_scheduled_sync_job_success(
+        self, mock_load_config, mock_sessionmaker, mock_create_engine
+    ):
         """Test exécution réussie d'une synchronisation planifiée"""
-        from app import scheduled_sync_job
+        from sync.scheduled_sync import scheduled_sync_job
+        from sync.sync_manager import SyncManager
 
-        # Mock de la configuration OTP
         mock_db = MagicMock()
-        mock_session.return_value = mock_db
+        mock_engine = MagicMock()
+        mock_create_engine.return_value = mock_engine
+
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
 
         mock_config = MagicMock()
         mock_config.id = 1
@@ -811,92 +818,86 @@ class TestErrorHandling:
             mock_config
         )
 
-        # Mock de config_manager.load_config_by_id
-        with patch("app.config_manager.load_config_by_id") as mock_load_config:
-            mock_load_config.return_value = {
-                "otp_config_id": 1,
-                "demarche_number": "123",
-                "grist_doc_id": "doc456",
-                "grist_user_id": "user123",
-                "has_ds_token": True,
-                "has_grist_key": True,
-            }
+        mock_load_config.return_value = {
+            "otp_config_id": 1,
+            "demarche_number": "123",
+            "grist_doc_id": "doc456",
+            "grist_user_id": "user123",
+            "has_ds_token": True,
+            "has_grist_key": True,
+        }
 
-            # Mock de run_synchronization_task
-            with patch.object(sync_manager, "run_synchronization_task") as mock_sync:
-                mock_sync.return_value = {"success": True, "message": "Sync successful"}
+        mock_notifier = MagicMock()
+        sync_manager = SyncManager(notify_callback=mock_notifier)
 
-                # Exécuter la fonction
-                scheduled_sync_job(1)
+        with patch.object(sync_manager, "run_synchronization_task") as mock_sync:
+            mock_sync.return_value = {"success": True, "message": "Sync successful"}
 
-                # Vérifications
+            scheduled_sync_job(1, sync_manager)
+
+            mock_load_config.assert_called_once_with(1)
+            mock_sync.assert_called_once()
+            mock_db.add.assert_called()
+            mock_db.commit.assert_called()
+
+    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.config_manager.load_config_by_id")
+    def test_scheduled_sync_job_error(self, mock_load_config, mock_sessionmaker):
+        """Test exécution échouée d'une synchronisation planifiée"""
+        from sync.scheduled_sync import scheduled_sync_job
+        from sync.sync_manager import SyncManager
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+
+        mock_config = MagicMock()
+        mock_config.id = 1
+        mock_config.grist_user_id = "user123"
+        mock_config.grist_doc_id = "doc456"
+
+        mock_db.query.return_value.filter_by.return_value.first.return_value = (
+            mock_config
+        )
+
+        mock_load_config.return_value = {
+            "otp_config_id": 1,
+            "demarche_number": "123",
+            "grist_doc_id": "doc456",
+            "grist_user_id": "user123",
+            "has_ds_token": True,
+            "has_grist_key": True,
+        }
+
+        mock_notifier = MagicMock()
+        sync_manager = SyncManager(notify_callback=mock_notifier)
+
+        with patch.object(sync_manager, "run_synchronization_task") as mock_sync:
+            mock_sync.return_value = {"success": False, "message": "Sync failed"}
+
+            with patch("sync.scheduled_sync.socketio") as mock_socketio:
+                scheduled_sync_job(1, sync_manager)
+
                 mock_load_config.assert_called_once_with(1)
                 mock_sync.assert_called_once()
-                mock_db.add.assert_called()  # SyncLog ajouté
-                mock_db.commit.assert_called()
+                mock_socketio.emit.assert_called_once()
+                call_args = mock_socketio.emit.call_args
+                assert call_args[0][0] == "sync_error"
+                data = call_args[0][1]
+                assert data["grist_user_id"] == "user123"
+                assert data["grist_doc_id"] == "doc456"
+                assert data["message"] == "Sync failed"
+                assert "timestamp" in data
 
-    @pytest.mark.skip(reason="Function moved to sync.scheduled_sync")
-    @patch("app.SessionLocal")
-    def test_scheduled_sync_job_error(self, mock_session):
-        """Test exécution échouée d'une synchronisation planifiée"""
-        from app import scheduled_sync_job
-
-        # Mock de la configuration OTP
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-
-        mock_config = MagicMock()
-        mock_config.id = 1
-        mock_config.grist_user_id = "user123"
-        mock_config.grist_doc_id = "doc456"
-
-        mock_db.query.return_value.filter_by.return_value.first.return_value = (
-            mock_config
-        )
-
-        # Mock de config_manager.load_config_by_id
-        with patch("app.config_manager.load_config_by_id") as mock_load_config:
-            mock_load_config.return_value = {
-                "otp_config_id": 1,
-                "demarche_number": "123",
-                "grist_doc_id": "doc456",
-                "grist_user_id": "user123",
-                "has_ds_token": True,
-                "has_grist_key": True,
-            }
-
-            # Mock de run_synchronization_task qui échoue
-            with patch.object(sync_manager, "run_synchronization_task") as mock_sync:
-                mock_sync.return_value = {"success": False, "message": "Sync failed"}
-
-                # Mock de socketio.emit
-                with patch("app.socketio.emit") as mock_emit:
-                    # Exécuter la fonction
-                    scheduled_sync_job(1)
-
-                    # Vérifications
-                    mock_load_config.assert_called_once_with(1)
-                    mock_sync.assert_called_once()
-                    mock_emit.assert_called_once()
-                    call_args = mock_emit.call_args
-                    assert call_args[0][0] == "sync_error"
-                    data = call_args[0][1]
-                    assert data["grist_user_id"] == "user123"
-                    assert data["grist_doc_id"] == "doc456"
-                    assert data["message"] == "Sync failed"
-                    assert "timestamp" in data
-
-    @pytest.mark.skip(reason="Function moved to sync.scheduled_sync")
-    @patch("app.SessionLocal")
-    def test_reload_scheduler_jobs(self, mock_session):
+    @patch("sync.scheduled_sync.sessionmaker")
+    def test_reload_scheduler_jobs(self, mock_sessionmaker):
         """Test rechargement des jobs du scheduler"""
-        from app import reload_scheduler_jobs
+        from sync.scheduled_sync import reload_scheduler_jobs, scheduler
+        from sync.sync_manager import SyncManager
 
-        # Mock de la DB
         mock_db = MagicMock()
-        mock_session.return_value = mock_db
+        mock_sessionmaker.return_value = mock_db
 
-        # Mock des schedules actifs
         mock_schedule1 = MagicMock()
         mock_schedule1.otp_config_id = 1
         mock_schedule1.enabled = True
@@ -910,16 +911,17 @@ class TestErrorHandling:
             mock_schedule2,
         ]
 
-        # Mock des configurations OTP
         mock_config1 = MagicMock()
         mock_config1.id = 1
         mock_config1.grist_user_id = "user1"
         mock_config1.grist_doc_id = "doc1"
+        mock_config1.demarche_number = "123"
 
         mock_config2 = MagicMock()
         mock_config2.id = 2
         mock_config2.grist_user_id = "user2"
         mock_config2.grist_doc_id = "doc2"
+        mock_config2.demarche_number = "456"
 
         def mock_filter_by(**kwargs):
             if kwargs.get("id") == 1:
@@ -930,15 +932,10 @@ class TestErrorHandling:
 
         mock_db.query.return_value.filter_by.side_effect = mock_filter_by
 
-        # Mock du scheduler global - patch au niveau du module
-        with patch("app.scheduler") as mock_scheduler_instance:
-            mock_scheduler_instance.get_jobs.return_value = []
-            mock_scheduler_instance.running = True
+        mock_notifier = MagicMock()
+        sync_manager = SyncManager(notify_callback=mock_notifier)
 
-            # Exécuter la fonction
-            reload_scheduler_jobs()
+        with patch.object(scheduler, "remove_all_jobs") as mock_remove:
+            reload_scheduler_jobs(sync_manager)
 
-            # Vérifications
-            mock_scheduler_instance.remove_all_jobs.assert_called_once()
-            # Vérifier que add_job a été appelé
-            # (ne pas vérifier le nombre exact car dépend de la logique)
+            mock_remove.assert_called_once()
