@@ -10,7 +10,7 @@ from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
 
 
-class SyncTaskManager:
+class SyncManager:
     """
     Gestionnaire de synchronisations asynchrones avec callbacks de notification
     pour les mises à jour en temps réel
@@ -100,7 +100,7 @@ class SyncTaskManager:
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(
-                os.path.dirname(__file__), "grist_processor_working_all.py"
+                os.path.dirname(__file__), "../grist_processor_working_all.py"
             )
 
             if log_callback:

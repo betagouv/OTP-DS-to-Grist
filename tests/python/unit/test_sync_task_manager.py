@@ -1,5 +1,5 @@
 """
-Tests unitaires pour la classe SyncTaskManager
+Tests unitaires pour la classe SyncManager
 
 Ces tests couvrent l'ensemble des fonctionnalités de la classe :
 - Gestion des tâches asynchrones
@@ -12,7 +12,7 @@ Ces tests couvrent l'ensemble des fonctionnalités de la classe :
 import os
 from io import StringIO
 from unittest.mock import patch, MagicMock
-from sync_task_manager import SyncTaskManager
+from sync.sync_manager import SyncManager
 
 
 def create_mock_process(stdout_text, stderr_text="", returncode=0):
@@ -33,17 +33,17 @@ def create_mock_process(stdout_text, stderr_text="", returncode=0):
     return mock_process
 
 
-class TestSyncTaskManager:
-    """Tests unitaires pour la classe SyncTaskManager"""
+class TestSyncManager:
+    """Tests unitaires pour la classe SyncManager"""
 
     def setup_method(self):
         """Initialisation avant chaque test"""
         self.mock_callback = MagicMock()
-        self.manager = SyncTaskManager(notify_callback=self.mock_callback)
+        self.manager = SyncManager(notify_callback=self.mock_callback)
 
     def test_initialization_without_callback(self):
         """Test l'initialisation sans callback de notification"""
-        manager = SyncTaskManager()
+        manager = SyncManager()
         assert manager.tasks == {}
         assert manager.task_counter == 0
         assert manager.notify_callback is None
@@ -65,7 +65,7 @@ class TestSyncTaskManager:
 
     def test_notify_without_callback(self):
         """Test la méthode notify sans callback configuré"""
-        manager = SyncTaskManager()
+        manager = SyncManager()
 
         # Ne doit pas lever d'exception
         manager.notify("test_event", {"key": "value"})
