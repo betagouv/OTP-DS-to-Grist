@@ -3,7 +3,7 @@ Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
 from flask import Flask, render_template, request, jsonify
-from flask_socketio import SocketIO
+from utils.socketio import socketio
 import os
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
@@ -295,7 +295,7 @@ app.secret_key = os.environ.get(
     'dev-key-change-in-production-2024'
 )
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+socketio.init_app(app)
 
 # Configuration du logging pour Flask
 logging.basicConfig(level=logging.INFO)
