@@ -2503,11 +2503,15 @@ def process_demarche_for_grist_optimized(
             if force_full_sync
             else (sync_meta.get("updated_since_cursor") if sync_meta else None)
         )
+        if isinstance(updated_since_cursor, (int, float)) and updated_since_cursor:
+            updated_since_cursor = datetime.fromtimestamp(
+                updated_since_cursor, tz=timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
         sync_meta_grist_id = sync_meta.get("grist_id") if sync_meta else None
         if force_full_sync:
             log("force_full_sync activé → sync complète forcée")
         elif updated_since_cursor:
-            log("updatedSince cursor trouvé: {updated_since_cursor}")
+            log(f"updatedSince cursor trouvé: {updated_since_cursor}")
         else:
             log("Pas de cursor updatedSince → sync complète")
 
