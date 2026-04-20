@@ -170,7 +170,17 @@ describe('updateTaskProgress', () => {
         <div id="result_content"></div>
       </div>
     </div>
-    <div id="sync_controls"></div>`
+    <div id="sync_controls"></div>
+    <!-- Template fragment for sync banner -->
+    <div id="sync_banner_template" style="display: none;">
+      <div class="fr-alert" role="alert">
+        <p>
+          <i class="fas sync-banner-icon"></i>
+          <span class="sync-banner-message"></span>
+          <span class="sync-banner-count fr-hint-text"></span>
+        </p>
+      </div>
+    </div>`
 
     // Objet tâche simulé (complétée)
     const mockTask = { status: 'completed', message: 'Sync terminée', progress: 100 }
@@ -180,7 +190,9 @@ describe('updateTaskProgress', () => {
 
     // Vérifications
     expect(document.getElementById('sync_result').style.display).toBe('block')
-    expect(document.getElementById('result_content').innerHTML).toContain('Synchronisation terminée avec succès')
+    const resultContent = document.getElementById('result_content')
+    expect(resultContent.querySelector('.sync-banner-message').textContent).toContain('Synchronisation terminée avec succès')
+    expect(resultContent.querySelector('.fr-alert').classList.contains('fr-alert--success')).toBe(true)
     expect(showNotification).toHaveBeenCalledWith('Synchronisation terminée avec succès!', 'success')
   })
 })
@@ -331,6 +343,16 @@ describe('loadAutoSyncState', () => {
     document.body.innerHTML = `
       <input type="checkbox" id="auto_sync_enabled">
       <div id="last_sync_status" style="display: block;"></div>
+      <!-- Template fragment for sync banner -->
+      <div id="sync_banner_template" style="display: none;">
+        <div class="fr-alert" role="alert">
+          <p>
+            <i class="fas sync-banner-icon"></i>
+            <span class="sync-banner-message"></span>
+            <span class="sync-banner-count fr-hint-text"></span>
+          </p>
+        </div>
+      </div>
     `
 
     // Mocks
@@ -395,7 +417,9 @@ describe('loadAutoSyncState', () => {
       expect(checkbox.disabled).toBe(false)
       expect(checkbox.checked).toBe(true)
       expect(document.getElementById('last_sync_status').style.display).toBe('block')
-      expect(document.getElementById('last_sync_status').innerHTML).toContain('Succès')
+      const statusDiv = document.getElementById('last_sync_status')
+      expect(statusDiv.querySelector('.sync-banner-message').textContent).toContain('Synchronisation terminée avec succès')
+      expect(statusDiv.querySelector('.fr-alert').classList.contains('fr-alert--success')).toBe(true)
     }
   )
 
@@ -454,7 +478,8 @@ describe('loadAutoSyncState', () => {
       // Vérifications
       const statusDiv = document.getElementById('last_sync_status')
       expect(statusDiv.style.display).toBe('block')
-      expect(statusDiv.innerHTML).toContain('Échec')
+      expect(statusDiv.querySelector('.sync-banner-message').textContent).toContain('Synchronisation terminée avec erreur')
+      expect(statusDiv.querySelector('.fr-alert').classList.contains('fr-alert--error')).toBe(true)
     }
   )
 
