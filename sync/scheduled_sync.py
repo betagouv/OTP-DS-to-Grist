@@ -14,9 +14,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 
-from database.models import OtpConfiguration, UserSchedule, SyncLog
+from database.models import OtpConfiguration, UserSchedule
 from configuration.config_manager import ConfigManager
-from utils.socketio import socketio
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ scheduler = BackgroundScheduler(
 config_manager = ConfigManager(DATABASE_URL)
 
 
-def scheduled_sync_job(otp_config_id, sync_manager, notify_callback=None):
+def scheduled_sync_job(otp_config_id, sync_manager):
     """
     Job exécuté automatiquement par APScheduler pour une configuration donnée.
     Exécute la synchronisation complète,
@@ -50,9 +49,7 @@ def scheduled_sync_job(otp_config_id, sync_manager, notify_callback=None):
       - Charge la configuration depuis la base
       - Met à jour last_run et calcule next_run dans UserSchedule
       - Exécute run_synchronization_task
-      - Met à jour last_status et crée une entrée SyncLog
       - En cas d'erreur :
-        - Notification WebSocket : uniquement pour success: false.
         - Désactivation du planning : uniquement pour les exceptions.
     """
     logger.info(
@@ -86,7 +83,10 @@ def scheduled_sync_job(otp_config_id, sync_manager, notify_callback=None):
             user_schedule.last_run = datetime.now(timezone.utc)
             db.commit()
 
-        result = sync_manager.run_synchronization_task(config)
+        result = sync_manager.run_synchronization_task(
+            config,
+            auto=True
+        )
 
         now = datetime.now(timezone.utc)
         next_run = now.replace(
@@ -101,47 +101,15 @@ def scheduled_sync_job(otp_config_id, sync_manager, notify_callback=None):
             db.commit()
 
         status = "success" if result.get("success") else "error"
-        message = result.get("message", "Synchronisation terminée")
 
         if user_schedule:
             user_schedule.last_status = status
             db.commit()
 
-        sync_log = SyncLog(
-            grist_user_id=otp_config.grist_user_id,
-            grist_doc_id=otp_config.grist_doc_id,
-            status=status,
-            message=message,
-        )
-        db.add(sync_log)
-        db.commit()
-
         logger.info(
             f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}"
         )
         logger.info(f"next_run DB mis à jour: {next_run}")
-
-        if not result.get("success"):
-            if notify_callback:
-                notify_callback(
-                    "sync_error",
-                    {
-                        "grist_user_id": otp_config.grist_user_id,
-                        "grist_doc_id": otp_config.grist_doc_id,
-                        "message": message,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-            else:
-                socketio.emit(
-                    "sync_error",
-                    {
-                        "grist_user_id": otp_config.grist_user_id,
-                        "grist_doc_id": otp_config.grist_doc_id,
-                        "message": message,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
 
     except Exception as e:
         logger.error(
@@ -162,47 +130,11 @@ def scheduled_sync_job(otp_config_id, sync_manager, notify_callback=None):
         except Exception:
             logger.error(f"Erreur lors de la désactivation du planning")
 
-        try:
-            otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
-
-            if otp_config:
-                sync_log = SyncLog(
-                    grist_user_id=otp_config.grist_user_id,
-                    grist_doc_id=otp_config.grist_doc_id,
-                    status="error",
-                    message=f"Erreur scheduler: {str(e)}",
-                )
-                db.add(sync_log)
-                db.commit()
-
-                if notify_callback:
-                    notify_callback(
-                        "sync_error",
-                        {
-                            "grist_user_id": otp_config.grist_user_id,
-                            "grist_doc_id": otp_config.grist_doc_id,
-                            "message": f"Erreur de synchronisation planifiée: {str(e)}",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                    )
-                else:
-                    socketio.emit(
-                        "sync_error",
-                        {
-                            "grist_user_id": otp_config.grist_user_id,
-                            "grist_doc_id": otp_config.grist_doc_id,
-                            "message": f"Erreur de synchronisation planifiée: {str(e)}",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        },
-                    )
-        except Exception:
-            logger.error(f"Erreur lors du logging de l'erreur scheduler")
-
     finally:
         db.close()
 
 
-def reload_scheduler_jobs(sync_manager, notify_callback=None):
+def reload_scheduler_jobs(sync_manager):
     """
     Recharge tous les jobs actifs du scheduler selon les plannings activés.
     Exécutée au démarrage et après activation/désactivation de plannings,
@@ -248,7 +180,7 @@ def reload_scheduler_jobs(sync_manager, notify_callback=None):
                 scheduler.add_job(
                     func=scheduled_sync_job,
                     trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
-                    args=[schedule.otp_config_id, sync_manager, notify_callback],
+                    args=[schedule.otp_config_id, sync_manager],
                     id=job_id,
                     name=f"Sync planifiée pour config {schedule.otp_config_id}",
                     replace_existing=True,

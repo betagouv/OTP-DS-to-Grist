@@ -837,8 +837,17 @@ class TestErrorHandling:
 
             mock_load_config.assert_called_once_with(1)
             mock_sync.assert_called_once()
-            mock_db.add.assert_called()
-            mock_db.commit.assert_called()
+            mock_sync.assert_called_once_with(
+                {
+                    "otp_config_id": 1,
+                    "demarche_number": "123",
+                    "grist_doc_id": "doc456",
+                    "grist_user_id": "user123",
+                    "has_ds_token": True,
+                    "has_grist_key": True,
+                },
+                auto=True,
+            )
 
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
@@ -875,19 +884,21 @@ class TestErrorHandling:
         with patch.object(sync_manager, "run_synchronization_task") as mock_sync:
             mock_sync.return_value = {"success": False, "message": "Sync failed"}
 
-            with patch("sync.scheduled_sync.socketio") as mock_socketio:
-                scheduled_sync_job(1, sync_manager)
+            scheduled_sync_job(1, sync_manager)
 
-                mock_load_config.assert_called_once_with(1)
-                mock_sync.assert_called_once()
-                mock_socketio.emit.assert_called_once()
-                call_args = mock_socketio.emit.call_args
-                assert call_args[0][0] == "sync_error"
-                data = call_args[0][1]
-                assert data["grist_user_id"] == "user123"
-                assert data["grist_doc_id"] == "doc456"
-                assert data["message"] == "Sync failed"
-                assert "timestamp" in data
+            mock_load_config.assert_called_once_with(1)
+            mock_sync.assert_called_once()
+            mock_sync.assert_called_once_with(
+                {
+                    "otp_config_id": 1,
+                    "demarche_number": "123",
+                    "grist_doc_id": "doc456",
+                    "grist_user_id": "user123",
+                    "has_ds_token": True,
+                    "has_grist_key": True,
+                },
+                auto=True,
+            )
 
     @patch("sync.scheduled_sync.sessionmaker")
     def test_reload_scheduler_jobs(self, mock_sessionmaker):

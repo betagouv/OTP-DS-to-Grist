@@ -5,9 +5,14 @@ import subprocess
 import sys
 import traceback
 from datetime import datetime, timezone
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sync.sync_result_parser import parse_output
 from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
+from database.models import SyncLog
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 class SyncManager:
@@ -26,18 +31,27 @@ class SyncManager:
         if self.notify_callback:
             self.notify_callback(event_type, data)
 
-    def start_sync(self, server_config):
+    def start_sync(self, server_config, auto=False):
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
-        return self.start_task(self.run_synchronization_task, server_config)
+        return self.start_task(
+            self.run_synchronization_task,
+            server_config,
+            auto=auto
+        )
 
     def run_synchronization_task(
-        self, config, progress_callback=None, log_callback=None
+        self,
+        config,
+        progress_callback=None,
+        log_callback=None,
+        auto=False
     ):
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
         """
 
         output_lines = []
+        result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
 
         try:
             if progress_callback:
@@ -185,6 +199,23 @@ class SyncManager:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "traceback": traceback.format_exc(),
             }
+        finally:
+            engine = create_engine(DATABASE_URL)
+            SessionLocal = sessionmaker(bind=engine)
+            db_session = SessionLocal()
+
+            sync_log = SyncLog(
+                grist_user_id=config.get("grist_user_id"),
+                grist_doc_id=config.get("grist_doc_id"),
+                status="success" if result.get("success") else "error",
+                message=result.get("message"),
+                auto=auto,
+                success_count=result.get("success_count", 0),
+                error_count=result.get("error_count", 0),
+            )
+            db_session.add(sync_log)
+            db_session.commit()
+            db_session.close()
 
     def start_task(self, task_function, *args, **kwargs):
         """Démarre une nouvelle tâche asynchrone"""

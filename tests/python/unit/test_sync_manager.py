@@ -216,9 +216,11 @@ class TestSyncManager:
             self.manager.start_sync(server_config)
 
             mock_start_task.assert_called_once_with(
-                self.manager.run_synchronization_task, server_config
+                self.manager.run_synchronization_task, server_config, auto=False
             )
 
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
     @patch.dict(
         os.environ,
         {
@@ -231,7 +233,9 @@ class TestSyncManager:
         },
     )
     @patch("subprocess.Popen")
-    def test_run_synchronization_task_success(self, mock_subprocess):
+    def test_run_synchronization_task_success(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
         """Test run_synchronization_task avec succès"""
         mock_subprocess.return_value = create_mock_process("""Récupération de la démarche 12345
         Progression: 35 - Analyse de la démarche
@@ -286,12 +290,21 @@ class TestSyncManager:
         assert len(progress_calls) > 0
         assert progress_calls[-1][0] == 100  # Dernière progression à 100%
 
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
     @patch("subprocess.Popen")
-    def test_run_synchronization_task_with_filters(self, mock_subprocess):
+    def test_run_synchronization_task_with_filters(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
         """Test run_synchronization_task avec des filtres"""
         mock_subprocess.return_value = create_mock_process(
             "10 dossiers traités avec succès"
         )
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
 
         config = {
             "ds_api_token": "test_token",
@@ -323,12 +336,21 @@ class TestSyncManager:
         assert env.get("STATUTS_DOSSIERS") == "en_construction,en_instruction"
         assert env.get("GROUPES_INSTRUCTEURS") == "1,2,3"
 
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
     @patch("subprocess.Popen")
-    def test_run_synchronization_task_subprocess_error(self, mock_subprocess):
+    def test_run_synchronization_task_subprocess_error(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
         """Test run_synchronization_task avec erreur subprocess"""
         mock_subprocess.return_value = create_mock_process(
             "", "Script error occurred", returncode=1
         )
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
 
         config = {
             "ds_api_token": "test_token",
@@ -366,23 +388,40 @@ class TestSyncManager:
         def log_callback(message):
             log_calls.append(message)
 
-        # Simuler une erreur dans le traitement
-        with patch("subprocess.Popen", side_effect=Exception("Unexpected error")):
-            result = self.manager.run_synchronization_task(
-                config, log_callback=log_callback
-            )
+        with (
+            patch("sync.sync_manager.create_engine") as mock_create_engine,
+            patch("sync.sync_manager.sessionmaker") as mock_sessionmaker,
+        ):
+            mock_db = MagicMock()
+            mock_session_class = MagicMock(return_value=mock_db)
+            mock_sessionmaker.return_value = mock_session_class
+            mock_create_engine.return_value = MagicMock()
 
-            assert result["success"] is False
-            assert "Erreur lors de la synchronisation" in result["message"]
-            assert "traceback" in result
+            with patch("subprocess.Popen", side_effect=Exception("Unexpected error")):
+                result = self.manager.run_synchronization_task(
+                    config, log_callback=log_callback
+                )
 
+                assert result["success"] is False
+                assert "Erreur lors de la synchronisation" in result["message"]
+                assert "traceback" in result
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
     @patch("subprocess.Popen")
-    def test_progress_parsing(self, mock_subprocess):
+    def test_progress_parsing(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
         """Test le parsing de la progression depuis les logs"""
         mock_subprocess.return_value = create_mock_process("""Configuration Grist
         Progression: 34 - Vérification des connexions aux APIs
         Progression: 39 - Préparation du traitement
         100 dossiers traités avec succès""")
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
 
         config = {
             "ds_api_token": "test_token",
@@ -407,10 +446,19 @@ class TestSyncManager:
         assert matching_34, f"Progression attendue ~34, recue: {progress_values}"
         assert matching_39, f"Progression attendue ~40, recue: {progress_values}"
 
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
     @patch("subprocess.Popen")
-    def test_environment_variables_setup(self, mock_subprocess):
+    def test_environment_variables_setup(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
         """Test la configuration des variables d'environnement"""
         mock_subprocess.return_value = create_mock_process("Test output")
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
 
         config = {
             "ds_api_token": "new_token",
@@ -429,13 +477,22 @@ class TestSyncManager:
         assert env.get("DEMARCHE_NUMBER") == "99999"
         assert env.get("GRIST_BASE_URL") == "https://new.grist.com"
 
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
     @patch("subprocess.Popen")
-    def test_statistics_parsing(self, mock_subprocess):
+    def test_statistics_parsing(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
         """Test le parsing des statistiques depuis la sortie"""
         mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 85
         Dossiers en échec: 15
         Total dossiers traités: 100
         """)
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
 
         config = {
             "ds_api_token": "test_token",
@@ -451,3 +508,186 @@ class TestSyncManager:
         assert result["total_processed"] == 100
         assert result["dossier_count"] == 100
         assert result["success"] is False  # Parce qu'il y a des erreurs
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_creates_sync_log_on_success(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Test que run_synchronization_task crée un SyncLog après succès"""
+        mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 10
+        Dossiers en échec: 0
+        Total dossiers traités: 10
+        """)
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "grist_user_id": "user123",
+        }
+
+        result = self.manager.run_synchronization_task(config, auto=True)
+
+        assert result["success"] is True
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+        mock_db.close.assert_called_once()
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.grist_user_id == "user123"
+        assert sync_log.grist_doc_id == "test_doc"
+        assert sync_log.status == "success"
+        assert sync_log.auto is True
+        assert sync_log.success_count == 10
+        assert sync_log.error_count == 0
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_creates_sync_log_on_failure(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Test que run_synchronization_task crée un SyncLog après échec"""
+        mock_subprocess.return_value = create_mock_process("", returncode=1)
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "grist_user_id": "user456",
+        }
+
+        result = self.manager.run_synchronization_task(config, auto=False)
+
+        assert result["success"] is False
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+        mock_db.close.assert_called_once()
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.grist_user_id == "user456"
+        assert sync_log.grist_doc_id == "test_doc"
+        assert sync_log.status == "error"
+        assert sync_log.auto is False
+        assert sync_log.success_count == 0
+        assert sync_log.error_count == 0  # default fallback when exception caught
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_with_auto_parameter(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Test que le paramètre auto est correctement passé au SyncLog"""
+        mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 5
+        Dossiers en échec: 2
+        Total dossiers traités: 7
+        """)
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "grist_user_id": "user789",
+        }
+
+        self.manager.run_synchronization_task(config, auto=True)
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.auto is True
+        assert sync_log.success_count == 5
+        assert sync_log.error_count == 2
+
+        mock_db.reset_mock()
+
+        self.manager.run_synchronization_task(config, auto=False)
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.auto is False
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_success_manual_sync(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Test que run_synchronization_task crée un SyncLog avec auto=False après succès"""
+        mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 20
+        Dossiers en échec: 0
+        Total dossiers traités: 20
+        """)
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "grist_user_id": "user_manual",
+        }
+
+        result = self.manager.run_synchronization_task(config, auto=False)
+
+        assert result["success"] is True
+        mock_db.add.assert_called_once()
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.grist_user_id == "user_manual"
+        assert sync_log.status == "success"
+        assert sync_log.auto is False
+        assert sync_log.success_count == 20
+        assert sync_log.error_count == 0
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_failure_auto_sync(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Test que run_synchronization_task crée un SyncLog avec auto=True après échec"""
+        mock_subprocess.return_value = create_mock_process("", returncode=1)
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "grist_user_id": "user_auto_error",
+        }
+
+        result = self.manager.run_synchronization_task(config, auto=True)
+
+        assert result["success"] is False
+        mock_db.add.assert_called_once()
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.grist_user_id == "user_auto_error"
+        assert sync_log.status == "error"
+        assert sync_log.auto is True

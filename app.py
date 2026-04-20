@@ -706,7 +706,10 @@ def api_start_sync():
             }), 400
 
         # Démarrer la tâche avec la configuration serveur sécurisée
-        task_id = sync_manager.start_sync(server_config)
+        task_id = sync_manager.start_sync(
+            server_config,
+            auto=False
+        )
 
         return jsonify({
             "success": True,
