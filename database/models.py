@@ -1,11 +1,4 @@
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Boolean,
-    DateTime,
-    ForeignKey
-)
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base
 from datetime import datetime, timezone
 
@@ -13,7 +6,7 @@ Base = declarative_base()
 
 
 class OtpConfiguration(Base):
-    __tablename__ = 'otp_configurations'
+    __tablename__ = "otp_configurations"
     id = Column(Integer, primary_key=True)
     ds_api_token = Column(String)
     demarche_number = Column(String)
@@ -29,13 +22,12 @@ class OtpConfiguration(Base):
 
 
 class UserSchedule(Base):
-    __tablename__ = 'user_schedules'
+    __tablename__ = "user_schedules"
     id = Column(Integer, primary_key=True)
     otp_config_id = Column(
-        Integer,
-        ForeignKey('otp_configurations.id', ondelete='SET NULL')
+        Integer, ForeignKey("otp_configurations.id", ondelete="SET NULL")
     )
-    frequency = Column(String, default='daily')
+    frequency = Column(String, default="daily")
     enabled = Column(Boolean, default=False)
     last_run = Column(DateTime)
     next_run = Column(DateTime)
@@ -43,10 +35,13 @@ class UserSchedule(Base):
 
 
 class SyncLog(Base):
-    __tablename__ = 'sync_logs'
+    __tablename__ = "sync_logs"
     id = Column(Integer, primary_key=True)
     grist_user_id = Column(String)
     grist_doc_id = Column(String)
     status = Column(String)
     message = Column(String)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    auto = Column(Boolean, default=True, nullable=False)
+    success_count = Column(Integer, nullable=True)
+    error_count = Column(Integer, nullable=True)
