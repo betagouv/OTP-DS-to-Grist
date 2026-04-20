@@ -2503,7 +2503,7 @@ def process_demarche_for_grist_optimized(
             if force_full_sync
             else (sync_meta.get("updated_since_cursor") if sync_meta else None)
         )
-        if isinstance(updated_since_cursor, (int, float)) and updated_since_cursor:
+        if updated_since_cursor and isinstance(updated_since_cursor, (int, float)):
             updated_since_cursor = datetime.fromtimestamp(
                 updated_since_cursor, tz=timezone.utc
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
