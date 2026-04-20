@@ -12,23 +12,15 @@ from werkzeug.serving import WSGIRequestHandler
 import logging
 import atexit
 import re
-from sqlalchemy import (create_engine)
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sync.scheduled_sync import scheduler, reload_scheduler_jobs
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync.sync_manager import SyncManager
-from constants import (
-    GITHUB_CHANGELOG_BASE_URL,
-    CHANGELOG_PATH,
-    DEMARCHES_API_URL
-)
-from api_validator import (
-    test_demarches_api,
-    test_grist_api,
-    verify_api_connections
-)
+from constants import GITHUB_CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
+from api_validator import test_demarches_api, test_grist_api, verify_api_connections
 
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -36,7 +28,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 # Chargement des variables d'environnement
 load_dotenv()
 
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError(
         "DATABASE_URL environment variable is required for database operations"
@@ -54,15 +46,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Configuration de l'application Flask
 app = Flask(__name__)
+
+
 # Callback d'injection pour les notifications WebSocket
 def socketio_notify_callback(event_type, data):
     socketio.emit(event_type, data)
 
+
 sync_manager = SyncManager(notify_callback=socketio_notify_callback)
-app.secret_key = os.environ.get(
-    'FLASK_SECRET_KEY',
-    'dev-key-change-in-production-2024'
-)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-change-in-production-2024")
 
 socketio.init_app(app)
 
@@ -76,7 +68,6 @@ if not scheduler.running:
     reload_scheduler_jobs(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
     atexit.register(lambda: scheduler.shutdown(wait=True))
-
 
 
 def get_available_groups(api_token, demarche_number):
@@ -100,14 +91,14 @@ def get_available_groups(api_token, demarche_number):
         variables = {"demarcheNumber": int(demarche_number)}
         headers = {
             "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         response = requests.post(
             DEMARCHES_API_URL,
             json={"query": query, "variables": variables},
             headers=headers,
-            timeout=10
+            timeout=10,
         )
 
         if response.status_code != 200:
@@ -117,23 +108,20 @@ def get_available_groups(api_token, demarche_number):
         if "errors" in result:
             return []
 
-        groupes = result.get(
-            "data", {}
-        ).get(
-            "demarche", {}
-        ).get(
-            "groupeInstructeurs", []
+        groupes = (
+            result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
         )
-        return [
-            (groupe.get("number"), groupe.get("label")) for groupe in groupes
-        ]
+        return [(groupe.get("number"), groupe.get("label")) for groupe in groupes]
 
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des groupes instructeurs: {str(e)}")
+        logger.error(
+            f"Erreur lors de la récupération des groupes instructeurs: {str(e)}"
+        )
         return []
 
 
 # Routes Flask
+
 
 def test_current_config_connections(otp_config_id):
     """
@@ -142,48 +130,49 @@ def test_current_config_connections(otp_config_id):
     config = config_manager.load_config_by_id(otp_config_id)
 
     # Vérifier que les paramètres requis sont présents
-    ds_api_token = config.get('ds_api_token')
-    demarche_number = config.get('demarche_number')
-    grist_base_url = config.get('grist_base_url')
-    grist_api_key = config.get('grist_api_key')
-    grist_doc_id = config.get('grist_doc_id')
+    ds_api_token = config.get("ds_api_token")
+    demarche_number = config.get("demarche_number")
+    grist_base_url = config.get("grist_base_url")
+    grist_api_key = config.get("grist_api_key")
+    grist_doc_id = config.get("grist_doc_id")
 
     if not ds_api_token:
-        return jsonify({
-            "success": False,
-            "message": "Token API Démarches Simplifiées non configuré"
-        }), 400
+        return jsonify(
+            {
+                "success": False,
+                "message": "Token API Démarches Simplifiées non configuré",
+            }
+        ), 400
 
     if not grist_api_key or not grist_base_url or not grist_doc_id:
-        return jsonify({
-            "success": False,
-            "message": "Configuration Grist incomplète"
-        }), 400
+        return jsonify(
+            {"success": False, "message": "Configuration Grist incomplète"}
+        ), 400
 
     try:
         # Utiliser la fonction centralisée pour tester les connexions
         all_success, results = verify_api_connections(
-            ds_api_token,
-            demarche_number,
-            grist_base_url,
-            grist_api_key,
-            grist_doc_id
+            ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id
         )
 
         success_count = sum(1 for r in results if r["success"])
 
-        return jsonify({
-            "success": all_success,
-            "message": f"{success_count}/{len(results)} tests réussis",
-            "results": results
-        })
+        return jsonify(
+            {
+                "success": all_success,
+                "message": f"{success_count}/{len(results)} tests réussis",
+                "results": results,
+            }
+        )
 
     except Exception as e:
         logger.exception("Erreur lors du test des connexions")
-        return jsonify({
-            "success": False,
-            "message": "Une erreur interne est survenue lors du test des connexions"
-        }), 500
+        return jsonify(
+            {
+                "success": False,
+                "message": "Une erreur interne est survenue lors du test des connexions",
+            }
+        ), 500
 
 
 @app.context_processor
@@ -223,67 +212,66 @@ def inject_version_info():
         release_url=f"{GITHUB_CHANGELOG_BASE_URL}#{anchor}",
     )
 
+
 @app.context_processor
 def inject_env_name():
-    return dict(env_name=os.getenv('ENV', ''))
+    return dict(env_name=os.getenv("ENV", ""))
 
 
-@app.route('/')
+@app.route("/")
 def index():
     """Page d'accueil avec configuration"""
-    return render_template('index.html')
+    return render_template("index.html")
 
 
-@app.route('/api/config', methods=['GET', 'POST'])
+@app.route("/api/config", methods=["GET", "POST"])
 def api_config():
     """API pour la gestion de la configuration"""
-    if request.method == 'GET':
+    if request.method == "GET":
         try:
             # Récupérer les paramètres de contexte Grist depuis la requête
-            grist_user_id = request.args.get('grist_user_id')
-            grist_doc_id = request.args.get('grist_doc_id')
+            grist_user_id = request.args.get("grist_user_id")
+            grist_doc_id = request.args.get("grist_doc_id")
 
             config = config_manager.load_config(
-                grist_user_id=grist_user_id,
-                grist_doc_id=grist_doc_id
+                grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
             )
 
             # Ajouter l'id de la configuration
             db = SessionLocal()
             try:
-                otp_config = db.query(OtpConfiguration).filter_by(
-                    grist_user_id=grist_user_id,
-                    grist_doc_id=grist_doc_id
-                ).first()
+                otp_config = (
+                    db.query(OtpConfiguration)
+                    .filter_by(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
+                    .first()
+                )
                 if otp_config:
-                    config['otp_config_id'] = otp_config.id
+                    config["otp_config_id"] = otp_config.id
             finally:
                 db.close()
 
             # Supprimer les tokens sensibles, ajouter flags d'existence
-            config['has_ds_token'] = bool(config.get('ds_api_token'))
-            config['has_grist_key'] = bool(config.get('grist_api_key'))
-            config.pop('ds_api_token', None)
-            config.pop('grist_api_key', None)
+            config["has_ds_token"] = bool(config.get("ds_api_token"))
+            config["has_grist_key"] = bool(config.get("grist_api_key"))
+            config.pop("ds_api_token", None)
+            config.pop("grist_api_key", None)
 
             return jsonify(config)
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
 
-    elif request.method == 'POST':
+    elif request.method == "POST":
         try:
             new_config = request.get_json()
 
-            otp_config_id = new_config.get('otp_config_id')
+            otp_config_id = new_config.get("otp_config_id")
             if otp_config_id:
                 # Update existant
-                existing_config = config_manager.load_config_by_id(
-                    otp_config_id
-                )
+                existing_config = config_manager.load_config_by_id(otp_config_id)
 
                 # Fusionner les champs sensibles seulement si fournis
                 # les autres toujours
-                sensitive_keys = ['ds_api_token', 'grist_api_key']
+                sensitive_keys = ["ds_api_token", "grist_api_key"]
                 for key, value in new_config.items():
                     if key in sensitive_keys:
                         if value:  # Seulement si fourni (non vide)
@@ -292,31 +280,39 @@ def api_config():
                         # Toujours mettre à jour, même vide
                         existing_config[key] = value
                 # Supprimer otp_config_id du dict avant sauvegarde
-                existing_config.pop('otp_config_id', None)
+                existing_config.pop("otp_config_id", None)
                 success = config_manager.save_config(existing_config)
 
                 return (
-                    jsonify({
-                        "success": True,
-                        "message": "Configuration mise à jour avec succès",
-                        "otp_config_id": otp_config_id
-                    }),
-                    200
-                ) if success else (
-                    jsonify({
-                        "success": False,
-                        "message": "Erreur lors de la mise à jour"
-                    }),
-                    500
+                    (
+                        jsonify(
+                            {
+                                "success": True,
+                                "message": "Configuration mise à jour avec succès",
+                                "otp_config_id": otp_config_id,
+                            }
+                        ),
+                        200,
+                    )
+                    if success
+                    else (
+                        jsonify(
+                            {
+                                "success": False,
+                                "message": "Erreur lors de la mise à jour",
+                            }
+                        ),
+                        500,
+                    )
                 )
             else:
                 # Création - champs minimum pour sauvegarde partielle
                 required_fields = [
-                    'ds_api_token',
-                    'demarche_number',
-                    'grist_base_url',
-                    'grist_doc_id',
-                    'grist_user_id'
+                    "ds_api_token",
+                    "demarche_number",
+                    "grist_base_url",
+                    "grist_doc_id",
+                    "grist_user_id",
                 ]
 
                 for field in required_fields:
@@ -324,62 +320,55 @@ def api_config():
                         return jsonify(
                             {
                                 "success": False,
-                                "message": f"Le champ {field} est requis"
+                                "message": f"Le champ {field} est requis",
                             }
                         ), 400
                 success = config_manager.save_config(new_config)
                 if success:
                     db = SessionLocal()
                     try:
-                        otp_config = db.query(OtpConfiguration).filter_by(
-                            grist_user_id=new_config.get('grist_user_id'),
-                            grist_doc_id=new_config.get('grist_doc_id')
-                        ).first()
+                        otp_config = (
+                            db.query(OtpConfiguration)
+                            .filter_by(
+                                grist_user_id=new_config.get("grist_user_id"),
+                                grist_doc_id=new_config.get("grist_doc_id"),
+                            )
+                            .first()
+                        )
                         otp_config_id = otp_config.id if otp_config else None
                     finally:
                         db.close()
-                    return jsonify({
-                        "success": True,
-                        "message": "Configuration sauvegardée avec succès",
-                        "otp_config_id": otp_config_id
-                    })
-                else:
                     return jsonify(
                         {
-                            "success": False,
-                            "message": "Erreur lors de la sauvegarde"
+                            "success": True,
+                            "message": "Configuration sauvegardée avec succès",
+                            "otp_config_id": otp_config_id,
                         }
+                    )
+                else:
+                    return jsonify(
+                        {"success": False, "message": "Erreur lors de la sauvegarde"}
                     ), 500
 
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
             return jsonify(
-                {
-                    "success": False,
-                    "message": "Erreur interne lors de la sauvegarde."
-                }
+                {"success": False, "message": "Erreur interne lors de la sauvegarde."}
             ), 500
 
 
-@app.route('/api/config/<int:otp_config_id>', methods=['DELETE'])
+@app.route("/api/config/<int:otp_config_id>", methods=["DELETE"])
 def api_delete_config(otp_config_id):
     """API pour supprimer une configuration"""
     db = SessionLocal()
 
     try:
         # Trouver la configuration
-        otp_config = db.query(
-            OtpConfiguration
-        ).filter_by(
-            id=otp_config_id
-        ).first()
+        otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
 
         if not otp_config:
             return jsonify(
-                {
-                    "success": False,
-                    "message": "Configuration non trouvée"
-                }
+                {"success": False, "message": "Configuration non trouvée"}
             ), 404
 
         # Supprimer la configuration (les FK sont gérées automatiquement)
@@ -391,42 +380,36 @@ def api_delete_config(otp_config_id):
 
         logger.info(f"Configuration supprimée: {otp_config_id}")
         return jsonify(
-            {
-                "success": True,
-                "message": "Configuration supprimée avec succès"
-            }
+            {"success": True, "message": "Configuration supprimée avec succès"}
         )
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Erreur lors de la suppression de la configuration {otp_config_id}: {str(e)}")
+        logger.error(
+            f"Erreur lors de la suppression de la configuration {otp_config_id}: {str(e)}"
+        )
         return jsonify(
-            {
-                "success": False,
-                "message": "Erreur interne lors de la suppression"
-            }
+            {"success": False, "message": "Erreur interne lors de la suppression"}
         ), 500
     finally:
         db.close()
 
 
-@app.route('/api/schedule', methods=['GET', 'POST', 'DELETE'])
+@app.route("/api/schedule", methods=["GET", "POST", "DELETE"])
 def api_schedule():
     """API pour gérer les plannings de synchronisation"""
     db = SessionLocal()
 
     try:
-        if request.method == 'GET':
-            otp_config_id = request.args.get('otp_config_id')
+        if request.method == "GET":
+            otp_config_id = request.args.get("otp_config_id")
             if not otp_config_id:
                 return jsonify(
                     {"success": False, "message": "otp_config_id is required"}
                 ), 400
 
             # Trouver la configuration
-            otp_config = db.query(OtpConfiguration).filter_by(
-                id=otp_config_id
-            ).first()
+            otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
 
             if not otp_config:
                 return jsonify(
@@ -434,19 +417,23 @@ def api_schedule():
                 ), 404
 
             # Vérifier si le planning existe et est activé
-            schedule = db.query(UserSchedule).filter_by(
-                otp_config_id=otp_config.id
-            ).first()
+            schedule = (
+                db.query(UserSchedule).filter_by(otp_config_id=otp_config.id).first()
+            )
 
-            return jsonify({
-                "success": True,
-                "enabled": schedule.enabled if schedule else False,
-                "last_run": schedule.last_run.isoformat() if schedule and schedule.last_run else None,
-                "last_status": schedule.last_status if schedule else None
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "enabled": schedule.enabled if schedule else False,
+                    "last_run": schedule.last_run.isoformat()
+                    if schedule and schedule.last_run
+                    else None,
+                    "last_status": schedule.last_status if schedule else None,
+                }
+            )
 
         data = request.get_json()
-        otp_config_id = data.get('otp_config_id')
+        otp_config_id = data.get("otp_config_id")
 
         if not otp_config_id:
             return jsonify(
@@ -454,36 +441,28 @@ def api_schedule():
             ), 400
 
         # Trouver la configuration
-        otp_config = db.query(OtpConfiguration).filter_by(
-            id=otp_config_id
-        ).first()
+        otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
 
         if not otp_config:
             return jsonify(
                 {"success": False, "message": "Configuration not found"}
             ), 404
 
-        if request.method == 'POST':
+        if request.method == "POST":
             if not otp_config.grist_api_key:
                 return jsonify(
-                    {
-                        "success": False,
-                        "message": "Clé grist manquante"
-                    }
+                    {"success": False, "message": "Clé grist manquante"}
                 ), 403
 
             # Activer le planning
-            schedule = db.query(UserSchedule).filter_by(
-                otp_config_id=otp_config.id
-            ).first()
+            schedule = (
+                db.query(UserSchedule).filter_by(otp_config_id=otp_config.id).first()
+            )
 
             if schedule:
                 schedule.enabled = True
             else:
-                schedule = UserSchedule(
-                    otp_config_id=otp_config.id,
-                    enabled=True
-                )
+                schedule = UserSchedule(otp_config_id=otp_config.id, enabled=True)
                 db.add(schedule)
             db.commit()
 
@@ -492,11 +471,11 @@ def api_schedule():
 
             return jsonify({"success": True, "message": "Schedule enabled"})
 
-        elif request.method == 'DELETE':
+        elif request.method == "DELETE":
             # Désactiver le planning
-            schedule = db.query(UserSchedule).filter_by(
-                otp_config_id=otp_config.id
-            ).first()
+            schedule = (
+                db.query(UserSchedule).filter_by(otp_config_id=otp_config.id).first()
+            )
 
             if schedule:
                 schedule.enabled = False
@@ -511,16 +490,13 @@ def api_schedule():
         db.rollback()
         logger.error(f"Erreur dans api_schedule: {str(e)}")
         return jsonify(
-            {
-                "success": False,
-                "message": "Une erreur interne est survenue."
-            }
+            {"success": False, "message": "Une erreur interne est survenue."}
         ), 500
     finally:
         db.close()
 
 
-@app.route('/api/test-connection', methods=['POST'])
+@app.route("/api/test-connection", methods=["POST"])
 def api_test_connection():
     """
     Route pour tester les connexions vers les autres API
@@ -529,101 +505,166 @@ def api_test_connection():
     Avec type='demarches' ou 'grist' : teste uniquement l'API spécifiée
     """
     data = request.get_json() or {}
-    connection_type = data.get('type')
+    connection_type = data.get("type")
 
-    if connection_type == 'demarches':
+    if connection_type == "demarches":
         success, message = test_demarches_api(
-            data.get('api_token'),
-            data.get('demarche_number')
+            data.get("api_token"), data.get("demarche_number")
         )
-    elif connection_type == 'grist':
+    elif connection_type == "grist":
         success, message = test_grist_api(
-            data.get('base_url'),
-            data.get('api_key'),
-            data.get('doc_id')
+            data.get("base_url"), data.get("api_key"), data.get("doc_id")
         )
     else:
-        return test_current_config_connections(data.get('otp_config_id'))
+        return test_current_config_connections(data.get("otp_config_id"))
 
     return jsonify({"success": success, "message": message})
 
 
-@app.route('/api/groups')
+@app.route("/api/groups")
 def api_groups():
     """API pour récupérer les groupes instructeurs - Mode hybride"""
     try:
         # Mode 1: Priorité à otp_config_id si fourni
-        otp_config_id = request.args.get('otp_config_id')
+        otp_config_id = request.args.get("otp_config_id")
         if otp_config_id:
             config = config_manager.load_config_by_id(otp_config_id)
         else:
             # Mode 2: Utiliser les paramètres Grist (compatibilité)
-            grist_user_id = request.args.get('grist_user_id')
-            grist_doc_id = request.args.get('grist_doc_id')
+            grist_user_id = request.args.get("grist_user_id")
+            grist_doc_id = request.args.get("grist_doc_id")
             config = config_manager.load_config(
-                grist_user_id=grist_user_id,
-                grist_doc_id=grist_doc_id
+                grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
             )
 
-        groups = get_available_groups(
-            config['ds_api_token'],
-            config['demarche_number']
-        )
+        groups = get_available_groups(config["ds_api_token"], config["demarche_number"])
 
         return jsonify(groups)
 
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des groupes : {str(e)}")
-        return jsonify(
-            {'error': 'Erreur lors de la récupération des groupes'}
-        ), 400
+        return jsonify({"error": "Erreur lors de la récupération des groupes"}), 400
 
 
-@app.route('/api/sync-report', methods=['GET'])
+@app.route("/api/sync-report", methods=["GET"])
 def api_sync_report():
     """Route pour récupérer le rapport des synchronisations des dernières 24h"""
     db = SessionLocal()
     try:
         # Logs des dernières 24h avec jointures pour récupérer config_id, schedule_id, demarche
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-        logs_query = db.query(
-            SyncLog,
-            OtpConfiguration.id.label('config_id'),
-            UserSchedule.id.label('schedule_id'),
-            OtpConfiguration.demarche_number
-        ).join(
-            OtpConfiguration,
-            (SyncLog.grist_user_id == OtpConfiguration.grist_user_id) &
-            (SyncLog.grist_doc_id == OtpConfiguration.grist_doc_id)
-        ).join(
-            UserSchedule,
-            UserSchedule.otp_config_id == OtpConfiguration.id
-        ).filter(SyncLog.timestamp >= cutoff).order_by(SyncLog.timestamp.asc()).all()
+        logs_query = (
+            db.query(
+                SyncLog,
+                OtpConfiguration.id.label("config_id"),
+                UserSchedule.id.label("schedule_id"),
+                OtpConfiguration.demarche_number,
+            )
+            .join(
+                OtpConfiguration,
+                (SyncLog.grist_user_id == OtpConfiguration.grist_user_id)
+                & (SyncLog.grist_doc_id == OtpConfiguration.grist_doc_id),
+            )
+            .join(UserSchedule, UserSchedule.otp_config_id == OtpConfiguration.id)
+            .filter(SyncLog.timestamp >= cutoff)
+            .order_by(SyncLog.timestamp.asc())
+            .all()
+        )
 
         logs_data = []
         for log, config_id, schedule_id, demarche_number in logs_query:
-            logs_data.append({
-                "timestamp": log.timestamp.isoformat(),
-                "status": log.status,
-                "message": log.message,
-                "grist_user_id": log.grist_user_id,
-                "grist_doc_id": log.grist_doc_id,
-                "config_id": config_id,
-                "schedule_id": schedule_id,
-                "demarche": demarche_number
-            })
+            logs_data.append(
+                {
+                    "timestamp": log.timestamp.isoformat(),
+                    "status": log.status,
+                    "message": log.message,
+                    "grist_user_id": log.grist_user_id,
+                    "grist_doc_id": log.grist_doc_id,
+                    "config_id": config_id,
+                    "schedule_id": schedule_id,
+                    "demarche": demarche_number,
+                }
+            )
 
         return jsonify({"logs": logs_data})
     except Exception as e:
         logger.error(f"Erreur récupération rapport sync: {str(e)}")
-        return jsonify({
-            "error": "Une erreur interne est survenue lors de la récupération du rapport de synchronisation."
-        }), 500
+        return jsonify(
+            {
+                "error": "Une erreur interne est survenue lors de la récupération du rapport de synchronisation."
+            }
+        ), 500
     finally:
         db.close()
 
 
-@app.route('/api/reload-scheduler', methods=['POST'])
+@app.route("/api/sync-log/latest", methods=["GET"])
+def api_sync_log_latest():
+    """Route pour récupérer les dernières synchronisations (auto et manuelle) pour une config"""
+    otp_config_id = request.args.get("otp_config_id")
+    if not otp_config_id:
+        return jsonify({"success": False, "message": "otp_config_id required"}), 400
+
+    db = SessionLocal()
+    try:
+        otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
+        if not otp_config:
+            return jsonify({"success": False, "message": "Config not found"}), 404
+
+        latest_auto = (
+            db.query(SyncLog)
+            .filter_by(
+                grist_user_id=otp_config.grist_user_id,
+                grist_doc_id=otp_config.grist_doc_id,
+                auto=True,
+            )
+            .order_by(SyncLog.timestamp.desc())
+            .first()
+        )
+
+        latest_manual = (
+            db.query(SyncLog)
+            .filter_by(
+                grist_user_id=otp_config.grist_user_id,
+                grist_doc_id=otp_config.grist_doc_id,
+                auto=False,
+            )
+            .order_by(SyncLog.timestamp.desc())
+            .first()
+        )
+
+        def format_sync(sync):
+            return (
+                {
+                    "timestamp": sync.timestamp.isoformat(),
+                    "status": sync.status,
+                    "success_count": sync.success_count,
+                    "error_count": sync.error_count,
+                    "message": sync.message,
+                }
+                if sync
+                else None
+            )
+
+        return jsonify(
+            {
+                "success": True,
+                "auto": format_sync(latest_auto),
+                "manual": format_sync(latest_manual),
+            }
+        )
+    except Exception as e:
+        logger.error(f"Erreur récupération dernier sync log: {str(e)}")
+        return jsonify(
+            {
+                "error": "Une erreur interne est survenue lors de la récupération du dernier sync log."
+            }
+        ), 500
+    finally:
+        db.close()
+
+
+@app.route("/api/reload-scheduler", methods=["POST"])
 def api_reload_scheduler():
     """Route pour recharger manuellement les jobs du scheduler"""
     db = SessionLocal()
@@ -635,62 +676,71 @@ def api_reload_scheduler():
         jobs_details = []
 
         for job in jobs:
-            if job.id.startswith('scheduled_sync_'):
+            if job.id.startswith("scheduled_sync_"):
                 config_id = job.args[0]
                 # Récupérer les détails de la config
                 config = db.query(OtpConfiguration).filter_by(id=config_id).first()
                 if config:
                     # Récupérer l'ID du schedule
-                    schedule = db.query(UserSchedule).filter_by(otp_config_id=config_id).first()
+                    schedule = (
+                        db.query(UserSchedule)
+                        .filter_by(otp_config_id=config_id)
+                        .first()
+                    )
                     schedule_id = schedule.id if schedule else None
 
-                    jobs_details.append({
-                        "schedule_id": schedule_id,
-                        "config_id": config_id,
-                        "demarche": config.demarche_number,
-                        "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-                        "document": config.grist_doc_id
-                    })
+                    jobs_details.append(
+                        {
+                            "schedule_id": schedule_id,
+                            "config_id": config_id,
+                            "demarche": config.demarche_number,
+                            "next_run": job.next_run_time.isoformat()
+                            if job.next_run_time
+                            else None,
+                            "document": config.grist_doc_id,
+                        }
+                    )
 
-        return jsonify({
-            "success": True,
-            "message": "Scheduler rechargé avec succès",
-            "jobs": jobs_details
-        })
+        return jsonify(
+            {
+                "success": True,
+                "message": "Scheduler rechargé avec succès",
+                "jobs": jobs_details,
+            }
+        )
     except Exception as e:
         logger.error(f"Erreur rechargement scheduler: {str(e)}")
-        return jsonify({
-            "success": False,
-            "message": "Une erreur interne est survenue lors du rechargement du scheduler."
-        }), 500
+        return jsonify(
+            {
+                "success": False,
+                "message": "Une erreur interne est survenue lors du rechargement du scheduler.",
+            }
+        ), 500
     finally:
         db.close()
 
 
-@app.route('/api/start-sync', methods=['POST'])
+@app.route("/api/start-sync", methods=["POST"])
 def api_start_sync():
     """API pour démarrer la synchronisation - Version sécurisée"""
     try:
         data = request.get_json()
 
         # Utiliser l'ID de config fourni
-        otp_config_id = data.get('otp_config_id')
+        otp_config_id = data.get("otp_config_id")
         if not otp_config_id:
             return jsonify(
-                {
-                    "success": False,
-                    "message": "ID de configuration requis"
-                }
+                {"success": False, "message": "ID de configuration requis"}
             ), 400
         server_config = config_manager.load_config_by_id(otp_config_id)
 
         # Validation simple de la configuration serveur
         required_fields = [
-            'ds_api_token',
-            'demarche_number',
-            'grist_api_key',
-            'grist_doc_id',
-            'grist_user_id'
+            "ds_api_token",
+            "demarche_number",
+            "grist_api_key",
+            "grist_doc_id",
+            "grist_user_id",
         ]
         missing_fields = []
 
@@ -699,43 +749,39 @@ def api_start_sync():
                 missing_fields.append(field)
 
         if missing_fields:
-            return jsonify({
-                "success": False,
-                "message": f"Configuration incomplète. Champs manquants: {', '.join(missing_fields)}",
-                "missing_fields": missing_fields
-            }), 400
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"Configuration incomplète. Champs manquants: {', '.join(missing_fields)}",
+                    "missing_fields": missing_fields,
+                }
+            ), 400
 
         # Démarrer la tâche avec la configuration serveur sécurisée
-        task_id = sync_manager.start_sync(
-            server_config,
-            auto=False
-        )
+        task_id = sync_manager.start_sync(server_config, auto=False)
 
-        return jsonify({
-            "success": True,
-            "task_id": task_id,
-            "message": "Synchronisation démarrée",
-            "demarche_number": server_config['demarche_number'],
-            "doc_id": server_config['grist_doc_id']
-        })
+        return jsonify(
+            {
+                "success": True,
+                "task_id": task_id,
+                "message": "Synchronisation démarrée",
+                "demarche_number": server_config["demarche_number"],
+                "doc_id": server_config["grist_doc_id"],
+            }
+        )
 
     except Exception as e:
         logger.error(f"Erreur lors du démarrage de la synchronisation: {str(e)}")
-        return jsonify(
-            {
-                "success": False,
-                "message": "Erreur interne du serveur"
-            }
-        ), 500
+        return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
 
 
-@app.route('/execution')
+@app.route("/execution")
 def execution():
     """Page d'exécution et de suivi"""
-    return render_template('execution.html')
+    return render_template("execution.html")
 
 
-@app.route('/debug')
+@app.route("/debug")
 def debug():
     """Page de débogage"""
     # Vérifier la présence des fichiers requis
@@ -745,7 +791,7 @@ def debug():
         "queries_extract.py",
         "queries_graphql.py",
         "queries_util.py",
-        "repetable_processor.py"
+        "repetable_processor.py",
     ]
 
     file_status = {}
@@ -761,13 +807,15 @@ def debug():
 
     # Variables d'environnement (masquées pour la sécurité)
     env_vars = {
-        "DEMARCHES_API_TOKEN": "***" if os.getenv("DEMARCHES_API_TOKEN") else "Non défini",
+        "DEMARCHES_API_TOKEN": "***"
+        if os.getenv("DEMARCHES_API_TOKEN")
+        else "Non défini",
         "DEMARCHES_API_URL": f"Constante: {DEMARCHES_API_URL}",
         "DEMARCHE_NUMBER": os.getenv("DEMARCHE_NUMBER", "Non défini"),
         "GRIST_BASE_URL": os.getenv("GRIST_BASE_URL", "Non défini"),
         "GRIST_API_KEY": "***" if os.getenv("GRIST_API_KEY") else "Non défini",
         "GRIST_DOC_ID": os.getenv("GRIST_DOC_ID", "Non défini"),
-        "GRIST_USER_ID": os.getenv("GRIST_USER_ID", "Non défini")
+        "GRIST_USER_ID": os.getenv("GRIST_USER_ID", "Non défini"),
     }
 
     filter_vars = {
@@ -777,51 +825,50 @@ def debug():
         "GROUPES_INSTRUCTEURS": os.getenv("GROUPES_INSTRUCTEURS", "Non défini"),
         "BATCH_SIZE": os.getenv("BATCH_SIZE", "25"),
         "MAX_WORKERS": os.getenv("MAX_WORKERS", "2"),
-        "PARALLEL": os.getenv("PARALLEL", "True")
+        "PARALLEL": os.getenv("PARALLEL", "True"),
     }
 
     return render_template(
-        'debug.html',
+        "debug.html",
         file_status=file_status,
         all_files=all_files,
         env_vars=env_vars,
         filter_vars=filter_vars,
-        script_dir=script_dir
+        script_dir=script_dir,
     )
 
 
-@app.route('/utiliser-le-connecteur')
+@app.route("/utiliser-le-connecteur")
 def use_otp():
-    return render_template(
-        'use-otp.html'
-    )
+    return render_template("use-otp.html")
+
 
 # WebSocket events
 
 
-@socketio.on('connect')
+@socketio.on("connect")
 def handle_connect():
     """Gestion de la connexion WebSocket"""
-    logger.info('Client connecté')
+    logger.info("Client connecté")
 
 
-@socketio.on('disconnect')
+@socketio.on("disconnect")
 def handle_disconnect():
     """Gestion de la déconnexion WebSocket"""
-    logger.info('Client déconnecté')
+    logger.info("Client déconnecté")
 
 
 # Custom request handler pour des logs moins verbeux
 class QuietWSGIRequestHandler(WSGIRequestHandler):
-    def log_request(self, code='-', size='-'):
+    def log_request(self, code="-", size="-"):
         # Ne logguer que les erreurs
-        if str(code).startswith('4') or str(code).startswith('5'):
+        if str(code).startswith("4") or str(code).startswith("5"):
             super().log_request(code, size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Désactiver les logs de werkzeug pour les requêtes statiques
-    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger = logging.getLogger("werkzeug")
     werkzeug_logger.setLevel(logging.ERROR)
 
     print("🦄 One Trick Pony DS to Grist - Version Flask")
@@ -833,10 +880,7 @@ if __name__ == '__main__':
     # Démarrer l'application
     socketio.run(
         app,
-        host='0.0.0.0',
+        host="0.0.0.0",
         port=5000,
-        debug=os.getenv(
-            'FLASK_DEBUG',
-            'False'
-        ).lower() == 'true'
+        debug=os.getenv("FLASK_DEBUG", "False").lower() == "true",
     )

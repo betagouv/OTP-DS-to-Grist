@@ -950,3 +950,171 @@ class TestErrorHandling:
             reload_scheduler_jobs(sync_manager)
 
             mock_remove.assert_called_once()
+
+
+class SyncLogMock:
+    """Mock simple pour SyncLog avec attributs sérialisables"""
+
+    def __init__(self, timestamp_iso, status, success_count, error_count, message):
+        class TimestampMock:
+            def isoformat(self):
+                return timestamp_iso
+
+        self.timestamp = TimestampMock()
+        self.status = status
+        self.success_count = success_count
+        self.error_count = error_count
+        self.message = message
+
+
+class OtpConfigMock:
+    """Mock simple pour OtpConfiguration avec attributs sérialisables"""
+
+    def __init__(self, id, grist_user_id, grist_doc_id):
+        self.id = id
+        self.grist_user_id = grist_user_id
+        self.grist_doc_id = grist_doc_id
+
+
+class TestApiSyncLogLatest:
+    """Tests pour la route /api/sync-log/latest"""
+
+    @patch("app.SessionLocal")
+    def test_api_sync_log_latest_success_with_both(self, mock_session, client):
+        """Test retour avec auto et manual sync"""
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+
+        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
+        mock_sync_auto = SyncLogMock(
+            "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
+        )
+        mock_sync_manual = SyncLogMock(
+            "2026-04-20T14:30:00+00:00", "success", 5, 1, "Sync manuelle réussie"
+        )
+
+        query_calls = []
+
+        def query_side_effect(model):
+            query_calls.append(model)
+            mock_result = MagicMock()
+            mock_filter = MagicMock()
+            mock_order = MagicMock()
+
+            if model.__name__ == "OtpConfiguration":
+                mock_filter.order_by.return_value.first.return_value = mock_otp_config
+            elif query_calls.count(model) == 1:
+                mock_filter.order_by.return_value.first.return_value = mock_sync_auto
+            else:
+                mock_filter.order_by.return_value.first.return_value = mock_sync_manual
+
+            mock_result.filter_by.return_value = mock_filter
+            mock_order.first.return_value = None
+            return mock_result
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/sync-log/latest?otp_config_id=1")
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["auto"] is not None
+        assert data["auto"]["status"] == "success"
+        assert data["auto"]["success_count"] == 10
+        assert data["manual"] is not None
+        assert data["manual"]["status"] == "success"
+        assert data["manual"]["success_count"] == 5
+
+    @patch("app.SessionLocal")
+    def test_api_sync_log_latest_auto_only(self, mock_session, client):
+        """Test retour avec seulement sync auto"""
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+
+        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
+        mock_sync_auto = SyncLogMock(
+            "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
+        )
+
+        query_count = [0]
+
+        def query_side_effect(model):
+            query_count[0] += 1
+            mock_result = MagicMock()
+            mock_filter = MagicMock()
+
+            if model.__name__ == "OtpConfiguration":
+                mock_filter.order_by.return_value.first.return_value = mock_otp_config
+            elif query_count[0] == 2:
+                mock_filter.order_by.return_value.first.return_value = mock_sync_auto
+            else:
+                mock_filter.order_by.return_value.first.return_value = None
+
+            mock_result.filter_by.return_value = mock_filter
+            return mock_result
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/sync-log/latest?otp_config_id=1")
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["auto"] is not None
+        assert data["manual"] is None
+
+    @patch("app.SessionLocal")
+    def test_api_sync_log_latest_no_sync(self, mock_session, client):
+        """Test retour sans aucune sync (null)"""
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+
+        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
+
+        query_count = [0]
+
+        def query_side_effect(model):
+            query_count[0] += 1
+            mock_result = MagicMock()
+            mock_filter = MagicMock()
+            mock_order = MagicMock()
+            if model.__name__ == "OtpConfiguration":
+                mock_order.first.return_value = mock_otp_config
+            else:
+                mock_order.first.return_value = None
+            mock_filter.order_by.return_value = mock_order
+            mock_result.filter_by.return_value = mock_filter
+            return mock_result
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/sync-log/latest?otp_config_id=1")
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["auto"] is None
+        assert data["manual"] is None
+
+    @patch("app.SessionLocal")
+    def test_api_sync_log_latest_missing_config(self, mock_session, client):
+        """Test avec config inexistante - 404"""
+        mock_db = MagicMock()
+        mock_session.return_value = mock_db
+        mock_db.query.return_value.filter_by.return_value.first.return_value = None
+
+        response = client.get("/api/sync-log/latest?otp_config_id=999")
+        assert response.status_code == 404
+
+        data = json.loads(response.data)
+        assert data["success"] is False
+
+    def test_api_sync_log_latest_missing_param(self, client):
+        """Test sans otp_config_id - 400"""
+        response = client.get("/api/sync-log/latest")
+        assert response.status_code == 400
+
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "otp_config_id" in data["message"]
