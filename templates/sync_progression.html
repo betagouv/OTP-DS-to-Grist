@@ -1,14 +1,17 @@
 <!-- Zone d'exécution -->
-{% include '_sync_banner.html' %}
-
 <div id="sync_progress_container" class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border" style="display: none;">
     <div class="fr-card__body">
         <div class="fr-card__content">
             <h2 class="fr-card__title">Synchronisation</h2>
             
             <!-- Résultat final -->
-            <div id="sync_result" style="display: none;" class="fr-mt-4w">
-                <div id="result_content"></div>
+            <div id="sync_result" class="fr-grid-row fr-grid-row--gutters">
+                <div id="result_content_auto" class="fr-col" style="display: none;">
+                  {% include '_sync_banner.html' %}
+                </div>
+                <div id="result_content_manual" class="fr-col" style="display: none;">
+                  {% include '_sync_banner.html' %}
+                </div>
             </div>
 
             <!-- Progression -->
