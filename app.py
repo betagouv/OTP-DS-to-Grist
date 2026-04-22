@@ -3,6 +3,7 @@ Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
 from flask import Flask, render_template, request, jsonify
+from engineio.async_drivers import gevent
 from flask_socketio import SocketIO
 import os
 from datetime import datetime, timezone, timedelta

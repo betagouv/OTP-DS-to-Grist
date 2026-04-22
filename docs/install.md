@@ -5,6 +5,7 @@
 - **Python 3.13+** ([Télécharger Python](https://www.python.org/downloads/))
 - **Poetry** ([Guide d'installation](https://python-poetry.org/docs/#installation))
 - **Postgresql** (Installé et activé) ([Télécharger Postgresql](https://www.postgresql.org/download/))
+- **NodeJS** [Télécharger NodeJS](https://nodejs.org/en/download)
 - **Git** ([Télécharger Git](https://git-scm.com/downloads/))
 - **Un éditeur de code** (VS Code, PyCharm, etc.)
 
@@ -96,12 +97,12 @@ GRIST_DOC_ID=VotreDocID
 
 ### FLASK_SECRET_KEY
 
-1. Générer un secret pour flask : `poe generate-secret`
+1. Générer un secret pour flask : `poetry run poe generate-secret`
 2. Copier coller le retour de la commande dans `.env`
 
 ### ENCRYPTION_KEY
 
-1. Générer un secret pour flask : `poe generate-encryption-key`
+1. Générer un secret pour flask : `poetry run poe generate-encryption-key`
 2. Copier coller le retour de la commande dans `.env`
 
 # ▶️ Lancement de l'application
