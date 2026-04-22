@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import traceback
+from typing import Callable, Any
 from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -21,17 +22,24 @@ class SyncManager:
     pour les mises à jour en temps réel
     """
 
-    def __init__(self, notify_callback=None):
+    def __init__(
+        self,
+        notify_callback: Callable[..., Any] | None = None
+    ):
         self.tasks = {}
         self.task_counter = 0
         self.notify_callback = notify_callback
 
-    def notify(self, event_type, data):
+    def notify(self, event_type: str, data: dict[str, Any]) -> None:
         """Méthode publique pour les notifications"""
         if self.notify_callback:
             self.notify_callback(event_type, data)
 
-    def start_sync(self, server_config, auto=False):
+    def start_sync(
+        self,
+        server_config: dict[str, Any],
+        auto: bool = False
+    ) -> str:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
         return self.start_task(
             self.run_synchronization_task,
@@ -41,17 +49,24 @@ class SyncManager:
 
     def run_synchronization_task(
         self,
-        config,
-        progress_callback=None,
-        log_callback=None,
-        auto=False
-    ):
+        config: dict[str, Any],
+        progress_callback: Callable[[float, str], None] | None = None,
+        log_callback: Callable[[str], None] | None = None,
+        auto: bool = False
+    ) -> dict[str, Any]:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
         """
 
         output_lines = []
-        result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
+
+        # Pré-définition en cas d'erreur
+        result = {
+            "success": False,
+            "message": "",
+            "success_count": 0,
+            "error_count": 0
+        }
 
         try:
             if progress_callback:
@@ -217,7 +232,12 @@ class SyncManager:
             db_session.commit()
             db_session.close()
 
-    def start_task(self, task_function, *args, **kwargs):
+    def start_task(
+        self,
+        task_function: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any
+    ) -> str:
         """Démarre une nouvelle tâche asynchrone"""
         self.task_counter += 1
         task_id = f"task_{self.task_counter}"
@@ -238,7 +258,13 @@ class SyncManager:
 
         return task_id
 
-    def _run_task(self, task_id, task_function, *args, **kwargs):
+    def _run_task(
+        self,
+        task_id: str,
+        task_function: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any
+    ) -> None:
         """Exécute une tâche avec gestion des erreurs"""
         try:
             # Ajouter le callback de progression
@@ -274,14 +300,23 @@ class SyncManager:
 
             self._emit_update(task_id)
 
-    def _update_progress(self, task_id, progress, message):
+    def _update_progress(
+        self,
+        task_id: str,
+        progress: float,
+        message: str
+    ) -> None:
         """Met à jour la progression d'une tâche"""
         if task_id in self.tasks:
             self.tasks[task_id]["progress"] = progress
             self.tasks[task_id]["message"] = message
             self._emit_update(task_id)
 
-    def _add_log(self, task_id, message):
+    def _add_log(
+        self,
+        task_id: str,
+        message: str
+    ) -> None:
         """Ajoute un log à une tâche"""
         if task_id in self.tasks:
             self.tasks[task_id]["logs"].append(
@@ -289,11 +324,11 @@ class SyncManager:
             )
             self._emit_update(task_id)
 
-    def _emit_update(self, task_id):
+    def _emit_update(self, task_id: str) -> None:
         """Émet une mise à jour via notification callback"""
         self.notify("task_update", {"task_id": task_id, "task": self.tasks[task_id]})
         time.sleep(0)
 
-    def get_task(self, task_id):
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
         """Récupère les informations d'une tâche"""
         return self.tasks.get(task_id)

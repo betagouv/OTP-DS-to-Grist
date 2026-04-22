@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database.models import OtpConfiguration, UserSchedule
 from configuration.config_manager import ConfigManager
+from sync.sync_manager import SyncManager
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ scheduler = BackgroundScheduler(
 config_manager = ConfigManager(DATABASE_URL)
 
 
-def scheduled_sync_job(otp_config_id, sync_manager):
+def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     """
     Job exécuté automatiquement par APScheduler pour une configuration donnée.
     Exécute la synchronisation complète,
@@ -41,7 +42,7 @@ def scheduled_sync_job(otp_config_id, sync_manager):
     - Fréquence :
       - Quotidienne, à l'heure configurée (SYNC_HOUR:SYNC_MINUTE)
         dans la timezone SYNC_TZ (défaut Europe/Paris),
-        ou décalée de 15 mn pour chaque config supplémentaire
+        ou décalée de 5 mn pour chaque config supplémentaire
       - Au démarrage de l'app
       - Lors de l'activation/désactivation d'un planning via les endpoints API
     - Condition : Uniquement pour les synchronisations activées
@@ -79,6 +80,7 @@ def scheduled_sync_job(otp_config_id, sync_manager):
         user_schedule = (
             db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
         )
+
         if user_schedule:
             user_schedule.last_run = datetime.now(timezone.utc)
             db.commit()
@@ -134,7 +136,7 @@ def scheduled_sync_job(otp_config_id, sync_manager):
         db.close()
 
 
-def reload_scheduler_jobs(sync_manager):
+def reload_scheduler_jobs(sync_manager: SyncManager) -> None:
     """
     Recharge tous les jobs actifs du scheduler selon les plannings activés.
     Exécutée au démarrage et après activation/désactivation de plannings,
