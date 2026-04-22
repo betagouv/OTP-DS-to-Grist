@@ -166,21 +166,21 @@ describe('updateTaskProgress', () => {
         <div id="processing_speed">-</div>
         <div id="eta">-</div>
       </div>
-      <div id="sync_result" style="display: none;">
-        <div id="result_content"></div>
+      <div id="sync_result">
+        <div id="result_content_auto"><div class="sync_banner_template"><div class="fr-alert" role="alert"><h3 class="fr-alert__title"></h3><p class="sync-banner-count"></p><p class="sync-banner-date fr-text--sm"></p></div></div></div>
+        <div id="result_content_manual"><div class="sync_banner_template"><div class="fr-alert" role="alert"><h3 class="fr-alert__title"></h3><p class="sync-banner-count"></p><p class="sync-banner-date fr-text--sm"></p></div></div></div>
       </div>
     </div>
-    <div id="sync_controls"></div>
-    <!-- Template fragment for sync banner -->
-    <div id="sync_banner_template" style="display: none;">
-      <div class="fr-alert" role="alert">
-        <p>
-          <i class="fas sync-banner-icon"></i>
-          <span class="sync-banner-message"></span>
-          <span class="sync-banner-count fr-hint-text"></span>
-        </p>
-      </div>
-    </div>`
+    <div id="sync_controls"></div>`
+
+    // Variables globales pour la progression (comme dans le code réel)
+    globalThis.startTime = null
+    globalThis.successCount = 10
+    globalThis.errorCount = 0
+    globalThis.totalDossiers = 10
+    globalThis.logsCount = 0
+    globalThis.logsVisible = false
+    globalThis.extractStatsFromLog = () => {}
 
     // Objet tâche simulé (complétée)
     const mockTask = { status: 'completed', message: 'Sync terminée', progress: 100 }
@@ -190,9 +190,12 @@ describe('updateTaskProgress', () => {
 
     // Vérifications
     expect(document.getElementById('sync_result').style.display).toBe('block')
-    const resultContent = document.getElementById('result_content')
-    expect(resultContent.querySelector('.sync-banner-message').textContent).toContain('Synchronisation terminée avec succès')
-    expect(resultContent.querySelector('.fr-alert').classList.contains('fr-alert--success')).toBe(true)
+    const resultContentManual = document.getElementById('result_content_manual')
+    const h3 = resultContentManual.querySelector('h3')
+    // Utiliser textContent car innerText ne fonctionne pas dans JSDOM
+    const titleText = h3.textContent || h3.innerText || ''
+    expect(titleText).toContain('Synchronisation terminée avec succès')
+    expect(resultContentManual.querySelector('.fr-alert').classList.contains('fr-alert--success')).toBe(true)
     expect(showNotification).toHaveBeenCalledWith('Synchronisation terminée avec succès!', 'success')
   })
 })
@@ -342,16 +345,9 @@ describe('loadAutoSyncState', () => {
     // Setup DOM simulé pour les éléments utilisés par loadAutoSyncState
     document.body.innerHTML = `
       <input type="checkbox" id="auto_sync_enabled">
-      <div id="last_sync_status" style="display: block;"></div>
-      <!-- Template fragment for sync banner -->
-      <div id="sync_banner_template" style="display: none;">
-        <div class="fr-alert" role="alert">
-          <p>
-            <i class="fas sync-banner-icon"></i>
-            <span class="sync-banner-message"></span>
-            <span class="sync-banner-count fr-hint-text"></span>
-          </p>
-        </div>
+      <div id="sync_progress_container">
+        <div id="result_content_auto"><div class="sync_banner_template"><div class="fr-alert" role="alert"><h3 class="fr-alert__title"></h3><p class="sync-banner-count"></p><p class="sync-banner-date fr-text--sm"></p></div></div></div>
+        <div id="result_content_manual"><div class="sync_banner_template"><div class="fr-alert" role="alert"><h3 class="fr-alert__title"></h3><p class="sync-banner-count"></p><p class="sync-banner-date fr-text--sm"></p></div></div>
       </div>
     `
 
@@ -386,14 +382,13 @@ describe('loadAutoSyncState', () => {
       const checkbox = document.getElementById('auto_sync_enabled')
       expect(checkbox.disabled).toBe(true)
       expect(checkbox.checked).toBe(false)
-      expect(document.getElementById('last_sync_status').style.display).toBe('none')
     }
   )
 
-  it(
-    'activer la case et afficher l’état',
+it(
+    'activer la case et afficher l\'état',
     async () => {
-      // Mock fetch pour /api/config et /api/schedule
+      // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
@@ -408,6 +403,23 @@ describe('loadAutoSyncState', () => {
             last_status: 'success'
           })
         })
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({
+            success: true,
+            auto: {
+              timestamp: '2024-01-15T10:00:00',
+              status: 'success',
+              success_count: 10,
+              error_count: 0
+            },
+            manual: {
+              timestamp: '2024-01-15T09:00:00',
+              status: 'success',
+              success_count: 5,
+              error_count: 1
+            }
+          })
+        })
 
       // Appel de la fonction
       await loadAutoSyncState()
@@ -416,17 +428,21 @@ describe('loadAutoSyncState', () => {
       const checkbox = document.getElementById('auto_sync_enabled')
       expect(checkbox.disabled).toBe(false)
       expect(checkbox.checked).toBe(true)
-      expect(document.getElementById('last_sync_status').style.display).toBe('block')
-      const statusDiv = document.getElementById('last_sync_status')
-      expect(statusDiv.querySelector('.sync-banner-message').textContent).toContain('Synchronisation terminée avec succès')
-      expect(statusDiv.querySelector('.fr-alert').classList.contains('fr-alert--success')).toBe(true)
+      
+      // Les deux banners sont affichées
+      const autoDiv = document.getElementById('result_content_auto')
+      expect(autoDiv.style.display).toBe('block')
+      const h3 = autoDiv.querySelector('h3')
+      const titleText = h3.textContent || h3.innerText || ''
+      expect(titleText).toContain('Synchronisation terminée avec succès')
+      expect(autoDiv.querySelector('.fr-alert').classList.contains('fr-alert--success')).toBe(true)
     }
   )
 
-  it(
-    'afficher l’état désactivé quand la programmation n’est pas activée',
+it(
+    'afficher l\'état désactivé quand la programmation n\'est pas activée',
     async () => {
-      // Mock fetch pour /api/config et /api/schedule
+      // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
@@ -441,6 +457,13 @@ describe('loadAutoSyncState', () => {
             last_status: null
           })
         })
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({
+            success: true,
+            auto: null,
+            manual: null
+          })
+        })
 
       // Appel de la fonction
       await loadAutoSyncState()
@@ -449,14 +472,15 @@ describe('loadAutoSyncState', () => {
       const checkbox = document.getElementById('auto_sync_enabled')
       expect(checkbox.disabled).toBe(false)
       expect(checkbox.checked).toBe(false)
-      expect(document.getElementById('last_sync_status').style.display).toBe('none')
+      // sync_progress_container caché
+      expect(document.getElementById('sync_progress_container').style.display).toBe('none')
     }
   )
 
-  it(
-    'afficher l’erreur de la dernière synchronisation',
+it(
+    'afficher l\'erreur de la dernière synchronisation',
     async () => {
-      // Mock fetch pour /api/config et /api/schedule
+      // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
@@ -471,15 +495,29 @@ describe('loadAutoSyncState', () => {
             last_status: 'error'
           })
         })
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({
+            success: true,
+            auto: {
+              timestamp: '2024-01-15T10:00:00',
+              status: 'error',
+              success_count: 8,
+              error_count: 2
+            },
+            manual: null
+          })
+        })
 
       // Appel de la fonction
       await loadAutoSyncState()
 
       // Vérifications
-      const statusDiv = document.getElementById('last_sync_status')
-      expect(statusDiv.style.display).toBe('block')
-      expect(statusDiv.querySelector('.sync-banner-message').textContent).toContain('Synchronisation terminée avec erreur')
-      expect(statusDiv.querySelector('.fr-alert').classList.contains('fr-alert--error')).toBe(true)
+      const autoDiv = document.getElementById('result_content_auto')
+      expect(autoDiv.style.display).toBe('block')
+      const h3 = autoDiv.querySelector('h3')
+      const titleText = h3.textContent || h3.innerText || ''
+      expect(titleText).toContain('Synchronisation terminée avec erreur')
+      expect(autoDiv.querySelector('.fr-alert').classList.contains('fr-alert--error')).toBe(true)
     }
   )
 
