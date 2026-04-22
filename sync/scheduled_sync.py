@@ -4,6 +4,7 @@ Contient le scheduler APScheduler et les jobs de synchronisation automatique.
 """
 
 import os
+from dotenv import load_dotenv
 import logging
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -20,7 +21,14 @@ from sync.sync_manager import SyncManager
 
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required for database operations"
+    )
 
 SYNC_HOUR = int(os.getenv("SYNC_HOUR", "0"))
 SYNC_MINUTE = int(os.getenv("SYNC_MINUTE", "0"))
@@ -179,6 +187,7 @@ def reload_scheduler_jobs(sync_manager: SyncManager) -> None:
                 hour_offset = total_offset // 60
                 hour = (SYNC_HOUR + hour_offset) % 24
                 job_id = f"scheduled_sync_{schedule.otp_config_id}"
+
                 scheduler.add_job(
                     func=scheduled_sync_job,
                     trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
@@ -188,6 +197,7 @@ def reload_scheduler_jobs(sync_manager: SyncManager) -> None:
                     replace_existing=True,
                     max_instances=1,
                 )
+
                 logger.info(
                     f"Job ajouté pour schedule {schedule.id} "
                     f"(config {schedule.otp_config_id}, démarche {otp_config.demarche_number}) "
