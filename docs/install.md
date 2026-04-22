@@ -236,6 +236,24 @@ Avant de créer un Codespace, configurez les secrets nécessaires :
     2. Choisir "Commande d'affichage et d'exécution"
     3. Commencer à taper "rebuild" et choisir "Rebuild container"
 
+# Lancement de la synchronisation
+
+Une fois lancee, l'application doit etre ajoutee en tant que widget dans le document Grist afin d'etre utilisee.
+
+- Creer une nouvelle page contenant une table OTP
+- Dans cette page, ajouter un custom widget base sur la table OTP ci-dessus (elle ne sera en realite pas utilisee, mais Grist impose que chaque widget soit relie a une table)
+- Une fois le widget cree, supprimer la table OTP (elle restera presente dans raw data)
+- Configurer le widget en renseignant les Tokens et autres informations demandees
+- Dans la colonne de droite, onglet Custom > section ACCESS LEVEL : autoriser l'acces a tout le document
+
+<img src="assets/doc_access.png" alt="screenshot droit d'acces" width="300"/>
+
+- Lancer ensuite la synchronisation. OTP creera alors 5 pages et tables contenant :
+    - les dossiers
+    - les champs
+    - les demandeurs
+    - les instructeurs
+    - les metadonnees de synchronisation
 
 # 🔧 Configuration avancée
 
