@@ -228,8 +228,6 @@ const updateTaskProgress = (task) => {
 
     // Déterminer le type de résultat en fonction des erreurs détectées
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
-    const successRate =
-      totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0
 
     if (task.status === 'completed' && !hasSignificantErrors) {
       if (task.sync_reason === 'already_up_to_date') {
@@ -343,15 +341,29 @@ const loadAutoSyncState = async () => {
 
     let hasBanner = false
 
-    if (scheduleResult.enabled && syncLogResult.success && syncLogResult.auto) {
+    if (syncLogResult.success && syncLogResult.auto) {
       const auto = syncLogResult.auto
-      showSyncBanner('result_content_auto', auto.status, auto.success_count, auto.error_count, auto.timestamp, 'auto')
+      showSyncBanner(
+        'result_content_auto',
+        auto.status,
+        auto.success_count,
+        auto.error_count,
+        auto.timestamp,
+        'auto'
+      )
       hasBanner = true
     }
 
     if (syncLogResult.success && syncLogResult.manual) {
       const manual = syncLogResult.manual
-      showSyncBanner('result_content_manual', manual.status, manual.success_count, manual.error_count, manual.timestamp, 'manual')
+      showSyncBanner(
+        'result_content_manual',
+        manual.status,
+        manual.success_count,
+        manual.error_count,
+        manual.timestamp,
+        'manual'
+      )
       hasBanner = true
     }
 
