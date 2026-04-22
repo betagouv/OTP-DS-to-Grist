@@ -2868,54 +2868,6 @@ def process_demarche_for_grist_optimized(
         skip_dossiers = set()
         skip_champs = set()
         skip_annotations = set()
-        grist_dates = {}
-
-        if updated_since_cursor or force_full_sync:
-            log(
-                "updatedSince actif ou force_full_sync → comparaison de dates skippée (tous les dossiers listés sont potentiellement modifiés)"
-            )
-        else:
-            log("Construction des sets de skip par dates de modification...")
-            grist_dates = client.get_existing_dossier_dates(
-                table_ids["dossier_table_id"]
-            )
-
-        for dossier in filtered_dossiers:
-            num = str(dossier["number"])
-            grist = grist_dates.get(num)
-
-            if not grist:
-                continue  # nouveau dossier → upsert sur tout
-
-            ds_date = (dossier.get("dateDerniereModification") or "")[:19]
-            grist_date = (grist.get("date_derniere_modification") or "")[:19]
-
-            if not ds_date or not grist_date:
-                continue  # date manquante → forcer upsert par sécurité
-
-            if ds_date == grist_date:
-                # Dossier global inchangé → skip dossiers + demandeurs
-                skip_dossiers.add(num)
-
-                # Champs : date disponible seulement après fetch détail
-                # → on skippe uniquement si la date champs est aussi présente dans Grist
-                grist_date_champs = (
-                    grist.get("date_derniere_modification_champs") or ""
-                )[:19]
-                if grist_date_champs:
-                    skip_champs.add(num)
-
-                # Annotations : idem + vérifier que la table existe
-                if table_ids.get("annotations"):
-                    grist_date_annot = (
-                        grist.get("date_derniere_modification_annotations") or ""
-                    )[:19]
-                    if grist_date_annot:
-                        skip_annotations.add(num)
-
-        log(
-            f"Skip dossiers: {len(skip_dossiers)} | champs: {len(skip_champs)} | annotations: {len(skip_annotations)}"
-        )
 
         # Synchroniser les instructeurs UNE SEULE FOIS (niveau démarche)
         if table_ids.get("instructeurs"):
