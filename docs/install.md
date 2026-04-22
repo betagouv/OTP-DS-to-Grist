@@ -5,6 +5,7 @@
 - **Python 3.13+** ([Télécharger Python](https://www.python.org/downloads/))
 - **Poetry** ([Guide d'installation](https://python-poetry.org/docs/#installation))
 - **Postgresql** (Installé et activé) ([Télécharger Postgresql](https://www.postgresql.org/download/))
+- **NodeJS** [Télécharger NodeJS](https://nodejs.org/en/download)
 - **Git** ([Télécharger Git](https://git-scm.com/downloads/))
 - **Un éditeur de code** (VS Code, PyCharm, etc.)
 
@@ -96,12 +97,12 @@ GRIST_DOC_ID=VotreDocID
 
 ### FLASK_SECRET_KEY
 
-1. Générer un secret pour flask : `poe generate-secret`
+1. Générer un secret pour flask : `poetry run poe generate-secret`
 2. Copier coller le retour de la commande dans `.env`
 
 ### ENCRYPTION_KEY
 
-1. Générer un secret pour flask : `poe generate-encryption-key`
+1. Générer un secret pour flask : `poetry run poe generate-encryption-key`
 2. Copier coller le retour de la commande dans `.env`
 
 # ▶️ Lancement de l'application
@@ -235,6 +236,24 @@ Avant de créer un Codespace, configurez les secrets nécessaires :
     2. Choisir "Commande d'affichage et d'exécution"
     3. Commencer à taper "rebuild" et choisir "Rebuild container"
 
+# Lancement de la synchronisation
+
+Une fois lancee, l'application doit etre ajoutee en tant que widget dans le document Grist afin d'etre utilisee.
+
+- Creer une nouvelle page contenant une table OTP
+- Dans cette page, ajouter un custom widget base sur la table OTP ci-dessus (elle ne sera en realite pas utilisee, mais Grist impose que chaque widget soit relie a une table)
+- Une fois le widget cree, supprimer la table OTP (elle restera presente dans raw data)
+- Configurer le widget en renseignant les Tokens et autres informations demandees
+- Dans la colonne de droite, onglet Custom > section ACCESS LEVEL : autoriser l'acces a tout le document
+
+<img src="assets/doc_access.png" alt="screenshot droit d'acces" width="300"/>
+
+- Lancer ensuite la synchronisation. OTP creera alors 5 pages et tables contenant :
+    - les dossiers
+    - les champs
+    - les demandeurs
+    - les instructeurs
+    - les metadonnees de synchronisation
 
 # 🔧 Configuration avancée
 

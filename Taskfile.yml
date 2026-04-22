@@ -1,0 +1,15 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list
+  setup:
+    desc: install all the required dependencies
+    cmds:
+      - poetry install
+      - npm install
+  serve:
+    desc: run the app
+    cmds:
+      - poetry run poe dev
