@@ -167,8 +167,25 @@ describe('updateTaskProgress', () => {
         <div id="eta">-</div>
       </div>
       <div id="sync_result">
-        <div id="result_content_auto"><div class="sync_banner_template"><div class="fr-alert" role="alert"><h3 class="fr-alert__title"></h3><p class="sync-banner-count"></p><p class="sync-banner-date fr-text--sm"></p></div></div></div>
-        <div id="result_content_manual"><div class="sync_banner_template"><div class="fr-alert" role="alert"><h3 class="fr-alert__title"></h3><p class="sync-banner-count"></p><p class="sync-banner-date fr-text--sm"></p></div></div></div>
+        <div id="result_content_auto">
+          <div class="sync_banner_template">
+            <div class="fr-alert" role="alert">
+              <h3 class="fr-alert__title"></h3>
+              <p class="sync-banner-count"></p>
+              <p class="sync-banner-date fr-text--sm"></p>
+            </div>
+          </div>
+        </div>
+
+        <div id="result_content_manual">
+          <div class="sync_banner_template">
+            <div class="fr-alert" role="alert">
+              <h3 class="fr-alert__title"></h3>
+              <p class="sync-banner-count"></p>
+              <p class="sync-banner-date fr-text--sm"></p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="sync_controls"></div>`
