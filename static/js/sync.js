@@ -225,6 +225,7 @@ const updateTaskProgress = (task) => {
     const resultContentAuto = document.getElementById('result_content_auto')
     const resultContentManual = document.getElementById('result_content_manual')
     if (resultContentAuto) resultContentAuto.innerHTML = ''
+    if (resultContentManual) resultContentManual.innerHTML = ''
 
     // Déterminer le type de résultat en fonction des erreurs détectées
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
@@ -322,19 +323,18 @@ const loadAutoSyncState = async () => {
     const checkbox = document.getElementById('auto_sync_enabled')
 
     if (!config.otp_config_id) {
-      if (checkbox) {
-        checkbox.disabled = true
-        checkbox.checked = false
-      }
+      checkbox.disabled = true
+      checkbox.checked = false
+
       return
     }
 
-    if (checkbox) checkbox.disabled = false
+    checkbox.disabled = false
 
     const scheduleResponse = await fetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
     const scheduleResult = await scheduleResponse.json()
 
-    if (checkbox) checkbox.checked = scheduleResult.enabled || false
+    checkbox.checked = scheduleResult.enabled || false
 
     const syncLogResponse = await fetch(`/api/sync-log/latest?otp_config_id=${config.otp_config_id}`)
     const syncLogResult = await syncLogResponse.json()
