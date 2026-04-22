@@ -19,11 +19,11 @@ const showSyncBanner = (
   const isSuccess = status === 'success'
   const isWarning = status === 'warning'
   const alertClass = isSuccess ? 'fr-alert--success' : isWarning ? 'fr-alert--warning' : 'fr-alert--error'
-  const typeLabel = syncType === 'auto' ? 'automatique' : syncType === 'manual' ? 'manuelle' : ''
+  const typeLabel = syncType === 'auto' ? 'automatique' : 'manuelle'
   const message = isSuccess ? 'Synchronisation terminée avec succès' : 'Synchronisation terminée avec erreur(s)'
   const title = typeLabel ? `${message} (${typeLabel})` : message
   const count = `${successCount} dossiers traités avec succès, ${errorCount} en échec`
-  const date = timestamp ? new Date(timestamp).toLocaleString('fr-FR') : ''
+  const date = timestamp ? new Date(timestamp).toLocaleString('fr-FR') : new Date().toISOString()
 
   subContainer.querySelector('.fr-alert').classList.add(alertClass)
   subContainer.querySelector('h3').innerText = title
@@ -221,16 +221,13 @@ const updateTaskProgress = (task) => {
     const syncResultDiv = document.getElementById('sync_result')
     if (syncResultDiv) syncResultDiv.style.display = 'block'
 
-    // Clear auto banner and show manual result
-    const resultContentAuto = document.getElementById('result_content_auto')
     const resultContentManual = document.getElementById('result_content_manual')
-    if (resultContentAuto) resultContentAuto.innerHTML = ''
-    if (resultContentManual) resultContentManual.innerHTML = ''
 
     // Déterminer le type de résultat en fonction des erreurs détectées
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
 
     if (task.status === 'completed' && !hasSignificantErrors) {
+      // TODO use showSyncBanner or derivated
       if (task.sync_reason === 'already_up_to_date') {
         if (resultContentManual) resultContentManual.innerHTML = `<div class="fr-alert fr-alert--info">
           <h3 class="fr-alert__title">Grist déjà à jour</h3>

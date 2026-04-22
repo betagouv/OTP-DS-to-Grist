@@ -5,13 +5,15 @@
             <h2 class="fr-card__title">Synchronisation</h2>
             
             <!-- Résultat final -->
-            <div id="sync_result" class="fr-grid-row fr-grid-row--gutters">
-                <div id="result_content_auto" class="fr-col" style="display: none;">
+            <div id="sync_result">
+              <div class="fr-grid-row fr-grid-row--gutters">
+                <div id="result_content_auto" class="fr-col">
                   {% include '_sync_banner.html' %}
                 </div>
-                <div id="result_content_manual" class="fr-col" style="display: none;">
+                <div id="result_content_manual" class="fr-col">
                   {% include '_sync_banner.html' %}
                 </div>
+              </div>
             </div>
 
             <!-- Progression -->
