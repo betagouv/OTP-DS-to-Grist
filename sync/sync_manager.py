@@ -1,6 +1,7 @@
 import time
 import threading
 import os
+from dotenv import load_dotenv
 import subprocess
 import sys
 import traceback
@@ -13,7 +14,14 @@ from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
 from database.models import SyncLog
 
+load_dotenv()
+
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required for database operations"
+    )
 
 
 class SyncManager:
