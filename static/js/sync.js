@@ -23,7 +23,7 @@ const showSyncBanner = (
   const message = isSuccess ? 'Synchronisation terminée avec succès' : 'Synchronisation terminée avec erreur(s)'
   const title = typeLabel ? `${message} (${typeLabel})` : message
   const count = `${successCount} dossiers traités avec succès, ${errorCount} en échec`
-  const date = timestamp ? new Date(timestamp).toLocaleString('fr-FR') : new Date().toISOString()
+  const date = timestamp ? new Date(timestamp).toLocaleString('fr-FR') : new Date().toLocaleString('fr-FR')
 
   subContainer.querySelector('.fr-alert').classList.add(alertClass)
   subContainer.querySelector('h3').innerText = title
