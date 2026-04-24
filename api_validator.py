@@ -4,7 +4,7 @@ Fonctions pures sans Flask, utilisables par app.py et les scripts CLI
 """
 
 import requests
-from constants import DEMARCHES_API_URL
+from utils.constants import DEMARCHES_API_URL
 import logging
 
 logger = logging.getLogger(__name__)
