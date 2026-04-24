@@ -161,6 +161,7 @@ def scheduled_sync_job(otp_config_id):
         logger.info(f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}")
         logger.info(f"next_run DB mis à jour: {next_run}")
 
+        # TODO supprimer
         # En cas d'erreur, émettre une notification WebSocket
         if not result.get("success"):
             socketio.emit('sync_error', {
@@ -170,6 +171,7 @@ def scheduled_sync_job(otp_config_id):
                 'timestamp': datetime.now(timezone.utc).isoformat()
             })
 
+    # exit 1 tombe ici ?
     except Exception as e:
         logger.error(f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}")
 
