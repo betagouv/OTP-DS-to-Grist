@@ -19,9 +19,9 @@ const showSyncBanner = (
   const isSuccess = status === 'success'
   const isWarning = status === 'warning'
   const alertClass = isSuccess ? 'fr-alert--success' : isWarning ? 'fr-alert--warning' : 'fr-alert--error'
-  const typeLabel = syncType === 'auto' ? 'automatique' : 'manuelle'
+  const typeLabel = syncType === 'auto' ? '(automatique)' : '(déclenchée manuellement)'
   const message = isSuccess ? 'Synchronisation terminée avec succès' : 'Synchronisation terminée avec erreur(s)'
-  const title = typeLabel ? `${message} (${typeLabel})` : message
+  const title = typeLabel ? `${message} ${typeLabel}`: message
   const count = `${successCount} dossiers traités avec succès, ${errorCount} en échec`
   const date = timestamp ? new Date(timestamp).toLocaleString('fr-FR') : new Date().toLocaleString('fr-FR')
 
