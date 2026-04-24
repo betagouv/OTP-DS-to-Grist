@@ -3409,6 +3409,7 @@ def main():
 
         if not success:
             log_error("Échec de la vérification des connexions API:")
+            # Lever l'exception ici
             for r in results:
                 status = "✓" if r["success"] else "✗"
                 log_error(f"  {r['type']}: {status} {r['message']}")
