@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 import repetable_processor as rp
 from api_validator import verify_api_connections
-from constants import DEMARCHES_API_URL
+from utils.constants import DEMARCHES_API_URL
 from queries import dossier_to_flat_data, get_demarche, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
