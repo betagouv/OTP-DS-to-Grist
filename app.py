@@ -22,7 +22,7 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
-from constants import (
+from utils.constants import (
     GITHUB_CHANGELOG_BASE_URL,
     CHANGELOG_PATH,
     DEMARCHES_API_URL
