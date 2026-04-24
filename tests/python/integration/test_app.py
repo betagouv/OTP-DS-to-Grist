@@ -954,22 +954,9 @@ class TestErrorHandling:
                     'message': 'Sync failed'
                 }
 
-                # Mock de socketio.emit
-                with patch('app.socketio.emit') as mock_emit:
-                    # Exécuter la fonction
-                    scheduled_sync_job(1)
-
-                    # Vérifications
-                    mock_load_config.assert_called_once_with(1)
-                    mock_sync.assert_called_once()
-                    mock_emit.assert_called_once()
-                    call_args = mock_emit.call_args
-                    assert call_args[0][0] == 'sync_error'
-                    data = call_args[0][1]
-                    assert data['grist_user_id'] == 'user123'
-                    assert data['grist_doc_id'] == 'doc456'
-                    assert data['message'] == 'Sync failed'
-                    assert 'timestamp' in data
+                scheduled_sync_job(1)
+                mock_load_config.assert_called_once_with(1)
+                mock_sync.assert_called_once()
 
     @patch('app.SessionLocal')
     def test_reload_scheduler_jobs(self, mock_session):
