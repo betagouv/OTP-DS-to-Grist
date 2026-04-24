@@ -95,6 +95,25 @@ class DatabaseManager:
                 )
             """)
 
+            # Migration: ajouter les colonnes manquantes à sync_logs
+            # Colonne auto (Boolean, default=True)
+            cursor.execute("""
+                ALTER TABLE sync_logs
+                ADD COLUMN IF NOT EXISTS auto BOOLEAN DEFAULT TRUE NOT NULL
+            """)
+
+            # Colonne success_count (Integer, nullable)
+            cursor.execute("""
+                ALTER TABLE sync_logs
+                ADD COLUMN IF NOT EXISTS success_count INTEGER
+            """)
+
+            # Colonne error_count (Integer, nullable)
+            cursor.execute("""
+                ALTER TABLE sync_logs
+                ADD COLUMN IF NOT EXISTS error_count INTEGER
+            """)
+
             # Ajouter les colonnes manquantes aux tables existantes
             # (aucune pour le moment)
 
@@ -139,4 +158,6 @@ class DatabaseManager:
             finally:
                 conn.close()
         else:
-            logger.error("Impossible de se connecter à la base de données pour l'initialisation")
+            logger.error(
+                "Impossible de se connecter à la base de données pour l'initialisation"
+            )

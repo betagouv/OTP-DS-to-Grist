@@ -1,43 +1,80 @@
 import time
 import threading
 import os
+from dotenv import load_dotenv
 import subprocess
 import sys
 import traceback
+from typing import Callable, Any
 from datetime import datetime, timezone
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sync.sync_result_parser import parse_output
 from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
+from database.models import SyncLog
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required for database operations"
+    )
 
 
-class SyncTaskManager:
+class SyncManager:
     """
     Gestionnaire de synchronisations asynchrones avec callbacks de notification
     pour les mises à jour en temps réel
     """
 
-    def __init__(self, notify_callback=None):
+    def __init__(
+        self,
+        notify_callback: Callable[..., Any] | None = None
+    ):
         self.tasks = {}
         self.task_counter = 0
         self.notify_callback = notify_callback
 
-    def notify(self, event_type, data):
+    def notify(self, event_type: str, data: dict[str, Any]) -> None:
         """Méthode publique pour les notifications"""
         if self.notify_callback:
             self.notify_callback(event_type, data)
 
-    def start_sync(self, server_config):
+    def start_sync(
+        self,
+        server_config: dict[str, Any],
+        auto: bool = False
+    ) -> str:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
-        return self.start_task(self.run_synchronization_task, server_config)
+        return self.start_task(
+            self.run_synchronization_task,
+            server_config,
+            auto=auto
+        )
 
     def run_synchronization_task(
-        self, config, progress_callback=None, log_callback=None
-    ):
+        self,
+        config: dict[str, Any],
+        progress_callback: Callable[[float, str], None] | None = None,
+        log_callback: Callable[[str], None] | None = None,
+        auto: bool = False
+    ) -> dict[str, Any]:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
         """
 
         output_lines = []
+
+        # Pré-définition en cas d'erreur
+        result = {
+            "success": False,
+            "message": "",
+            "success_count": 0,
+            "error_count": 0
+        }
 
         try:
             if progress_callback:
@@ -100,7 +137,7 @@ class SyncTaskManager:
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(
-                os.path.dirname(__file__), "grist_processor_working_all.py"
+                os.path.dirname(__file__), "../grist_processor_working_all.py"
             )
 
             if log_callback:
@@ -185,8 +222,30 @@ class SyncTaskManager:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "traceback": traceback.format_exc(),
             }
+        finally:
+            engine = create_engine(DATABASE_URL)
+            SessionLocal = sessionmaker(bind=engine)
+            db_session = SessionLocal()
 
-    def start_task(self, task_function, *args, **kwargs):
+            sync_log = SyncLog(
+                grist_user_id=config.get("grist_user_id"),
+                grist_doc_id=config.get("grist_doc_id"),
+                status="success" if result.get("success") else "error",
+                message=result.get("message"),
+                auto=auto,
+                success_count=result.get("success_count", 0),
+                error_count=result.get("error_count", 0),
+            )
+            db_session.add(sync_log)
+            db_session.commit()
+            db_session.close()
+
+    def start_task(
+        self,
+        task_function: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any
+    ) -> str:
         """Démarre une nouvelle tâche asynchrone"""
         self.task_counter += 1
         task_id = f"task_{self.task_counter}"
@@ -207,7 +266,13 @@ class SyncTaskManager:
 
         return task_id
 
-    def _run_task(self, task_id, task_function, *args, **kwargs):
+    def _run_task(
+        self,
+        task_id: str,
+        task_function: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any
+    ) -> None:
         """Exécute une tâche avec gestion des erreurs"""
         try:
             # Ajouter le callback de progression
@@ -243,14 +308,23 @@ class SyncTaskManager:
 
             self._emit_update(task_id)
 
-    def _update_progress(self, task_id, progress, message):
+    def _update_progress(
+        self,
+        task_id: str,
+        progress: float,
+        message: str
+    ) -> None:
         """Met à jour la progression d'une tâche"""
         if task_id in self.tasks:
             self.tasks[task_id]["progress"] = progress
             self.tasks[task_id]["message"] = message
             self._emit_update(task_id)
 
-    def _add_log(self, task_id, message):
+    def _add_log(
+        self,
+        task_id: str,
+        message: str
+    ) -> None:
         """Ajoute un log à une tâche"""
         if task_id in self.tasks:
             self.tasks[task_id]["logs"].append(
@@ -258,11 +332,11 @@ class SyncTaskManager:
             )
             self._emit_update(task_id)
 
-    def _emit_update(self, task_id):
+    def _emit_update(self, task_id: str) -> None:
         """Émet une mise à jour via notification callback"""
         self.notify("task_update", {"task_id": task_id, "task": self.tasks[task_id]})
         time.sleep(0)
 
-    def get_task(self, task_id):
+    def get_task(self, task_id: str) -> dict[str, Any] | None:
         """Récupère les informations d'une tâche"""
         return self.tasks.get(task_id)
