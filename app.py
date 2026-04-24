@@ -161,16 +161,6 @@ def scheduled_sync_job(otp_config_id):
         logger.info(f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}")
         logger.info(f"next_run DB mis à jour: {next_run}")
 
-        # TODO supprimer
-        # En cas d'erreur, émettre une notification WebSocket
-        if not result.get("success"):
-            socketio.emit('sync_error', {
-                'grist_user_id': otp_config.grist_user_id,
-                'grist_doc_id': otp_config.grist_doc_id,
-                'message': message,
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            })
-
     # exit 1 tombe ici ?
     except Exception as e:
         logger.error(f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}")
@@ -204,13 +194,6 @@ def scheduled_sync_job(otp_config_id):
                 db.add(sync_log)
                 db.commit()
 
-                # Émettre notification d'erreur
-                socketio.emit('sync_error', {
-                    'grist_user_id': otp_config.grist_user_id,
-                    'grist_doc_id': otp_config.grist_doc_id,
-                    'message': f"Erreur de synchronisation planifiée: {str(e)}",
-                    'timestamp': datetime.now(timezone.utc).isoformat()
-                })
         except Exception as log_error:
             logger.error(f"Erreur lors du logging de l'erreur scheduler: {str(log_error)}")
 
