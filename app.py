@@ -25,7 +25,8 @@ from sync_task_manager import SyncTaskManager
 from utils.constants import (
     GITHUB_CHANGELOG_BASE_URL,
     CHANGELOG_PATH,
-    DEMARCHES_API_URL
+    DEMARCHES_API_URL,
+    EXIT_CODE_EXTERNAL_API_ERROR
 )
 from api_validator import (
     test_demarches_api,
@@ -115,12 +116,16 @@ def scheduled_sync_job(otp_config_id):
         user_schedule = db.query(UserSchedule).filter_by(
             otp_config_id=otp_config_id
         ).first()
+
         if user_schedule:
             user_schedule.last_run = datetime.now(timezone.utc)
             db.commit()
 
         # Exécuter la synchronisation
         result = sync_task_manager.run_synchronization_task(config)
+
+        if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
+            raise Exception(f"API error: {result.get('message')}")
 
         # Calculer next_run (prochaine exécution à l'heure configurée)
         now = datetime.now(timezone.utc)

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sync.sync_result_parser import parse_output
 from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
+from utils.constants import EXIT_CODE_EXTERNAL_API_ERROR
 
 
 class SyncTaskManager:
@@ -141,7 +142,6 @@ class SyncTaskManager:
 
             process.wait()
 
-            # Traiter les erreurs
             if process.returncode != 0:
                 raise subprocess.CalledProcessError(
                     process.returncode,
@@ -168,10 +168,9 @@ class SyncTaskManager:
 
         except Exception as e:
             error_parts = extract_error_parts(e, output_lines)
+
             if error_parts:
                 error_msg = f"Erreur lors de la synchronisation: {'; '.join(error_parts)}"
-            elif isinstance(e, subprocess.CalledProcessError):
-                error_msg = f"Erreur lors de la synchronisation: {str(e)}"
             else:
                 error_msg = f"Erreur lors de la synchronisation: {str(e)}"
 
@@ -184,6 +183,7 @@ class SyncTaskManager:
                 "message": error_msg,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "traceback": traceback.format_exc(),
+                "error_code": getattr(e, 'returncode', 1)
             }
 
     def start_task(self, task_function, *args, **kwargs):
