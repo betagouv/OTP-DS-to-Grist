@@ -22,10 +22,11 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync_task_manager import SyncTaskManager
-from constants import (
+from utils.constants import (
     GITHUB_CHANGELOG_BASE_URL,
     CHANGELOG_PATH,
-    DEMARCHES_API_URL
+    DEMARCHES_API_URL,
+    EXIT_CODE_EXTERNAL_API_ERROR
 )
 from api_validator import (
     test_demarches_api,
@@ -115,12 +116,16 @@ def scheduled_sync_job(otp_config_id):
         user_schedule = db.query(UserSchedule).filter_by(
             otp_config_id=otp_config_id
         ).first()
+
         if user_schedule:
             user_schedule.last_run = datetime.now(timezone.utc)
             db.commit()
 
         # Exécuter la synchronisation
         result = sync_task_manager.run_synchronization_task(config)
+
+        if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
+            raise Exception(f"API error: {result.get('message')}")
 
         # Calculer next_run (prochaine exécution à l'heure configurée)
         now = datetime.now(timezone.utc)
@@ -161,15 +166,7 @@ def scheduled_sync_job(otp_config_id):
         logger.info(f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}")
         logger.info(f"next_run DB mis à jour: {next_run}")
 
-        # En cas d'erreur, émettre une notification WebSocket
-        if not result.get("success"):
-            socketio.emit('sync_error', {
-                'grist_user_id': otp_config.grist_user_id,
-                'grist_doc_id': otp_config.grist_doc_id,
-                'message': message,
-                'timestamp': datetime.now(timezone.utc).isoformat()
-            })
-
+    # exit 1 tombe ici ?
     except Exception as e:
         logger.error(f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}")
 
@@ -202,13 +199,6 @@ def scheduled_sync_job(otp_config_id):
                 db.add(sync_log)
                 db.commit()
 
-                # Émettre notification d'erreur
-                socketio.emit('sync_error', {
-                    'grist_user_id': otp_config.grist_user_id,
-                    'grist_doc_id': otp_config.grist_doc_id,
-                    'message': f"Erreur de synchronisation planifiée: {str(e)}",
-                    'timestamp': datetime.now(timezone.utc).isoformat()
-                })
         except Exception as log_error:
             logger.error(f"Erreur lors du logging de l'erreur scheduler: {str(log_error)}")
 

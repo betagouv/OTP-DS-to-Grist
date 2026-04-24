@@ -352,6 +352,42 @@ class TestSyncTaskManager:
         assert "Script error occurred" in result["message"]
         assert "traceback" in result
 
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_error_code_api_error(self, mock_subprocess):
+        """Test error_code=2 retourné pour erreur API externe"""
+        mock_subprocess.return_value = create_mock_process(
+            "", "API error: Token expiré", returncode=2
+        )
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["error_code"] == 2
+
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_error_code_general_error(self, mock_subprocess):
+        """Test error_code=1 retourné pour erreur générale"""
+        mock_subprocess.return_value = create_mock_process(
+            "", "General error", returncode=1
+        )
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["error_code"] == 1
+
     def test_run_synchronization_task_exception_handling(self):
         """Test run_synchronization_task avec exception générale"""
         config = {

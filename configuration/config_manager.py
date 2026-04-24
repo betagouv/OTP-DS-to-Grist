@@ -2,7 +2,7 @@ import os
 import logging
 from cryptography.fernet import Fernet
 from database.database_manager import DatabaseManager
-from constants import DEMARCHES_API_URL
+from utils.constants import DEMARCHES_API_URL
 
 # Global variables
 DATABASE_URL = os.getenv('DATABASE_URL')
