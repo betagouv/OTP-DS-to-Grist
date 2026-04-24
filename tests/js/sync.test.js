@@ -15,7 +15,8 @@ const {
   startSync,
   updateTaskProgress,
   toggleAutoSync,
-  loadAutoSyncState
+  loadAutoSyncState,
+  showSyncBanner
 } = require('../../static/js/sync.js')
 
 describe('startSync', () => {
@@ -355,6 +356,135 @@ describe('toggleAutoSync', () => {
       expect(document.getElementById('auto_sync_enabled').checked).toBe(false)
     }
   )
+})
+
+describe('showSyncBanner', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="result_content_auto" class="fr-col hide">
+        <div class="sync_banner_template">
+          <div class="fr-alert" role="alert">
+            <h3 class="fr-alert__title sync-banner-message"></h3>
+            <p class="sync-banner-count"></p>
+            <p class="sync-banner-date fr-text--sm"></p>
+          </div>
+        </div>
+      </div>
+      <div id="result_content_manual" class="fr-col hide">
+        <div class="sync_banner_template">
+          <div class="fr-alert" role="alert">
+            <h3 class="fr-alert__title sync-banner-message"></h3>
+            <p class="sync-banner-count"></p>
+            <p class="sync-banner-date fr-text--sm"></p>
+          </div>
+        </div>
+      </div>
+    `
+  })
+
+  describe('sync réussie', () => {
+    it('affiche une bannière verte pour sync automatique réussie', () => {
+      const timestamp = '2026-04-24T10:30:00Z'
+      showSyncBanner('result_content_auto', 'success', 10, 0, timestamp, 'auto')
+
+      const alert = document.querySelector('#result_content_auto .fr-alert')
+      expect(alert.classList.contains('fr-alert--success')).toBe(true)
+
+      const h3 = document.querySelector('#result_content_auto h3')
+      const titleText = h3.textContent || h3.innerText || ''
+      expect(titleText).toContain('Synchronisation terminée avec succès')
+      expect(titleText).toContain('(automatique)')
+
+      const count = document.querySelector('#result_content_auto .sync-banner-count')
+      const countText = count.textContent || count.innerText || ''
+      expect(countText).toContain('10')
+      expect(countText).toContain('0')
+    })
+
+    it('affiche une bannière verte pour sync manuelle réussie', () => {
+      const timestamp = '2026-04-24T14:00:00Z'
+      showSyncBanner('result_content_manual', 'success', 5, 0, timestamp, 'manual')
+
+      const h3 = document.querySelector('#result_content_manual h3')
+      const titleText = h3.textContent || h3.innerText || ''
+      expect(titleText).toContain('Synchronisation terminée avec succès')
+      expect(titleText).toContain('(déclenchée manuellement)')
+
+      const alert = document.querySelector('#result_content_manual .fr-alert')
+      expect(alert.classList.contains('fr-alert--success')).toBe(true)
+    })
+  })
+
+  describe('sync avec erreurs', () => {
+    it('affiche une bannière orange pour sync avec avertissements', () => {
+      const timestamp = '2026-04-24T15:00:00Z'
+      showSyncBanner('result_content_manual', 'warning', 8, 2, timestamp, 'manual')
+
+      const alert = document.querySelector('#result_content_manual .fr-alert')
+      expect(alert.classList.contains('fr-alert--warning')).toBe(true)
+
+      const h3 = document.querySelector('#result_content_manual h3')
+      const titleText = h3.textContent || h3.innerText || ''
+      expect(titleText).toContain('erreur')
+    })
+  })
+
+  describe('sync échouée', () => {
+    it('affiche une bannière rouge pour sync échouée', () => {
+      const timestamp = '2026-04-24T16:00:00Z'
+      showSyncBanner('result_content_auto', 'error', 0, 3, timestamp, 'auto')
+
+      const alert = document.querySelector('#result_content_auto .fr-alert')
+      expect(alert.classList.contains('fr-alert--error')).toBe(true)
+
+      const h3 = document.querySelector('#result_content_auto h3')
+      const titleText = h3.textContent || h3.innerText || ''
+      expect(titleText).toContain('erreur')
+    })
+  })
+
+  describe('affichage et layout', () => {
+    it('affiche le container après appel', () => {
+      showSyncBanner('result_content_manual', 'success', 5, 0, null, 'manual')
+
+      const container = document.getElementById('result_content_manual')
+      expect(container.style.display).toBe('block')
+    })
+
+    it('permet le layout en colonne quand les deux bannières sont visibles', () => {
+      showSyncBanner('result_content_auto', 'success', 10, 0, null, 'auto')
+      showSyncBanner('result_content_manual', 'success', 5, 0, null, 'manual')
+
+      const auto = document.getElementById('result_content_auto')
+      const manual = document.getElementById('result_content_manual')
+
+      expect(auto.style.display).toBe('block')
+      expect(manual.style.display).toBe('block')
+    })
+  })
+
+  describe('gestion des erreurs', () => {
+    it('lance une erreur si le container nexiste pas', () => {
+      let errorThrown = false
+      try {
+        showSyncBanner('inexistant', 'success', 5, 0, null, 'manual')
+      } catch (e) {
+        errorThrown = true
+      }
+      expect(errorThrown).toBe(true)
+    })
+
+    it('ne fait rien si le template nexiste pas (pas derreur)', () => {
+      document.body.innerHTML = `<div id="sans_template"></div>`
+      let errorThrown = false
+      try {
+        showSyncBanner('sans_template', 'success', 5, 0, null, 'manual')
+      } catch (e) {
+        errorThrown = true
+      }
+      expect(errorThrown).toBe(false)
+    })
+  })
 })
 
 describe('loadAutoSyncState', () => {
