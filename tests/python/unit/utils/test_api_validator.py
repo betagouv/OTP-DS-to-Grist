@@ -3,7 +3,7 @@ Tests unitaires pour api_validator.py
 """
 
 from unittest.mock import patch, MagicMock
-from api_validator import (
+from utils.api_validator import (
     test_demarches_api as demarches_api_tester,
     test_grist_api as grist_api_tester,
     verify_api_connections
@@ -13,7 +13,7 @@ from api_validator import (
 class TestTestDemarchesApi:
     """Tests pour test_demarches_api"""
 
-    @patch('api_validator.requests.post')
+    @patch('utils.api_validator.requests.post')
     def test_success_with_demarche_number(self, mock_post):
         """Test réussi avec numéro de démarche"""
         mock_response = MagicMock()
@@ -35,7 +35,7 @@ class TestTestDemarchesApi:
         assert 'Connexion réussie' in message
         assert 'Test Démarche' in message
 
-    @patch('api_validator.requests.post')
+    @patch('utils.api_validator.requests.post')
     def test_api_error(self, mock_post):
         """Test avec erreur API"""
         mock_response = MagicMock()
@@ -51,7 +51,7 @@ class TestTestDemarchesApi:
         assert 'Erreur API' in message
         assert 'Token invalide' in message
 
-    @patch('api_validator.requests.post')
+    @patch('utils.api_validator.requests.post')
     def test_http_error(self, mock_post):
         """Test avec erreur HTTP"""
         mock_response = MagicMock()
@@ -64,7 +64,7 @@ class TestTestDemarchesApi:
         assert success is False
         assert '401' in message
 
-    @patch('api_validator.requests.post')
+    @patch('utils.api_validator.requests.post')
     def test_timeout(self, mock_post):
         """Test avec timeout"""
         from requests.exceptions import Timeout
@@ -75,7 +75,7 @@ class TestTestDemarchesApi:
         assert success is False
         assert 'Timeout' in message
 
-    @patch('api_validator.requests.post')
+    @patch('utils.api_validator.requests.post')
     def test_exception(self, mock_post):
         """Test avec exception générique"""
         mock_post.side_effect = Exception('Network error')
@@ -85,7 +85,7 @@ class TestTestDemarchesApi:
         assert success is False
         assert 'Erreur de connexion' in message
 
-    @patch('api_validator.requests.post')
+    @patch('utils.api_validator.requests.post')
     def test_expired_token(self, mock_post):
         """Test avec token expiré"""
         mock_response = MagicMock()
@@ -102,7 +102,7 @@ class TestTestDemarchesApi:
 class TestTestGristApi:
     """Tests pour test_grist_api"""
 
-    @patch('api_validator.requests.get')
+    @patch('utils.api_validator.requests.get')
     def test_success(self, mock_get):
         """Test réussi"""
         mock_response = MagicMock()
@@ -120,7 +120,7 @@ class TestTestGristApi:
         assert 'Connexion à Grist réussie' in message
         assert 'Mon Document' in message
 
-    @patch('api_validator.requests.get')
+    @patch('utils.api_validator.requests.get')
     def test_success_without_name(self, mock_get):
         """Test réussi sans nom de document"""
         mock_response = MagicMock()
@@ -137,7 +137,7 @@ class TestTestGristApi:
         assert success is True
         assert 'doc123' in message
 
-    @patch('api_validator.requests.get')
+    @patch('utils.api_validator.requests.get')
     def test_http_error(self, mock_get):
         """Test avec erreur HTTP"""
         mock_response = MagicMock()
@@ -154,7 +154,7 @@ class TestTestGristApi:
         assert success is False
         assert '404' in message
 
-    @patch('api_validator.requests.get')
+    @patch('utils.api_validator.requests.get')
     def test_timeout(self, mock_get):
         """Test avec timeout"""
         from requests.exceptions import Timeout
@@ -173,8 +173,8 @@ class TestTestGristApi:
 class TestVerifyApiConnections:
     """Tests pour verify_api_connections"""
 
-    @patch('api_validator.test_demarches_api')
-    @patch('api_validator.test_grist_api')
+    @patch('utils.api_validator.test_demarches_api')
+    @patch('utils.api_validator.test_grist_api')
     def test_both_success(self, mock_grist, mock_demarches):
         """Test avec succès des deux APIs"""
         mock_demarches.return_value = (True, 'DS OK')
@@ -195,8 +195,8 @@ class TestVerifyApiConnections:
         assert results[1]['type'] == 'grist'
         assert results[1]['success'] is True
 
-    @patch('api_validator.test_demarches_api')
-    @patch('api_validator.test_grist_api')
+    @patch('utils.api_validator.test_demarches_api')
+    @patch('utils.api_validator.test_grist_api')
     def test_partial_failure(self, mock_grist, mock_demarches):
         """Test avec échec partiel"""
         mock_demarches.return_value = (True, 'DS OK')
@@ -214,8 +214,8 @@ class TestVerifyApiConnections:
         assert results[0]['success'] is True
         assert results[1]['success'] is False
 
-    @patch('api_validator.test_demarches_api')
-    @patch('api_validator.test_grist_api')
+    @patch('utils.api_validator.test_demarches_api')
+    @patch('utils.api_validator.test_grist_api')
     def test_both_failure(self, mock_grist, mock_demarches):
         """Test avec échec des deux APIs"""
         mock_demarches.return_value = (False, 'DS Error')
@@ -232,8 +232,8 @@ class TestVerifyApiConnections:
         assert success is False
         assert all(not r['success'] for r in results)
 
-    @patch('api_validator.test_demarches_api')
-    @patch('api_validator.test_grist_api')
+    @patch('utils.api_validator.test_demarches_api')
+    @patch('utils.api_validator.test_grist_api')
     def test_calls_with_correct_params(self, mock_grist, mock_demarches):
         """Test que les fonctions sont appelées avec les bons paramètres"""
         mock_demarches.return_value = (True, 'DS OK')

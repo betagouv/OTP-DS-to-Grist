@@ -14,7 +14,7 @@ from queries_util import (
     associate_geojson_with_champs
 )
 from queries_extract import extract_champ_values, dossier_to_flat_data
-from api_validator import test_demarches_api
+from utils.api_validator import test_demarches_api
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 
