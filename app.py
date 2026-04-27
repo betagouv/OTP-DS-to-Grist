@@ -19,7 +19,7 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync.sync_manager import SyncManager
-from constants import GITHUB_CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
+from utils.constants import GITHUB_CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
 from api_validator import test_demarches_api, test_grist_api, verify_api_connections
 
 # Déterminer le répertoire du script
