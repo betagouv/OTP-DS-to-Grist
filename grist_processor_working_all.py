@@ -14,7 +14,7 @@ import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
-from api_validator import verify_api_connections
+from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from queries import dossier_to_flat_data, get_demarche, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
