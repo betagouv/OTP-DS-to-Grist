@@ -565,7 +565,7 @@ def api_sync_report():
                 (SyncLog.grist_user_id == OtpConfiguration.grist_user_id)
                 & (SyncLog.grist_doc_id == OtpConfiguration.grist_doc_id),
             )
-            .join(UserSchedule, UserSchedule.otp_config_id == OtpConfiguration.id)
+            .outerjoin(UserSchedule, UserSchedule.otp_config_id == OtpConfiguration.id)
             .filter(SyncLog.timestamp >= cutoff)
             .order_by(SyncLog.timestamp.asc())
             .all()
@@ -583,6 +583,7 @@ def api_sync_report():
                     "config_id": config_id,
                     "schedule_id": schedule_id,
                     "demarche": demarche_number,
+                    "auto": log.auto,
                 }
             )
 
