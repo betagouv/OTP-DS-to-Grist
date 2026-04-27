@@ -38,7 +38,6 @@ const extractStatsFromLog = (message) => {
 
     if (newTotal > totalDossiers) {
       totalDossiers = newTotal
-      console.log(`Total dossiers mis à jour: ${totalDossiers}`)
     }
   }
 
@@ -57,9 +56,6 @@ const extractStatsFromLog = (message) => {
       const lotSuccess = parseInt(resumeMatch[1])
       successCount += lotSuccess
       processedCountElement.textContent = successCount
-      console.log(
-        `Dossiers lot ajoutés: +${lotSuccess}, total: ${successCount}`
-      )
     }
   }
 
@@ -68,7 +64,6 @@ const extractStatsFromLog = (message) => {
     const newSuccess = parseInt(successMatch[1])
     successCount = newSuccess // Utiliser la valeur finale
     processedCountElement.textContent = successCount
-    console.log(`Succès final: ${successCount}`)
   }
 
   // Extraire le nombre d'erreurs/échecs
@@ -86,7 +81,6 @@ const extractStatsFromLog = (message) => {
     const newErrors = parseInt(errorMatch[1])
     if (newErrors > errorCount) {
       errorCount = newErrors
-      console.log(`Erreurs mises à jour: ${errorCount}`)
     }
   }
 
@@ -104,7 +98,6 @@ const extractStatsFromLog = (message) => {
       // Si moins de 80% récupérés, c'est problématique
       const failedCount = total - recovered
       errorCount = Math.max(errorCount, failedCount)
-      console.log(`Échecs détectés depuis taux de récupération: ${failedCount}`)
     }
   }
 
@@ -120,7 +113,6 @@ const extractStatsFromLog = (message) => {
     message.toLowerCase().includes('timeout')
   ) {
     errorCount++
-    console.log(`Erreur individuelle détectée, total erreurs: ${errorCount}`)
   }
 }
 
