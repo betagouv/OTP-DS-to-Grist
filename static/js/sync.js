@@ -4,6 +4,35 @@ if (typeof formatDuration === 'undefined')
 if (typeof showNotification === 'undefined')
   ({ showNotification } = require('./notifications.js'))
 
+const showSyncBanner = (
+  containerId,
+  status,
+  successCount,
+  errorCount,
+  timestamp,
+  syncType
+) => {
+  const container = document.getElementById(containerId)
+  const subContainer = container.querySelector('.sync_banner_template')
+  if (!container || !subContainer) return
+
+  const isSuccess = status === 'success'
+  const isWarning = status === 'warning'
+  const alertClass = isSuccess ? 'fr-alert--success' : isWarning ? 'fr-alert--warning' : 'fr-alert--error'
+  const typeLabel = syncType === 'auto' ? '(automatique)' : '(déclenchée manuellement)'
+  const message = isSuccess ? 'Synchronisation terminée avec succès' : 'Synchronisation terminée avec erreur(s)'
+  const title = typeLabel ? `${message} ${typeLabel}`: message
+  const count = `${successCount} dossiers traités avec succès, ${errorCount} en échec`
+  const date = timestamp ? new Date(timestamp).toLocaleString('fr-FR') : new Date().toLocaleString('fr-FR')
+
+  subContainer.querySelector('.fr-alert').classList.add(alertClass)
+  subContainer.querySelector('h3').innerText = title
+  subContainer.querySelector('.sync-banner-count').innerText = count
+  subContainer.querySelector('.sync-banner-date').innerText = date
+
+  container.style.display = 'block'
+}
+
 const startSync = async (otp_config_id) => {
   document.getElementById('config_check_result').style.display = 'none'
   if (!otp_config_id)
@@ -189,29 +218,25 @@ const updateTaskProgress = (task) => {
 
   // Gérer la fin de la tâche
   if (task.status === 'completed' || task.status === 'error') {
-    document.getElementById('sync_result').style.display = 'block'
+    const syncResultDiv = document.getElementById('sync_result')
+    if (syncResultDiv) syncResultDiv.style.display = 'block'
 
-    const resultContent = document.getElementById('result_content')
+    const resultContentManual = document.getElementById('result_content_manual')
 
     // Déterminer le type de résultat en fonction des erreurs détectées
     const hasSignificantErrors = errorCount > 0 || task.status === 'error'
-    const successRate =
-      totalDossiers > 0 ? (successCount / totalDossiers) * 100 : 0
 
     if (task.status === 'completed' && !hasSignificantErrors) {
+      // TODO use showSyncBanner or derivated
       if (task.sync_reason === 'already_up_to_date') {
-        resultContent.innerHTML = `<div class="fr-alert fr-alert--info">
+        if (resultContentManual) resultContentManual.innerHTML = `<div class="fr-alert fr-alert--info">
           <h3 class="fr-alert__title">Grist déjà à jour</h3>
           <p>Aucun dossier nouveau ou modifié depuis la dernière synchronisation.</p>
           <p>${task.message}</p>
         </div>`
         showNotification('Grist déjà à jour', 'info')
       } else {
-        resultContent.innerHTML = `<div class="fr-alert fr-alert--success">
-          <h3 class="fr-alert__title">Synchronisation terminée avec succès!</h3>
-          <p>${task.message}</p>
-          <p><strong>${successCount}</strong> dossiers traités avec succès</p>
-        </div>`
+        showSyncBanner('result_content_manual', 'success', successCount, errorCount)
         showNotification('Synchronisation terminée avec succès!', 'success')
       }
     } else if (
@@ -219,20 +244,10 @@ const updateTaskProgress = (task) => {
       hasSignificantErrors &&
       successCount > 0
     ) {
-      resultContent.innerHTML = ` <div class="fr-alert fr-alert--warning">
-        <h3 class="fr-alert__title">Synchronisation terminée avec des erreurs</h3>
-        <p>${task.message}</p>
-        <p><strong>${successCount}</strong> dossiers traités avec succès, <strong>${errorCount}</strong> en échec</p>
-        <p>Taux de réussite: ${successRate.toFixed(1)}%</p>
-      </div>`
+      showSyncBanner('result_content_manual', 'warning', successCount, errorCount)
       showNotification('Synchronisation terminée avec des erreurs', 'warning')
     } else {
-      resultContent.innerHTML = `<div class="fr-alert fr-alert--error">
-        <h3 class="fr-alert__title">Erreur lors de la synchronisation</h3>
-        <p>${task.message}</p>
-        ${errorCount > 0 ? `<p><strong>${errorCount}</strong> erreurs détectées</p>` : ''}
-      </div>
-      `
+      showSyncBanner('result_content_manual', 'error', successCount, errorCount)
       showNotification('Erreur lors de la synchronisation', 'error')
     }
   }
@@ -303,48 +318,55 @@ const loadAutoSyncState = async () => {
     const config = await configResponse.json()
 
     const checkbox = document.getElementById('auto_sync_enabled')
-    const statusDiv = document.getElementById('last_sync_status')
 
     if (!config.otp_config_id) {
       checkbox.disabled = true
       checkbox.checked = false
-      statusDiv.style.display = 'none'
+
       return
     }
 
     checkbox.disabled = false
 
-    // Check if schedule exists and is enabled
-    const response = await fetch(
-      `/api/schedule?otp_config_id=${config.otp_config_id}`
-    )
-    const result = await response.json()
+    const scheduleResponse = await fetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
+    const scheduleResult = await scheduleResponse.json()
 
-    checkbox.checked = result.enabled || false
+    checkbox.checked = scheduleResult.enabled || false
 
-    // Afficher le statut de la dernière synchronisation si activé
-    if (result.enabled && result.last_run) {
-      const lastRunDate = new Date(result.last_run + '+00:00').toLocaleString(
-        'fr-FR'
+    const syncLogResponse = await fetch(`/api/sync-log/latest?otp_config_id=${config.otp_config_id}`)
+    const syncLogResult = await syncLogResponse.json()
+
+    let hasBanner = false
+
+    if (syncLogResult.success && syncLogResult.auto) {
+      const auto = syncLogResult.auto
+      showSyncBanner(
+        'result_content_auto',
+        auto.status,
+        auto.success_count,
+        auto.error_count,
+        auto.timestamp,
+        'auto'
       )
-      const statusClass =
-        result.last_status === 'success'
-          ? 'fr-alert--success'
-          : 'fr-alert--error'
-      const statusText = result.last_status === 'success' ? 'Succès' : 'Échec'
-      const icon =
-        result.last_status === 'success'
-          ? 'check-circle'
-          : 'exclamation-triangle'
+      hasBanner = true
+    }
 
-      statusDiv.innerHTML = `
-        <div class="fr-alert ${statusClass} fr-alert--sm">
-          <p><i class="fas fa-${icon} fr-mr-1v" aria-hidden="true"></i>
-          Dernière synchronisation automatique : ${statusText} (${lastRunDate})</p>
-        </div>`
-      statusDiv.style.display = 'block'
-    } else {
-      statusDiv.style.display = 'none'
+    if (syncLogResult.success && syncLogResult.manual) {
+      const manual = syncLogResult.manual
+      showSyncBanner(
+        'result_content_manual',
+        manual.status,
+        manual.success_count,
+        manual.error_count,
+        manual.timestamp,
+        'manual'
+      )
+      hasBanner = true
+    }
+
+    const syncProgressContainer = document.getElementById('sync_progress_container')
+    if (syncProgressContainer) {
+      syncProgressContainer.style.display = hasBanner ? 'block' : 'none'
     }
   } catch (error) {
     console.error("Erreur lors du chargement de l'état auto sync:", error)
@@ -356,6 +378,7 @@ if (typeof module !== 'undefined' && module.exports) {
     startSync,
     updateTaskProgress,
     toggleAutoSync,
-    loadAutoSyncState
+    loadAutoSyncState,
+    showSyncBanner
   }
 }
