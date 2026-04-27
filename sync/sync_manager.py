@@ -30,10 +30,7 @@ class SyncManager:
     pour les mises à jour en temps réel
     """
 
-    def __init__(
-        self,
-        notify_callback: Callable[..., Any] | None = None
-    ):
+    def __init__(self, notify_callback: Callable[..., Any] | None = None):
         self.tasks = {}
         self.task_counter = 0
         self.notify_callback = notify_callback
@@ -43,24 +40,16 @@ class SyncManager:
         if self.notify_callback:
             self.notify_callback(event_type, data)
 
-    def start_sync(
-        self,
-        server_config: dict[str, Any],
-        auto: bool = False
-    ) -> str:
+    def start_sync(self, server_config: dict[str, Any], auto: bool = False) -> str:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
-        return self.start_task(
-            self.run_synchronization_task,
-            server_config,
-            auto=auto
-        )
+        return self.start_task(self.run_synchronization_task, server_config, auto=auto)
 
     def run_synchronization_task(
         self,
         config: dict[str, Any],
         progress_callback: Callable[[float, str], None] | None = None,
         log_callback: Callable[[str], None] | None = None,
-        auto: bool = False
+        auto: bool = False,
     ) -> dict[str, Any]:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
@@ -69,12 +58,7 @@ class SyncManager:
         output_lines = []
 
         # Pré-définition en cas d'erreur
-        result = {
-            "success": False,
-            "message": "",
-            "success_count": 0,
-            "error_count": 0
-        }
+        result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
 
         try:
             if progress_callback:
@@ -181,9 +165,7 @@ class SyncManager:
             # Traiter les erreurs
             if process.returncode != 0:
                 raise subprocess.CalledProcessError(
-                    process.returncode,
-                    process.args,
-                    stderr=stderr_output
+                    process.returncode, process.args, stderr=stderr_output
                 )
 
             result = parse_output(output_lines)
@@ -206,7 +188,9 @@ class SyncManager:
         except Exception as e:
             error_parts = extract_error_parts(e, output_lines)
             if error_parts:
-                error_msg = f"Erreur lors de la synchronisation: {'; '.join(error_parts)}"
+                error_msg = (
+                    f"Erreur lors de la synchronisation: {'; '.join(error_parts)}"
+                )
             elif isinstance(e, subprocess.CalledProcessError):
                 error_msg = f"Erreur lors de la synchronisation: {str(e)}"
             else:
@@ -223,6 +207,7 @@ class SyncManager:
                 "traceback": traceback.format_exc(),
                 "success_count": result.get("success_count", 0),
                 "error_count": result.get("error_count", 0),
+                "error_code": getattr(e, "returncode", 1),
             }
 
             return result
@@ -245,10 +230,7 @@ class SyncManager:
             db_session.close()
 
     def start_task(
-        self,
-        task_function: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any
+        self, task_function: Callable[..., Any], *args: Any, **kwargs: Any
     ) -> str:
         """Démarre une nouvelle tâche asynchrone"""
         self.task_counter += 1
@@ -271,11 +253,7 @@ class SyncManager:
         return task_id
 
     def _run_task(
-        self,
-        task_id: str,
-        task_function: Callable[..., Any],
-        *args: Any,
-        **kwargs: Any
+        self, task_id: str, task_function: Callable[..., Any], *args: Any, **kwargs: Any
     ) -> None:
         """Exécute une tâche avec gestion des erreurs"""
         try:
@@ -313,23 +291,14 @@ class SyncManager:
 
             self._emit_update(task_id)
 
-    def _update_progress(
-        self,
-        task_id: str,
-        progress: float,
-        message: str
-    ) -> None:
+    def _update_progress(self, task_id: str, progress: float, message: str) -> None:
         """Met à jour la progression d'une tâche"""
         if task_id in self.tasks:
             self.tasks[task_id]["progress"] = progress
             self.tasks[task_id]["message"] = message
             self._emit_update(task_id)
 
-    def _add_log(
-        self,
-        task_id: str,
-        message: str
-    ) -> None:
+    def _add_log(self, task_id: str, message: str) -> None:
         """Ajoute un log à une tâche"""
         if task_id in self.tasks:
             self.tasks[task_id]["logs"].append(
