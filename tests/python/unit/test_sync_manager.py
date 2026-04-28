@@ -10,6 +10,7 @@ Ces tests couvrent l'ensemble des fonctionnalités de la classe :
 """
 
 import os
+import time
 from io import StringIO
 from unittest.mock import patch, MagicMock
 from sync.sync_manager import SyncManager
@@ -584,7 +585,32 @@ class TestSyncManager:
         assert sync_log.status == "error"
         assert sync_log.auto is False
         assert sync_log.success_count == 0
-        assert sync_log.error_count == 0  # default fallback when exception caught
+        assert sync_log.error_count == 0
+        assert sync_log.message != ""
+        assert "Erreur lors de la synchronisation" in sync_log.message
+
+    def test_run_task_marks_error_when_result_failed(self):
+        """Test que _run_task marque 'error' si result success=False"""
+
+        def mock_sync_task(*args, **kwargs):
+            return {"success": False, "message": "Erreur test", "sync_reason": "synced"}
+
+        # Simuler start_task
+        task_id = "test_task_1"
+        self.manager.tasks[task_id] = {
+            "status": "running",
+            "progress": 0,
+            "message": "Initialisation...",
+            "start_time": time.time(),
+            "logs": [],
+        }
+
+        self.manager._run_task(task_id, mock_sync_task)
+
+        task = self.manager.get_task(task_id)
+        assert task is not None
+        assert task["status"] == "error"
+        assert "Erreur test" in task["message"]
 
     @patch("sync.sync_manager.create_engine")
     @patch("sync.sync_manager.sessionmaker")

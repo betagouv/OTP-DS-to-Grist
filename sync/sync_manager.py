@@ -216,12 +216,16 @@ class SyncManager:
                 log_callback(error_msg)
                 log_callback(traceback.format_exc())
 
-            return {
+            result = {
                 "success": False,
                 "message": error_msg,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "traceback": traceback.format_exc(),
+                "success_count": result.get("success_count", 0),
+                "error_count": result.get("error_count", 0),
             }
+
+            return result
         finally:
             engine = create_engine(DATABASE_URL)
             SessionLocal = sessionmaker(bind=engine)
@@ -283,11 +287,12 @@ class SyncManager:
 
             result = task_function(*args, **kwargs)
 
+            is_success = result.get("success", False)
             self.tasks[task_id].update(
                 {
-                    "status": "completed",
+                    "status": "completed" if is_success else "error",
                     "progress": 100,
-                    "message": "Tâche terminée avec succès",
+                    "message": "Tâche terminée avec succès" if is_success else result.get("message", "Erreur"),
                     "result": result,
                     "sync_reason": result.get("sync_reason", "synced"),
                     "end_time": time.time(),
