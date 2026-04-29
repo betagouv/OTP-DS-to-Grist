@@ -18,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from database.models import OtpConfiguration, UserSchedule
 from configuration.config_manager import ConfigManager
 from sync.sync_manager import SyncManager
+from utils.constants import EXIT_CODE_EXTERNAL_API_ERROR
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,9 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
             config,
             auto=True
         )
+
+        if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
+            raise Exception(f"Erreur API externe: {result.get('message')}")
 
         now = datetime.now(timezone.utc)
         next_run = now.replace(

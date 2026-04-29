@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from constants import DEMARCHES_API_URL
+from utils.constants import DEMARCHES_API_URL
 from queries_util import timed
 
 load_dotenv()
