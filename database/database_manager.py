@@ -95,6 +95,19 @@ class DatabaseManager:
                 )
             """)
 
+            # Migration: ajouter les nouvelles colonnes pour multi-démarche
+            # otp_config_id (Integer, FK nullable)
+            cursor.execute("""
+                ALTER TABLE sync_logs
+                ADD COLUMN IF NOT EXISTS otp_config_id INTEGER REFERENCES otp_configurations(id) ON DELETE SET NULL
+            """)
+
+            # demarche_number (Text, nullable)
+            cursor.execute("""
+                ALTER TABLE sync_logs
+                ADD COLUMN IF NOT EXISTS demarche_number TEXT
+            """)
+
             # Migration: ajouter les colonnes manquantes à sync_logs
             # Colonne auto (Boolean, default=True)
             cursor.execute("""
