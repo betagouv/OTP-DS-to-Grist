@@ -955,7 +955,16 @@ class TestErrorHandling:
 class SyncLogMock:
     """Mock simple pour SyncLog avec attributs sérialisables"""
 
-    def __init__(self, timestamp_iso, status, success_count, error_count, message):
+    def __init__(
+        self,
+        timestamp_iso,
+        status,
+        success_count,
+        error_count,
+        message,
+        otp_config_id=None,
+        demarche_number=None,
+    ):
         class TimestampMock:
             def isoformat(self):
                 return timestamp_iso
@@ -965,6 +974,8 @@ class SyncLogMock:
         self.success_count = success_count
         self.error_count = error_count
         self.message = message
+        self.otp_config_id = otp_config_id
+        self.demarche_number = demarche_number
 
 
 class OtpConfigMock:

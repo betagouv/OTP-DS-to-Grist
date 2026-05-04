@@ -219,6 +219,8 @@ class SyncManager:
             sync_log = SyncLog(
                 grist_user_id=config.get("grist_user_id"),
                 grist_doc_id=config.get("grist_doc_id"),
+                otp_config_id=config.get("otp_config_id"),
+                demarche_number=config.get("demarche_number"),
                 status="success" if result.get("success") else "error",
                 message=result.get("message"),
                 auto=auto,
@@ -270,7 +272,9 @@ class SyncManager:
                 {
                     "status": "completed" if is_success else "error",
                     "progress": 100,
-                    "message": "Tâche terminée avec succès" if is_success else result.get("message", "Erreur"),
+                    "message": "Tâche terminée avec succès"
+                    if is_success
+                    else result.get("message", "Erreur"),
                     "result": result,
                     "sync_reason": result.get("sync_reason", "synced"),
                     "end_time": time.time(),
