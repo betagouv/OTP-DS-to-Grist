@@ -375,6 +375,60 @@ class TestSyncManager:
         assert "Script error occurred" in result["message"]
         assert "traceback" in result
 
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_error_code_api_error(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Test error_code=2 retourné pour erreur API externe"""
+        mock_subprocess.return_value = create_mock_process(
+            "", "API error: Token expiré", returncode=2
+        )
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["error_code"] == 2
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_error_code_general_error(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Test error_code=1 retourné pour erreur générale"""
+        mock_subprocess.return_value = create_mock_process(
+            "", "General error", returncode=1
+        )
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["error_code"] == 1
+
     def test_run_synchronization_task_exception_handling(self):
         """Test run_synchronization_task avec exception générale"""
         config = {

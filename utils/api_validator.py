@@ -4,13 +4,24 @@ Fonctions pures sans Flask, utilisables par app.py et les scripts CLI
 """
 
 import requests
-from constants import DEMARCHES_API_URL
+from typing import Literal, TypedDict
 import logging
+
+from .constants import DEMARCHES_API_URL
 
 logger = logging.getLogger(__name__)
 
 
-def test_demarches_api(api_token, demarche_number):
+class ApiConnectionResult(TypedDict):
+    type: Literal["demarches", "grist"]
+    success: bool
+    message: str
+
+
+def test_demarches_api(
+    api_token: str,
+    demarche_number: str | int
+) -> tuple[bool, str]:
     """
     Teste la connexion à l'API Démarches Simplifiées
 
@@ -88,7 +99,11 @@ def test_demarches_api(api_token, demarche_number):
         return False, "Erreur de connexion à l'API Démarches Simplifiées"
 
 
-def test_grist_api(base_url, api_key, doc_id):
+def test_grist_api(
+    base_url: str,
+    api_key: str,
+    doc_id: str
+) -> tuple[bool, str]:
     """
     Teste la connexion à l'API Grist
 
@@ -124,12 +139,12 @@ def test_grist_api(base_url, api_key, doc_id):
 
 
 def verify_api_connections(
-    ds_token,
-    demarche_number,
-    grist_base_url,
-    grist_api_key,
-    grist_doc_id
-):
+    ds_token: str,
+    demarche_number: str | int,
+    grist_base_url: str,
+    grist_api_key: str,
+    grist_doc_id: str,
+) -> tuple[bool, list[ApiConnectionResult]]:
     """
     Teste les connexions aux deux APIs (DS et Grist)
 
@@ -141,7 +156,7 @@ def verify_api_connections(
         grist_doc_id: ID du document Grist
 
     Returns:
-        tuple: (success_global: bool, results: list[dict])
+        tuple: (success_global: bool, results: list[ApiConnectionResult])
                results contient les résultats individuels de chaque test
     """
     results = []

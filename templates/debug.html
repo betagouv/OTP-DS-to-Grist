@@ -168,7 +168,7 @@
             const response = await fetch('/api/sync-report');
             const data = await response.json();
             if (data.logs && data.logs.length > 0) {
-                let html = '<table class="fr-table fr-table--no-caption"><thead><tr><th scope="col">Timestamp</th><th scope="col">Statut</th><th scope="col">Message</th><th scope="col">Config/Schedule</th><th scope="col">Démarche</th><th scope="col">User/Doc</th></tr></thead><tbody>';
+              let html = '<table class="fr-table fr-table--no-caption"><thead><tr><th scope="col">Timestamp</th><th scope="col">Statut</th><th scope="col">Message</th><th scope="col">Config/Schedule</th><th scope="col">Démarche</th><th scope="col">User/Doc</th><th>Auto</th></tr></thead><tbody>';
                 data.logs.forEach(log => {
                     const date = new Date(log.timestamp);
                     const readableTimestamp = date.toLocaleString('fr-FR', {
@@ -179,7 +179,7 @@
                         minute: '2-digit'
                     });
                     const statusClass = log.status === 'success' ? 'fr-badge fr-badge--success fr-badge--sm' : 'fr-badge fr-badge--error fr-badge--sm';
-                    html += `<tr><td>${readableTimestamp}</td><td><span class="${statusClass}">${log.status}</span></td><td>${log.message}</td><td>${log.config_id}/${log.schedule_id}</td><td>${log.demarche}</td><td>${log.grist_user_id}/${log.grist_doc_id}</td></tr>`;
+                    html += `<tr><td>${readableTimestamp}</td><td><span class="${statusClass}">${log.status}</span></td><td>${log.message}</td><td>${log.config_id}/${log.schedule_id}</td><td>${log.demarche}</td><td>${log.grist_user_id}/${log.grist_doc_id}</td><td>${log.auto}</td></tr>`;
                 });
                 html += '</tbody></table>';
                 reportDiv.innerHTML = html;

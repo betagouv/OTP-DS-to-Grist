@@ -19,8 +19,8 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync.sync_manager import SyncManager
-from constants import GITHUB_CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
-from api_validator import test_demarches_api, test_grist_api, verify_api_connections
+from utils.constants import GITHUB_CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
+from utils.api_validator import test_demarches_api, test_grist_api, verify_api_connections
 
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -565,7 +565,7 @@ def api_sync_report():
                 (SyncLog.grist_user_id == OtpConfiguration.grist_user_id)
                 & (SyncLog.grist_doc_id == OtpConfiguration.grist_doc_id),
             )
-            .join(UserSchedule, UserSchedule.otp_config_id == OtpConfiguration.id)
+            .outerjoin(UserSchedule, UserSchedule.otp_config_id == OtpConfiguration.id)
             .filter(SyncLog.timestamp >= cutoff)
             .order_by(SyncLog.timestamp.asc())
             .all()
@@ -583,6 +583,7 @@ def api_sync_report():
                     "config_id": config_id,
                     "schedule_id": schedule_id,
                     "demarche": demarche_number,
+                    "auto": log.auto,
                 }
             )
 
