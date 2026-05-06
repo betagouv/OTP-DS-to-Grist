@@ -43,13 +43,13 @@ describe('getConfiguration', () => {
 
       fetch.mockResolvedValue({
         ok: true,
-        json: jest.fn().mockResolvedValue(mockConfig)
+        json: jest.fn().mockResolvedValue({ configs: [mockConfig] })
       })
 
       const result = await getConfiguration()
 
       expect(fetch).toHaveBeenCalledWith('/api/config?test=1')
-      expect(result).toEqual(mockConfig)
+      expect(result).toEqual([mockConfig])
     }
   )
 
@@ -117,13 +117,15 @@ describe('checkConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          otp_config_id: 123,
-          demarche_number: 123,
-          grist_base_url: 'url',
-          grist_doc_id: 'doc',
-          grist_user_id: 'user',
-          has_ds_token: true,
-          has_grist_key: true
+          configs: [{
+            otp_config_id: 123,
+            demarche_number: 123,
+            grist_base_url: 'url',
+            grist_doc_id: 'doc',
+            grist_user_id: 'user',
+            has_ds_token: true,
+            has_grist_key: true
+          }]
         })
       })
 
@@ -145,12 +147,14 @@ describe('checkConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          otp_config_id: 123,
-          demarche_number: 123,
-          // grist_base_url manquant
-          grist_doc_id: 'doc',
-          has_ds_token: true,
-          has_grist_key: true
+          configs: [{
+            otp_config_id: 123,
+            demarche_number: 123,
+            // grist_base_url manquant
+            grist_doc_id: 'doc',
+            has_ds_token: true,
+            has_grist_key: true
+          }]
         })
       })
 
@@ -193,13 +197,15 @@ describe('checkConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          otp_config_id: 123,
-          demarche_number: 123,
-          grist_base_url: 'https://grist.numerique.gouv.fr/api',
-          grist_doc_id: 'doc123',
-          grist_user_id: 'user123',
-          has_ds_token: true,
-          has_grist_key: false // Manquant mais acceptable
+          configs: [{
+            otp_config_id: 123,
+            demarche_number: 123,
+            grist_base_url: 'https://grist.numerique.gouv.fr/api',
+            grist_doc_id: 'doc123',
+            grist_user_id: 'user123',
+            has_ds_token: true,
+            has_grist_key: false // Manquant mais acceptable
+          }]
         })
       })
 
@@ -222,13 +228,15 @@ describe('checkConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          otp_config_id: 123,
-          demarche_number: 123,
-          grist_base_url: 'https://grist.numerique.gouv.fr/api',
-          grist_doc_id: 'doc123',
-          grist_user_id: 'user123',
-          has_ds_token: false, // Manquant
-          has_grist_key: true
+          configs: [{
+            otp_config_id: 123,
+            demarche_number: 123,
+            grist_base_url: 'https://grist.numerique.gouv.fr/api',
+            grist_doc_id: 'doc123',
+            grist_user_id: 'user123',
+            has_ds_token: false, // Manquant
+            has_grist_key: true
+          }]
         })
       })
 
@@ -296,19 +304,21 @@ describe('loadConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          otp_config_id: 123,
-          demarche_number: 123,
-          grist_base_url: 'x/xx/x',
-          grist_doc_id: 'doc123',
-          filter_date_start: '2023-01-01',
-          filter_date_end: '2023-12-31',
-          filter_statuses: 'en_construction,en_instruction',
-          filter_groups: '1,2',
-          batch_size: 50,
-          max_workers: 4,
-          parallel: true,
-          has_ds_token: true,
-          has_grist_key: true
+          configs: [{
+            otp_config_id: 123,
+            demarche_number: 123,
+            grist_base_url: 'x/xx/x',
+            grist_doc_id: 'doc123',
+            filter_date_start: '2023-01-01',
+            filter_date_end: '2023-12-31',
+            filter_statuses: 'en_construction,en_instruction',
+            filter_groups: '1,2',
+            batch_size: 50,
+            max_workers: 4,
+            parallel: true,
+            has_ds_token: true,
+            has_grist_key: true
+          }]
         })
       })
 
@@ -417,9 +427,10 @@ describe('saveConfiguration', () => {
              json: () => Promise.resolve({ success: true })
            })
          } else {
+           // GET /api/config retourne {configs: [...]}
            return Promise.resolve({
              ok: true,
-             json: () => Promise.resolve({ has_ds_token: false })
+             json: () => Promise.resolve({ configs: [{ has_ds_token: false }] })
            })
          }
        })
@@ -490,15 +501,16 @@ describe('saveConfiguration', () => {
       global.getGristContext = jest.fn().mockResolvedValue({ params: '' })
 
       // Mock fetch
-      global.fetch = jest.fn().mockImplementation((url, options) => {
+      global.fetch = jest.fn().mockImplementation((_, options) => {
         if (options?.method === 'POST') {
           return Promise.resolve({
             json: () => Promise.resolve({ success: true })
           })
         } else {
+          // GET /api/config retourne {configs: [...]}
           return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve({ has_ds_token: false })
+            json: () => Promise.resolve({ configs: [{ has_ds_token: false }] })
           })
         }
       })
@@ -562,9 +574,7 @@ describe('saveConfiguration', () => {
       global.fetch = jest.fn().mockResolvedValue(
         {
           ok: true,
-          json: () => ({
-            has_ds_token: false
-          })
+          json: () => ({ configs: [{ has_ds_token: false }] })
         }
       )
 

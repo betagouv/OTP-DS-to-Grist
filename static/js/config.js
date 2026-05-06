@@ -11,7 +11,9 @@ const getConfiguration = async () => {
   if (!response.ok)
     throw new Error(`Erreur HTTP ${response.status}`)
 
-  return await response.json()
+  const data = await response.json()
+  // retourner la liste des configs (pour l'instant, on prend la première)
+  return data.configs
 }
 
 const updateButtonsState = () => {
@@ -44,7 +46,13 @@ const checkConfiguration = async (silent = false) => {
   syncBtn.disabled = true
 
   try {
-    const config = await getConfiguration()
+    const configs = await getConfiguration()
+
+    if (!configs || !configs.length)
+      throw new Error('Aucune configuration trouvée')
+
+    // Pour l'instant, on prend la première config
+    const config = configs[0]
 
     window.has_ds_token = config.has_ds_token
     window.has_grist_key = config.has_grist_key
@@ -106,10 +114,13 @@ const loadConfiguration = async () => {
     // Set default base url
     document.getElementById('grist_base_url').value = gristBaseUrl || 'https://grist.numerique.gouv.fr/api'
 
-    const config = await getConfiguration()
+    const configs = await getConfiguration()
 
-    if (!config)
+    if (!configs || !configs.length)
       throw new Error('Configuration non trouvée')
+
+    // Pour l'instant, on prend la première config (single démarche)
+    const config = configs[0]
 
     // Déterminer si une configuration a été trouvée
     const hasConfig = !!config.otp_config_id
@@ -246,9 +257,15 @@ const saveConfiguration = async () => {
   ]
 
   try {
-    // Vérification spécifique pour ds_api_token : obligatoire si pas en base
-    const currentConfig = await getConfiguration() //
+    const configs = await getConfiguration()
 
+    if (!configs || !configs.length)
+      throw new Error('Aucune configuration trouvée')
+
+    // Pour l'instant, on prend la première config
+    const currentConfig = configs[0]
+
+    // Vérification spécifique pour ds_api_token : obligatoire si pas en base
     if (!dsToken && !currentConfig.has_ds_token) {
       showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
       // Réactiver les boutons en cas d'erreur de validation

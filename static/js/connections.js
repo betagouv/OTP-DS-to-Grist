@@ -11,15 +11,17 @@ const testDemarchesConnection = async (silent = false) => {
 
     // Utiliser le token saisi OU recharger la config si vide
     let ds_token = ds_token_input
-    let latestConfig = null
+    let config = null
+
     if (!ds_token) {
       try {
         const gristContext = await getGristContext()
         const configResponse = await fetch(`/api/config${gristContext.params}`)
 
         if (configResponse.ok) {
-          latestConfig = await configResponse.json()
-          ds_token = latestConfig.ds_api_token || ''
+          const {configs} = await configResponse.json()
+          config = configs[0]
+          ds_token = config.ds_api_token || ''
         }
       } catch (e) {
         console.error('Erreur rechargement config:', e)
@@ -27,7 +29,7 @@ const testDemarchesConnection = async (silent = false) => {
     }
 
     if (!ds_token) {
-      if (latestConfig && latestConfig.has_ds_token) {
+      if (config && config.has_ds_token) {
         return true  // Déjà configuré, pas besoin de tester
       } else {
         resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
@@ -87,15 +89,16 @@ const testGristConnection = async (silent = false) => {
 
     // Utiliser la clé saisie OU recharger la config si vide
     let grist_key = gristKeyInputValue
-    let latestConfig = null
+    let config = null
 
     if (!grist_key) {
       try {
         const gristContext   = await getGristContext()
         const configResponse = await fetch(`/api/config${gristContext.params}`)
         if (configResponse.ok) {
-          latestConfig = await configResponse.json()
-          grist_key    = latestConfig.grist_api_key || ''
+          const {configs} = await configResponse.json()
+          config = configs[0]
+          grist_key = config.grist_api_key || ''
         }
       } catch (e) {
         console.error('Erreur rechargement config:', e)
@@ -103,7 +106,7 @@ const testGristConnection = async (silent = false) => {
     }
 
     if (!grist_key) {
-      if (latestConfig && latestConfig.has_grist_key) {
+      if (config && config.has_grist_key) {
         return true  // Déjà configuré, pas besoin de tester
       } else {
         if (!silent) showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
@@ -227,7 +230,13 @@ const testExternalConnections = async (silent = false) => {
     const configResponse = await fetch(`/api/config${gristContext.params}`)
     if (!configResponse.ok) throw new Error('Impossible de récupérer la configuration')
 
-    const config = await configResponse.json()
+    const {configs} = await configResponse.json()
+
+    if (!configs || !configs.length)
+      throw new Error('Aucune configuration trouvée')
+
+    // Pour l'instant, on prend la première config
+    const config = configs[0]
 
     if (!config.otp_config_id) throw new Error('Pas de configuration trouvée')
 
