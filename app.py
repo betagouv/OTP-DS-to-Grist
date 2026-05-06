@@ -23,7 +23,11 @@ from database.models import OtpConfiguration, UserSchedule, SyncLog
 from configuration.config_manager import ConfigManager
 from sync.sync_manager import SyncManager
 from utils.constants import GITHUB_CHANGELOG_BASE_URL, CHANGELOG_PATH, DEMARCHES_API_URL
-from utils.api_validator import test_demarches_api, test_grist_api, verify_api_connections
+from utils.api_validator import (
+    test_demarches_api,
+    test_grist_api,
+    verify_api_connections,
+)
 
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -236,30 +240,18 @@ def api_config():
             grist_user_id = request.args.get("grist_user_id")
             grist_doc_id = request.args.get("grist_doc_id")
 
-            config = config_manager.load_config(
+            configs = config_manager.load_config(
                 grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
             )
 
-            # Ajouter l'id de la configuration
-            db = SessionLocal()
-            try:
-                otp_config = (
-                    db.query(OtpConfiguration)
-                    .filter_by(grist_user_id=grist_user_id, grist_doc_id=grist_doc_id)
-                    .first()
-                )
-                if otp_config:
-                    config["otp_config_id"] = otp_config.id
-            finally:
-                db.close()
+            # Masquer les tokens et ajouter les flags pour chaque config
+            for config in configs:
+                config["has_ds_token"] = bool(config.get("ds_api_token"))
+                config["has_grist_key"] = bool(config.get("grist_api_key"))
+                config.pop("ds_api_token", None)
+                config.pop("grist_api_key", None)
 
-            # Supprimer les tokens sensibles, ajouter flags d'existence
-            config["has_ds_token"] = bool(config.get("ds_api_token"))
-            config["has_grist_key"] = bool(config.get("grist_api_key"))
-            config.pop("ds_api_token", None)
-            config.pop("grist_api_key", None)
-
-            return jsonify(config)
+            return jsonify({"configs": configs})
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
 
@@ -269,22 +261,24 @@ def api_config():
 
             otp_config_id = new_config.get("otp_config_id")
             if otp_config_id:
-                # Update existant
+                # Update existant - Charger la config pour vérification
                 existing_config = config_manager.load_config_by_id(otp_config_id)
 
-                # Fusionner les champs sensibles seulement si fournis
-                # les autres toujours
-                sensitive_keys = ["ds_api_token", "grist_api_key"]
-                for key, value in new_config.items():
-                    if key in sensitive_keys:
-                        if value:  # Seulement si fourni (non vide)
-                            existing_config[key] = value
-                    else:
-                        # Toujours mettre à jour, même vide
-                        existing_config[key] = value
-                # Supprimer otp_config_id du dict avant sauvegarde
-                existing_config.pop("otp_config_id", None)
-                success = config_manager.save_config(existing_config)
+                if not existing_config:
+                    return jsonify(
+                        {"success": False, "message": "Configuration non trouvée"}
+                    ), 404
+
+                # Vérification de sécurité : IDs doivent correspondre
+                if existing_config.get("grist_user_id") != new_config.get(
+                    "grist_user_id"
+                ) or existing_config.get("grist_doc_id") != new_config.get(
+                    "grist_doc_id"
+                ):
+                    return jsonify({"success": False, "message": "Forbidden"}), 403
+
+                # Passer le dict à save_config() qui gère l'update par ID et les tokens
+                success = config_manager.save_config(new_config)
 
                 return (
                     (
