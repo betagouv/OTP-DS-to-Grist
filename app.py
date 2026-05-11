@@ -35,11 +35,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 # Chargement des variables d'environnement
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError(
-        "DATABASE_URL environment variable is required for database operations"
-    )
+from utils.constants import DATABASE_URL
 
 # Initialiser la base de données au chargement du module
 DatabaseManager.init_db(DATABASE_URL)

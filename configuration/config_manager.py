@@ -4,9 +4,6 @@ from cryptography.fernet import Fernet
 from database.database_manager import DatabaseManager
 from utils.constants import DEMARCHES_API_URL
 
-# Global variables
-DATABASE_URL = os.getenv("DATABASE_URL")
-
 logger = logging.getLogger(__name__)
 
 
