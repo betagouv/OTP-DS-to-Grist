@@ -99,31 +99,19 @@ describe('testDemarchesConnection', () => {
     'should reload config when no token in input but config exists',
     async () => {
       mockTokenInput.value = ''
-      global.currentConfig = { ds_api_token_exists: true }
 
       const mockConfigResponse = {
         ok: true,
-        json: jest.fn().mockResolvedValue({ configs: [ { ds_api_token: 'config-token' } ] })
+        json: jest.fn().mockResolvedValue({ configs: [{ has_ds_token: true }] })
       }
-      global.fetch
-        .mockResolvedValueOnce(mockConfigResponse) // for config reload
-        .mockResolvedValueOnce({
-          ok: true,
-          json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
-        })
+      global.fetch.mockResolvedValue(mockConfigResponse)
 
-      await testDemarchesConnection()
+      const result = await testDemarchesConnection()
 
       expect(global.getGristContext).toHaveBeenCalled()
       expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
-      expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
-        body: JSON.stringify({
-          type: 'demarches',
-          api_token: 'config-token',
-          api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
-          demarche_number: ''
-        })
-      }))
+      expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
+      expect(result).toBe(true)
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -134,7 +122,7 @@ describe('testDemarchesConnection', () => {
       mockTokenInput.value = ''
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        json: () => ({ configs: [{ ds_api_token: '' }] })
+        json: () => ({ configs: [{ has_ds_token: false }] })
       })
 
       await testDemarchesConnection()
@@ -253,31 +241,19 @@ describe('testGristConnection', () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
       mockDocInput.value = 'doc123'
-      global.currentConfig = { grist_api_key_exists: true }
 
       const mockConfigResponse = {
         ok: true,
-        json: jest.fn().mockResolvedValue({ configs: [{grist_api_key: 'config-key'}] })
+        json: jest.fn().mockResolvedValue({ configs: [{ has_grist_key: true }] })
       }
-      global.fetch
-        .mockResolvedValueOnce(mockConfigResponse)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
-        })
+      global.fetch.mockResolvedValue(mockConfigResponse)
 
-      await testGristConnection()
+      const result = await testGristConnection()
 
       expect(global.getGristContext).toHaveBeenCalled()
       expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
-      expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
-        body: JSON.stringify({
-          type: 'grist',
-          base_url: 'https://grist.example.com',
-          api_key: 'config-key',
-          doc_id: 'doc123'
-        })
-      }))
+      expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
+      expect(result).toBe(true)
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -289,7 +265,7 @@ describe('testGristConnection', () => {
       mockDocInput.value = 'doc123'
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        json: () => ({ configs: [{grist_api_key: '' }] })
+        json: () => ({ configs: [{ has_grist_key: false }] })
       })
 
       await testGristConnection()

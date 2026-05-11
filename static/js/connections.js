@@ -21,14 +21,11 @@ const testDemarchesConnection = async (silent = false) => {
         if (configResponse.ok) {
           const {configs} = await configResponse.json()
           config = configs[0]
-          ds_token = config.ds_api_token || ''
         }
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
-    }
 
-    if (!ds_token) {
       if (config && config.has_ds_token) {
         return true  // Déjà configuré, pas besoin de tester
       } else {
@@ -98,14 +95,11 @@ const testGristConnection = async (silent = false) => {
         if (configResponse.ok) {
           const {configs} = await configResponse.json()
           config = configs[0]
-          grist_key = config.grist_api_key || ''
         }
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
-    }
 
-    if (!grist_key) {
       if (config && config.has_grist_key) {
         return true  // Déjà configuré, pas besoin de tester
       } else {
