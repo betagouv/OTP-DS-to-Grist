@@ -1,6 +1,10 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Constantes partagées pour toute l'application
+
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 if not DATABASE_URL:
     raise ValueError(
