@@ -553,16 +553,13 @@ def api_sync_report():
         logs_query = (
             db.query(
                 SyncLog,
-                OtpConfiguration.id.label("config_id"),
+                SyncLog.otp_config_id.label("config_id"),
                 UserSchedule.id.label("schedule_id"),
-                OtpConfiguration.demarche_number,
+                SyncLog.demarche_number,
             )
-            .join(
-                OtpConfiguration,
-                (SyncLog.grist_user_id == OtpConfiguration.grist_user_id)
-                & (SyncLog.grist_doc_id == OtpConfiguration.grist_doc_id),
+            .outerjoin(
+                UserSchedule, UserSchedule.otp_config_id == SyncLog.otp_config_id
             )
-            .outerjoin(UserSchedule, UserSchedule.otp_config_id == OtpConfiguration.id)
             .filter(SyncLog.timestamp >= cutoff)
             .order_by(SyncLog.timestamp.asc())
             .all()
@@ -612,8 +609,7 @@ def api_sync_log_latest():
         latest_auto = (
             db.query(SyncLog)
             .filter_by(
-                grist_user_id=otp_config.grist_user_id,
-                grist_doc_id=otp_config.grist_doc_id,
+                otp_config_id=otp_config_id,
                 auto=True,
             )
             .order_by(SyncLog.timestamp.desc())
@@ -623,8 +619,7 @@ def api_sync_log_latest():
         latest_manual = (
             db.query(SyncLog)
             .filter_by(
-                grist_user_id=otp_config.grist_user_id,
-                grist_doc_id=otp_config.grist_doc_id,
+                otp_config_id=otp_config_id,
                 auto=False,
             )
             .order_by(SyncLog.timestamp.desc())
