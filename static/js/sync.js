@@ -257,7 +257,9 @@ const toggleAutoSync = async (enabled) => {
   try {
     const gristContext = await getGristContext()
     const configResponse = await fetch(`/api/config${gristContext.params}`)
-    const config = await configResponse.json()
+    const {configs} = await configResponse.json()
+    // Pour l'instant, on prend la première config
+    const config = configs[0]
 
     if (!config.otp_config_id) {
       showNotification(
@@ -315,7 +317,9 @@ const loadAutoSyncState = async () => {
   try {
     const gristContext = await getGristContext()
     const configResponse = await fetch(`/api/config${gristContext.params}`)
-    const config = await configResponse.json()
+    const {configs} = await configResponse.json()
+    // Pour l'instant, on prend la première config
+    const config = configs[0]
 
     const checkbox = document.getElementById('auto_sync_enabled')
 
