@@ -36,7 +36,7 @@ describe('testDemarchesConnection', () => {
     global.fetch = jest.fn()
 
     // Mock global variables
-    global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+    global.getConfiguration = jest.fn()
     global.console.error = jest.fn()
   })
 
@@ -99,19 +99,23 @@ describe('testDemarchesConnection', () => {
     'should reload config when no token in input but config exists',
     async () => {
       mockTokenInput.value = ''
-
-      const mockConfigResponse = {
+      global.getConfiguration.mockResolvedValue({ ds_api_token: 'config-token' })
+      global.fetch.mockResolvedValue({
         ok: true,
-        json: jest.fn().mockResolvedValue({ configs: [{ has_ds_token: true }] })
-      }
-      global.fetch.mockResolvedValue(mockConfigResponse)
+        json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
+      })
 
       const result = await testDemarchesConnection()
 
-      expect(global.getGristContext).toHaveBeenCalled()
-      expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
-      expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
-      expect(result).toBe(true)
+      expect(global.getConfiguration).toHaveBeenCalled()
+      expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
+        body: JSON.stringify({
+          type: 'demarches',
+          api_token: 'config-token',
+          api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+          demarche_number: ''
+        })
+      }))
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -120,15 +124,12 @@ describe('testDemarchesConnection', () => {
     'should show error when no token available',
     async () => {
       mockTokenInput.value = ''
-      global.fetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => ({ configs: [{ has_ds_token: false }] })
-      })
+      global.getConfiguration.mockResolvedValue({ ds_api_token: '' })
 
       await testDemarchesConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Token API requis')
-      expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
+      expect(global.getConfiguration).toHaveBeenCalled()
       expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -177,7 +178,7 @@ describe('testGristConnection', () => {
     global.fetch = jest.fn()
 
     // Mock global variables
-    global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+    global.getConfiguration = jest.fn()
     global.console.error = jest.fn()
   })
 
@@ -241,19 +242,23 @@ describe('testGristConnection', () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
       mockDocInput.value = 'doc123'
-
-      const mockConfigResponse = {
+      global.getConfiguration.mockResolvedValue({ grist_api_key: 'config-key' })
+      global.fetch.mockResolvedValue({
         ok: true,
-        json: jest.fn().mockResolvedValue({ configs: [{ has_grist_key: true }] })
-      }
-      global.fetch.mockResolvedValue(mockConfigResponse)
+        json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
+      })
 
       const result = await testGristConnection()
 
-      expect(global.getGristContext).toHaveBeenCalled()
-      expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
-      expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
-      expect(result).toBe(true)
+      expect(global.getConfiguration).toHaveBeenCalled()
+      expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
+        body: JSON.stringify({
+          type: 'grist',
+          base_url: 'https://grist.example.com',
+          api_key: 'config-key',
+          doc_id: 'doc123'
+        })
+      }))
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -263,15 +268,12 @@ describe('testGristConnection', () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
       mockDocInput.value = 'doc123'
-      global.fetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => ({ configs: [{ has_grist_key: false }] })
-      })
+      global.getConfiguration.mockResolvedValue({ grist_api_key: '' })
 
       await testGristConnection()
 
       expect(mockResultDiv.innerHTML).toContain('Clé API Grist requise')
-      expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
+      expect(global.getConfiguration).toHaveBeenCalled()
       expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -408,10 +410,20 @@ describe('testWebSocket', () => {
 describe('testExternalConnections', () => {
   let mockResultDiv
 
+  const defaultConfig = {
+    otp_config_id: 1,
+    ds_api_token: 'valid-token',
+    demarche_number: '123',
+    grist_api_key: 'valid-key',
+    grist_base_url: 'https://grist.example.com',
+    grist_doc_id: 'doc123'
+  }
+
   beforeEach(() => {
     mockResultDiv = { innerHTML: '' }
     document.getElementById = jest.fn().mockReturnValue(mockResultDiv)
     global.fetch = jest.fn()
+    global.getConfiguration = jest.fn().mockResolvedValue(defaultConfig)
   })
 
   afterEach(() => {
@@ -422,19 +434,6 @@ describe('testExternalConnections', () => {
     'tests both connections successfully',
     async () => {
       fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            configs: [{
-              otp_config_id: 1,
-              ds_api_token: 'valid-token',
-              demarche_number: '123',
-              grist_api_key: 'valid-key',
-              grist_base_url: 'https://grist.example.com',
-              grist_doc_id: 'doc123'
-            }]
-          })
-        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -459,19 +458,6 @@ describe('testExternalConnections', () => {
     'shows partial failure results',
     async () => {
       fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            configs: [{
-              otp_config_id: 1,
-              ds_api_token: 'valid-token',
-              demarche_number: '123',
-              grist_api_key: 'valid-key',
-              grist_base_url: 'https://grist.example.com',
-              grist_doc_id: 'doc123'
-            }]
-          })
-        })
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
@@ -501,17 +487,6 @@ describe('testExternalConnections', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({
-            otp_config_id: 1,
-            ds_api_token: 'valid-token',
-            demarche_number: '123',
-            grist_api_key: 'valid-key',
-            grist_base_url: 'https://grist.example.com',
-            grist_doc_id: 'doc123'
-          })
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
             success: true,
             message: '2/2 tests réussis',
             results: [
@@ -531,19 +506,6 @@ describe('testExternalConnections', () => {
     'handles backend errors',
     async () => {
       fetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            configs: [{
-              otp_config_id: 1,
-              ds_api_token: 'valid-token',
-              demarche_number: '123',
-              grist_api_key: 'valid-key',
-              grist_base_url: 'https://grist.example.com',
-              grist_doc_id: 'doc123'
-            }]
-          })
-        })
         .mockResolvedValueOnce({
           ok: false,
           status: 400,
@@ -577,21 +539,6 @@ describe('testExternalConnections', () => {
     async () => {
       fetch
         .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({
-            configs: [{
-              otp_config_id: 1,
-              ds_api_token: 'valid-token',
-              demarche_number: '123',
-              grist_api_key: 'valid-key',
-              grist_base_url: 'https://grist.example.com',
-              grist_doc_id: 'doc123'
-            }]
-          })
-      })
-
-      // Deuxième appel : POST /api/test-connection
-      fetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
           success: true,
@@ -612,25 +559,8 @@ describe('testExternalConnections', () => {
   it(
     'shows warning notification for partial success',
     async () => {
-      // Premier appel : GET /api/config
-      fetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          configs: [
-            {
-              otp_config_id: 1,
-              ds_api_token: 'valid-token',
-              demarche_number: '123',
-              grist_api_key: 'valid-key',
-              grist_base_url: 'https://grist.example.com',
-              grist_doc_id: 'doc123'
-            }
-          ]
-        })
-      })
-
-      // Deuxième appel : POST /api/test-connection
-      fetch.mockResolvedValueOnce({
+      fetch
+        .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
           success: false,

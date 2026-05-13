@@ -15,13 +15,8 @@ const testDemarchesConnection = async (silent = false) => {
 
     if (!ds_token) {
       try {
-        const gristContext = await getGristContext()
-        const configResponse = await fetch(`/api/config${gristContext.params}`)
-
-        if (configResponse.ok) {
-          const {configs} = await configResponse.json()
-          config = configs[0]
-        }
+        config = await getConfiguration()[0]
+        ds_token = config.ds_api_token || ''
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
@@ -90,12 +85,8 @@ const testGristConnection = async (silent = false) => {
 
     if (!grist_key) {
       try {
-        const gristContext   = await getGristContext()
-        const configResponse = await fetch(`/api/config${gristContext.params}`)
-        if (configResponse.ok) {
-          const {configs} = await configResponse.json()
-          config = configs[0]
-        }
+        config = await getConfiguration()[0]
+        grist_key    = config.grist_api_key || ''
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
@@ -220,17 +211,7 @@ const testExternalConnections = async (silent = false) => {
     resultDiv.innerHTML = '<div class="fr-alert fr-alert--info"><p>Test des connexions externes en cours...</p></div>'
 
   try {
-    const gristContext = await getGristContext()
-    const configResponse = await fetch(`/api/config${gristContext.params}`)
-    if (!configResponse.ok) throw new Error('Impossible de récupérer la configuration')
-
-    const {configs} = await configResponse.json()
-
-    if (!configs || !configs.length)
-      throw new Error('Aucune configuration trouvée')
-
-    // Pour l'instant, on prend la première config
-    const config = configs[0]
+    const config = await getConfiguration()[0]
 
     if (!config.otp_config_id) throw new Error('Pas de configuration trouvée')
 

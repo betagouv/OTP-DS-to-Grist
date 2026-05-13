@@ -224,7 +224,7 @@ describe('toggleAutoSync', () => {
     document.body.innerHTML = `<input type="checkbox" id="auto_sync_enabled" checked>`
 
     // Mocks
-    global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+    global.getConfiguration = jest.fn()
     global.fetch = jest.fn()
     global.App = { showNotification: jest.fn() }
 
@@ -239,47 +239,30 @@ describe('toggleAutoSync', () => {
   it(
     'ne pas autoriser sans la clé grist',
     async () => {
-      // Mock fetch pour /api/config retournant une config sans clé Grist
-      global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [{
-              otp_config_id: 123,
-              has_grist_key: false
-            }]
-          })
-        })
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: 123,
+        has_grist_key: false
+      })
 
-      // Appel de la fonction pour activer
       await toggleAutoSync(true)
 
-      // Vérifications
       expect(showNotification).toHaveBeenCalledWith('Clé grist manquante', 'error')
       expect(document.getElementById('auto_sync_enabled').checked).toBe(false)
-      // Pas d'appel à /api/schedule
-      expect(fetch).toHaveBeenCalledTimes(1)
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/config'))
+      expect(global.getConfiguration).toHaveBeenCalled()
+      expect(fetch).toHaveBeenCalledTimes(0)
     }
   )
 
   it(
     'ne pas autoriser sans configuration sauvegardée',
     async () => {
-      // Mock fetch pour /api/config retournant une config sans otp_config_id
-      global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [{
-              otp_config_id: null,
-              has_grist_key: true
-            }]
-          })
-        })
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: null,
+        has_grist_key: true
+      })
 
-      // Appel de la fonction pour activer
       await toggleAutoSync(true)
 
-      // Vérifications
       expect(showNotification).toHaveBeenCalledWith(
         'Configuration non sauvegardée. Veuillez sauvegarder la configuration avant d\'activer la synchronisation automatique.',
         'error'
@@ -291,26 +274,18 @@ describe('toggleAutoSync', () => {
   it(
     'succès d’activation',
     async () => {
-      // Mock fetch pour /api/config et /api/schedule
-      global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [{
-              otp_config_id: 123,
-              has_grist_key: true
-            }]
-          })
-        })
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({ success: true })
-        })
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: 123,
+        has_grist_key: true
+      })
+      global.fetch.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ success: true })
+      })
 
-      // Appel de la fonction pour activer
       await toggleAutoSync(true)
 
-      // Vérifications
-      expect(fetch).toHaveBeenCalledTimes(2)
-      expect(fetch).toHaveBeenNthCalledWith(2, '/api/schedule', expect.objectContaining({
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(fetch).toHaveBeenCalledWith('/api/schedule', expect.objectContaining({
         method: 'POST'
       }))
       expect(showNotification).toHaveBeenCalledWith('Synchronisation automatique activée', 'success')
@@ -320,26 +295,18 @@ describe('toggleAutoSync', () => {
   it(
     'succès de désactivation',
     async () => {
-      // Mock fetch pour /api/config et /api/schedule
-      global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [{
-              otp_config_id: 123,
-              has_grist_key: true
-            }]
-          })
-        })
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({ success: true })
-        })
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: 123,
+        has_grist_key: true
+      })
+      global.fetch.mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ success: true })
+      })
 
-      // Appel de la fonction pour désactiver
       await toggleAutoSync(false)
 
-      // Vérifications
-      expect(fetch).toHaveBeenCalledTimes(2)
-      expect(fetch).toHaveBeenNthCalledWith(2, '/api/schedule', expect.objectContaining({
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(fetch).toHaveBeenCalledWith('/api/schedule', expect.objectContaining({
         method: 'DELETE'
       }))
       expect(showNotification).toHaveBeenCalledWith('Synchronisation automatique désactivée', 'success')
@@ -507,7 +474,7 @@ describe('loadAutoSyncState', () => {
     `
 
     // Mocks
-    global.getGristContext = jest.fn().mockResolvedValue({ params: '?test=1' })
+    global.getConfiguration = jest.fn()
     global.fetch = jest.fn()
 
     // Mock console.error
@@ -519,23 +486,15 @@ describe('loadAutoSyncState', () => {
   })
 
   it(
-    'désactiver la case quand la config n’existe pas',
+    'désactiver la case quand la config n\'existe pas',
     async () => {
-      // Mock fetch pour /api/config retournant une config sans otp_config_id
-      global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [{
-              otp_config_id: null,
-              has_grist_key: false
-            }]
-          })
-        })
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: null,
+        has_grist_key: false
+      })
 
-      // Appel de la fonction
       await loadAutoSyncState()
 
-      // Vérifications
       const checkbox = document.getElementById('auto_sync_enabled')
       expect(checkbox.disabled).toBe(true)
       expect(checkbox.checked).toBe(false)
@@ -545,16 +504,11 @@ describe('loadAutoSyncState', () => {
 it(
     'activer la case et afficher l\'état',
     async () => {
-      // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: 123,
+        has_grist_key: true
+      })
       global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [{
-                otp_config_id: 123,
-                has_grist_key: true
-            }]
-          })
-        })
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
             enabled: true,
@@ -580,15 +534,12 @@ it(
           })
         })
 
-      // Appel de la fonction
       await loadAutoSyncState()
 
-      // Vérifications
       const checkbox = document.getElementById('auto_sync_enabled')
       expect(checkbox.disabled).toBe(false)
       expect(checkbox.checked).toBe(true)
       
-      // Les deux banners sont affichées
       const autoDiv = document.getElementById('result_content_auto')
       expect(autoDiv.style.display).toBe('block')
       const h3 = autoDiv.querySelector('h3')
@@ -601,16 +552,11 @@ it(
 it(
     'afficher l\'état désactivé quand la programmation n\'est pas activée',
     async () => {
-      // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: 123,
+        has_grist_key: true
+      })
       global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [{
-              otp_config_id: 123,
-              has_grist_key: true
-            }]
-          })
-        })
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
             enabled: false,
@@ -626,14 +572,11 @@ it(
           })
         })
 
-      // Appel de la fonction
       await loadAutoSyncState()
 
-      // Vérifications
       const checkbox = document.getElementById('auto_sync_enabled')
       expect(checkbox.disabled).toBe(false)
       expect(checkbox.checked).toBe(false)
-      // sync_progress_container caché
       expect(document.getElementById('sync_progress_container').style.display).toBe('none')
     }
   )
@@ -641,19 +584,11 @@ it(
 it(
     'afficher l\'erreur de la dernière synchronisation',
     async () => {
-      // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
+      global.getConfiguration.mockResolvedValue({
+        otp_config_id: 123,
+        has_grist_key: true
+      })
       global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            configs: [
-              {
-
-                otp_config_id: 123,
-                has_grist_key: true
-              }
-            ]
-          })
-        })
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
             enabled: true,
@@ -674,10 +609,8 @@ it(
           })
         })
 
-      // Appel de la fonction
       await loadAutoSyncState()
 
-      // Vérifications
       const autoDiv = document.getElementById('result_content_auto')
       expect(autoDiv.style.display).toBe('block')
       const h3 = autoDiv.querySelector('h3')
