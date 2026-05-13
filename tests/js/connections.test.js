@@ -493,6 +493,41 @@ describe('testExternalConnections', () => {
   )
 
   it(
+    'clears previous errors when silent and all tests pass',
+    async () => {
+      mockResultDiv.innerHTML = '<div class="fr-alert fr-alert--error"><p>Ancienne erreur</p></div>'
+
+      fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            otp_config_id: 1,
+            ds_api_token: 'valid-token',
+            demarche_number: '123',
+            grist_api_key: 'valid-key',
+            grist_base_url: 'https://grist.example.com',
+            grist_doc_id: 'doc123'
+          })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            success: true,
+            message: '2/2 tests réussis',
+            results: [
+              { type: 'demarches', success: true, message: 'DS OK' },
+              { type: 'grist', success: true, message: 'Grist OK' }
+            ]
+          })
+        })
+
+      await testExternalConnections(true)
+
+      expect(mockResultDiv.innerHTML).toBe('')
+    }
+  )
+
+  it(
     'handles backend errors',
     async () => {
       fetch

@@ -265,6 +265,8 @@ const testExternalConnections = async (silent = false) => {
       `).join('')
 
       resultDiv.innerHTML = `<div class="fr-grid-row fr-grid-row--gutters">${html}</div>`
+    } else {
+      resultDiv.innerHTML = ''
     }
 
     if (!silent) {
