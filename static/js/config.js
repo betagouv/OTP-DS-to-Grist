@@ -61,6 +61,7 @@ const checkConfiguration = async (silent = false) => {
     const requiredFields = [
       'has_ds_token',
       'demarche_number',
+      'has_grist_key',
       'grist_base_url',
       'grist_doc_id',
       'grist_user_id'
@@ -71,6 +72,13 @@ const checkConfiguration = async (silent = false) => {
     if (missingFields.length !== 0) {
       if (silent)
         return
+
+      const onlyGristKeyMissing = missingFields.length === 1
+        && missingFields[0] === 'has_grist_key'
+      if (onlyGristKeyMissing) {
+        resultDiv.innerHTML = ''
+        return
+      }
 
       return resultDiv.innerHTML = `
         <div class="fr-alert fr-alert--error">

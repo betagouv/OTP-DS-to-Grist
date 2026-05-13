@@ -191,7 +191,7 @@ describe('checkConfiguration', () => {
   )
 
   it(
-    'configuration partielle valide (sans clé Grist)',
+    'ne montre pas de message si seulement la clé Grist manque',
     async () => {
       // Mock réponse API partielle
       fetch.mockResolvedValue({
@@ -209,13 +209,11 @@ describe('checkConfiguration', () => {
         })
       })
 
-      // Appel de la fonction
       await checkConfiguration()
 
-      // Vérifications
       const resultDiv = document.getElementById('config_check_result')
-      expect(resultDiv.innerHTML).toContain('Configuration complète')
-      expect(document.getElementById('start_sync_btn').disabled).toBe(false)
+      expect(resultDiv.innerHTML).toBe('')
+      expect(document.getElementById('start_sync_btn').disabled).toBe(true)
       expect(showNotification).not.toHaveBeenCalled()
       expect(consoleErrorSpy).not.toHaveBeenCalled()
     }
@@ -250,6 +248,32 @@ describe('checkConfiguration', () => {
       expect(document.getElementById('start_sync_btn').disabled).toBe(true)
       expect(showNotification).not.toHaveBeenCalled()
       expect(consoleErrorSpy).not.toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'affiche une erreur si la clé Grist ET un autre champ manquent',
+    async () => {
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          otp_config_id: 123,
+          demarche_number: 123,
+          grist_base_url: 'https://grist.numerique.gouv.fr/api',
+          grist_doc_id: 'doc123',
+          grist_user_id: 'user123',
+          has_ds_token: false,
+          has_grist_key: false
+        })
+      })
+
+      await checkConfiguration()
+
+      const resultDiv = document.getElementById('config_check_result')
+      expect(resultDiv.innerHTML).toContain('Configuration incomplète')
+      expect(resultDiv.innerHTML).toContain('has_ds_token')
+      expect(resultDiv.innerHTML).toContain('has_grist_key')
+      expect(document.getElementById('start_sync_btn').disabled).toBe(true)
     }
   )
 })
