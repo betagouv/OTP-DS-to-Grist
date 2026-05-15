@@ -14,8 +14,6 @@ import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
-from utils.api_validator import verify_api_connections
-from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from queries import dossier_to_flat_data, get_demarche, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
@@ -25,6 +23,8 @@ from schema_utils import (
     get_demarche_schema_enhanced,
     update_grist_tables_from_schema,
 )
+from utils.api_validator import verify_api_connections
+from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from utils.log_progress import LogProgress
 
 log_progress = LogProgress(ceiling=98)
@@ -3356,6 +3356,54 @@ def process_demarche_for_grist_optimized(
             )
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
+
+        if force_full_sync or not updated_since_cursor:
+            try:
+                from deleted_dossiers_checker import check_deleted_dossiers
+
+                ds_numbers = {int(d["number"]) for d in filtered_dossiers}
+
+                effective_filters = api_filters or {}
+                if not effective_filters.get("statuts"):
+                    statuts_env = [
+                        s.strip()
+                        for s in os.getenv("STATUTS_DOSSIERS", "").split(",")
+                        if s.strip()
+                    ]
+                    if statuts_env:
+                        effective_filters = {
+                            **effective_filters,
+                            "statuts": statuts_env,
+                        }
+                if (
+                    not effective_filters.get("date_debut")
+                    and os.getenv("DATE_DEPOT_DEBUT", "").strip()
+                ):
+                    effective_filters = {
+                        **effective_filters,
+                        "date_debut": os.getenv("DATE_DEPOT_DEBUT").strip(),
+                    }
+                if (
+                    not effective_filters.get("date_fin")
+                    and os.getenv("DATE_DEPOT_FIN", "").strip()
+                ):
+                    effective_filters = {
+                        **effective_filters,
+                        "date_fin": os.getenv("DATE_DEPOT_FIN").strip(),
+                    }
+
+                check_deleted_dossiers(
+                    client=client,
+                    table_id=table_ids["dossier_table_id"],
+                    ds_numbers_set=ds_numbers,
+                    log=log,
+                    log_error=log_error,
+                    api_filters=effective_filters,
+                )
+            except Exception as e:
+                log_error(f"Erreur vérification dossiers supprimés : {e}")
+        else:
+            log("Synchro incrémentale — vérification dossiers supprimés ignorée.")
 
         return total_success > 0 or schema_method_successful
 
