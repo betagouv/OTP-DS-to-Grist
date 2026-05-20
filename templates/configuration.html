@@ -18,47 +18,6 @@
   <div id="external_tests_result" class="fr-mt-3w"></div>
 </div>
 
-<!-- Configuration Démarches Simplifiées -->
-<section class="fr-accordion">
-  <h2 class="fr-accordion__title">
-    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-1">1. Démarche numérique</button>
-  </h2>
-  <div id="accordion-1" class="fr-collapse fr-accordion--light-grey fr-px-4w">
-    <div class="fr-mt-4w">
-      <div class="fr-grid-row fr-grid-row--gutters">
-        <div class="fr-col-12 fr-col-md-8">
-          <h3>Renseignez l'API de votre démarche numérique</h3>
-          <div class="fr-mt-4w">
-            <div id="ds_test_result" class="fr-mb-5w"></div>
-          </div>
-
-          <div class="fr-input-group">
-            <label class="fr-label" for="ds_api_token">
-              Token API * <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
-            </label>
-            <input class="fr-input input-config" type="password" id="ds_api_token" name="ds_api_token">
-            <div id="ds_token_status" class="fr-mt-1v"></div>
-          </div>
-        </div>
-        <div class="fr-col-12 fr-col-md-6 fr-hidden">
-
-        </div>
-      </div>
-
-      <div class="fr-mt-3w">
-        <div class="fr-input-group">
-          <label class="fr-label" for="demarche_number">
-            Numéro de démarche *
-            <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
-          </label>
-          <input class="fr-input input-config" type="number" id="demarche_number" name="demarche_number" 
-            placeholder="Ex: 12345" style="max-width: 200px;">
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- Configuration Grist -->
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
@@ -113,6 +72,47 @@
               <input class="fr-input input-config" type="text" id="grist_user_id" name="grist_user_id">
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Configuration Démarches Simplifiées -->
+<section class="fr-accordion">
+  <h2 class="fr-accordion__title">
+    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-1">1. Démarche numérique</button>
+  </h2>
+  <div id="accordion-1" class="fr-collapse fr-accordion--light-grey fr-px-4w">
+    <div class="fr-mt-4w">
+      <div class="fr-grid-row fr-grid-row--gutters">
+        <div class="fr-col-12 fr-col-md-8">
+          <h3>Renseignez l'API de votre démarche numérique</h3>
+          <div class="fr-mt-4w">
+            <div id="ds_test_result" class="fr-mb-5w"></div>
+          </div>
+
+          <div class="fr-input-group">
+            <label class="fr-label" for="ds_api_token">
+              Token API * <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
+            </label>
+            <input class="fr-input input-config" type="password" id="ds_api_token" name="ds_api_token">
+            <div id="ds_token_status" class="fr-mt-1v"></div>
+          </div>
+        </div>
+        <div class="fr-col-12 fr-col-md-6 fr-hidden">
+
+        </div>
+      </div>
+
+      <div class="fr-mt-3w">
+        <div class="fr-input-group">
+          <label class="fr-label" for="demarche_number">
+            Numéro de démarche *
+            <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
+          </label>
+          <input class="fr-input input-config" type="number" id="demarche_number" name="demarche_number" 
+            placeholder="Ex: 12345" style="max-width: 200px;">
         </div>
       </div>
     </div>
