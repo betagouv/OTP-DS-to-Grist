@@ -1,3 +1,5 @@
+/** @jest-environment jsdom */
+
 const {
   testDemarchesConnection,
   testGristConnection,
@@ -10,27 +12,16 @@ jest.mock('../../static/js/notifications.js', () => ({
 }))
 
 describe('testDemarchesConnection', () => {
-  let mockResultDiv, mockTokenInput, mockUrlInput, mockDemarcheInput
-
   beforeEach(() => {
-    // Mock DOM elements
-    mockResultDiv = {
-      innerHTML: ''
-    }
-    mockTokenInput = { value: '' }
-    mockUrlInput = { value: '' }
-    mockDemarcheInput = { value: '' }
+    // Context DOM elements
+    document.body.innerHTML = `
+      <input id="ds_api_token">
+      <input id="demarche_number">
 
-    global.document = {
-      getElementById: jest.fn((id) => {
-        switch (id) {
-          case 'ds_test_result': return mockResultDiv
-          case 'ds_api_token': return mockTokenInput
-          case 'demarche_number': return mockDemarcheInput
-          default: return null
-        }
-      })
-    }
+      <div class="hide">
+        <div id="ds_test_result"></div>
+      </div>
+    `
 
     // Mock fetch
     global.fetch = jest.fn()
@@ -47,9 +38,8 @@ describe('testDemarchesConnection', () => {
   it(
     'should test connection successfully with token from input',
     async () => {
-      mockTokenInput.value = 'test-token'
-      mockUrlInput.value = 'https://api.example.com'
-      mockDemarcheInput.value = '123'
+      document.getElementById('ds_api_token').value = 'test-token'
+      document.getElementById('demarche_number').value = '123'
 
       const mockResponse = {
         ok: true,
@@ -58,6 +48,8 @@ describe('testDemarchesConnection', () => {
       global.fetch.mockResolvedValue(mockResponse)
 
       await testDemarchesConnection()
+
+      const resultDiv = document.getElementById('ds_test_result')
 
       expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
         method: 'POST',
@@ -68,8 +60,8 @@ describe('testDemarchesConnection', () => {
           demarche_number: '123'
         })
       }))
-      expect(mockResultDiv.innerHTML).toContain('Connexion réussie')
-      expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
+      expect(resultDiv.innerHTML).toContain('Connexion réussie')
+      expect(resultDiv.innerHTML).toContain('fr-alert--success')
       expect(showNotification).toHaveBeenCalledWith('Connexion réussie', 'success')
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -78,7 +70,7 @@ describe('testDemarchesConnection', () => {
   it(
     'should show error when connection fails',
     async () => {
-      mockTokenInput.value = 'test-token'
+      document.getElementById('ds_api_token').value = 'test-token'
 
       const mockResponse = {
         ok: true,
@@ -88,8 +80,10 @@ describe('testDemarchesConnection', () => {
 
       await testDemarchesConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('Erreur de connexion')
-      expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
+      const resultDiv = document.getElementById('ds_test_result')
+
+      expect(resultDiv.innerHTML).toContain('Erreur de connexion')
+      expect(resultDiv.innerHTML).toContain('fr-alert--error')
       expect(showNotification).toHaveBeenCalledWith('Erreur de connexion', 'error')
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -98,7 +92,7 @@ describe('testDemarchesConnection', () => {
   it(
     'should reload config when no token in input but config exists',
     async () => {
-      mockTokenInput.value = ''
+      global.currentConfig = { ds_api_token_exists: true }
 
       const mockConfigResponse = {
         ok: true,
@@ -119,7 +113,6 @@ describe('testDemarchesConnection', () => {
   it(
     'should show error when no token available',
     async () => {
-      mockTokenInput.value = ''
       global.fetch.mockResolvedValueOnce({
         ok: true,
         json: () => ({ configs: [{ has_ds_token: false }] })
@@ -127,7 +120,7 @@ describe('testDemarchesConnection', () => {
 
       await testDemarchesConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('Token API requis')
+      expect(document.getElementById('ds_test_result').innerHTML).toContain('Token API requis')
       expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
       expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
       expect(global.console.error).not.toHaveBeenCalled()
@@ -137,12 +130,12 @@ describe('testDemarchesConnection', () => {
   it(
     'should handle fetch error',
     async () => {
-      mockTokenInput.value = 'test-token'
+      document.getElementById('ds_api_token').value = 'test-token'
       global.fetch.mockRejectedValue(new Error('Network error'))
 
       await testDemarchesConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('Erreur de connexion: Network error')
+      expect(document.getElementById('ds_test_result').innerHTML).toContain('Erreur de connexion: Network error')
       expect(showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test DS:', expect.any(Error))
     }
@@ -150,28 +143,18 @@ describe('testDemarchesConnection', () => {
 })
 
 describe('testGristConnection', () => {
-  let mockResultDiv, mockKeyInput, mockUrlInput, mockDocInput
 
   beforeEach(() => {
-    // Mock DOM elements
-    mockResultDiv = {
-      innerHTML: ''
-    }
-    mockKeyInput = { value: '' }
-    mockUrlInput = { value: '' }
-    mockDocInput = { value: '' }
+    // Context DOM elements
+    document.body.innerHTML = `
+      <input id="grist_api_key">
+      <input id="grist_base_url">
+      <input id="grist_doc_id">
 
-    global.document = {
-      getElementById: jest.fn((id) => {
-        switch (id) {
-          case 'grist_test_result': return mockResultDiv
-          case 'grist_api_key': return mockKeyInput
-          case 'grist_base_url': return mockUrlInput
-          case 'grist_doc_id': return mockDocInput
-          default: return null
-        }
-      })
-    }
+      <div class="hide">
+        <div id="grist_test_result"></div>
+      </div>
+    `
 
     // Mock fetch
     global.fetch = jest.fn()
@@ -187,9 +170,9 @@ describe('testGristConnection', () => {
 
   it(
     'should test connection successfully with key from input', async () => {
-      mockKeyInput.value = 'test-key'
-      mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
+      document.getElementById('grist_api_key').value  = 'test-key'
+      document.getElementById('grist_base_url').value = 'https://grist.example.com'
+      document.getElementById('grist_doc_id').value   = 'doc123'
 
       const mockResponse = {
         ok: true,
@@ -198,6 +181,8 @@ describe('testGristConnection', () => {
       global.fetch.mockResolvedValue(mockResponse)
 
       await testGristConnection()
+
+      const resultDiv = document.getElementById('grist_test_result')
 
       expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
         method: 'POST',
@@ -208,8 +193,8 @@ describe('testGristConnection', () => {
           doc_id: 'doc123'
         })
       }))
-      expect(mockResultDiv.innerHTML).toContain('Connexion Grist réussie')
-      expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
+      expect(resultDiv.innerHTML).toContain('Connexion Grist réussie')
+      expect(resultDiv.innerHTML).toContain('fr-alert--success')
       expect(showNotification).toHaveBeenCalledWith('Connexion Grist réussie', 'success')
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -217,9 +202,9 @@ describe('testGristConnection', () => {
 
   it(
     'should show error when connection fails', async () => {
-      mockKeyInput.value = 'test-key'
-      mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
+      document.getElementById('grist_api_key').value  = 'test-key'
+      document.getElementById('grist_base_url').value = 'https://grist.example.com'
+      document.getElementById('grist_doc_id').value   = 'doc123'
 
       const mockResponse = {
         ok: true,
@@ -229,8 +214,10 @@ describe('testGristConnection', () => {
 
       await testGristConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('Erreur Grist')
-      expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
+      const resultDiv = document.getElementById('grist_test_result')
+
+      expect(resultDiv.innerHTML).toContain('Erreur Grist')
+      expect(resultDiv.innerHTML).toContain('fr-alert--error')
       expect(showNotification).toHaveBeenCalledWith('Erreur Grist', 'error')
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -238,9 +225,9 @@ describe('testGristConnection', () => {
 
   it(
     'should reload config when no key in input but config exists', async () => {
-      mockKeyInput.value = ''
-      mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
+      document.getElementById('grist_api_key').value  = ''
+      document.getElementById('grist_base_url').value = 'https://grist.example.com'
+      document.getElementById('grist_doc_id').value   = 'doc123'
 
       const mockConfigResponse = {
         ok: true,
@@ -260,9 +247,10 @@ describe('testGristConnection', () => {
 
   it(
     'should show error when no key available', async () => {
-      mockKeyInput.value = ''
-      mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
+      document.getElementById('grist_api_key').value  = ''
+      document.getElementById('grist_base_url').value = 'https://grist.example.com'
+      document.getElementById('grist_doc_id').value   = 'doc123'
+
       global.fetch.mockResolvedValueOnce({
         ok: true,
         json: () => ({ configs: [{ has_grist_key: false }] })
@@ -270,7 +258,7 @@ describe('testGristConnection', () => {
 
       await testGristConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('Clé API Grist requise')
+      expect(document.getElementById('grist_test_result').innerHTML).toContain('Clé API Grist requise')
       expect(global.fetch).toHaveBeenCalledWith('/api/config?test=1')
       expect(global.fetch).not.toHaveBeenCalledWith('/api/test-connection', expect.any(Object))
       expect(global.console.error).not.toHaveBeenCalled()
@@ -279,13 +267,13 @@ describe('testGristConnection', () => {
 
   it(
     'should show error when no base URL', async () => {
-      mockKeyInput.value = 'test-key'
-      mockUrlInput.value = ''
-      mockDocInput.value = 'doc123'
+      document.getElementById('grist_api_key').value  = 'test-key'
+      document.getElementById('grist_base_url').value = ''
+      document.getElementById('grist_doc_id').value   = 'doc123'
 
       await testGristConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('URL de base Grist requise')
+      expect(document.getElementById('grist_test_result').innerHTML).toContain('URL de base Grist requise')
       expect(global.fetch).not.toHaveBeenCalled()
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -293,13 +281,13 @@ describe('testGristConnection', () => {
 
   it(
     'should show error when no doc ID', async () => {
-      mockKeyInput.value = 'test-key'
-      mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = ''
+      document.getElementById('grist_api_key').value  = 'test-key'
+      document.getElementById('grist_base_url').value = 'https://grist.example.com'
+      document.getElementById('grist_doc_id').value   = ''
 
       await testGristConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('ID du document Grist requis')
+      expect(document.getElementById('grist_test_result').innerHTML).toContain('ID du document Grist requis')
       expect(global.fetch).not.toHaveBeenCalled()
       expect(global.console.error).not.toHaveBeenCalled()
     }
@@ -307,14 +295,14 @@ describe('testGristConnection', () => {
 
   it(
     'should handle fetch error', async () => {
-      mockKeyInput.value = 'test-key'
-      mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
+      document.getElementById('grist_api_key').value = 'test-key'
+      document.getElementById('grist_base_url').value = 'https://grist.example.com'
+      document.getElementById('grist_doc_id').value = 'doc123'
       global.fetch.mockRejectedValue(new Error('Network error'))
 
       await testGristConnection()
 
-      expect(mockResultDiv.innerHTML).toContain('Erreur de connexion: Network error')
+      expect(document.getElementById('grist_test_result').innerHTML).toContain('Erreur de connexion: Network error')
       expect(showNotification).toHaveBeenCalledWith('Erreur lors du test de connexion', 'error')
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test Grist:', expect.any(Error))
     }
