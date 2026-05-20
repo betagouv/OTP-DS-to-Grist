@@ -126,10 +126,8 @@ const loadConfiguration = async () => {
     const hasConfig = !!config.otp_config_id
 
     const gristApiKeyElement  = document.getElementById('grist_api_key')
-    const gristKeyStatus      = document.getElementById('grist_key_status')
     const gristBaseUrlElement = document.getElementById('grist_base_url')
     const dsApiTokenElement   = document.getElementById('ds_api_token')
-    const dsTokenStatus       = document.getElementById('ds_token_status')
     const dsNumberElement     = document.getElementById('demarche_number')
 
     // Remplir les autres champs seulement si une configuration a été trouvée
@@ -172,26 +170,14 @@ const loadConfiguration = async () => {
 
     // Afficher le statut des tokens
     if (config.has_ds_token) {
-      dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
-          <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Token configuré
-        </span>`
       dsApiTokenElement.placeholder = '************************************************************************************'
     } else {
-      dsTokenStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
-          <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Token requis
-        </span>`
       dsApiTokenElement.placeholder = ''
     }
 
     if (config.has_grist_key) {
-      gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
-          <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
-        </span>`
       gristApiKeyElement.placeholder = '****************************************'
     } else {
-      gristKeyStatus.innerHTML = `<span class="fr-badge fr-badge--error fr-badge--sm fr-badge--no-icon">
-          <i class="fas fa-exclamation-circle fr-mr-1v" aria-hidden="true"></i>Clé API requise
-        </span>`
       gristApiKeyElement.placeholder = ''
     }
 
@@ -302,9 +288,6 @@ const saveConfiguration = async () => {
       }
 
       if (grist_key) {
-        document.getElementById('grist_key_status').innerHTML = `<span class="fr-badge fr-badge--success fr-badge--sm fr-badge--no-icon">
-            <i class="fas fa-check-circle fr-mr-1v" aria-hidden="true"></i>Clé API configurée
-          </span>`
         gristKeyElement.placeholder = '****************************************'
       }
        // Recharger la configuration pour mettre à jour les statuts

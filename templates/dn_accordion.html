@@ -13,10 +13,12 @@
             </div>
 
             <label class="fr-label" for="ds_api_token">
-              Token API * <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
+              Token API *
             </label>
             <input class="fr-input input-config" type="password" id="ds_api_token" name="ds_api_token">
-            <div id="ds_token_status" class="fr-mt-1v"></div>
+            <label class="fr-label">
+              <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
+            </label>
           </div>
         </div>
         <div class="fr-col-12 fr-col-md-6 fr-hidden">

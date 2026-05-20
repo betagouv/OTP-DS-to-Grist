@@ -1,139 +1,100 @@
+/** @jest-environment jsdom */
+
 const { updateDSTokenStatus, updateGristKeyStatus } = require('../../static/js/form.js')
 
 describe('updateDSTokenStatus', () => {
-  let mockInput, mockStatusElement
 
   beforeEach(() => {
-    // Mock DOM elements
-    mockInput = {
-      value: '',
-      placeholder: ''
-    }
-    mockStatusElement = {
-      innerHTML: ''
-    }
-
-    global.document = {
-      getElementById: jest.fn((id) => {
-        if (id === 'ds_api_token') return mockInput
-        if (id === 'ds_token_status') return mockStatusElement
-        return null
-      })
-    }
-  })
-
-  afterEach(() => {
-    jest.clearAllMocks()
+    // Context DOM elements
+    document.body.innerHTML = `
+      <input id="ds_api_token">
+    `
   })
 
   it(
     'should set success badge and placeholder when token is present in input',
     () => {
-      mockInput.value = 'some-token'
+      const input = document.getElementById('ds_api_token')
+      input.value = 'some-token'
       const config = {}
 
       updateDSTokenStatus(config)
 
-      expect(mockStatusElement.innerHTML).toContain('Token configuré')
-      expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('************************************************************************************')
+      expect(input.placeholder).toBe('************************************************************************************')
     }
   )
 
   it(
     'should set success badge and placeholder when token is present in config',
     () => {
-      mockInput.value = ''
+      const input = document.getElementById('ds_api_token')
+      input.value = ''
       const config = { ds_api_token: 'config-token' }
 
       updateDSTokenStatus(config)
 
-      expect(mockStatusElement.innerHTML).toContain('Token configuré')
-      expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('************************************************************************************')
+      expect(input.placeholder).toBe('************************************************************************************')
     }
   )
 
   it(
     'should set error badge and empty placeholder when no token is present',
     () => {
-      mockInput.value = ''
+      const input = document.getElementById('ds_api_token')
+      input.value = ''
       const config = {}
 
       updateDSTokenStatus(config)
 
-      expect(mockStatusElement.innerHTML).toContain('Token requis')
-      expect(mockStatusElement.innerHTML).toContain('fr-badge--error')
-      expect(mockInput.placeholder).toBe('')
+      expect(input.placeholder).toBe('')
     }
   )
 })
 
 describe('updateGristKeyStatus', () => {
-  let mockInput, mockStatusElement
-
   beforeEach(() => {
-    // Mock DOM elements
-    mockInput = {
-      value: '',
-      placeholder: ''
-    }
-    mockStatusElement = {
-      innerHTML: ''
-    }
-
-    global.document = {
-      getElementById: jest.fn((id) => {
-        if (id === 'grist_api_key') return mockInput
-        if (id === 'grist_key_status') return mockStatusElement
-        return null
-      })
-    }
-  })
-
-  afterEach(() => {
-    jest.clearAllMocks()
+    // Context DOM elements
+    document.body.innerHTML = `
+      <input id="grist_api_key">
+    `
   })
 
   it(
     'should set success badge and placeholder when key is present in input',
     () => {
-      mockInput.value = 'some-key'
+      const input = document.getElementById('grist_api_key')
+      input.value = 'some-key'
       const config = {}
 
       updateGristKeyStatus(config)
 
-      expect(mockStatusElement.innerHTML).toContain('Clé API configurée')
-      expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('****************************************')
+      expect(input.placeholder).toBe('****************************************')
     }
   )
 
   it(
     'should set success badge and placeholder when key is present in config',
     () => {
-      mockInput.value = ''
+      const input = document.getElementById('grist_api_key')
+      input.value = ''
       const config = { grist_api_key: 'config-key' }
 
       updateGristKeyStatus(config)
 
-      expect(mockStatusElement.innerHTML).toContain('Clé API configurée')
-      expect(mockStatusElement.innerHTML).toContain('fr-badge--success')
-      expect(mockInput.placeholder).toBe('****************************************')
+      expect(input.placeholder).toBe('****************************************')
     }
   )
 
   it(
     'should set error badge and empty placeholder when no key is present',
     () => {
-      mockInput.value = ''
+      const input = document.getElementById('grist_api_key')
+      input.value = ''
       const config = {}
 
       updateGristKeyStatus(config)
 
-      expect(mockStatusElement.innerHTML).toContain('Clé API requise')
-      expect(mockStatusElement.innerHTML).toContain('fr-badge--error')
-      expect(mockInput.placeholder).toBe('')
+      expect(input.placeholder).toBe('')
     }
   )
 })

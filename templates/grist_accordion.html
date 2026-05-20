@@ -24,11 +24,14 @@
             </div>
 
             <label class="fr-label" for="grist_api_key">
-              Clé API Grist * <a href="{{ url_for('use_otp') }}#help-grist" class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
+              Clé API Grist *
             </label>
 
             <input class="fr-input input-config" type="password" id="grist_api_key" name="grist_api_key">
-            <div id="grist_key_status" class="fr-mt-1v"></div>
+
+            <label class="fr-label">
+              <a href="{{ url_for('use_otp') }}#help-grist" class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
+            </label>
           </div>
         </div>
       </div>
