@@ -36,12 +36,6 @@ class TestEndpoints:
         assert response.status_code == 200
         assert b"One Trick Pony" in response.data
 
-    def test_execution_route(self, client):
-        """Test de la route d'exécution"""
-        response = client.get("/execution")
-        assert response.status_code == 200
-        assert b"Synchronisation" in response.data
-
     def test_debug_route(self, client):
         """Test de la route de débogage"""
         response = client.get("/debug")

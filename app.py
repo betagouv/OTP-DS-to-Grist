@@ -768,12 +768,6 @@ def api_start_sync():
         return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
 
 
-@app.route("/execution")
-def execution():
-    """Page d'exécution et de suivi"""
-    return render_template("execution.html")
-
-
 @app.route("/debug")
 def debug():
     """Page de débogage"""
