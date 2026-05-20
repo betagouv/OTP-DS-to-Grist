@@ -3,6 +3,7 @@ if (typeof showNotification === 'undefined')
 
 const testDemarchesConnection = async (silent = false) => {
   const resultDiv = document.getElementById('ds_test_result')
+  const parent = resultDiv.parentElement
 
   try {
     const ds_token_input = document.getElementById('ds_api_token').value || ''
@@ -33,6 +34,7 @@ const testDemarchesConnection = async (silent = false) => {
           <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
         </div>`
         if (!silent) showNotification('Token API démarches simplifiées requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+        parent.classList.remove('hide')
         return false
       }
     }
@@ -63,6 +65,7 @@ const testDemarchesConnection = async (silent = false) => {
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>${result.message}</p>
     </div>`
+    parent.classList.remove('hide')
     showNotification(result.message, 'error')
     return false
 
@@ -78,6 +81,7 @@ const testDemarchesConnection = async (silent = false) => {
 
 const testGristConnection = async (silent = false) => {
   const resultDiv = document.getElementById('grist_test_result')
+  const parent = resultDiv.parentElement
 
   try {
     const gristKeyInputValue = document.getElementById('grist_api_key').value
@@ -104,6 +108,7 @@ const testGristConnection = async (silent = false) => {
         return true  // Déjà configuré, pas besoin de tester
       } else {
         if (!silent) showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+        parent.classList.remove('hide')
         return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
           <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
         </div>`
@@ -146,6 +151,7 @@ const testGristConnection = async (silent = false) => {
     resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
       <p>${result.message}</p>
     </div>`
+    parent.classList.remove('hide')
 
     showNotification(result.message, 'error')
     return false
