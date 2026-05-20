@@ -19,9 +19,11 @@
 </div>
 
 <!-- Configuration Grist -->
+<h4>1. Grist</h4>
+
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
-    <button type="button" id="accordion-grist" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-2">2. API Grist</button>
+    <button type="button" id="accordion-grist" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-2">Configurer Grist</button>
   </h2>
   <div id="accordion-2" class="fr-collapse fr-accordion--light-grey fr-px-4w">
     <div class="fr-mt-4w">
@@ -37,15 +39,17 @@
           </div>
         </div>
         <div class="fr-col-12 fr-col-md-8">
-          <h3>Renseignez l'API de Grist</h3>
-          <div class="fr-mt-4w">
-            <div id="grist_test_result" class="fr-mb-5w"></div>
-          </div>
-
           <div class="fr-input-group">
+            <h5 class="fr-mb-0">Renseignez l'API de Grist</h5>
+
+            <div class="fr-mt-1w hide">
+              <div id="grist_test_result" class="fr-mb-1w"></div>
+            </div>
+
             <label class="fr-label" for="grist_api_key">
               Clé API Grist * <a href="{{ url_for('use_otp') }}#help-grist" class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
             </label>
+
             <input class="fr-input input-config" type="password" id="grist_api_key" name="grist_api_key">
             <div id="grist_key_status" class="fr-mt-1v"></div>
           </div>
@@ -79,20 +83,22 @@
 </section>
 
 <!-- Configuration Démarches Simplifiées -->
+<h4>2. Démarche Numérique</h4>
+
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
-    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-1">1. Démarche numérique</button>
+    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-1">Configurer une démarche numérique</button>
   </h2>
   <div id="accordion-1" class="fr-collapse fr-accordion--light-grey fr-px-4w">
     <div class="fr-mt-4w">
       <div class="fr-grid-row fr-grid-row--gutters">
         <div class="fr-col-12 fr-col-md-8">
-          <h3>Renseignez l'API de votre démarche numérique</h3>
-          <div class="fr-mt-4w">
-            <div id="ds_test_result" class="fr-mb-5w"></div>
-          </div>
-
           <div class="fr-input-group">
+            <h5>Renseignez les informations de votre démarche</h5>
+            <div class="fr-mt-1w hide">
+              <div id="ds_test_result" class="fr-mb-1w"></div>
+            </div>
+
             <label class="fr-label" for="ds_api_token">
               Token API * <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
             </label>
