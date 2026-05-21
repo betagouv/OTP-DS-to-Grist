@@ -632,7 +632,6 @@ describe('updateDeleteButton', () => {
   it(
     'désactive le bouton si pas d’id de config',
     () => {
-      window.otp_config_id = undefined
       updateDeleteButton()
 
       expect(document.getElementById('delete_config_btn').disabled).toBe(true)
@@ -641,8 +640,7 @@ describe('updateDeleteButton', () => {
 
   it(
     'active le bouton si il y’a une config', () => {
-      window.otp_config_id = 123
-      updateDeleteButton()
+      updateDeleteButton(2)
 
       expect(document.getElementById('delete_config_btn').disabled).toBe(false)
       expect(document.getElementById('delete_config_btn').title).toBe('')

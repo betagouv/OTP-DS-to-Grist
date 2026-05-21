@@ -317,7 +317,7 @@ const saveConfiguration = async () => {
           const reloadedConfig = await loadConfiguration()
           window.otp_config_id = reloadedConfig.otp_config_id
           await loadAutoSyncState()
-          updateDeleteButton()
+          updateDeleteButton(reloadedConfig.otp_config_id)
         }, 500)
     } else {
       showNotification(result.message || 'Erreur lors de la sauvegarde', 'error')
@@ -365,9 +365,9 @@ const deleteConfig = async (configId = null) => {
 }
 
 // Fonctions utilitaires pour l'UI de configuration
-const updateDeleteButton = () => {
+const updateDeleteButton = (id) => {
   const deleteBtn = document.getElementById('delete_config_btn')
-  if (!window.otp_config_id) {
+  if (!id) {
     deleteBtn.disabled = true
     deleteBtn.title = 'Aucune configuration à supprimer'
   } else {

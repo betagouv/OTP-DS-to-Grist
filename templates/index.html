@@ -41,24 +41,20 @@ socket.on('task_update', function(data) {
 
 // ===== INITIALISATION DE LA PAGE =====
 document.addEventListener('DOMContentLoaded', async () => {
-  // Vérifier la configuration
+  // Vérifier la configuration dès le démarrage (en cas de token périmé)
   const checkedConfig = await checkConfiguration(true)
+  window.otp_config_id = checkedConfig?.otp_config_id
 
-  // Mettre à jour le bouton de suppression
-  updateDeleteButton()
-
-  if (checkedConfig) {
+  if (checkedConfig?.otp_config_id) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
+    await loadGroupes(window.otp_config_id)
   }
 
-  // Charger la configuration et groupes
-  window.otp_config_id = checkedConfig?.otp_config_id
-  await loadGroupes(window.otp_config_id)
   await loadConfiguration()
 
   // Mettre à jour le bouton de suppression
-  updateDeleteButton()
+  updateDeleteButton(checkedConfig?.otp_config_id)
 
   // Focus sur le premier champ si vide
   if (!window.otp_config_id) {
