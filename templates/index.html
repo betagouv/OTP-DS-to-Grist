@@ -54,9 +54,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Charger la configuration et groupes
   window.otp_config_id = checkedConfig?.otp_config_id
-  updateDeleteButton()
   await loadGroupes(window.otp_config_id)
   await loadConfiguration()
+
+  // Mettre à jour le bouton de suppression
+  updateDeleteButton()
 
   // Focus sur le premier champ si vide
   if (!window.otp_config_id) {
