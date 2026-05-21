@@ -41,17 +41,6 @@ socket.on('task_update', function(data) {
 
 // ===== INITIALISATION DE LA PAGE =====
 document.addEventListener('DOMContentLoaded', async () => {
-  // ===== GESTION DE LA NAVIGATION DE L'AIDE =====
-  const currentPath = window.location.pathname
-  const navLinks = document.querySelectorAll('.fr-nav__link')
-
-  navLinks.forEach(link => {
-    if (link.getAttribute('href') === currentPath ||
-      (currentPath === '/' && link.getAttribute('href') === '/')) {
-      link.setAttribute('aria-current', 'page')
-    }
-  })
-
   // Vérifier la configuration
   const checkedConfig = await checkConfiguration(true)
 
