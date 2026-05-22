@@ -14,7 +14,7 @@ const showSyncBanner = (
 ) => {
   const container = document.getElementById(containerId)
   const subContainer = container.querySelector('.sync_banner_template')
-  if (!container || !subContainer) return
+  if (!container || !subContainer) throw new Error('Missing container(s)')
 
   const isSuccess = status === 'success'
   const isWarning = status === 'warning'
@@ -33,9 +33,9 @@ const showSyncBanner = (
   container.style.display = 'block'
 }
 
-const startSync = async (otp_config_id) => {
+const startSync = async (otpConfigId) => {
   document.getElementById('config_check_result').style.display = 'none'
-  if (!otp_config_id)
+  if (!otpConfigId)
     return showNotification('ID de configuration manquant', 'error')
 
   // Collecter les filtres
@@ -65,7 +65,7 @@ const startSync = async (otp_config_id) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        otp_config_id,
+        otp_config_id: otpConfigId,
         filters: filters,
         grist_user_id: gristUserId,
         grist_doc_id: gristDocId
@@ -328,8 +328,22 @@ const loadAutoSyncState = async () => {
     const scheduleResult = await scheduleResponse.json()
 
     checkbox.checked = scheduleResult.enabled || false
+  } catch (error) {
+    console.error("Erreur lors du chargement de l'état auto sync:", error)
+  }
+}
 
-    const syncLogResponse = await fetch(`/api/sync-log/latest?otp_config_id=${config.otp_config_id}`)
+const displaySyncStatus = async (otpConfigId) => {
+  try {
+
+    let syncLogResponse
+    if (otpConfigId)
+      syncLogResponse = await fetch(`/api/sync-log/latest?otp_config_id=${otpConfigId}`)
+    else {
+      const gristContext = await getGristContext()
+      syncLogResponse = await fetch(`/api/sync-log/latest?grist_doc_id=${gristContext.docId}`)
+    }
+
     const syncLogResult = await syncLogResponse.json()
 
     let hasBanner = false
@@ -361,9 +375,8 @@ const loadAutoSyncState = async () => {
     }
 
     const syncProgressContainer = document.getElementById('sync_progress_container')
-    if (syncProgressContainer) {
+    if (syncProgressContainer)
       syncProgressContainer.style.display = hasBanner ? 'block' : 'none'
-    }
   } catch (error) {
     console.error("Erreur lors du chargement de l'état auto sync:", error)
   }
@@ -375,6 +388,7 @@ if (typeof module !== 'undefined' && module.exports) {
     updateTaskProgress,
     toggleAutoSync,
     loadAutoSyncState,
-    showSyncBanner
+    showSyncBanner,
+    displaySyncStatus
   }
 }

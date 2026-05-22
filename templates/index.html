@@ -12,7 +12,6 @@
 {% block scripts %}
 <script>
 // ===== INITIALISATIONS GLOBALES =====
-window.config = null
 let logsVisible = false
 let currentTaskId = null
 window.saveTimeout = null
@@ -43,13 +42,18 @@ socket.on('task_update', function(data) {
 document.addEventListener('DOMContentLoaded', async () => {
   // Vérifier la configuration dès le démarrage (en cas de token périmé)
   const checkedConfig = await checkConfiguration(true)
+  console.log('DEBUG', checkedConfig)
   window.otp_config_id = checkedConfig?.otp_config_id
 
   if (checkedConfig?.otp_config_id) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
     await loadGroupes(window.otp_config_id)
+    await displaySyncStatus(checkedConfig.otp_config_id)
+  } else {
+    await displaySyncStatus()
   }
+
 
   await loadConfiguration()
 
