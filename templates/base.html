@@ -283,6 +283,9 @@
             <li class="fr-nav-custom__item {% if request.path == '/' %}active{% endif %}">
               <a class="fr-link" href="/">Synchroniser</a>
             </li>
+            <li class="fr-nav-custom__item {% if request.endpoint == 'wip' %}active{% endif %}">
+              <a class="fr-link" href="{{ url_for('wip') }}">WIP</a>
+            </li>
             <li class="fr-nav-custom__item {% if request.endpoint == 'use_otp' %}active{% endif %}">
               <a class="fr-link" href="{{ url_for('use_otp') }}">Aide</a>
             </li>

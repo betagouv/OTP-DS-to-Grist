@@ -843,6 +843,10 @@ def debug():
 def use_otp():
     return render_template("use-otp.html")
 
+@app.route("/wip")
+def wip():
+    return render_template("wip.html")
+
 
 # WebSocket events
 
