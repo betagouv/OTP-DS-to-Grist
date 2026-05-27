@@ -1,4 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
   WIP
+  <div id="app"></div>
+  {% if config.DEBUG %}
+    <script type="module" src="http://localhost:5173/@vite/client"></script>
+    <script type="module" src="http://localhost:5173/index.html"></script>
+  {% endif %}
+
+  <script type="module" src="{{ vite_asset('src/main.js') }}"></script>
+
 {% endblock %}

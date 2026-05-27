@@ -2,6 +2,9 @@
 Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
+from pathlib import Path
+import json
+from flask import url_for
 from flask import Flask, render_template, request, jsonify
 from utils.socketio import socketio
 import os
@@ -847,6 +850,25 @@ def use_otp():
 def wip():
     return render_template("wip.html")
 
+def vite_asset(entry):
+    if app.debug:
+        return f"http://localhost:5173/{entry}"
+
+    manifest_path = Path("static/dist/manifest.json")
+    manifest = json.loads(manifest_path.read_text())
+
+    return url_for(
+        "static",
+        filename=f"dist/{manifest[entry]['file']}"
+    )
+
+app.jinja_env.globals["vite_asset"] = vite_asset
+
+@app.context_processor
+def inject_vite():
+    return {
+        "vite_asset": vite_asset
+    }
 
 # WebSocket events
 
