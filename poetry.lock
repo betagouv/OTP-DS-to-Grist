@@ -296,14 +296,14 @@ markers = {main = "platform_system == \"Windows\""}
 
 [[package]]
 name = "commitizen"
-version = "4.13.9"
+version = "4.16.2"
 description = "Python commitizen client tool"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["dev"]
 files = [
-    {file = "commitizen-4.13.9-py3-none-any.whl", hash = "sha256:d2af3d6a83cacec9d5200e17768942c5de6266f93d932c955986c60c4285f2db"},
-    {file = "commitizen-4.13.9.tar.gz", hash = "sha256:2b4567ed50555e10920e5bd804a6a4e2c42ec70bb74f14a83f2680fe9eaf9727"},
+    {file = "commitizen-4.16.2-py3-none-any.whl", hash = "sha256:12338058fb57026d1a3f15c3a4835d999d447d6591297d9509b99ac93e327a9f"},
+    {file = "commitizen-4.16.2.tar.gz", hash = "sha256:346f32cb81641ec12716f78d16ab7caab28a5e728efc0da36a15a0c6c6839513"},
 ]
 
 [package.dependencies]
@@ -313,7 +313,7 @@ colorama = ">=0.4.1,<1.0"
 decli = ">=0.6.0,<1.0"
 deprecated = ">=1.2.13,<2"
 jinja2 = ">=2.10.3"
-packaging = ">=19"
+packaging = ">=26"
 prompt-toolkit = "!=3.0.52"
 pyyaml = ">=3.8"
 questionary = ">=2.0,<3.0"
@@ -920,14 +920,14 @@ files = [
 
 [[package]]
 name = "packaging"
-version = "25.0"
+version = "26.2"
 description = "Core utilities for Python packages"
 optional = false
 python-versions = ">=3.8"
 groups = ["main", "dev"]
 files = [
-    {file = "packaging-25.0-py3-none-any.whl", hash = "sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484"},
-    {file = "packaging-25.0.tar.gz", hash = "sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f"},
+    {file = "packaging-26.2-py3-none-any.whl", hash = "sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e"},
+    {file = "packaging-26.2.tar.gz", hash = "sha256:ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661"},
 ]
 
 [[package]]
@@ -1843,4 +1843,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "8d1f887cfabb4ebaaa579f314c23f61dcf1d60c6881cc7649135cd906470cfd3"
+content-hash = "546a84f8dd34106cf45f1f7904256554fcb54105beb9a070c4e30d2020b45900"
