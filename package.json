@@ -20,7 +20,8 @@
   "scripts": {
     "test": "jest",
     "lint": "eslint static/js/",
-    "lint:fix": "eslint static/js/ --fix"
+    "lint:fix": "eslint static/js/ --fix",
+    "build": "cd front && npm ci --include=dev && npm run build"
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.10.33",
