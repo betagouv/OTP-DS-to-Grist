@@ -24,7 +24,7 @@
     "build": "cd front && npm ci --include=dev && npm run build"
   },
   "devDependencies": {
-    "baseline-browser-mapping": "^2.10.33",
+    "baseline-browser-mapping": "^2.10.34",
     "eslint": "^10.4.1",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1"
