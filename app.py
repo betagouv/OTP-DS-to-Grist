@@ -854,7 +854,7 @@ def vite_asset(entry):
     if app.debug:
         return f"http://localhost:5173/{entry}"
 
-    manifest_path = Path("static/dist/manifest.json")
+    manifest_path = Path("static/dist/.vite/manifest.json")
     manifest = json.loads(manifest_path.read_text())
 
     return url_for(
