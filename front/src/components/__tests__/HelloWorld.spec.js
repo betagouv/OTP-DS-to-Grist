@@ -1,11 +1,14 @@
-import { describe, it, expect } from 'vitest'
-
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import HelloWorld from '../HelloWorld.vue'
 
+beforeEach(() => {
+  window.getGristContext = vi.fn().mockResolvedValue({ sample: 'context' })
+})
+
 describe('HelloWorld', () => {
-  it('renders properly', () => {
-    const wrapper = mount(HelloWorld, { props: { msg: 'Hello Vitest' } })
-    expect(wrapper.text()).toContain('Hello Vitest')
+  it('calls getGristContext on mount', () => {
+    mount(HelloWorld)
+    expect(window.getGristContext).toHaveBeenCalled()
   })
 })
