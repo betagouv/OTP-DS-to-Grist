@@ -25,6 +25,7 @@ onMounted(async () => {
 
 <template>
   <DsfrInput
+    data-test-id="grist-user-id"
     v-model="userId"
     label="Grist user id"
     placeholder="xxx"
@@ -32,6 +33,7 @@ onMounted(async () => {
     required
   />
   <DsfrInput
+    data-test-id="grist-doc-id"
     v-model="docId"
     label="Grist doc id"
     placeholder="xxx"
@@ -39,6 +41,7 @@ onMounted(async () => {
     required
   />
   <DsfrInput
+    data-test-id="grist-base-url"
     v-model="baseUrl"
     label="Grist baseUrl"
     placeholder="xxx"
