@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import { DsfrInput } from '@gouvminint/vue-dsfr'
-import HelloWorld from '../HelloWorld.vue'
+import GristContext from '../GristContext.vue'
 
 beforeEach(() => {
   window.getGristContext = vi.fn().mockResolvedValue({
@@ -12,9 +12,9 @@ beforeEach(() => {
   })
 })
 
-describe('HelloWorld', () => {
-  it('calls getGristContext on mount', async () => {
-    const wrapper = mount(HelloWorld, {
+describe('GristContext', () => {
+  it('load data from grist', async () => {
+    const wrapper = mount(GristContext, {
       global: {
         components: { DsfrInput }
       }
