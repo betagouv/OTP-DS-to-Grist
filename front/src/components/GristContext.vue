@@ -8,6 +8,10 @@ const error = ref(null)
 const userId = ref('')
 const docId = ref('')
 const baseUrl = ref('')
+const inputGristToken = ref('')
+
+const accordionTitleGrist = ref('Configurer Grist')
+const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 
 onMounted(async () => {
   try {
@@ -24,6 +28,25 @@ onMounted(async () => {
 </script>
 
 <template>
+  <h3 class="fr-mb-3w">1. Grist</h3>
+
+  <DsfrAccordionsGroup v-model="activeAccordion">
+    <DsfrAccordion
+      id="accordion-grist"
+      :title="accordionTitleGrist"
+    >
+      <DsfrInput
+        data-test-id="grist-token"
+        v-model="inputGristToken"
+        label="Grist token"
+        placeholder="xxx"
+        hint="Se rempli automatiquement"
+        required
+      />
+    </DsfrAccordion>
+  </DsfrAccordionsGroup>
+
+
   <DsfrInput
     data-test-id="grist-user-id"
     v-model="userId"
