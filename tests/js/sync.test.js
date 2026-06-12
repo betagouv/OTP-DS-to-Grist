@@ -243,8 +243,10 @@ describe('toggleAutoSync', () => {
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: false
+            configs: [{
+              otp_config_id: 123,
+              has_grist_key: false
+            }]
           })
         })
 
@@ -267,8 +269,10 @@ describe('toggleAutoSync', () => {
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: null,
-            has_grist_key: true
+            configs: [{
+              otp_config_id: null,
+              has_grist_key: true
+            }]
           })
         })
 
@@ -291,8 +295,10 @@ describe('toggleAutoSync', () => {
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: true
+            configs: [{
+              otp_config_id: 123,
+              has_grist_key: true
+            }]
           })
         })
         .mockResolvedValueOnce({
@@ -318,8 +324,10 @@ describe('toggleAutoSync', () => {
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: true
+            configs: [{
+              otp_config_id: 123,
+              has_grist_key: true
+            }]
           })
         })
         .mockResolvedValueOnce({
@@ -517,8 +525,10 @@ describe('loadAutoSyncState', () => {
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: null,
-            has_grist_key: false
+            configs: [{
+              otp_config_id: null,
+              has_grist_key: false
+            }]
           })
         })
 
@@ -539,8 +549,10 @@ it(
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: true
+            configs: [{
+                otp_config_id: 123,
+                has_grist_key: true
+            }]
           })
         })
         .mockResolvedValueOnce({
@@ -593,8 +605,10 @@ it(
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: true
+            configs: [{
+              otp_config_id: 123,
+              has_grist_key: true
+            }]
           })
         })
         .mockResolvedValueOnce({
@@ -631,8 +645,13 @@ it(
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: true
+            configs: [
+              {
+
+                otp_config_id: 123,
+                has_grist_key: true
+              }
+            ]
           })
         })
         .mockResolvedValueOnce({

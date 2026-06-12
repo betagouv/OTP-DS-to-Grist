@@ -20,7 +20,7 @@ class TestOtpConfiguration:
             filter_date_start="2024-01-01",
             filter_date_end="2024-12-31",
             filter_statuses="en_construction,en_instruction",
-            filter_groups="1,2,3"
+            filter_groups="1,2,3",
         )
 
         assert config.ds_api_token == "test_token"
@@ -36,7 +36,7 @@ class TestOtpConfiguration:
 
     def test_otp_configuration_table_name(self):
         """Test que le nom de table est correct"""
-        assert OtpConfiguration.__tablename__ == 'otp_configurations'
+        assert OtpConfiguration.__tablename__ == "otp_configurations"
 
     def test_otp_configuration_filter_fields_default_none(self):
         """Test que les champs de filtres sont None par défaut"""
@@ -47,7 +47,7 @@ class TestOtpConfiguration:
         assert config.filter_statuses is None
         assert config.filter_groups is None
 
-    @patch('app.SessionLocal')
+    @patch("app.SessionLocal")
     def test_otp_configuration_database_interaction(self, mock_session_local):
         """Test d'interaction mockée avec la base de données"""
         mock_session = MagicMock()
@@ -55,8 +55,7 @@ class TestOtpConfiguration:
 
         # Créer une config avec filtres
         config = OtpConfiguration(
-            filter_date_start="2024-01-01",
-            filter_statuses="en_construction"
+            filter_date_start="2024-01-01", filter_statuses="en_construction"
         )
 
         # Simuler ajout et commit
@@ -75,7 +74,7 @@ class TestOtpConfiguration:
             grist_base_url="https://existing.grist.com",
             grist_api_key="existing_key",
             grist_doc_id="existing_doc",
-            grist_user_id="existing_user"
+            grist_user_id="existing_user",
             # Pas de champs filtres
         )
 
@@ -89,11 +88,7 @@ class TestUserSchedule:
 
     def test_user_schedule_creation(self):
         """Test de création d'une instance UserSchedule"""
-        schedule = UserSchedule(
-            otp_config_id=1,
-            frequency="daily",
-            enabled=True
-        )
+        schedule = UserSchedule(otp_config_id=1, frequency="daily", enabled=True)
 
         assert schedule.otp_config_id == 1
         assert schedule.frequency == "daily"
@@ -104,7 +99,7 @@ class TestUserSchedule:
 
     def test_user_schedule_table_name(self):
         """Test que le nom de table est correct"""
-        assert UserSchedule.__tablename__ == 'user_schedules'
+        assert UserSchedule.__tablename__ == "user_schedules"
 
 
 class TestSyncLog:
@@ -113,30 +108,35 @@ class TestSyncLog:
     def test_sync_log_creation(self):
         """Test de création d'une instance SyncLog"""
         from datetime import datetime, timezone
+
         log = SyncLog(
             grist_user_id="test_user",
             grist_doc_id="test_doc",
+            otp_config_id=1,
+            demarche_number="12345",
             status="success",
-            message="Sync completed"
+            message="Sync completed",
         )
 
         assert log.grist_user_id == "test_user"
         assert log.grist_doc_id == "test_doc"
+        assert log.otp_config_id == 1
+        assert log.demarche_number == "12345"
         assert log.status == "success"
         assert log.message == "Sync completed"
         # Timestamp is set by default, but not when manually created
         # We can test that the field exists
-        assert hasattr(log, 'timestamp')
+        assert hasattr(log, "timestamp")
 
     def test_sync_log_table_name(self):
         """Test que le nom de table est correct"""
-        assert SyncLog.__tablename__ == 'sync_logs'
+        assert SyncLog.__tablename__ == "sync_logs"
 
 
 class TestModelsIntegration:
     """Tests d'intégration entre les modèles"""
 
-    @patch('app.SessionLocal')
+    @patch("app.SessionLocal")
     def test_models_relationship(self, mock_session_local):
         """Test des relations entre modèles (mocké)"""
         mock_session = MagicMock()
@@ -148,7 +148,9 @@ class TestModelsIntegration:
         log = SyncLog(grist_user_id="test_user")
 
         # Simuler les queries
-        mock_session.query.return_value.filter_by.return_value.first.return_value = config
+        mock_session.query.return_value.filter_by.return_value.first.return_value = (
+            config
+        )
 
         # Vérifier que les instances sont créées correctement
         assert config.id == 1

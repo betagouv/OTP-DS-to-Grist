@@ -587,6 +587,7 @@ class TestSyncManager:
             "grist_api_key": "test_key",
             "grist_doc_id": "test_doc",
             "grist_user_id": "user123",
+            "otp_config_id": 1,
         }
 
         result = self.manager.run_synchronization_task(config, auto=True)
@@ -599,6 +600,8 @@ class TestSyncManager:
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.grist_user_id == "user123"
         assert sync_log.grist_doc_id == "test_doc"
+        assert sync_log.otp_config_id == 1
+        assert sync_log.demarche_number == "12345"
         assert sync_log.status == "success"
         assert sync_log.auto is True
         assert sync_log.success_count == 10
@@ -624,6 +627,7 @@ class TestSyncManager:
             "grist_api_key": "test_key",
             "grist_doc_id": "test_doc",
             "grist_user_id": "user456",
+            "otp_config_id": 2,
         }
 
         result = self.manager.run_synchronization_task(config, auto=False)
@@ -636,6 +640,8 @@ class TestSyncManager:
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.grist_user_id == "user456"
         assert sync_log.grist_doc_id == "test_doc"
+        assert sync_log.otp_config_id == 2
+        assert sync_log.demarche_number == "12345"
         assert sync_log.status == "error"
         assert sync_log.auto is False
         assert sync_log.success_count == 0
@@ -689,10 +695,13 @@ class TestSyncManager:
             "grist_api_key": "test_key",
             "grist_doc_id": "test_doc",
             "grist_user_id": "user789",
+            "otp_config_id": 3,
         }
 
         self.manager.run_synchronization_task(config, auto=True)
         sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.otp_config_id == 3
+        assert sync_log.demarche_number == "12345"
         assert sync_log.auto is True
         assert sync_log.success_count == 5
         assert sync_log.error_count == 2
@@ -726,6 +735,7 @@ class TestSyncManager:
             "grist_api_key": "test_key",
             "grist_doc_id": "test_doc",
             "grist_user_id": "user_manual",
+            "otp_config_id": 4,
         }
 
         result = self.manager.run_synchronization_task(config, auto=False)
@@ -735,6 +745,8 @@ class TestSyncManager:
 
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.grist_user_id == "user_manual"
+        assert sync_log.otp_config_id == 4
+        assert sync_log.demarche_number == "12345"
         assert sync_log.status == "success"
         assert sync_log.auto is False
         assert sync_log.success_count == 20

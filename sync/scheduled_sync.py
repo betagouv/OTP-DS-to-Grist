@@ -24,12 +24,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if not DATABASE_URL:
-    raise ValueError(
-        "DATABASE_URL environment variable is required for database operations"
-    )
+from utils.constants import DATABASE_URL
 
 SYNC_HOUR = int(os.getenv("SYNC_HOUR", "0"))
 SYNC_MINUTE = int(os.getenv("SYNC_MINUTE", "0"))
