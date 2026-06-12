@@ -99,7 +99,7 @@ describe('testDemarchesConnection', () => {
     'should reload config when no token in input but config exists',
     async () => {
       mockTokenInput.value = ''
-      global.getConfiguration.mockResolvedValue({ ds_api_token: 'config-token' })
+      global.getConfiguration.mockResolvedValue([{ds_api_token: 'config-token' }])
       global.fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
@@ -124,7 +124,7 @@ describe('testDemarchesConnection', () => {
     'should show error when no token available',
     async () => {
       mockTokenInput.value = ''
-      global.getConfiguration.mockResolvedValue({ ds_api_token: '' })
+      global.getConfiguration.mockResolvedValue([{ ds_api_token: '' }])
 
       await testDemarchesConnection()
 
@@ -242,7 +242,7 @@ describe('testGristConnection', () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
       mockDocInput.value = 'doc123'
-      global.getConfiguration.mockResolvedValue({ grist_api_key: 'config-key' })
+      global.getConfiguration.mockResolvedValue([{ grist_api_key: 'config-key' }])
       global.fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
@@ -268,7 +268,7 @@ describe('testGristConnection', () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
       mockDocInput.value = 'doc123'
-      global.getConfiguration.mockResolvedValue({ grist_api_key: '' })
+      global.getConfiguration.mockResolvedValue([{ grist_api_key: '' }])
 
       await testGristConnection()
 
@@ -410,14 +410,14 @@ describe('testWebSocket', () => {
 describe('testExternalConnections', () => {
   let mockResultDiv
 
-  const defaultConfig = {
+  const defaultConfig = [{
     otp_config_id: 1,
     ds_api_token: 'valid-token',
     demarche_number: '123',
     grist_api_key: 'valid-key',
     grist_base_url: 'https://grist.example.com',
     grist_doc_id: 'doc123'
-  }
+  }]
 
   beforeEach(() => {
     mockResultDiv = { innerHTML: '' }

@@ -239,10 +239,10 @@ describe('toggleAutoSync', () => {
   it(
     'ne pas autoriser sans la clé grist',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: 123,
         has_grist_key: false
-      })
+      }])
 
       await toggleAutoSync(true)
 
@@ -256,10 +256,10 @@ describe('toggleAutoSync', () => {
   it(
     'ne pas autoriser sans configuration sauvegardée',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: null,
         has_grist_key: true
-      })
+      }])
 
       await toggleAutoSync(true)
 
@@ -274,10 +274,10 @@ describe('toggleAutoSync', () => {
   it(
     'succès d’activation',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: 123,
         has_grist_key: true
-      })
+      }])
       global.fetch.mockResolvedValue({
         json: jest.fn().mockResolvedValue({ success: true })
       })
@@ -295,10 +295,10 @@ describe('toggleAutoSync', () => {
   it(
     'succès de désactivation',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: 123,
         has_grist_key: true
-      })
+      }])
       global.fetch.mockResolvedValue({
         json: jest.fn().mockResolvedValue({ success: true })
       })
@@ -488,10 +488,10 @@ describe('loadAutoSyncState', () => {
   it(
     'désactiver la case quand la config n\'existe pas',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: null,
         has_grist_key: false
-      })
+      }])
 
       await loadAutoSyncState()
 
@@ -504,10 +504,10 @@ describe('loadAutoSyncState', () => {
 it(
     'activer la case et afficher l\'état',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: 123,
         has_grist_key: true
-      })
+      }])
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
@@ -552,10 +552,10 @@ it(
 it(
     'afficher l\'état désactivé quand la programmation n\'est pas activée',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: 123,
         has_grist_key: true
-      })
+      }])
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
@@ -584,10 +584,10 @@ it(
 it(
     'afficher l\'erreur de la dernière synchronisation',
     async () => {
-      global.getConfiguration.mockResolvedValue({
+      global.getConfiguration.mockResolvedValue([{
         otp_config_id: 123,
         has_grist_key: true
-      })
+      }])
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({

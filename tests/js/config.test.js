@@ -257,13 +257,15 @@ describe('checkConfiguration', () => {
       fetch.mockResolvedValue({
         ok: true,
         json: jest.fn().mockResolvedValue({
-          otp_config_id: 123,
-          demarche_number: 123,
-          grist_base_url: 'https://grist.numerique.gouv.fr/api',
-          grist_doc_id: 'doc123',
-          grist_user_id: 'user123',
-          has_ds_token: false,
-          has_grist_key: false
+          configs: [{
+            otp_config_id: 123,
+            demarche_number: 123,
+            grist_base_url: 'https://grist.numerique.gouv.fr/api',
+            grist_doc_id: 'doc123',
+            grist_user_id: 'user123',
+            has_ds_token: false,
+            has_grist_key: false
+          }]
         })
       })
 

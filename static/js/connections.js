@@ -15,21 +15,22 @@ const testDemarchesConnection = async (silent = false) => {
 
     if (!ds_token) {
       try {
-        config = await getConfiguration()[0]
+        config = (await getConfiguration())[0]
         ds_token = config.ds_api_token || ''
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
 
-      if (config && config.has_ds_token) {
+      if (config && config.has_ds_token)
         return true  // Déjà configuré, pas besoin de tester
-      } else {
-        resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
-          <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
-        </div>`
-        if (!silent) showNotification('Token API démarches simplifiées requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
-        return false
-      }
+    }
+
+    if (!ds_token) {
+      resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+        <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
+      </div>`
+      if (!silent) showNotification('Token API démarches simplifiées requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+      return false
     }
 
     const response = await fetch('/api/test-connection', {
@@ -85,20 +86,21 @@ const testGristConnection = async (silent = false) => {
 
     if (!grist_key) {
       try {
-        config = await getConfiguration()[0]
-        grist_key    = config.grist_api_key || ''
+        config = (await getConfiguration())[0]
+        grist_key = config.grist_api_key || ''
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
 
-      if (config && config.has_grist_key) {
+      if (config && config.has_grist_key)
         return true  // Déjà configuré, pas besoin de tester
-      } else {
-        if (!silent) showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
-        return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
-          <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
-        </div>`
-      }
+    }
+
+    if (!grist_key) {
+      if (!silent) showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+      return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+        <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
+      </div>`
     }
 
     if (!gristBaseUrlValue)
@@ -211,7 +213,7 @@ const testExternalConnections = async (silent = false) => {
     resultDiv.innerHTML = '<div class="fr-alert fr-alert--info"><p>Test des connexions externes en cours...</p></div>'
 
   try {
-    const config = await getConfiguration()[0]
+    const config = (await getConfiguration())[0]
 
     if (!config.otp_config_id) throw new Error('Pas de configuration trouvée')
 
