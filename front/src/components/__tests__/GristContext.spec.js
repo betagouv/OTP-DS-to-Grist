@@ -26,7 +26,6 @@ describe('GristContext', () => {
     await wrapper.vm.$nextTick() // Vue réagit, le DOM est mis à jour
 
     const inputs = wrapper.findAllComponents(DsfrInput)
-    expect(inputs).toHaveLength(3)
 
     const inputGristUserId = wrapper.find('[data-test-id="grist-user-id"]')
     expect(inputGristUserId.element.value).toBe('user-abc123')

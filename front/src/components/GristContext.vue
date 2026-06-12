@@ -1,9 +1,12 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 
+import {
+  DsfrAccordion, DsfrAccordionsGroup
+} from '@gouvminint/vue-dsfr'
+
 const grist = window.grist
 const context = ref(null)
-const error = ref(null)
 
 const userId = ref('')
 const docId = ref('')
@@ -21,7 +24,7 @@ onMounted(async () => {
     docId.value = context.value.docId
     baseUrl.value = context.value.baseUrl
   } catch (e) {
-    error.value = e
+    alert(e.message)
   }
 })
 
@@ -77,7 +80,6 @@ onMounted(async () => {
       {{JSON.stringify(grist)}}
     </details>
     <pre v-if="context">{{context}}</pre>
-    <pre v-if="error">/!\ {{error}}</pre>
   </div>
 </template>
 
