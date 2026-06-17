@@ -2530,6 +2530,8 @@ def process_demarche_for_grist_optimized(
         log(f"Dossiers organisés en {batch_count} lots de {batch_size} maximum")
 
         # Fonction pour préparer un seul dossier (DÉFINIE AVANT LA BOUCLE)
+        descriptor_to_column_id = column_types.get("descriptor_to_column_id", {})
+
         def prepare_single_dossier(
             dossier_num, dossier_data, column_types, problematic_descriptor_ids
         ):
@@ -2540,6 +2542,7 @@ def process_demarche_for_grist_optimized(
                     dossier_data,
                     exclude_repetition_champs=exclude_repetition,
                     problematic_ids=problematic_descriptor_ids,
+                    descriptor_to_column_id=descriptor_to_column_id,
                 )
 
                 # Préparer dossier_record
