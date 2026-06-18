@@ -14,8 +14,6 @@ import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
-from utils.api_validator import verify_api_connections
-from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from queries import dossier_to_flat_data, get_demarche, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
@@ -25,6 +23,8 @@ from schema_utils import (
     get_demarche_schema_enhanced,
     update_grist_tables_from_schema,
 )
+from utils.api_validator import verify_api_connections
+from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from utils.log_progress import LogProgress
 
 log_progress = LogProgress(ceiling=98)
@@ -1337,10 +1337,6 @@ class GristClient:
         Crée ou met à jour les tables Grist pour une démarche.
         """
         try:
-            # Récupérer les indicateurs de présence
-            has_repetable_blocks = column_types.get("has_repetable_blocks", False)
-            has_carto_fields = column_types.get("has_carto_fields", False)
-
             # FILTRAGE EXPLICITE DES COLONNES PROBLÉMATIQUES
             # Retirer toutes les colonnes qui pourraient correspondre à HeaderSectionChamp et ExplicationChamp
             filtered_champ_columns = column_types.get("champs", [])
@@ -1356,11 +1352,6 @@ class GristClient:
             dossier_table_id = f"Demarche_{demarche_number}_dossiers"
             champ_table_id = f"Demarche_{demarche_number}_champs"
             annotation_table_id = f"Demarche_{demarche_number}_annotations"
-            repetable_table_id = (
-                f"Demarche_{demarche_number}_repetable_rows"
-                if has_repetable_blocks
-                else None
-            )
 
             # Récupérer les tables existantes
             existing_tables_response = self.list_tables()
@@ -1370,7 +1361,6 @@ class GristClient:
             dossier_table = None
             champ_table = None
             annotation_table = None
-            repetable_table = None
 
             for table in existing_tables:
                 if isinstance(table, dict):
@@ -1392,12 +1382,6 @@ class GristClient:
                         annotation_table_id = table.get("id")
                         log(
                             f"Table annotations existante trouvée avec l'ID {annotation_table_id}"
-                        )
-                    elif repetable_table_id and table_id == repetable_table_id.lower():
-                        repetable_table = table
-                        repetable_table_id = table.get("id")
-                        log(
-                            f"Table répétables existante trouvée avec l'ID {repetable_table_id}"
                         )
 
             # Créer la table des dossiers si elle n'existe pas
@@ -1427,163 +1411,11 @@ class GristClient:
                 annotation_table = annotation_table_result["tables"][0]
                 annotation_table_id = annotation_table.get("id")
 
-            # Créer la table des blocs répétables seulement si nécessaire
-            if (
-                has_repetable_blocks
-                and repetable_table_id
-                and not repetable_table
-                and "repetable_rows" in column_types
-            ):
-                log(f"Création de la table {repetable_table_id}")
-                # Commencer avec seulement les colonnes de base pour éviter des erreurs
-                base_columns = [
-                    {"id": "dossier_number", "type": "Int"},
-                    {"id": "block_label", "type": "Text"},
-                    {"id": "block_row_index", "type": "Int"},
-                    {"id": "block_row_id", "type": "Text"},
-                ]
-                repetable_table_result = self.create_table(
-                    repetable_table_id, base_columns
-                )
-                repetable_table = repetable_table_result["tables"][0]
-                repetable_table_id = repetable_table.get("id")
-
-                # Ajouter les colonnes supplémentaires une par une
-                remaining_columns = []
-                for col in column_types["repetable_rows"]:
-                    if col["id"] not in [
-                        "dossier_number",
-                        "block_label",
-                        "block_row_index",
-                        "block_row_id",
-                    ]:
-                        remaining_columns.append(col)
-
-                # Ajouter des colonnes cartographiques spécifiques seulement si des champs carto sont présents
-                if has_carto_fields:
-                    geo_columns = [
-                        {"id": "geo_id", "type": "Text"},
-                        {"id": "geo_source", "type": "Text"},
-                        {"id": "geo_description", "type": "Text"},
-                        {"id": "geo_type", "type": "Text"},
-                        {"id": "geo_coordinates", "type": "Text"},
-                        {"id": "geo_wkt", "type": "Text"},
-                        {"id": "geo_commune", "type": "Text"},
-                        {"id": "geo_numero", "type": "Text"},
-                        {"id": "geo_section", "type": "Text"},
-                        {"id": "geo_prefixe", "type": "Text"},
-                        {"id": "geo_surface", "type": "Numeric"},
-                    ]
-
-                    # Ajouter chaque colonne géographique si elle n'est pas déjà dans remaining_columns
-                    for geo_col in geo_columns:
-                        if not any(
-                            col["id"] == geo_col["id"] for col in remaining_columns
-                        ):
-                            remaining_columns.append(geo_col)
-
-                if remaining_columns:
-                    log(
-                        f"Ajout de {len(remaining_columns)} colonnes supplémentaires à la table des blocs répétables..."
-                    )
-                    try:
-                        url = f"{self.base_url}/docs/{self.doc_id}/tables/{repetable_table_id}/columns"
-                        add_columns_payload = {"columns": remaining_columns}
-                        response = requests.post(
-                            url, headers=self.headers, json=add_columns_payload
-                        )
-
-                        if response.status_code != 200:
-                            log_error(
-                                f"Erreur lors de l'ajout des colonnes: {response.text}"
-                            )
-                        else:
-                            log("Colonnes ajoutées avec succès")
-                    except Exception as e:
-                        log_error(f"Erreur lors de l'ajout des colonnes: {str(e)}")
-                        traceback.print_exc()
-
-            elif (
-                has_repetable_blocks
-                and repetable_table
-                and repetable_table_id
-                and "repetable_rows" in column_types
-            ):
-                # La table existe déjà, vérifier que toutes les colonnes sont présentes
-                try:
-                    url = f"{self.base_url}/docs/{self.doc_id}/tables/{repetable_table_id}/columns"
-                    response = requests.get(url, headers=self.headers)
-
-                    if response.status_code == 200:
-                        columns_data = response.json()
-                        existing_column_ids = set()
-
-                        if "columns" in columns_data:
-                            for col in columns_data["columns"]:
-                                existing_column_ids.add(col.get("id"))
-
-                        # Trouver les colonnes manquantes
-                        missing_columns = []
-                        for col in column_types["repetable_rows"]:
-                            if col["id"] not in existing_column_ids:
-                                missing_columns.append(col)
-
-                        # Ajouter des colonnes cartographiques spécifiques seulement si des champs carto sont présents
-                        if has_carto_fields:
-                            geo_columns = [
-                                {"id": "geo_id", "type": "Text"},
-                                {"id": "geo_source", "type": "Text"},
-                                {"id": "geo_description", "type": "Text"},
-                                {"id": "geo_type", "type": "Text"},
-                                {"id": "geo_coordinates", "type": "Text"},
-                                {"id": "geo_wkt", "type": "Text"},
-                                {"id": "geo_commune", "type": "Text"},
-                                {"id": "geo_numero", "type": "Text"},
-                                {"id": "geo_section", "type": "Text"},
-                                {"id": "geo_prefixe", "type": "Text"},
-                                {"id": "geo_surface", "type": "Numeric"},
-                            ]
-
-                            # Ajouter chaque colonne géographique si elle n'est pas déjà présente
-                            for geo_col in geo_columns:
-                                if geo_col["id"] not in existing_column_ids and not any(
-                                    col["id"] == geo_col["id"]
-                                    for col in missing_columns
-                                ):
-                                    missing_columns.append(geo_col)
-
-                        if missing_columns:
-                            log(
-                                f"Ajout de {len(missing_columns)} colonnes manquantes à la table des blocs répétables..."
-                            )
-                            add_columns_url = f"{self.base_url}/docs/{self.doc_id}/tables/{repetable_table_id}/columns"
-                            add_columns_payload = {"columns": missing_columns}
-                            add_response = requests.post(
-                                add_columns_url,
-                                headers=self.headers,
-                                json=add_columns_payload,
-                            )
-
-                            if add_response.status_code != 200:
-                                log_error(
-                                    f"Erreur lors de l'ajout des colonnes: {add_response.text}"
-                                )
-                            else:
-                                log("Colonnes ajoutées avec succès")
-                    else:
-                        log_error(
-                            f"Erreur lors de la récupération des colonnes: {response.text}"
-                        )
-                except Exception as e:
-                    log_error(f"Erreur lors de la vérification des colonnes: {str(e)}")
-                    traceback.print_exc()
-
             # Retourner les IDs des tables
             return {
                 "dossier_table_id": dossier_table_id,
                 "champ_table_id": champ_table_id,
                 "annotation_table_id": annotation_table_id,
-                "repetable_table_id": repetable_table_id,
             }
 
         except Exception as e:
@@ -1880,12 +1712,6 @@ def process_demarche_for_grist(client, demarche_number):
         log(f"  Table dossiers: {table_ids['dossier_table_id']}")
         log(f"  Table champs: {table_ids['champ_table_id']}")
         log(f"  Table annotations: {table_ids['annotation_table_id']}")
-        if table_ids.get("repetable_table_id"):
-            log(f"  Table blocs répétables: {table_ids['repetable_table_id']}")
-        else:
-            log_verbose(
-                "  Table blocs répétables: Non créée (aucun bloc répétable détecté)"
-            )
 
         # Nouvelle logique de traitement par lots
         batch_size = 100  # Ajustez selon les performances
@@ -2520,8 +2346,6 @@ def process_demarche_for_grist_optimized(
         log(f"  Table dossiers: {table_ids['dossier_table_id']}")
         log(f"  Table champs: {table_ids['champ_table_id']}")
         log(f"  Table annotations: {table_ids['annotation_table_id']}")
-        if table_ids.get("repetable_table_id"):
-            log(f"  Table blocs répétables: {table_ids['repetable_table_id']}")
 
         # Récupération des dossiers
         if api_filters and api_filters:
