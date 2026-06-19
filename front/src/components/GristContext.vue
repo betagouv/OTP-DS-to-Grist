@@ -113,6 +113,3 @@ onMounted(async () => {
     <pre v-if="context">{{context}}</pre>
   </div>
 </template>
-
-<style scoped>
-</style>
