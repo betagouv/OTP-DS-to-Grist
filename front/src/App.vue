@@ -1,11 +1,11 @@
 <script setup>
-import GristFormSection from './components/GristFormSection.vue';
+import OTPForm from './components/OTPForm.vue'
 </script>
 
 <template>
   <header>
     <div class="wrapper">
-      <GristFormSection />
+      <OTPForm />
     </div>
   </header>
 </template>
