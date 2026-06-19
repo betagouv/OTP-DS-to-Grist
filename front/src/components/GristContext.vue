@@ -2,7 +2,9 @@
 import { ref, onMounted } from 'vue'
 
 import {
-  DsfrAccordion, DsfrAccordionsGroup
+  DsfrAccordion,
+  DsfrAccordionsGroup,
+  DsfrInputGroup
 } from '@gouvminint/vue-dsfr'
 
 const grist = window.grist
@@ -15,6 +17,33 @@ const inputGristToken = ref('')
 
 const accordionTitleGrist = ref('Configurer Grist')
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
+
+const gristTokenErrorMessage = ref(null)
+
+const handleGristInputChange = async () => {
+  gristTokenErrorMessage.value = null
+
+  const response = await fetch('/api/test-connection', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      type: 'grist',
+      base_url: baseUrl.value,
+      api_key: inputGristToken.value,
+      doc_id: docId.value
+    })
+  })
+  const result = await response.json()
+
+  if (result.success) {
+    gristTokenErrorMessage.value = null
+    return
+  }
+
+  gristTokenErrorMessage.value = result.message
+}
 
 onMounted(async () => {
   try {
@@ -38,9 +67,11 @@ onMounted(async () => {
       id="accordion-grist"
       :title="accordionTitleGrist"
     >
-      <DsfrInput
+      <DsfrInputGroup
+        :error-message="gristTokenErrorMessage"
         data-test-id="grist-token"
         v-model="inputGristToken"
+        @change="handleGristInputChange"
         label="Grist token"
         placeholder="xxx"
         hint="Se rempli automatiquement"
