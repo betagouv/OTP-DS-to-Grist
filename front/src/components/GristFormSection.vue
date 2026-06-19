@@ -72,7 +72,7 @@ onMounted(async () => {
         v-model="inputGristToken"
         @change="handleGristInputChange"
         label="Grist token"
-        placeholder="xxx"
+        placeholder="Saisissez votre clé grist"
         required
       />
     </DsfrAccordion>
