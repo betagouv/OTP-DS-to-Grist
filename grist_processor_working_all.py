@@ -14,7 +14,8 @@ import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
-from queries import dossier_to_flat_data, get_demarche, get_dossier
+from queries import get_demarche, get_dossier
+from queries_extract import dossier_to_flat_data
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
 from schema_utils import (
