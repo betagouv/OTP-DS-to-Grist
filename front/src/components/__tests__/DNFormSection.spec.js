@@ -2,59 +2,38 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
-import GristFormSection from '../GristFormSection.vue'
+import DNFormSection from '../DNFormSection.vue'
 
-beforeEach(() => {
-  window.getGristContext = vi.fn().mockResolvedValue({
-    userId: 'user-abc123',
-    docId: 'doc-xyz789',
-    baseUrl: 'https://example.com/api'
-  })
-})
-
-describe('Grist form section', () => {
-  it('load data from grist', async () => {
-    const wrapper = mount(GristFormSection, {
-      global: {
-        components: { DsfrInput }
-      }
-    })
-
-    expect(window.getGristContext).toHaveBeenCalled()
-
-    await wrapper.vm.$nextTick() // L'async onMounted termine, les refs sont assignées
-    await wrapper.vm.$nextTick() // Vue réagit, le DOM est mis à jour
-
-    expect(wrapper.vm.userId).toBe('user-abc123')
-    expect(wrapper.vm.docId).toBe('doc-xyz789')
-    expect(wrapper.vm.baseUrl).toBe('https://example.com/api')
-  })
-
-  it('shows error message when token validation fails', async () => {
+describe('DN form section', () => {
+  it('shows error message when form validation fails', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       json: () => Promise.resolve({ success: false, message: 'Token invalide' })
     })
 
     globalThis.fetch = mockFetch
 
-    const wrapper = mount(GristFormSection, {
+    const wrapper = mount(DNFormSection, {
       global: {
         components: { DsfrInput, DsfrInputGroup }
       }
     })
 
-    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('mauvais-token')
     await tokenInput.trigger('change')
+
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('mauvais-numéro')
+    await numberInput.trigger('change')
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: 'grist',
-        base_url: 'https://example.com/api',
-        api_key: 'mauvais-token',
-        doc_id: 'doc-xyz789'
+        type: 'demarches',
+        api_token: 'mauvais-token',
+        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+        demarche_number: 'mauvais-numéro',
       })
     })
     const errorText = wrapper.find('.fr-error-text')
@@ -62,31 +41,35 @@ describe('Grist form section', () => {
     expect(errorText.text()).toBe('Token invalide')
   })
 
-  it('shows no error when token is valid', async () => {
+  it('shows no error when form is valid', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       json: () => Promise.resolve({ success: true })
     })
 
     globalThis.fetch = mockFetch
 
-    const wrapper = mount(GristFormSection, {
+    const wrapper = mount(DNFormSection, {
       global: {
         components: { DsfrInput, DsfrInputGroup }
       }
     })
 
-    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('bon-token')
     await tokenInput.trigger('change')
+
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('bon-numéro')
+    await numberInput.trigger('change')
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: 'grist',
-        base_url: 'https://example.com/api',
-        api_key: 'bon-token',
-        doc_id: 'doc-xyz789'
+        type: 'demarches',
+        api_token: 'bon-token',
+        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+        demarche_number: 'bon-numéro',
       })
     })
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
