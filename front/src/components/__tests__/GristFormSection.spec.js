@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
-import GristContext from '../GristContext.vue'
+import GristContext from '../GristFormSection.vue'
 
 beforeEach(() => {
   window.getGristContext = vi.fn().mockResolvedValue({

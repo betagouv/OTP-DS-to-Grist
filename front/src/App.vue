@@ -1,11 +1,11 @@
 <script setup>
-import GristContext from './components/GristContext.vue'
+import GristFormSection from './components/GristFormSection.vue';
 </script>
 
 <template>
   <header>
     <div class="wrapper">
-      <GristContext />
+      <GristFormSection />
     </div>
   </header>
 </template>
