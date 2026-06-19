@@ -19,8 +19,10 @@
   },
   "scripts": {
     "test": "jest",
+    "test:vue": "cd front && npm run test:unit",
     "lint": "eslint static/js/",
     "lint:fix": "eslint static/js/ --fix",
+    "dev": "cd front && npm run dev",
     "build": "cd front && npm ci --include=dev && npm run build"
   },
   "devDependencies": {

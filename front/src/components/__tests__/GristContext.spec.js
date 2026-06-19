@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
-import { DsfrInput } from '@gouvminint/vue-dsfr'
+import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import GristContext from '../GristContext.vue'
 
 beforeEach(() => {
@@ -25,16 +25,70 @@ describe('GristContext', () => {
     await wrapper.vm.$nextTick() // L'async onMounted termine, les refs sont assignées
     await wrapper.vm.$nextTick() // Vue réagit, le DOM est mis à jour
 
-    const inputs = wrapper.findAllComponents(DsfrInput)
-    expect(inputs).toHaveLength(3)
+    expect(wrapper.vm.userId).toBe('user-abc123')
+    expect(wrapper.vm.docId).toBe('doc-xyz789')
+    expect(wrapper.vm.baseUrl).toBe('https://example.com/api')
+  })
 
-    const inputGristUserId = wrapper.find('[data-test-id="grist-user-id"]')
-    expect(inputGristUserId.element.value).toBe('user-abc123')
+  it('shows error message when token validation fails', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ success: false, message: 'Token invalide' })
+    })
 
-    const inputGristDocId = wrapper.find('[data-test-id="grist-doc-id"]')
-    expect(inputGristDocId.element.value).toBe('doc-xyz789')
+    globalThis.fetch = mockFetch
 
-    const inputGristBaseUrl = wrapper.find('[data-test-id="grist-base-url"]')
-    expect(inputGristBaseUrl.element.value).toBe('https://example.com/api')
+    const wrapper = mount(GristContext, {
+      global: {
+        components: { DsfrInput, DsfrInputGroup }
+      }
+    })
+
+    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+    await tokenInput.setValue('mauvais-token')
+    await tokenInput.trigger('change')
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'grist',
+        base_url: 'https://example.com/api',
+        api_key: 'mauvais-token',
+        doc_id: 'doc-xyz789'
+      })
+    })
+    const errorText = wrapper.find('.fr-error-text')
+    expect(errorText.exists()).toBe(true)
+    expect(errorText.text()).toBe('Token invalide')
+  })
+
+  it('shows no error when token is valid', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ success: true })
+    })
+
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(GristContext, {
+      global: {
+        components: { DsfrInput, DsfrInputGroup }
+      }
+    })
+
+    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+    await tokenInput.setValue('bon-token')
+    await tokenInput.trigger('change')
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'grist',
+        base_url: 'https://example.com/api',
+        api_key: 'bon-token',
+        doc_id: 'doc-xyz789'
+      })
+    })
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 })
