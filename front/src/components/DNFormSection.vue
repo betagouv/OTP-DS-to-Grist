@@ -7,6 +7,8 @@ import {
   DsfrInputGroup
 } from '@gouvminint/vue-dsfr'
 
+const emit = defineEmits(['error-update'])
+
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 const accordionTitleDN = ref('Configurer votre démarche')
@@ -33,12 +35,9 @@ const handleDNInputsChange = async () => {
   })
   const result = await response.json()
 
-  if (result.success) {
-    dnErrorMessage.value = null
-    return
-  }
+  dnErrorMessage.value = result.success ? '' : result.message
 
-  dnErrorMessage.value = result.message
+  emit('error-update', dnErrorMessage.value)
 }
 </script>
 

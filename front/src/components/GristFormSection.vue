@@ -7,6 +7,7 @@ import {
   DsfrInputGroup
 } from '@gouvminint/vue-dsfr'
 
+const emit = defineEmits(['error-update'])
 const context = ref(null)
 
 const userId = ref('')
@@ -36,12 +37,9 @@ const handleGristInputChange = async () => {
   })
   const result = await response.json()
 
-  if (result.success) {
-    gristTokenErrorMessage.value = null
-    return
-  }
+  gristTokenErrorMessage.value = result.success ? '' : result.message
 
-  gristTokenErrorMessage.value = result.message
+  emit('error-update', gristTokenErrorMessage.value)
 }
 
 onMounted(async () => {
