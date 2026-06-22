@@ -1,11 +1,11 @@
 <script setup>
-import GristContext from './components/GristContext.vue'
+import OTPForm from './components/OTPForm.vue'
 </script>
 
 <template>
   <header>
     <div class="wrapper">
-      <GristContext />
+      <OTPForm />
     </div>
   </header>
 </template>
