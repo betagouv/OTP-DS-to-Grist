@@ -39,6 +39,13 @@ const handleDNInputsChange = async () => {
 
   emit('error-update', dnErrorMessage.value)
 }
+
+defineExpose({
+  getData: () => ({
+    token: inputDNToken.value,
+    demarche_number: inputDNNumber.value,
+  })
+})
 </script>
 
 <template>

@@ -54,6 +54,15 @@ onMounted(async () => {
   }
 })
 
+defineExpose({
+  getData: () => ({
+    userId: userId.value,
+    docId: docId.value,
+    baseUrl: baseUrl.value,
+    token: inputGristToken.value
+  })
+})
+
 </script>
 
 <template>
