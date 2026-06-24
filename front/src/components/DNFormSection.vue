@@ -7,6 +7,10 @@ import {
   DsfrInputGroup
 } from '@gouvminint/vue-dsfr'
 
+const props = defineProps({
+  existingConfig: { type: Object, default: null }
+})
+
 const emit = defineEmits(['error-update'])
 
 // TODO le mettre dans le parent
