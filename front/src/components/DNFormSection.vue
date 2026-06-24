@@ -20,6 +20,7 @@ const accordionTitleDN = ref('Configurer votre démarche')
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
 const dnErrorMessage = ref(null)
+const dnTokenPlaceholder = ref('Saisissez votre clé DN')
 const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
 
 const handleDNInputsChange = async () => {
@@ -55,8 +56,10 @@ watch(() => props.existingConfig, (config) => {
   if (config?.demarche_number)
     inputDNNumber.value = config.demarche_number
 
-  if (config?.has_ds_token)
+  if (config?.has_ds_token) {
+    dnTokenPlaceholder.value = '****************************************'
     emit('error-update', '')
+  }
 })
 </script>
 
@@ -77,7 +80,8 @@ watch(() => props.existingConfig, (config) => {
           v-model="inputDNToken"
           @change="handleDNInputsChange"
           label="DN token"
-          placeholder="Saisissez votre clé DN"
+          :placeholder="dnTokenPlaceholder"
+          type="password"
           required
         />
 
