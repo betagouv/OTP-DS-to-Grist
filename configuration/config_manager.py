@@ -103,27 +103,28 @@ class ConfigManager:
 
         return normalized
 
-    _CONFIG_COLUMNS = [
-        "id",
-        "ds_api_token",
-        "demarche_number",
-        "grist_base_url",
-        "grist_api_key",
-        "grist_doc_id",
-        "grist_user_id",
-        "filter_date_start",
-        "filter_date_end",
-        "filter_statuses",
-        "filter_groups",
-    ]
-
     @staticmethod
     def _build_config_from_row(row: tuple | None) -> dict:
         """Construit une config normalisée à partir d'une ligne DB (None → vide avec defaults)"""
+
+        config_columns = [
+            "id",
+            "ds_api_token",
+            "demarche_number",
+            "grist_base_url",
+            "grist_api_key",
+            "grist_doc_id",
+            "grist_user_id",
+            "filter_date_start",
+            "filter_date_end",
+            "filter_statuses",
+            "filter_groups",
+        ]
+
         if row is None:
             raw: dict = {}
         else:
-            raw = dict(zip(ConfigManager._CONFIG_COLUMNS, row))
+            raw = dict(zip(config_columns, row))
             raw["otp_config_id"] = raw.pop("id")
             raw["ds_api_token"] = (
                 ConfigManager.decrypt_value(raw["ds_api_token"])
