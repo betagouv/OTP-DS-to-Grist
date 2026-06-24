@@ -89,7 +89,8 @@ describe('Save button action', () => {
         demarche_number: '12345',
         grist_base_url: 'https://grist.example.com',
         grist_doc_id: 'doc-123',
-        grist_user_id: '5'
+        grist_user_id: '5',
+        grist_api_key: 'grist-token'
       })
     })
   })

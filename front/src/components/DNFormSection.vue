@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 import {
   DsfrAccordion,
@@ -49,6 +49,14 @@ defineExpose({
     token: inputDNToken.value,
     demarche_number: inputDNNumber.value,
   })
+})
+
+watch(() => props.existingConfig, (config) => {
+  if (config?.demarche_number)
+    inputDNNumber.value = config.demarche_number
+
+  if (config?.has_ds_token)
+    emit('error-update', '')
 })
 </script>
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 
 import {
   DsfrAccordion,
@@ -56,6 +56,14 @@ onMounted(async () => {
   } catch (e) {
     alert(e.message)
   }
+})
+
+watch(() => props.existingConfig, (config) => {
+  if (config?.grist_base_url)
+    baseUrl.value = config.grist_base_url
+
+  if (config?.has_grist_key)
+    emit('error-update', '')
 })
 
 defineExpose({
