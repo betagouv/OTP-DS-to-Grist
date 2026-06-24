@@ -294,29 +294,6 @@ class TestEndpoints:
         assert data["results"][0]["success"] is True
         assert data["results"][1]["success"] is False
 
-    @patch.object(ConfigManager, "load_config")
-    @patch("app.get_available_groups")
-    def test_api_groups_with_grist_params(self, mock_groups, mock_load, client):
-        """
-        Test de récupération des groupes
-        avec paramètres grist_user_id et grist_doc_id
-        """
-        mock_load.return_value = {"ds_api_token": "token", "demarche_number": "123"}
-        mock_groups.return_value = [{"id": "1", "label": "Groupe 1"}]
-
-        response = client.get("/api/groups?grist_user_id=user123&grist_doc_id=doc456")
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert isinstance(data, list)
-        assert len(data) == 1
-        assert data[0]["label"] == "Groupe 1"
-
-        # Vérifie que load_config a été appelé avec les bons paramètres
-        mock_load.assert_called_once_with(
-            grist_user_id="user123", grist_doc_id="doc456"
-        )
-
     @patch.object(ConfigManager, "load_config_by_id")
     @patch("app.get_available_groups")
     def test_api_groups_otp_config_id_mode(self, mock_groups, mock_load, client):
@@ -345,18 +322,6 @@ class TestEndpoints:
         mock_load.side_effect = Exception("Configuration not found")
 
         response = client.get("/api/groups?otp_config_id=999")
-        assert response.status_code == 400
-
-        data = json.loads(response.data)
-        assert "error" in data
-        assert "Erreur lors de la récupération des groupes" == data["error"]
-
-    @patch.object(ConfigManager, "load_config")
-    def test_api_groups_legacy_missing_params(self, mock_load, client):
-        """Test de récupération des groupes en mode legacy sans paramètres"""
-        mock_load.side_effect = Exception("No grist user id or doc id")
-
-        response = client.get("/api/groups")
         assert response.status_code == 400
 
         data = json.loads(response.data)

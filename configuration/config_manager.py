@@ -64,6 +64,86 @@ class ConfigManager:
                 Vérifiez la clé de chiffrement ou la valeur fournie."
             )
 
+    @staticmethod
+    def normalize_config(raw: dict) -> dict:
+        """Normalise les types et applique les valeurs par défaut"""
+        normalized = {}
+
+        normalized["otp_config_id"] = (
+            int(raw["otp_config_id"]) if raw.get("otp_config_id") is not None else None
+        )
+        normalized["ds_api_token"] = str(raw.get("ds_api_token") or "")
+        normalized["demarche_number"] = str(raw.get("demarche_number") or "")
+        normalized["grist_base_url"] = str(
+            raw.get("grist_base_url") or "https://grist.numerique.gouv.fr/api"
+        )
+        normalized["grist_api_key"] = str(raw.get("grist_api_key") or "")
+        normalized["grist_doc_id"] = str(raw.get("grist_doc_id") or "")
+        normalized["grist_user_id"] = str(raw.get("grist_user_id") or "")
+        normalized["filter_date_start"] = str(raw.get("filter_date_start") or "")
+        normalized["filter_date_end"] = str(raw.get("filter_date_end") or "")
+        normalized["filter_statuses"] = str(raw.get("filter_statuses") or "")
+        normalized["filter_groups"] = str(raw.get("filter_groups") or "")
+
+        normalized["ds_api_url"] = str(raw.get("ds_api_url") or DEMARCHES_API_URL)
+        try:
+            normalized["batch_size"] = int(raw.get("batch_size", 25))
+        except (ValueError, TypeError):
+            normalized["batch_size"] = 25
+        try:
+            normalized["max_workers"] = int(raw.get("max_workers", 2))
+        except (ValueError, TypeError):
+            normalized["max_workers"] = 2
+
+        raw_parallel = raw.get("parallel", "True")
+        if isinstance(raw_parallel, bool):
+            normalized["parallel"] = raw_parallel
+        else:
+            normalized["parallel"] = str(raw_parallel).lower() == "true"
+
+        return normalized
+
+    @staticmethod
+    def _build_config_from_row(row: tuple | None) -> dict:
+        """Construit une config normalisée à partir d'une ligne DB (None → vide avec defaults)"""
+
+        config_columns = [
+            "id",
+            "ds_api_token",
+            "demarche_number",
+            "grist_base_url",
+            "grist_api_key",
+            "grist_doc_id",
+            "grist_user_id",
+            "filter_date_start",
+            "filter_date_end",
+            "filter_statuses",
+            "filter_groups",
+        ]
+
+        if row is None:
+            raw: dict = {}
+        else:
+            raw = dict(zip(config_columns, row))
+            raw["otp_config_id"] = raw.pop("id")
+            raw["ds_api_token"] = (
+                ConfigManager.decrypt_value(raw["ds_api_token"])
+                if raw["ds_api_token"]
+                else ""
+            )
+            raw["grist_api_key"] = (
+                ConfigManager.decrypt_value(raw["grist_api_key"])
+                if raw["grist_api_key"]
+                else ""
+            )
+
+        raw.setdefault("ds_api_url", DEMARCHES_API_URL)
+        raw.setdefault("batch_size", os.getenv("BATCH_SIZE", "25"))
+        raw.setdefault("max_workers", os.getenv("MAX_WORKERS", "2"))
+        raw.setdefault("parallel", os.getenv("PARALLEL", "True"))
+
+        return ConfigManager.normalize_config(raw)
+
     def load_config(self, grist_user_id, grist_doc_id):
         """Charge la configuration depuis la base de données - retourne une liste"""
         conn = DatabaseManager.get_connection(self.database_url)
@@ -93,60 +173,10 @@ class ConfigManager:
                 )
                 rows = cursor.fetchall()
 
-                configs = []
-                for row in rows:
-                    config = {
-                        "otp_config_id": row[0],
-                        "ds_api_token": ConfigManager.decrypt_value(row[1])
-                        if row[1]
-                        else "",
-                        "demarche_number": row[2] or "",
-                        "grist_base_url": row[3]
-                        or "https://grist.numerique.gouv.fr/api",
-                        "grist_api_key": ConfigManager.decrypt_value(row[4])
-                        if row[4]
-                        else "",
-                        "grist_doc_id": row[5] or "",
-                        "grist_user_id": row[6] or "",
-                        "filter_date_start": row[7] or "",
-                        "filter_date_end": row[8] or "",
-                        "filter_statuses": row[9] or "",
-                        "filter_groups": row[10] or "",
-                    }
-
-                    # Charger les autres valeurs depuis les variables d'environnement
-                    config.update(
-                        {
-                            "ds_api_url": DEMARCHES_API_URL,
-                            "batch_size": int(os.getenv("BATCH_SIZE", "25")),
-                            "max_workers": int(os.getenv("MAX_WORKERS", "2")),
-                            "parallel": os.getenv("PARALLEL", "True").lower() == "true",
-                        }
-                    )
-
-                    configs.append(config)
+                configs = [ConfigManager._build_config_from_row(row) for row in rows]
 
                 if not configs:
-                    # Retourner une config vide si aucune trouvée
-                    configs.append(
-                        {
-                            "otp_config_id": None,
-                            "ds_api_token": "",
-                            "demarche_number": "",
-                            "grist_base_url": "https://grist.numerique.gouv.fr/api",
-                            "grist_api_key": "",
-                            "grist_doc_id": "",
-                            "grist_user_id": "",
-                            "filter_date_start": "",
-                            "filter_date_end": "",
-                            "filter_statuses": "",
-                            "filter_groups": "",
-                            "ds_api_url": DEMARCHES_API_URL,
-                            "batch_size": int(os.getenv("BATCH_SIZE", "25")),
-                            "max_workers": int(os.getenv("MAX_WORKERS", "2")),
-                            "parallel": os.getenv("PARALLEL", "True").lower() == "true",
-                        }
-                    )
+                    configs.append(ConfigManager._build_config_from_row(None))
 
                 return configs
 
@@ -187,39 +217,10 @@ class ConfigManager:
                 )
                 row = cursor.fetchone()
 
-                if row:
-                    config = {
-                        "otp_config_id": row[0],
-                        "ds_api_token": ConfigManager.decrypt_value(row[1])
-                        if row[1]
-                        else "",
-                        "demarche_number": row[2] or "",
-                        "grist_base_url": row[3]
-                        or "https://grist.numerique.gouv.fr/api",
-                        "grist_api_key": ConfigManager.decrypt_value(row[4])
-                        if row[4]
-                        else "",
-                        "grist_doc_id": row[5] or "",
-                        "grist_user_id": row[6] or "",
-                        "filter_date_start": row[7] or "",
-                        "filter_date_end": row[8] or "",
-                        "filter_statuses": row[9] or "",
-                        "filter_groups": row[10] or "",
-                    }
-                else:
+                if not row:
                     raise Exception("Configuration not found")
 
-                # Charger les autres valeurs depuis les variables d'environnement
-                config.update(
-                    {
-                        "ds_api_url": DEMARCHES_API_URL,
-                        "batch_size": int(os.getenv("BATCH_SIZE", "25")),
-                        "max_workers": int(os.getenv("MAX_WORKERS", "2")),
-                        "parallel": os.getenv("PARALLEL", "True").lower() == "true",
-                    }
-                )
-
-                return config
+                return ConfigManager._build_config_from_row(row)
 
         except Exception as e:
             logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
@@ -231,6 +232,7 @@ class ConfigManager:
     def save_config(self, config):
         """Sauvegarde la configuration dans la base de données"""
         conn = DatabaseManager.get_connection(self.database_url)
+        config = ConfigManager.normalize_config(config)
 
         try:
             with conn.cursor() as cursor:
@@ -287,17 +289,15 @@ class ConfigManager:
                     """,
                         (
                             ds_api_token,
-                            config.get("demarche_number", ""),
-                            config.get(
-                                "grist_base_url", "https://grist.numerique.gouv.fr/api"
-                            ),
+                            config["demarche_number"],
+                            config["grist_base_url"],
                             grist_api_key,
-                            config.get("grist_doc_id", ""),
-                            config.get("grist_user_id", ""),
-                            config.get("filter_date_start", ""),
-                            config.get("filter_date_end", ""),
-                            config.get("filter_statuses", ""),
-                            config.get("filter_groups", ""),
+                            config["grist_doc_id"],
+                            config["grist_user_id"],
+                            config["filter_date_start"],
+                            config["filter_date_end"],
+                            config["filter_statuses"],
+                            config["filter_groups"],
                             otp_config_id,
                         ),
                     )
@@ -333,24 +333,22 @@ class ConfigManager:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                         (
-                            ConfigManager.encrypt_value(config.get("ds_api_token", "")),
-                            config.get("demarche_number", ""),
-                            config.get(
-                                "grist_base_url", "https://grist.numerique.gouv.fr/api"
-                            ),
-                            ConfigManager.encrypt_value(
-                                config.get("grist_api_key", "")
-                            ),
-                            config.get("grist_doc_id", ""),
-                            config.get("grist_user_id", ""),
-                            config.get("filter_date_start", ""),
-                            config.get("filter_date_end", ""),
-                            config.get("filter_statuses", ""),
-                            config.get("filter_groups", ""),
+                            ConfigManager.encrypt_value(config["ds_api_token"]),
+                            config["demarche_number"],
+                            config["grist_base_url"],
+                            ConfigManager.encrypt_value(config["grist_api_key"]),
+                            config["grist_doc_id"],
+                            config["grist_user_id"],
+                            config["filter_date_start"],
+                            config["filter_date_end"],
+                            config["filter_statuses"],
+                            config["filter_groups"],
                         ),
                     )
                     logger.info(
-                        f"Nouvelle configuration créée pour user_id={config.get('grist_user_id')}, doc_id={config.get('grist_doc_id')}"
+                        "Nouvelle configuration créée pour "
+                        f"user_id={config['grist_user_id']}, "
+                        f"doc_id={config['grist_doc_id']}"
                     )
 
                 conn.commit()

@@ -412,3 +412,75 @@ class TestConfigManager:
         )
 
         assert result is False
+
+
+class TestConfigNormalization:
+    """Tests TDD pour la normalisation centralisée des types (étape 1 : échoue)"""
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_save_config_normalizes_all_fields(self, mock_db_manager):
+        """
+        BUG: save_config normalise partiellement — demarche_number, grist_doc_id
+        passent en int (JSON) sans conversion str pour SQL.
+        Un seul test vérifie tous les paramètres.
+        """
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        with patch.object(
+            ConfigManager,
+            "encrypt_value",
+            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        ):
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "ds_api_token": "test_token",
+                    "demarche_number": 12345,
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": 67890,
+                    "grist_user_id": 999,
+                    "filter_date_start": 20230101,
+                    "filter_date_end": 20231231,
+                    "filter_statuses": 1,
+                    "filter_groups": 2,
+                }
+            )
+
+        assert result is True
+        insert_call = mock_cursor.execute.call_args_list[0]
+
+        insert_columns = [
+            "ds_api_token",
+            "demarche_number",
+            "grist_base_url",
+            "grist_api_key",
+            "grist_doc_id",
+            "grist_user_id",
+            "filter_date_start",
+            "filter_date_end",
+            "filter_statuses",
+            "filter_groups",
+        ]
+        params = dict(zip(insert_columns, insert_call[0][1]))
+
+        assert isinstance(params["demarche_number"], str)
+        assert params["demarche_number"] == "12345"
+        assert isinstance(params["grist_doc_id"], str)
+        assert params["grist_doc_id"] == "67890"
+        assert isinstance(params["grist_user_id"], str)
+        assert params["grist_user_id"] == "999"
+        assert isinstance(params["filter_date_start"], str)
+        assert params["filter_date_start"] == "20230101"
+        assert isinstance(params["filter_date_end"], str)
+        assert params["filter_date_end"] == "20231231"
+        assert isinstance(params["filter_statuses"], str)
+        assert params["filter_statuses"] == "1"
+        assert isinstance(params["filter_groups"], str)
+        assert params["filter_groups"] == "2"

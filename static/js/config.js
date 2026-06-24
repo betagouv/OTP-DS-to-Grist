@@ -259,9 +259,6 @@ const saveConfiguration = async () => {
   try {
     const configs = await getConfiguration()
 
-    if (!configs || !configs.length)
-      throw new Error('Aucune configuration trouvée')
-
     // Pour l'instant, on prend la première config
     const currentConfig = configs[0]
 

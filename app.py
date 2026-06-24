@@ -520,20 +520,13 @@ def api_test_connection():
 
 @app.route("/api/groups")
 def api_groups():
-    """API pour récupérer les groupes instructeurs - Mode hybride"""
+    """API pour récupérer les groupes instructeurs"""
     try:
-        # Mode 1: Priorité à otp_config_id si fourni
         otp_config_id = request.args.get("otp_config_id")
-        if otp_config_id:
-            config = config_manager.load_config_by_id(otp_config_id)
-        else:
-            # Mode 2: Utiliser les paramètres Grist (compatibilité)
-            grist_user_id = request.args.get("grist_user_id")
-            grist_doc_id = request.args.get("grist_doc_id")
-            config = config_manager.load_config(
-                grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
-            )
+        if not otp_config_id:
+            return jsonify({"error": "otp_config_id requis"}), 400
 
+        config = config_manager.load_config_by_id(otp_config_id)
         groups = get_available_groups(config["ds_api_token"], config["demarche_number"])
 
         return jsonify(groups)
