@@ -17,7 +17,7 @@ const nbDemarches = [{}]
 const existingConfig = ref(null)
 const otpConfigId = ref(null)
 
-onMounted(async () => {
+const loadConfig = async () => {
   try {
     const context = await getGristContext()
     const response = await fetch(`/api/config${context.params}`)
@@ -28,7 +28,9 @@ onMounted(async () => {
   } catch (e) {
     console.error('Erreur lors du chargement de la configuration :', e)
   }
-})
+}
+
+onMounted(loadConfig)
 
 const handleSaveButtonClick = async () => {
   if (!canSave.value) return
@@ -39,6 +41,11 @@ const handleSaveButtonClick = async () => {
     grist_base_url: gristSectionRef.value.getData().baseUrl,
     grist_doc_id: gristSectionRef.value.getData().docId,
     grist_user_id: gristSectionRef.value.getData().userId,
+    grist_api_key: gristSectionRef.value.getData().token // TODO update test
+  }
+
+  if (otpConfigId.value) {
+    config.otp_config_id = otpConfigId.value
   }
 
   const response = await fetch('/api/config', {
@@ -50,7 +57,12 @@ const handleSaveButtonClick = async () => {
   })
 
   const result = await response.json()
-  console.log(result)
+
+  if (result.success) {
+    await loadConfig()
+  } else {
+    console.error('Erreur lors de la sauvegarde :', result.message)
+  }
 }
 
 </script>
