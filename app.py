@@ -259,6 +259,9 @@ def api_config():
         try:
             new_config = request.get_json()
 
+            from configuration.config_manager import ConfigManager
+            new_config = ConfigManager.normalize_config(new_config)
+
             otp_config_id = new_config.get("otp_config_id")
             if otp_config_id:
                 # Update existant - Charger la config pour vérification
