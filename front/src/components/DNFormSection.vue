@@ -107,7 +107,7 @@ watch(() => props.existingConfig, (config) => {
         />
       </DsfrInputGroup>
 
-      <DsfrButtonGroup>
+      <DsfrButtonGroup inline-layout-when="always" size="large">
         <DsfrButton
           label="Sauvegarder"
           data-test-id="submit-form-button"

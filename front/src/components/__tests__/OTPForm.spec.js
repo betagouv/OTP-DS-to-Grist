@@ -363,7 +363,7 @@ describe('Delete action', () => {
     consoleSpy.mockRestore()
   })
 
-  it('calls DELETE /api/config/:id when config exists and confirmed', async () => {
+  it('calls DELETE route when config exists', async () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({

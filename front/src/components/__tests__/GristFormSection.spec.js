@@ -91,7 +91,7 @@ describe('Grist form section', () => {
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
-  it('does not overwrite baseUrl from existingConfig when config has no otp_config_id', async () => {
+  it('does not overwrite baseUrl from existingConfig', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput } }
     })
@@ -100,7 +100,9 @@ describe('Grist form section', () => {
 
     expect(wrapper.vm.baseUrl).toBe('https://example.com/api')
 
-    await wrapper.setProps({ existingConfig: { grist_base_url: 'https://grist.numerique.gouv.fr/api' } })
+    await wrapper.setProps({ existingConfig: {
+      grist_base_url: 'https://new-url.com'
+    } })
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.baseUrl).toBe('https://example.com/api')

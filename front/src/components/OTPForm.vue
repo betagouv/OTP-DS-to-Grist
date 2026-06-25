@@ -79,12 +79,11 @@ const handleDeleteButtonClick = async () => {
 
     const result = await response.json()
 
-    if (result.success) {
-      existingConfig.value = null
-      otpConfigId.value = null
-    } else {
+    if (!result.success)
       throw Error(result.message)
-    }
+
+    existingConfig.value = null
+    otpConfigId.value = null
   } catch (e) {
     console.error('Erreur lors de la suppression :', e.message)
   }
