@@ -5,57 +5,53 @@ import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
 
-describe('Save button state', () => {
+describe('canSave computation', () => {
   let wrapper
-  let saveButton
 
   beforeEach(() => {
-    // Pour rendre silencieux `console.error`
     vi.spyOn(console, 'error').mockImplementation(() => {})
     wrapper = mount(OTPForm, {
       global: {
         stubs: { GristFormSection: true, DNFormSection: true }
       }
     })
-    saveButton = wrapper.find('[data-test-id="submit-form-button"]')
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('disabled on load', () => {
-    expect(saveButton.element.hasAttribute('disabled')).toBe(true)
+  it('is false on load', () => {
+    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(false)
   })
 
-  it('disabled when Grist has error', async () => {
+  it('is false when Grist has error', async () => {
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', 'Erreur de connexion')
     await wrapper.vm.$nextTick()
 
-    expect(saveButton.element.hasAttribute('disabled')).toBe(true)
+    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(false)
   })
 
-  it('disabled when DN has error', async () => {
+  it('is false when DN has error', async () => {
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', 'Erreur de connexion')
     await wrapper.vm.$nextTick()
 
-    expect(saveButton.element.hasAttribute('disabled')).toBe(true)
+    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(false)
   })
 
-  it('enabled when both verifications succeed', async () => {
+  it('is true when both verifications succeed', async () => {
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
     await wrapper.vm.$nextTick()
 
-    expect(saveButton.element.hasAttribute('disabled')).toBe(false)
+    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(true)
   })
 })
 
 describe('Save button action', () => {
   let wrapper
-  let saveButton
 
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -64,7 +60,6 @@ describe('Save button action', () => {
         stubs: { GristFormSection: true, DNFormSection: true }
       }
     })
-    saveButton = wrapper.find('[data-test-id="submit-form-button"]')
   })
 
   afterEach(() => {
@@ -90,7 +85,8 @@ describe('Save button action', () => {
       demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    await saveButton.trigger('click')
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    await wrapper.vm.$nextTick()
 
     expect(mockFetch).toHaveBeenCalledWith('/api/config', {
       method: 'POST',
@@ -106,10 +102,11 @@ describe('Save button action', () => {
     })
   })
 
-  it('does not call API when button is disabled', async () => {
+  it('does not call API when canSave is false', async () => {
     const mockFetch = vi.fn()
     globalThis.fetch = mockFetch
-    await saveButton.trigger('click')
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    await wrapper.vm.$nextTick()
 
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -203,7 +200,6 @@ describe('Config loading on mount', () => {
 
 describe('Save with existing config (UPDATE)', () => {
   let wrapper
-  let saveButton
   let consoleSpy = null
 
   beforeEach(async () => {
@@ -227,8 +223,6 @@ describe('Save with existing config (UPDATE)', () => {
 
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
-
-    saveButton = wrapper.find('[data-test-id="submit-form-button"]')
   })
 
   afterEach(() => {
@@ -254,7 +248,8 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    await saveButton.trigger('click')
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    await wrapper.vm.$nextTick()
 
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/config', {
       method: 'POST',
@@ -289,7 +284,7 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    await saveButton.trigger('click')
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -301,7 +296,7 @@ describe('Save with existing config (UPDATE)', () => {
     })
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-    '/api/config?grist_user_id=5&grist_doc_id=doc-123'
+      '/api/config?grist_user_id=5&grist_doc_id=doc-123'
     )
     expect(wrapper.getComponent(GristFormSection).props('existingConfig'))
       .toEqual({ otp_config_id: 1 })
@@ -325,7 +320,9 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    await saveButton.trigger('click')
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
 
     expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la sauvegarde :', 'Erreur de typage')
   })

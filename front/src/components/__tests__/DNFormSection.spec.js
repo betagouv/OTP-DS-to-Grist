@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
@@ -111,5 +111,48 @@ describe('DN form section', () => {
 
     const passwordInput = wrapper.find('input[type="password"]')
     expect(passwordInput.attributes('placeholder')).toBe('Saisissez votre clé Démarche Numérique')
+  })
+})
+
+describe('Save button', () => {
+  let wrapper
+
+  beforeEach(() => {
+    wrapper = mount(DNFormSection, {
+      global: {
+        components: { DsfrInput, DsfrInputGroup }
+      }
+    })
+  })
+
+  it('renders the save button', () => {
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+    expect(saveButton.exists()).toBe(true)
+    expect(saveButton.text()).toBe('Sauvegarder')
+  })
+
+  it('is disabled when canSave is false', async () => {
+    await wrapper.setProps({ canSave: false })
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+    expect(saveButton.attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled when canSave is true', async () => {
+    await wrapper.setProps({ canSave: true })
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+    expect(saveButton.attributes('disabled')).toBeUndefined()
+  })
+
+  it('emits save event when clicked and enabled', async () => {
+    await wrapper.setProps({ canSave: true })
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+    await saveButton.trigger('click')
+    expect(wrapper.emitted('save')).toBeTruthy()
+  })
+
+  it('does not emit save event when clicked and disabled', async () => {
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+    await saveButton.trigger('click')
+    expect(wrapper.emitted('save')).toBeFalsy()
   })
 })

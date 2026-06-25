@@ -1,8 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
-import { DsfrButton, DsfrButtonGroup } from '@gouvminint/vue-dsfr';
-
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
 
@@ -76,19 +74,11 @@ const handleSaveButtonClick = async () => {
 
     <DNFormSection 
       @error-update="dnError = $event"
+      @save="handleSaveButtonClick"
+      :can-save="canSave"
       :existing-config="existingConfig"
       v-for="(_, index) in nbDemarches"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
     />
-
-    <DsfrButtonGroup>
-      <DsfrButton
-        label="Sauvegarder"
-        data-test-id="submit-form-button"
-        primary
-        :disabled="!canSave"
-        @click="handleSaveButtonClick"
-      />
-    </ DsfrButtonGroup>
 </template>

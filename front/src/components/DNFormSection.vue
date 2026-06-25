@@ -4,14 +4,17 @@ import { ref, watch } from 'vue'
 import {
   DsfrAccordion,
   DsfrAccordionsGroup,
+  DsfrButton,
+  DsfrButtonGroup,
   DsfrInputGroup
 } from '@gouvminint/vue-dsfr'
 
 const props = defineProps({
-  existingConfig: { type: Object, default: null }
+  existingConfig: { type: Object, default: null },
+  canSave: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['error-update'])
+const emit = defineEmits(['error-update', 'save'])
 
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
@@ -94,6 +97,16 @@ watch(() => props.existingConfig, (config) => {
           required
         />
       </DsfrInputGroup>
+
+      <DsfrButtonGroup>
+        <DsfrButton
+          label="Sauvegarder"
+          data-test-id="submit-form-button"
+          primary
+          :disabled="!canSave"
+          @click="$emit('save')"
+        />
+      </DsfrButtonGroup>
     </DsfrAccordion>
   </DsfrAccordionsGroup>
 </template>
