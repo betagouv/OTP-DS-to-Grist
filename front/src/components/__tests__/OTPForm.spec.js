@@ -117,15 +117,18 @@ describe('Save button action', () => {
 
 describe('Config loading on mount', () => {
   const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+  let consoleSpy = null
 
   beforeEach(() => {
     vi.restoreAllMocks()
     globalThis.getGristContext = vi.fn()
     globalThis.fetch = vi.fn()
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
   afterEach(() => {
     delete globalThis.getGristContext
+    consoleSpy.mockRestore()
   })
 
   it('loads existing config via GET /api/config with Grist context params', async () => {
@@ -142,7 +145,9 @@ describe('Config loading on mount', () => {
     await wrapper.vm.$nextTick()
 
     expect(globalThis.getGristContext).toHaveBeenCalled()
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/config?grist_user_id=5&grist_doc_id=doc-123')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/config?grist_user_id=5&grist_doc_id=doc-123'
+    )
     expect(wrapper.getComponent(GristFormSection).props('existingConfig'))
       .toEqual({ otp_config_id: 1, grist_base_url: 'https://example.com' })
     expect(wrapper.getComponent(DNFormSection).props('existingConfig'))
@@ -167,7 +172,6 @@ describe('Config loading on mount', () => {
   })
 
   it('handles getGristContext error gracefully', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     globalThis.getGristContext.mockRejectedValue(new Error('context error'))
 
     const wrapper = mount(OTPForm, {
@@ -179,11 +183,9 @@ describe('Config loading on mount', () => {
 
     expect(consoleSpy).toHaveBeenCalled()
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
-    consoleSpy.mockRestore()
   })
 
   it('handles fetch error gracefully', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch.mockRejectedValue(new Error('network error'))
 
@@ -196,24 +198,32 @@ describe('Config loading on mount', () => {
 
     expect(consoleSpy).toHaveBeenCalled()
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
-    consoleSpy.mockRestore()
   })
 })
 
 describe('Save with existing config (UPDATE)', () => {
   let wrapper
   let saveButton
+  let consoleSpy = null
 
   beforeEach(async () => {
     vi.restoreAllMocks()
-    globalThis.getGristContext = vi.fn().mockResolvedValue({ params: '?grist_user_id=5&grist_doc_id=doc-123' })
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_user_id=5&grist_doc_id=doc-123'
+    })
     globalThis.fetch = vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ configs: [{ otp_config_id: 1, grist_base_url: 'https://example.com' }] })
+      json: () => Promise.resolve({
+        configs: [{
+          otp_config_id: 1,
+          grist_base_url: 'https://example.com'
+        }]
+      })
     })
 
     wrapper = mount(OTPForm, {
       global: { stubs: { GristFormSection: true, DNFormSection: true } }
     })
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
@@ -223,6 +233,7 @@ describe('Save with existing config (UPDATE)', () => {
 
   afterEach(() => {
     delete globalThis.getGristContext
+    consoleSpy.mockRestore()
   })
 
   it('includes otp_config_id in POST body when updating', async () => {
@@ -234,7 +245,10 @@ describe('Save with existing config (UPDATE)', () => {
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(GristFormSection).vm.getData = () => ({
-      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
     })
     wrapper.getComponent(DNFormSection).vm.getData = () => ({
       token: 'dn-token', demarche_number: '12345'
@@ -266,7 +280,10 @@ describe('Save with existing config (UPDATE)', () => {
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(GristFormSection).vm.getData = () => ({
-      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
     })
     wrapper.getComponent(DNFormSection).vm.getData = () => ({
       token: 'dn-token', demarche_number: '12345'
@@ -282,13 +299,15 @@ describe('Save with existing config (UPDATE)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: expect.any(String)
     })
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/config?grist_user_id=5&grist_doc_id=doc-123')
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+    '/api/config?grist_user_id=5&grist_doc_id=doc-123'
+    )
     expect(wrapper.getComponent(GristFormSection).props('existingConfig'))
       .toEqual({ otp_config_id: 1 })
   })
 
   it('handles save error gracefully without crashing', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({
       json: () => Promise.resolve({ success: false, message: 'Erreur de typage' })
@@ -297,7 +316,10 @@ describe('Save with existing config (UPDATE)', () => {
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(GristFormSection).vm.getData = () => ({
-      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
     })
     wrapper.getComponent(DNFormSection).vm.getData = () => ({
       token: 'dn-token', demarche_number: '12345'
@@ -306,6 +328,5 @@ describe('Save with existing config (UPDATE)', () => {
     await saveButton.trigger('click')
 
     expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la sauvegarde :', 'Erreur de typage')
-    consoleSpy.mockRestore()
   })
 })
