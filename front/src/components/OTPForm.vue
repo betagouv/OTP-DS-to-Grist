@@ -4,6 +4,10 @@ import { ref, computed, onMounted } from 'vue'
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
 
+const props = defineProps({
+  syncRunning: { type: Boolean, default: false }
+})
+
 const gristError = ref(null)
 const dnError = ref(null)
 const dnSectionRefs = ref([])
@@ -11,8 +15,7 @@ const gristSectionRef = ref(null)
 
 const canSave = computed(() => gristError.value === '' && dnError.value === '')
 const canDelete = computed(() => !!otpConfigId.value)
-const isSyncing = ref(false)
-const canSync = computed(() => !!otpConfigId.value && !isSyncing.value)
+const canSync = computed(() => !!otpConfigId.value && !props.syncRunning)
 const nbDemarches = [{}]
 
 const existingConfig = ref(null)
@@ -92,18 +95,14 @@ const handleDeleteButtonClick = async () => {
 }
 
 const handleSync = async () => {
-  if (!otpConfigId.value || isSyncing.value) return
-  isSyncing.value = true
+  if (!otpConfigId.value || props.syncRunning) return
   try {
     await fetch('/api/start-sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ otp_config_id: otpConfigId.value })
     })
-  } catch {
-  } finally {
-    isSyncing.value = false
-  }
+  } catch {}
 }
 
 </script>

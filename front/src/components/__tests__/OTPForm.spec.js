@@ -79,9 +79,9 @@ describe('canSync computation', () => {
     expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(true)
   })
 
-  it('is false when isSyncing is true', async () => {
+  it('is false when syncRunning is true', async () => {
     wrapper.vm.otpConfigId = 42
-    wrapper.vm.isSyncing = true
+    await wrapper.setProps({ syncRunning: true })
     await wrapper.vm.$nextTick()
 
     expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(false)
@@ -526,7 +526,7 @@ describe('Sync action', () => {
     vi.restoreAllMocks()
   })
 
-  it('calls POST /api/start-sync with otp_config_id in body', async () => {
+  it('calls sync API route with otp_config_id in body', async () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({ ok: true })
 
@@ -564,18 +564,31 @@ describe('Sync action', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
-  it('resets isSyncing to false after request completes', async () => {
-    globalThis.fetch.mockReset()
-    globalThis.fetch.mockResolvedValue({ ok: true })
+  it("does not call sync API route when syncRunning is true", async () => {
+    globalThis.getGristContext.mockResolvedValue({
+      params: '?grist_user_id=5&grist_doc_id=doc-123'
+    })
+    const fetchSpy = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ configs: [{
+        otp_config_id: 1,
+        grist_base_url: 'https://example.com'
+      }] })
+    })
+    globalThis.fetch = fetchSpy
 
-    wrapper.getComponent(DNFormSection).vm.$emit('sync')
+    const wrapperSync = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } },
+      props: { syncRunning: true }
+    })
     await new Promise(process.nextTick)
-    await wrapper.vm.$nextTick()
+    await wrapperSync.vm.$nextTick()
 
-    expect(wrapper.vm.isSyncing).toBe(false)
+    wrapperSync.getComponent(DNFormSection).vm.$emit('sync')
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('resets isSyncing to false even on fetch error', async () => {
+  it('calls fetch even when it fails', async () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockRejectedValue(new Error('network error'))
 
@@ -583,6 +596,10 @@ describe('Sync action', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.vm.isSyncing).toBe(false)
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/start-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp_config_id: 1 })
+    })
   })
 })
