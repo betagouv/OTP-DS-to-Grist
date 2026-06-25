@@ -23,7 +23,8 @@ const accordionTitleGrist = ref('Configurer Grist')
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 
 const gristTokenErrorMessage = ref(null)
-const gristTokenPlaceholder = ref('Saisissez votre clé grist')
+const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
+const gristTokenPlaceholder = ref(DEFAULT_GRIST_PLACEHOLDER)
 
 const handleGristInputChange = async () => {
   gristTokenErrorMessage.value = null
@@ -60,12 +61,19 @@ onMounted(async () => {
 })
 
 watch(() => props.existingConfig, (config) => {
-  if (config?.grist_base_url)
-    baseUrl.value = config.grist_base_url
+  if (config) {
+    if (config.otp_config_id && config.grist_base_url)
+      baseUrl.value = config.grist_base_url
 
-  if (config?.has_grist_key) {
-    gristTokenPlaceholder.value = '****************************************'
-    emit('error-update', '')
+    if (config.has_grist_key) {
+      gristTokenPlaceholder.value = '****************************************'
+      emit('error-update', '')
+    }
+  } else {
+    inputGristToken.value = ''
+    gristTokenPlaceholder.value = DEFAULT_GRIST_PLACEHOLDER
+    baseUrl.value = context.value?.baseUrl || ''
+    emit('error-update', null)
   }
 })
 

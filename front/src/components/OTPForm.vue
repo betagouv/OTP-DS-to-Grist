@@ -1,8 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
-import { DsfrButton, DsfrButtonGroup } from '@gouvminint/vue-dsfr';
-
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
 
@@ -12,6 +10,7 @@ const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 
 const canSave = computed(() => gristError.value === '' && dnError.value === '')
+const canDelete = computed(() => !!otpConfigId.value)
 const nbDemarches = [{}]
 
 const existingConfig = ref(null)
@@ -65,6 +64,31 @@ const handleSaveButtonClick = async () => {
   }
 }
 
+const handleDeleteButtonClick = async () => {
+  if (!otpConfigId.value) return
+
+  const confirmed = window.confirm(
+    'Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.'
+  )
+  if (!confirmed) return
+
+  try {
+    const response = await fetch(`/api/config/${otpConfigId.value}`, {
+      method: 'DELETE'
+    })
+
+    const result = await response.json()
+
+    if (!result.success)
+      throw Error(result.message)
+
+    existingConfig.value = null
+    otpConfigId.value = null
+  } catch (e) {
+    console.error('Erreur lors de la suppression :', e.message)
+  }
+}
+
 </script>
 
 <template>
@@ -76,19 +100,13 @@ const handleSaveButtonClick = async () => {
 
     <DNFormSection 
       @error-update="dnError = $event"
+      @save="handleSaveButtonClick"
+      @delete="handleDeleteButtonClick"
+      :can-save="canSave"
+      :can-delete="canDelete"
       :existing-config="existingConfig"
       v-for="(_, index) in nbDemarches"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
     />
-
-    <DsfrButtonGroup>
-      <DsfrButton
-        label="Sauvegarder"
-        data-test-id="submit-form-button"
-        primary
-        :disabled="!canSave"
-        @click="handleSaveButtonClick"
-      />
-    </ DsfrButtonGroup>
 </template>
