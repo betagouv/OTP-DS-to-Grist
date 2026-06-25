@@ -140,6 +140,52 @@ class TestEndpoints:
         assert call_args["grist_doc_id"] == "doc123"
         assert call_args["grist_user_id"] == "user456"
 
+    @patch.object(ConfigManager, "save_config")
+    @patch("app.SessionLocal")
+    def test_api_config_post_normalizes_types(self, mock_session, mock_save, client):
+        """Vérifie que les types mixtes (int, bool) sont normalisés en str par le POST"""
+        mock_save.return_value = True
+        mock_db = mock_session.return_value
+        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
+        mock_otp.id = 789
+
+        config_data = {
+            "ds_api_token": "token123",
+            "demarche_number": 12345,
+            "grist_base_url": "https://grist.test.com/api",
+            "grist_doc_id": 67890,
+            "grist_user_id": 999,
+            "filter_date_start": 20230101,
+            "filter_date_end": 20231231,
+            "filter_statuses": 1,
+            "filter_groups": 2,
+        }
+
+        response = client.post("/api/config", json=config_data)
+
+        assert response.status_code == 200
+
+        normalized = mock_save.call_args[0][0]
+        assert isinstance(normalized["demarche_number"], str)
+        assert normalized["demarche_number"] == "12345"
+        assert isinstance(normalized["grist_doc_id"], str)
+        assert normalized["grist_doc_id"] == "67890"
+        assert isinstance(normalized["grist_user_id"], str)
+        assert normalized["grist_user_id"] == "999"
+        assert isinstance(normalized["filter_date_start"], str)
+        assert normalized["filter_date_start"] == "20230101"
+        assert isinstance(normalized["filter_date_end"], str)
+        assert normalized["filter_date_end"] == "20231231"
+        assert isinstance(normalized["filter_statuses"], str)
+        assert normalized["filter_statuses"] == "1"
+        assert isinstance(normalized["filter_groups"], str)
+        assert normalized["filter_groups"] == "2"
+        assert isinstance(normalized["grist_base_url"], str)
+        assert isinstance(normalized["ds_api_token"], str)
+        assert isinstance(normalized["batch_size"], int)
+        assert isinstance(normalized["max_workers"], int)
+        assert isinstance(normalized["parallel"], bool)
+
     @patch("app.test_demarches_api")
     def test_api_test_connection_demarches(self, mock_test, client):
         """Test du endpoint de test de connexion Démarches"""

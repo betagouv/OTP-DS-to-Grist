@@ -1,11 +1,15 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 
 import {
   DsfrAccordion,
   DsfrAccordionsGroup,
   DsfrInputGroup
 } from '@gouvminint/vue-dsfr'
+
+const props = defineProps({
+  existingConfig: { type: Object, default: null }
+})
 
 const emit = defineEmits(['error-update'])
 const context = ref(null)
@@ -19,6 +23,7 @@ const accordionTitleGrist = ref('Configurer Grist')
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 
 const gristTokenErrorMessage = ref(null)
+const gristTokenPlaceholder = ref('Saisissez votre clé grist')
 
 const handleGristInputChange = async () => {
   gristTokenErrorMessage.value = null
@@ -54,6 +59,16 @@ onMounted(async () => {
   }
 })
 
+watch(() => props.existingConfig, (config) => {
+  if (config?.grist_base_url)
+    baseUrl.value = config.grist_base_url
+
+  if (config?.has_grist_key) {
+    gristTokenPlaceholder.value = '****************************************'
+    emit('error-update', '')
+  }
+})
+
 defineExpose({
   getData: () => ({
     userId: userId.value,
@@ -79,7 +94,8 @@ defineExpose({
         v-model="inputGristToken"
         @change="handleGristInputChange"
         label="Grist token"
-        placeholder="Saisissez votre clé grist"
+        :placeholder="gristTokenPlaceholder"
+        type="password"
         required
       />
     </DsfrAccordion>

@@ -24,9 +24,14 @@ Il en résulte un code à remanier et des opportunités de refactoring réguliè
 - Ne pas hésiter à réorganiser les fichiers si ça améliore la structure et regroupe des responsabilités
 - Vérifier si une responsabilité est déjà existante et l'utiliser ou la faire évoluer
 
-## Instructions pendant l'exploration
+## Prérequis avant toute intervention
 
-Lire le fichier `README.md` présent dans chaque dossier pour comprendre :
+Avant de lire, créer ou modifier un fichier, vérifier qu'un `README.md` existe dans :
+- Le dossier du fichier concerné
+- Les dossiers parents immédiats (jusqu'à la racine du module)
+- Préviens moi si un fichier `README.md` n'est pas présent
+
+Le lire en premier — sans exception. Il peut contenir :
 - Le rôle du module
 - Son utilité dans l'architecture
 - Les conventions spécifiques au dossier

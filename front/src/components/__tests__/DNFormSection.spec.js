@@ -74,4 +74,42 @@ describe('DN form section', () => {
     })
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
+
+  it('pre-fills demarche_number from existingConfig when config is loaded', async () => {
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    expect(wrapper.vm.inputDNNumber).toBe('')
+
+    await wrapper.setProps({ existingConfig: { demarche_number: '67890' } })
+
+    expect(wrapper.vm.inputDNNumber).toBe('67890')
+    expect(wrapper.vm.getData().demarche_number).toBe('67890')
+  })
+
+  it('shows placeholder **** and emits empty error-update when has_ds_token is true', async () => {
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.setProps({ existingConfig: { has_ds_token: true } })
+
+    const passwordInput = wrapper.find('input[type="password"]')
+    expect(passwordInput.attributes('placeholder')).toMatch(/\*{3,}/)
+
+    expect(wrapper.emitted('error-update')).toBeTruthy()
+    expect(wrapper.emitted('error-update')[0]).toEqual([''])
+  })
+
+  it('keeps default placeholder when has_ds_token is false', async () => {
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.setProps({ existingConfig: { demarche_number: '67890', has_ds_token: false } })
+
+    const passwordInput = wrapper.find('input[type="password"]')
+    expect(passwordInput.attributes('placeholder')).toBe('Saisissez votre clé Démarche Numérique')
+  })
 })

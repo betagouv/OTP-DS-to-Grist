@@ -38,6 +38,9 @@ def test_demarches_api(
             "Content-Type": "application/json"
         }
 
+        if not demarche_number:
+            return False, "demarche_number manquant"
+
         query = """
         query getDemarche($demarcheNumber: Int!) {
             demarche(number: $demarcheNumber) {
