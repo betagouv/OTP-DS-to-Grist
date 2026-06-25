@@ -10,6 +10,7 @@ describe('Save button state', () => {
   let saveButton
 
   beforeEach(() => {
+    // Pour rendre silencieux `console.error`
     vi.spyOn(console, 'error').mockImplementation(() => {})
     wrapper = mount(OTPForm, {
       global: {

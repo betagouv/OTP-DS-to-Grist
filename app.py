@@ -330,8 +330,8 @@ def api_config():
                         otp_config = (
                             db.query(OtpConfiguration)
                             .filter_by(
-                                grist_user_id=str(new_config.get("grist_user_id", "")),
-                                grist_doc_id=str(new_config.get("grist_doc_id", "")),
+                                grist_user_id=new_config.get("grist_user_id", ""),
+                                grist_doc_id=new_config.get("grist_doc_id", ""),
                             )
                             .first()
                         )

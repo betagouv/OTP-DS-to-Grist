@@ -41,7 +41,7 @@ const handleSaveButtonClick = async () => {
     grist_base_url: gristSectionRef.value.getData().baseUrl,
     grist_doc_id: gristSectionRef.value.getData().docId,
     grist_user_id: gristSectionRef.value.getData().userId,
-    grist_api_key: gristSectionRef.value.getData().token // TODO update test
+    grist_api_key: gristSectionRef.value.getData().token
   }
 
   if (otpConfigId.value) {

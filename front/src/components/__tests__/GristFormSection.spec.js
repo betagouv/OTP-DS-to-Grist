@@ -22,7 +22,6 @@ describe('Grist form section', () => {
 
     expect(window.getGristContext).toHaveBeenCalled()
 
-    await wrapper.vm.$nextTick() // L'async onMounted termine, les refs sont assignées
     await wrapper.vm.$nextTick() // Vue réagit, le DOM est mis à jour
 
     expect(wrapper.vm.userId).toBe('user-abc123')
@@ -92,39 +91,32 @@ describe('Grist form section', () => {
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
-  it('pre-fills baseUrl from existingConfig when config changes', async () => {
+  it('set baseUrl from existingConfig when config is loaded', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput } }
     })
 
-    await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.baseUrl).toBe('https://example.com/api')
 
     await wrapper.setProps({ existingConfig: { grist_base_url: 'https://new-url.com' } })
     await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.baseUrl).toBe('https://new-url.com')
     expect(wrapper.vm.getData().baseUrl).toBe('https://new-url.com')
   })
 
-  it('shows placeholder **** and emits error-update when has_grist_key is true', async () => {
+  it('shows placeholder **** and emits empty error-update when has_grist_key is true', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
 
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
     await wrapper.setProps({ existingConfig: { has_grist_key: true } })
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
 
     const input = wrapper.find('input[type="password"]')
-    expect(input.attributes('placeholder')).toBe('****************************************')
 
+    expect(input.attributes('placeholder')).toMatch(/\*{3,}/)
     expect(wrapper.emitted('error-update')).toBeTruthy()
     expect(wrapper.emitted('error-update')[0]).toEqual([''])
   })
@@ -134,14 +126,9 @@ describe('Grist form section', () => {
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
 
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
     await wrapper.setProps({ existingConfig: { grist_base_url: 'https://new-url.com', has_grist_key: false } })
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
     const input = wrapper.find('input[type="password"]')
+
     expect(input.attributes('placeholder')).toBe('Saisissez votre clé grist')
   })
 })

@@ -20,7 +20,7 @@ const accordionTitleDN = ref('Configurer votre démarche')
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
 const dnErrorMessage = ref(null)
-const dnTokenPlaceholder = ref('Saisissez votre clé DN')
+const dnTokenPlaceholder = ref('Saisissez votre clé Démarche Numérique')
 const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
 
 const handleDNInputsChange = async () => {
