@@ -10,6 +10,7 @@ const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 
 const canSave = computed(() => gristError.value === '' && dnError.value === '')
+const canDelete = computed(() => !!otpConfigId.value)
 const nbDemarches = [{}]
 
 const existingConfig = ref(null)
@@ -63,6 +64,32 @@ const handleSaveButtonClick = async () => {
   }
 }
 
+const handleDeleteButtonClick = async () => {
+  if (!otpConfigId.value) return
+
+  const confirmed = window.confirm(
+    'Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.'
+  )
+  if (!confirmed) return
+
+  try {
+    const response = await fetch(`/api/config/${otpConfigId.value}`, {
+      method: 'DELETE'
+    })
+
+    const result = await response.json()
+
+    if (result.success) {
+      existingConfig.value = null
+      otpConfigId.value = null
+    } else {
+      throw Error(result.message)
+    }
+  } catch (e) {
+    console.error('Erreur lors de la suppression :', e.message)
+  }
+}
+
 </script>
 
 <template>
@@ -75,7 +102,9 @@ const handleSaveButtonClick = async () => {
     <DNFormSection 
       @error-update="dnError = $event"
       @save="handleSaveButtonClick"
+      @delete="handleDeleteButtonClick"
       :can-save="canSave"
+      :can-delete="canDelete"
       :existing-config="existingConfig"
       v-for="(_, index) in nbDemarches"
       :key="index"

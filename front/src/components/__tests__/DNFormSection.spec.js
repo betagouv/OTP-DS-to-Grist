@@ -156,3 +156,46 @@ describe('Save button', () => {
     expect(wrapper.emitted('save')).toBeFalsy()
   })
 })
+
+describe('Delete button', () => {
+  let wrapper
+
+  beforeEach(() => {
+    wrapper = mount(DNFormSection, {
+      global: {
+        components: { DsfrInput, DsfrInputGroup }
+      }
+    })
+  })
+
+  it('renders the delete button', () => {
+    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+    expect(deleteButton.exists()).toBe(true)
+    expect(deleteButton.text()).toBe('Supprimer')
+  })
+
+  it('is disabled when canDelete is false', async () => {
+    await wrapper.setProps({ canDelete: false })
+    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+    expect(deleteButton.attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled when canDelete is true', async () => {
+    await wrapper.setProps({ canDelete: true })
+    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+    expect(deleteButton.attributes('disabled')).toBeUndefined()
+  })
+
+  it('emits delete event when clicked and enabled', async () => {
+    await wrapper.setProps({ canDelete: true })
+    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+    await deleteButton.trigger('click')
+    expect(wrapper.emitted('delete')).toBeTruthy()
+  })
+
+  it('does not emit delete event when clicked and disabled', async () => {
+    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+    await deleteButton.trigger('click')
+    expect(wrapper.emitted('delete')).toBeFalsy()
+  })
+})

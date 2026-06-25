@@ -327,3 +327,133 @@ describe('Save with existing config (UPDATE)', () => {
     expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la sauvegarde :', 'Erreur de typage')
   })
 })
+
+describe('Delete action', () => {
+  let wrapper
+  let consoleSpy = null
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+
+  beforeEach(async () => {
+    vi.restoreAllMocks()
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({
+        configs: [{
+          otp_config_id: 1,
+          grist_base_url: 'https://example.com'
+        }]
+      })
+    })
+    globalThis.confirm = vi.fn()
+    globalThis.location = { href: '' }
+
+    wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    delete globalThis.confirm
+    delete globalThis.location
+    consoleSpy.mockRestore()
+  })
+
+  it('calls DELETE /api/config/:id when config exists and confirmed', async () => {
+    globalThis.confirm.mockReturnValue(true)
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ success: true })
+    })
+
+    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(globalThis.confirm).toHaveBeenCalled()
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/config/1', {
+      method: 'DELETE'
+    })
+  })
+
+  it('resets config refs after successful deletion', async () => {
+    globalThis.confirm.mockReturnValue(true)
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ success: true })
+    })
+
+    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
+    expect(wrapper.getComponent(DNFormSection).props('existingConfig')).toBeNull()
+  })
+
+  it('does not call API when confirm is cancelled', async () => {
+    globalThis.confirm.mockReturnValue(false)
+    globalThis.fetch.mockReset()
+
+    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it('handles delete error gracefully', async () => {
+    globalThis.confirm.mockReturnValue(true)
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ success: false, message: 'Erreur de suppression' })
+    })
+
+    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la suppression :', 'Erreur de suppression')
+  })
+
+  it('handles network error in catch block', async () => {
+    globalThis.confirm.mockReturnValue(true)
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockRejectedValue(new Error('network error'))
+
+    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Erreur lors de la suppression :',
+      'network error'
+    )
+  })
+
+  it('does not delete when there is no otpConfigId', async () => {
+    globalThis.getGristContext.mockResolvedValue(mockContext)
+    globalThis.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ configs: [] })
+    })
+
+    const wrapperNoConfig = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapperNoConfig.vm.$nextTick()
+
+    globalThis.confirm.mockReturnValue(true)
+    globalThis.fetch.mockReset()
+
+    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('delete')
+    await new Promise(process.nextTick)
+    await wrapperNoConfig.vm.$nextTick()
+
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+})

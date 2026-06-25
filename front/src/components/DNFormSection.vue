@@ -11,10 +11,11 @@ import {
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
-  canSave: { type: Boolean, default: false }
+  canSave: { type: Boolean, default: false },
+  canDelete: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['error-update', 'save'])
+const emit = defineEmits(['error-update', 'save', 'delete'])
 
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
@@ -23,7 +24,8 @@ const accordionTitleDN = ref('Configurer votre démarche')
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
 const dnErrorMessage = ref(null)
-const dnTokenPlaceholder = ref('Saisissez votre clé Démarche Numérique')
+const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
+const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
 
 const handleDNInputsChange = async () => {
@@ -56,12 +58,19 @@ defineExpose({
 })
 
 watch(() => props.existingConfig, (config) => {
-  if (config?.demarche_number)
-    inputDNNumber.value = config.demarche_number
+  if (config) {
+    if (config.demarche_number)
+      inputDNNumber.value = config.demarche_number
 
-  if (config?.has_ds_token) {
-    dnTokenPlaceholder.value = '****************************************'
-    emit('error-update', '')
+    if (config.has_ds_token) {
+      dnTokenPlaceholder.value = '****************************************'
+      emit('error-update', '')
+    }
+  } else {
+    inputDNNumber.value = ''
+    inputDNToken.value = ''
+    dnTokenPlaceholder.value = DEFAULT_DN_PLACEHOLDER
+    emit('error-update', null)
   }
 })
 </script>
@@ -105,6 +114,13 @@ watch(() => props.existingConfig, (config) => {
           primary
           :disabled="!canSave"
           @click="$emit('save')"
+        />
+        <DsfrButton
+          label="Supprimer"
+          data-test-id="delete-config-button"
+          secondary
+          :disabled="!canDelete"
+          @click="$emit('delete')"
         />
       </DsfrButtonGroup>
     </DsfrAccordion>
