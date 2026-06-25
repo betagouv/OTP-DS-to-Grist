@@ -199,3 +199,46 @@ describe('Delete button', () => {
     expect(wrapper.emitted('delete')).toBeFalsy()
   })
 })
+
+describe('Sync button', () => {
+  let wrapper
+
+  beforeEach(() => {
+    wrapper = mount(DNFormSection, {
+      global: {
+        components: { DsfrInput, DsfrInputGroup }
+      }
+    })
+  })
+
+  it('renders the sync button', () => {
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    expect(syncButton.exists()).toBe(true)
+    expect(syncButton.text()).toBe('Lancer la synchronisation')
+  })
+
+  it('is disabled when canSync is false', async () => {
+    await wrapper.setProps({ canSync: false })
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    expect(syncButton.attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled when canSync is true', async () => {
+    await wrapper.setProps({ canSync: true })
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    expect(syncButton.attributes('disabled')).toBeUndefined()
+  })
+
+  it('emits sync event when clicked and enabled', async () => {
+    await wrapper.setProps({ canSync: true })
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    await syncButton.trigger('click')
+    expect(wrapper.emitted('sync')).toBeTruthy()
+  })
+
+  it('does not emit sync event when clicked and disabled', async () => {
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    await syncButton.trigger('click')
+    expect(wrapper.emitted('sync')).toBeFalsy()
+  })
+})

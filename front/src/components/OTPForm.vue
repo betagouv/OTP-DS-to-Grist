@@ -11,6 +11,8 @@ const gristSectionRef = ref(null)
 
 const canSave = computed(() => gristError.value === '' && dnError.value === '')
 const canDelete = computed(() => !!otpConfigId.value)
+const isSyncing = ref(false)
+const canSync = computed(() => !!otpConfigId.value && !isSyncing.value)
 const nbDemarches = [{}]
 
 const existingConfig = ref(null)
@@ -89,6 +91,21 @@ const handleDeleteButtonClick = async () => {
   }
 }
 
+const handleSync = async () => {
+  if (!otpConfigId.value || isSyncing.value) return
+  isSyncing.value = true
+  try {
+    await fetch('/api/start-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp_config_id: otpConfigId.value })
+    })
+  } catch {
+  } finally {
+    isSyncing.value = false
+  }
+}
+
 </script>
 
 <template>
@@ -102,8 +119,10 @@ const handleDeleteButtonClick = async () => {
       @error-update="dnError = $event"
       @save="handleSaveButtonClick"
       @delete="handleDeleteButtonClick"
+      @sync="handleSync"
       :can-save="canSave"
       :can-delete="canDelete"
+      :can-sync="canSync"
       :existing-config="existingConfig"
       v-for="(_, index) in nbDemarches"
       :key="index"

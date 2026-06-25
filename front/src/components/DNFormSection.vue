@@ -12,10 +12,11 @@ import {
 const props = defineProps({
   existingConfig: { type: Object, default: null },
   canSave: { type: Boolean, default: false },
-  canDelete: { type: Boolean, default: false }
+  canDelete: { type: Boolean, default: false },
+  canSync: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['error-update', 'save', 'delete'])
+const emit = defineEmits(['error-update', 'save', 'delete', 'sync'])
 
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
@@ -109,9 +110,16 @@ watch(() => props.existingConfig, (config) => {
 
       <DsfrButtonGroup inline-layout-when="always" size="large">
         <DsfrButton
+          label="Lancer la synchronisation"
+          data-test-id="sync-button"
+          primary
+          :disabled="!canSync"
+          @click="$emit('sync')"
+        />
+        <DsfrButton
           label="Sauvegarder"
           data-test-id="submit-form-button"
-          primary
+          secondary
           :disabled="!canSave"
           @click="$emit('save')"
         />
