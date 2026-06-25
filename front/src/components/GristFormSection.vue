@@ -60,12 +60,19 @@ onMounted(async () => {
 })
 
 watch(() => props.existingConfig, (config) => {
-  if (config?.grist_base_url)
-    baseUrl.value = config.grist_base_url
+  if (config) {
+    if (config.otp_config_id && config.grist_base_url)
+      baseUrl.value = config.grist_base_url
 
-  if (config?.has_grist_key) {
-    gristTokenPlaceholder.value = '****************************************'
-    emit('error-update', '')
+    if (config.has_grist_key) {
+      gristTokenPlaceholder.value = '****************************************'
+      emit('error-update', '')
+    }
+  } else {
+    inputGristToken.value = ''
+    gristTokenPlaceholder.value = 'Saisissez votre clé grist'
+    baseUrl.value = context.value?.baseUrl || ''
+    emit('error-update', null)
   }
 })
 

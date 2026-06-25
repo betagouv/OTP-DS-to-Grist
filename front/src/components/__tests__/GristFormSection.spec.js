@@ -91,7 +91,7 @@ describe('Grist form section', () => {
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
-  it('set baseUrl from existingConfig when config is loaded', async () => {
+  it('does not overwrite baseUrl from existingConfig when config has no otp_config_id', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput } }
     })
@@ -100,7 +100,23 @@ describe('Grist form section', () => {
 
     expect(wrapper.vm.baseUrl).toBe('https://example.com/api')
 
-    await wrapper.setProps({ existingConfig: { grist_base_url: 'https://new-url.com' } })
+    await wrapper.setProps({ existingConfig: { grist_base_url: 'https://grist.numerique.gouv.fr/api' } })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.baseUrl).toBe('https://example.com/api')
+    expect(wrapper.vm.getData().baseUrl).toBe('https://example.com/api')
+  })
+
+  it('set baseUrl from existingConfig when config has otp_config_id', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.baseUrl).toBe('https://example.com/api')
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, grist_base_url: 'https://new-url.com' } })
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.baseUrl).toBe('https://new-url.com')
