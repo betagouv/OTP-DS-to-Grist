@@ -1,12 +1,22 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
+import SyncStatsCard from './SyncStatsCard.vue'
 
 const emit = defineEmits(['sync-running-changed'])
 
 const task = ref(null)
 const socket = ref(null)
+
+const counts = computed(() => {
+  if (!task.value?.logs) return null
+  let acc = { success: 0, error: 0, total: 0 }
+  for (const log of task.value.logs) {
+    acc = parseLogMessage(log.message, acc)
+  }
+  return acc
+})
 
 onMounted(() => {
   socket.value = io()
@@ -47,6 +57,14 @@ onUnmounted(() => {
         </div>
         <div class="progress-track">
           <div class="progress-bar" :style="{ width: Math.round(task.progress) + '%' }" />
+        </div>
+        <div v-if="counts && (counts.success > 0 || counts.error > 0)" class="fr-grid-row fr-grid-row--gutters fr-mt-2w">
+          <div v-if="counts.success > 0" class="fr-col-6">
+            <SyncStatsCard :count="counts.success" label="Dossiers synchronisés" color="green" />
+          </div>
+          <div v-if="counts.error > 0" class="fr-col-6">
+            <SyncStatsCard :count="counts.error" label="Échecs" color="red" />
+          </div>
         </div>
       </div>
     </div>
