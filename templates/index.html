@@ -12,7 +12,6 @@
 {% block scripts %}
 <script>
 // ===== INITIALISATIONS GLOBALES =====
-window.config = null
 let logsVisible = false
 let currentTaskId = null
 window.saveTimeout = null
@@ -41,33 +40,25 @@ socket.on('task_update', function(data) {
 
 // ===== INITIALISATION DE LA PAGE =====
 document.addEventListener('DOMContentLoaded', async () => {
-  // ===== GESTION DE LA NAVIGATION DE L'AIDE =====
-  const currentPath = window.location.pathname
-  const navLinks = document.querySelectorAll('.fr-nav__link')
-
-  navLinks.forEach(link => {
-    if (link.getAttribute('href') === currentPath ||
-      (currentPath === '/' && link.getAttribute('href') === '/')) {
-      link.setAttribute('aria-current', 'page')
-    }
-  })
-
-  // Vérifier la configuration
+  // Vérifier la configuration dès le démarrage (en cas de token périmé)
   const checkedConfig = await checkConfiguration(true)
+  console.log('DEBUG', checkedConfig)
+  window.otp_config_id = checkedConfig?.otp_config_id
 
-  // Mettre à jour le bouton de suppression
-  updateDeleteButton()
-
-  if (checkedConfig) {
+  if (checkedConfig?.otp_config_id) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
+    await loadGroupes(window.otp_config_id)
+    await displaySyncStatus(checkedConfig.otp_config_id)
+  } else {
+    await displaySyncStatus()
   }
 
-  // Charger la configuration et groupes
-  window.otp_config_id = checkedConfig?.otp_config_id
-  updateDeleteButton()
-  await loadGroupes(window.otp_config_id)
+
   await loadConfiguration()
+
+  // Mettre à jour le bouton de suppression
+  updateDeleteButton(checkedConfig?.otp_config_id)
 
   // Focus sur le premier champ si vide
   if (!window.otp_config_id) {

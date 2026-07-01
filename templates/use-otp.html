@@ -14,9 +14,6 @@
             <li class="fr-sidemenu__item">
               <a class="fr-sidemenu__link" href="#help-grist" target="_self">Api Grist</a>
             </li>
-            <li class="fr-sidemenu__item">
-              <a class="fr-sidemenu__link" href="#" target="_self">FAQ</a>
-            </li>
           </ul>
         </div>
       </div>
@@ -129,8 +126,11 @@
   </div>
 </div>
 <script>
-  const updateCurrentSideNav = (navLinks) => {
+  const setActiveLink = (navLinks) => {
     const currentHash = window.location.hash
+
+    if(!currentHash)
+      return navLinks[0].setAttribute('aria-current', 'page')
 
     navLinks.forEach(link => {
       link.removeAttribute('aria-current')
@@ -141,8 +141,8 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     const navLinks = document.querySelectorAll('.fr-sidemenu__link')
-    updateCurrentSideNav(navLinks)
-    window.addEventListener('hashchange', () => updateCurrentSideNav(navLinks))
+    setActiveLink(navLinks)
+    window.addEventListener('hashchange', () => setActiveLink(navLinks))
   })
 </script>
 {% endblock %}

@@ -593,19 +593,71 @@ def api_sync_report():
 def api_sync_log_latest():
     """Route pour récupérer les dernières synchronisations (auto et manuelle) pour une config"""
     otp_config_id = request.args.get("otp_config_id")
-    if not otp_config_id:
-        return jsonify({"success": False, "message": "otp_config_id required"}), 400
+    grist_doc_id = request.args.get("grist_doc_id")
+
+    if not otp_config_id and not grist_doc_id:
+        return jsonify({"success": False, "message": "otp_config_id or grist_doc_id is required"}), 400
 
     db = SessionLocal()
+
+    def format_sync(sync):
+        return (
+            {
+                "timestamp": sync.timestamp.isoformat(),
+                "status": sync.status,
+                "success_count": sync.success_count,
+                "error_count": sync.error_count,
+                "message": sync.message,
+            }
+            if sync
+            else None
+        )
+
     try:
-        otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
+        if otp_config_id:
+            otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
+            if not otp_config:
+                return jsonify({"success": False, "message": "Config not found"}), 404
+
+            latest_auto = (
+                db.query(SyncLog)
+                .filter_by(
+                    grist_user_id=otp_config.grist_user_id,
+                    grist_doc_id=otp_config.grist_doc_id,
+                    auto=True,
+                )
+                .order_by(SyncLog.timestamp.desc())
+                .first()
+            )
+
+            latest_manual = (
+                db.query(SyncLog)
+                .filter_by(
+                    grist_user_id=otp_config.grist_user_id,
+                    grist_doc_id=otp_config.grist_doc_id,
+                    auto=False,
+                )
+                .order_by(SyncLog.timestamp.desc())
+                .first()
+            )
+
+            return jsonify(
+                {
+                    "success": True, # ?
+                    "auto": format_sync(latest_auto),
+                    "manual": format_sync(latest_manual),
+                }
+            )
+
+        otp_config = db.query(OtpConfiguration).filter_by(grist_doc_id=grist_doc_id).first()
+
         if not otp_config:
             return jsonify({"success": False, "message": "Config not found"}), 404
 
         latest_auto = (
             db.query(SyncLog)
             .filter_by(
-                otp_config_id=otp_config_id,
+                grist_doc_id=grist_doc_id,
                 auto=True,
             )
             .order_by(SyncLog.timestamp.desc())
@@ -615,25 +667,12 @@ def api_sync_log_latest():
         latest_manual = (
             db.query(SyncLog)
             .filter_by(
-                otp_config_id=otp_config_id,
+                grist_doc_id=grist_doc_id,
                 auto=False,
             )
             .order_by(SyncLog.timestamp.desc())
             .first()
         )
-
-        def format_sync(sync):
-            return (
-                {
-                    "timestamp": sync.timestamp.isoformat(),
-                    "status": sync.status,
-                    "success_count": sync.success_count,
-                    "error_count": sync.error_count,
-                    "message": sync.message,
-                }
-                if sync
-                else None
-            )
 
         return jsonify(
             {
@@ -642,6 +681,7 @@ def api_sync_log_latest():
                 "manual": format_sync(latest_manual),
             }
         )
+
     except Exception as e:
         logger.error(f"Erreur récupération dernier sync log: {str(e)}")
         return jsonify(
