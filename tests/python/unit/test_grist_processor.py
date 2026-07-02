@@ -95,12 +95,12 @@ class TestFormatValueForGrist:
         """Test avec type Text"""
         # Texte normal
         assert format_value_for_grist("Hello World", "Text") == "Hello World"
-        # Texte long (tronqué)
+        # Texte long (non tronqué)
         long_text = "a" * 1010
         result = format_value_for_grist(long_text, "Text")
         assert isinstance(result, str)
-        assert result == "a" * 1000 + "..."
-        assert len(result) == 1003  # 1000 + "..."
+        assert result == long_text
+        assert len(result) == 1010
         # Valeur non-string
         assert format_value_for_grist(123, "Text") == "123"
 
