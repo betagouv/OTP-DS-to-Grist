@@ -13,22 +13,24 @@ const dnError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 
+const serverConfigs = ref([])
+const otpConfigId = ref(null)
+
 const canSave = computed(() => gristError.value === '' && dnError.value === '')
 const canDelete = computed(() => !!otpConfigId.value)
 const canSync = computed(() => !!otpConfigId.value && !props.syncRunning)
-const nbDemarches = [{}]
-
-const existingConfig = ref(null)
-const otpConfigId = ref(null)
+const configs = computed(() => {
+  if (serverConfigs.value.length === 0) return [null]
+  return serverConfigs.value
+})
 
 const loadConfig = async () => {
   try {
     const context = await getGristContext()
     const response = await fetch(`/api/config${context.params}`)
     const data = await response.json()
-    const config = data.configs?.[0] || null
-    existingConfig.value = config
-    otpConfigId.value = config?.otp_config_id || null
+    serverConfigs.value = data.configs || []
+    otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
   } catch (e) {
     console.error('Erreur lors du chargement de la configuration :', e)
   }
@@ -87,8 +89,8 @@ const handleDeleteButtonClick = async () => {
     if (!result.success)
       throw Error(result.message)
 
-    existingConfig.value = null
     otpConfigId.value = null
+    serverConfigs.value = [] // TMP
   } catch (e) {
     console.error('Erreur lors de la suppression :', e.message)
   }
@@ -110,7 +112,7 @@ const handleSync = async () => {
 <template>
     <GristFormSection
       @error-update="gristError = $event"
-      :existing-config="existingConfig"
+      :existing-config="serverConfigs[0] || null"
       ref="gristSectionRef"
     />
 
@@ -122,8 +124,8 @@ const handleSync = async () => {
       :can-save="canSave"
       :can-delete="canDelete"
       :can-sync="canSync"
-      :existing-config="existingConfig"
-      v-for="(_, index) in nbDemarches"
+      :existing-config="config"
+      v-for="(config, index) in configs"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
     />
