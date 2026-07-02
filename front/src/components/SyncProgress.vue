@@ -1,21 +1,26 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
+
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
+
 import SyncStatsCard from './SyncStatsCard.vue'
+import { useDemarcheContext } from '../composables/useDemarcheContext'
 
+const { totalDemarches, demarcheIndex } = useDemarcheContext()
 const emit = defineEmits(['sync-running-changed'])
-
 const task = ref(null)
 const socket = ref(null)
 
 const counts = computed(() => {
   if (!task.value?.logs) return null
-  let acc = { success: 0, error: 0, total: 0 }
+
+  let syncStatus = { success: 0, error: 0, total: 0 }
   for (const log of task.value.logs) {
-    acc = parseLogMessage(log.message, acc)
+    syncStatus = parseLogMessage(log.message, syncStatus)
   }
-  return acc
+
+  return syncStatus
 })
 
 onMounted(() => {
@@ -45,7 +50,8 @@ onUnmounted(() => {
   >
     <div class="fr-card__body">
       <div class="fr-card__content">
-        <h2 class="fr-card__title">Synchronisation</h2>
+        <h2 class="fr-card__title">Synchronisation des données</h2>
+        <p v-if="totalDemarches > 0" class="fr-text--bold fr-mb-2w">{{ demarcheIndex }}/{{ totalDemarches }} démarche(s) synchronisée(s)</p>
         <p class="fr-text--bold fr-mb-2w">{{ task.message }}</p>
         <div class="fr-grid-row fr-grid-row--middle fr-mb-1w">
           <div class="fr-col">

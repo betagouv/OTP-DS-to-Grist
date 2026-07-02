@@ -1,13 +1,16 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 
 import GristFormSection from './GristFormSection.vue'
+
+import { useDemarcheContext } from '../composables/useDemarcheContext'
 import DNFormSection from './DNFormSection.vue'
 
 const props = defineProps({
   syncRunning: { type: Boolean, default: false }
 })
 
+const { setDemarcheCount } = useDemarcheContext()
 const gristError = ref(null)
 const dnError = ref(null)
 const dnSectionRefs = ref([])
@@ -23,6 +26,10 @@ const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
   return serverConfigs.value
 })
+
+watch(serverConfigs, (val) => {
+  setDemarcheCount(val.length)
+}, { immediate: true })
 
 const loadConfig = async () => {
   try {

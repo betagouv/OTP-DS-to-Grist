@@ -1,6 +1,7 @@
 import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SyncProgress from '../SyncProgress.vue'
+import { useDemarcheContext } from '../../composables/useDemarcheContext'
 
 const mockOn = vi.fn()
 const mockDisconnect = vi.fn()
@@ -20,6 +21,8 @@ describe('SyncProgress', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    const { setDemarcheCount } = useDemarcheContext()
+    setDemarcheCount(0)
     globalThis.parseLogMessage = vi.fn((msg, counts = { success: 0, error: 0, total: 0 }) => {
       const r = { ...counts }
       if (msg.includes('succès')) r.success++
@@ -44,6 +47,15 @@ describe('SyncProgress', () => {
 
     expect(wrapper.find('.fr-card').exists()).toBe(true)
     expect(wrapper.text()).toContain('Synchronisation')
+  })
+
+  it('affiche le nombre de démarches depuis le contexte partagé', async () => {
+    const { setDemarcheCount } = useDemarcheContext()
+    setDemarcheCount(3)
+    triggerTaskUpdate({ status: 'running', progress: 50, message: 'En cours' })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('1/3 démarche(s) synchronisée(s)')
   })
 
   it('display running message', async () => {
