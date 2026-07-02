@@ -396,8 +396,6 @@ def format_value_for_grist(value, value_type):
         return value
 
     if value_type == "Text":
-        if isinstance(value, str) and len(value) > 1000:
-            return value[:1000] + "..."
         return str(value)
 
     if value_type in ["Int", "Numeric"]:
