@@ -54,7 +54,7 @@ describe('SyncProgress', () => {
     expect(wrapper.text()).toContain('Synchronisation')
   })
 
-  it('affiche le nombre de démarches depuis le contexte partagé', async () => {
+  it('display démarches count from shared context', async () => {
     const { setDemarcheCount } = useDemarcheContext()
     setDemarcheCount(3)
     triggerTaskUpdate({ status: 'running', progress: 50, message: 'En cours' })
@@ -140,7 +140,7 @@ describe('SyncProgress', () => {
     expect(mockDisconnect).toHaveBeenCalled()
   })
 
-  it('affiche la carte de succès depuis les logs', async () => {
+  it('display success card from logs', async () => {
     triggerTaskUpdate({
       status: 'running', progress: 50, message: 'En cours',
       logs: [{ message: 'succès' }]
@@ -150,7 +150,7 @@ describe('SyncProgress', () => {
     expect(wrapper.text()).toContain('Dossiers synchronisés')
   })
 
-  it('affiche les cartes de succès et échecs', async () => {
+  it('display success and failed cards', async () => {
     triggerTaskUpdate({
       status: 'running', progress: 50, message: 'En cours',
       logs: [{ message: 'succès' }, { message: 'error' }]
@@ -161,7 +161,7 @@ describe('SyncProgress', () => {
     expect(wrapper.text()).toContain('Échecs')
   })
 
-  it('masque les cartes si aucun log pertinent', async () => {
+  it('hide card without log', async () => {
     triggerTaskUpdate({
       status: 'running', progress: 50, message: 'En cours',
       logs: [{ message: 'autre information' }]

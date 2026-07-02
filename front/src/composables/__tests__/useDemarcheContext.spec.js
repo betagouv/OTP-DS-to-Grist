@@ -9,17 +9,20 @@ describe('useDemarcheContext', () => {
 
   it('returns 0 totalDemarches by default', () => {
     const { totalDemarches } = useDemarcheContext()
+
     expect(totalDemarches.value).toBe(0)
   })
 
   it('returns 1 demarcheIndex by default', () => {
     const { demarcheIndex } = useDemarcheContext()
+
     expect(demarcheIndex.value).toBe(1)
   })
 
   it('updates totalDemarches reactively via setDemarcheCount', () => {
     const { totalDemarches, setDemarcheCount } = useDemarcheContext()
     setDemarcheCount(3)
+
     expect(totalDemarches.value).toBe(3)
   })
 
@@ -27,6 +30,7 @@ describe('useDemarcheContext', () => {
     const a = useDemarcheContext()
     const b = useDemarcheContext()
     a.setDemarcheCount(42)
+
     expect(b.totalDemarches.value).toBe(42)
   })
 })

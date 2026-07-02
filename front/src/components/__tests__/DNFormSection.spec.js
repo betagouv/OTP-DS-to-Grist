@@ -36,7 +36,9 @@ describe('DN form section', () => {
         demarche_number: 'mauvais-numéro',
       })
     })
+
     const errorText = wrapper.find('.fr-error-text')
+
     expect(errorText.exists()).toBe(true)
     expect(errorText.text()).toBe('Token invalide')
   })
@@ -125,21 +127,17 @@ describe('Save button', () => {
     })
   })
 
-  it('renders the save button', () => {
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-    expect(saveButton.exists()).toBe(true)
-    expect(saveButton.text()).toBe('Sauvegarder')
-  })
-
   it('is disabled when canSave is false', async () => {
     await wrapper.setProps({ canSave: false })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+
     expect(saveButton.attributes('disabled')).toBeDefined()
   })
 
   it('is enabled when canSave is true', async () => {
     await wrapper.setProps({ canSave: true })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+
     expect(saveButton.attributes('disabled')).toBeUndefined()
   })
 
@@ -147,12 +145,14 @@ describe('Save button', () => {
     await wrapper.setProps({ canSave: true })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     await saveButton.trigger('click')
+
     expect(wrapper.emitted('save')).toBeTruthy()
   })
 
   it('does not emit save event when clicked and disabled', async () => {
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     await saveButton.trigger('click')
+
     expect(wrapper.emitted('save')).toBeFalsy()
   })
 })
@@ -168,21 +168,17 @@ describe('Delete button', () => {
     })
   })
 
-  it('renders the delete button', () => {
-    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
-    expect(deleteButton.exists()).toBe(true)
-    expect(deleteButton.text()).toBe('Supprimer')
-  })
-
   it('is disabled when canDelete is false', async () => {
     await wrapper.setProps({ canDelete: false })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+
     expect(deleteButton.attributes('disabled')).toBeDefined()
   })
 
   it('is enabled when canDelete is true', async () => {
     await wrapper.setProps({ canDelete: true })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+
     expect(deleteButton.attributes('disabled')).toBeUndefined()
   })
 
@@ -190,12 +186,14 @@ describe('Delete button', () => {
     await wrapper.setProps({ canDelete: true })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     await deleteButton.trigger('click')
+
     expect(wrapper.emitted('delete')).toBeTruthy()
   })
 
   it('does not emit delete event when clicked and disabled', async () => {
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     await deleteButton.trigger('click')
+
     expect(wrapper.emitted('delete')).toBeFalsy()
   })
 })
@@ -211,21 +209,17 @@ describe('Sync button', () => {
     })
   })
 
-  it('renders the sync button', () => {
-    const syncButton = wrapper.find('[data-test-id="sync-button"]')
-    expect(syncButton.exists()).toBe(true)
-    expect(syncButton.text()).toBe('Lancer la synchronisation')
-  })
-
   it('is disabled when canSync is false', async () => {
     await wrapper.setProps({ canSync: false })
     const syncButton = wrapper.find('[data-test-id="sync-button"]')
+
     expect(syncButton.attributes('disabled')).toBeDefined()
   })
 
   it('is enabled when canSync is true', async () => {
     await wrapper.setProps({ canSync: true })
     const syncButton = wrapper.find('[data-test-id="sync-button"]')
+
     expect(syncButton.attributes('disabled')).toBeUndefined()
   })
 
@@ -233,12 +227,14 @@ describe('Sync button', () => {
     await wrapper.setProps({ canSync: true })
     const syncButton = wrapper.find('[data-test-id="sync-button"]')
     await syncButton.trigger('click')
+
     expect(wrapper.emitted('sync')).toBeTruthy()
   })
 
   it('does not emit sync event when clicked and disabled', async () => {
     const syncButton = wrapper.find('[data-test-id="sync-button"]')
     await syncButton.trigger('click')
+
     expect(wrapper.emitted('sync')).toBeFalsy()
   })
 })

@@ -199,7 +199,7 @@ describe('updateTaskProgress', () => {
     globalThis.totalDossiers = 10
     globalThis.logsCount = 0
     globalThis.logsVisible = false
-    globalThis.extractStatsFromLog = () => {}
+    globalThis.updateStatsFromLog = () => {}
 
     // Objet tâche simulé (complétée)
     const mockTask = { status: 'completed', message: 'Sync terminée', progress: 100 }

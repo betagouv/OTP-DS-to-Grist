@@ -198,7 +198,7 @@ const updateTaskProgress = (task) => {
       </div>`
 
       // Extraire les statistiques depuis les logs
-      extractStatsFromLog(message)
+      updateStatsFromLog(message)
     })
 
     logsCount = task.logs.length

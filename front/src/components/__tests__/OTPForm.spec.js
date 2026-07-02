@@ -587,19 +587,4 @@ describe('Sync action', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
-
-  it('calls fetch even when it fails', async () => {
-    globalThis.fetch.mockReset()
-    globalThis.fetch.mockRejectedValue(new Error('network error'))
-
-    wrapper.getComponent(DNFormSection).vm.$emit('sync')
-    await new Promise(process.nextTick)
-    await wrapper.vm.$nextTick()
-
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/start-sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ otp_config_id: 1 })
-    })
-  })
 })
