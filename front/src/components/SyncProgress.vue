@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
@@ -11,6 +11,13 @@ const { totalDemarches, demarcheIndex } = useDemarcheContext()
 const emit = defineEmits(['sync-running-changed'])
 const task = ref(null)
 const socket = ref(null)
+const syncCardEl = ref(null)
+
+watch(() => task.value?.status, (status) => {
+  if (status === 'running') {
+    nextTick(() => syncCardEl.value?.scrollIntoView({ behavior: 'smooth' }))
+  }
+})
 
 const counts = computed(() => {
   if (!task.value?.logs) return null
@@ -45,6 +52,7 @@ onUnmounted(() => {
 
 <template>
   <div
+    ref="syncCardEl"
     v-if="task"
     class="fr-card fr-card--light-grey fr-card--no-border fr-mb-4w"
   >
