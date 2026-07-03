@@ -1,14 +1,14 @@
 import { ref, computed } from 'vue'
 
-const _count = ref(0)
-const _index = ref(1)
+const _demarchesCount = ref(0)
+const _demarcheIndex = ref(1)
 
 export const useDemarcheContext = () => {
-  const totalDemarches = computed(() => _count.value)
-  const demarcheIndex = computed(() => _index.value)
+  const totalDemarches = computed(() => _demarchesCount.value)
+  const demarcheIndex = computed(() => _demarcheIndex.value)
 
   const setDemarcheCount = (count) => {
-    _count.value = count
+    _demarchesCount.value = count
   }
 
   return { totalDemarches, demarcheIndex, setDemarcheCount }

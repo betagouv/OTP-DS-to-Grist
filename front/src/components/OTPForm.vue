@@ -2,9 +2,9 @@
 import { ref, computed, onMounted, watch } from 'vue'
 
 import GristFormSection from './GristFormSection.vue'
+import DNFormSection from './DNFormSection.vue'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
-import DNFormSection from './DNFormSection.vue'
 
 const props = defineProps({
   syncRunning: { type: Boolean, default: false }
@@ -45,7 +45,7 @@ const loadConfig = async () => {
 
 onMounted(loadConfig)
 
-const handleSaveButtonClick = async () => {
+const handleSave = async () => {
   if (!canSave.value) return
 
   const config = {
@@ -78,7 +78,7 @@ const handleSaveButtonClick = async () => {
   }
 }
 
-const handleDeleteButtonClick = async () => {
+const handleDelete = async () => {
   if (!otpConfigId.value) return
 
   const confirmed = window.confirm(
@@ -125,8 +125,8 @@ const handleSync = async () => {
 
     <DNFormSection 
       @error-update="dnError = $event"
-      @save="handleSaveButtonClick"
-      @delete="handleDeleteButtonClick"
+      @save="handleSave"
+      @delete="handleDelete"
       @sync="handleSync"
       :can-save="canSave"
       :can-delete="canDelete"

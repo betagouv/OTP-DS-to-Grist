@@ -1,5 +1,6 @@
 import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+
 import SyncProgress from '../SyncProgress.vue'
 import { useDemarcheContext } from '../../composables/useDemarcheContext'
 
