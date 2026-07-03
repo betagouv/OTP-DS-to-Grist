@@ -4,13 +4,17 @@ import { ref, onMounted, watch } from 'vue'
 import {
   DsfrAccordion,
   DsfrAccordionsGroup,
-  DsfrInputGroup
+  DsfrInputGroup,
+  DsfrInput
 } from '@gouvminint/vue-dsfr'
+
+import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }
 })
 
+const USE_OTP_URL = window.USE_OTP_URL
 const emit = defineEmits(['error-update'])
 const context = ref(null)
 
@@ -89,23 +93,37 @@ defineExpose({
 </script>
 
 <template>
-  <h3 class="fr-mb-3w">1. Grist</h3>
+  <div>
+    <h6 class="fr-mb-3w">1. Grist</h6>
 
-  <DsfrAccordionsGroup v-model="activeAccordion">
-    <DsfrAccordion
-      id="accordion-grist"
-      :title="accordionTitleGrist"
-    >
-      <DsfrInputGroup
-        :error-message="gristTokenErrorMessage"
-        data-test-id="grist-token"
-        v-model="inputGristToken"
-        @change="handleGristInputChange"
-        label="Grist token"
-        :placeholder="gristTokenPlaceholder"
-        type="password"
-        required
-      />
-    </DsfrAccordion>
-  </DsfrAccordionsGroup>
+    <DsfrAccordionsGroup v-model="activeAccordion">
+      <DsfrAccordion
+        id="accordion-grist"
+        :title="accordionTitleGrist"
+      >
+        <DsfrInputGroup
+          :error-message="gristTokenErrorMessage"
+        >
+          <h5 class="fr-mt-3w fr-mb-0">Renseignez votre clé API Grist</h5>
+          <p class="fr-mb-0">Clé API Grist *</p>
+          <DsfrInput
+            :error-message="gristTokenErrorMessage"
+            data-test-id="grist-token"
+            v-model="inputGristToken"
+            @change="handleGristInputChange"
+            label="Grist token"
+            :placeholder="gristTokenPlaceholder"
+            type="password"
+            required
+          />
+          <p class="fr-mt-2w">
+            <DsfrInfoIcon class="fr-mr-1v"/>
+            <a
+              :href="`${USE_OTP_URL}#help-grist`"
+              class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
+          </p>
+        </DsfrInputGroup>
+      </DsfrAccordion>
+    </DsfrAccordionsGroup>
+  </div>
 </template>

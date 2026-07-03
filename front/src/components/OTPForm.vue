@@ -117,6 +117,8 @@ const handleSync = async () => {
 </script>
 
 <template>
+    <p class="fr-mb-4w">Les champs suivis d’un astérisque (*) sont obligatoires.</p>
+
     <GristFormSection
       @error-update="gristError = $event"
       :existing-config="serverConfigs[0] || null"
@@ -135,5 +137,6 @@ const handleSync = async () => {
       v-for="(config, index) in configs"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
+      class="fr-mt-5w"
     />
 </template>

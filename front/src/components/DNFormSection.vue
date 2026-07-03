@@ -6,8 +6,11 @@ import {
   DsfrAccordionsGroup,
   DsfrButton,
   DsfrButtonGroup,
-  DsfrInputGroup
+  DsfrInputGroup,
+  DsfrInput
 } from '@gouvminint/vue-dsfr'
+
+import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
@@ -16,6 +19,7 @@ const props = defineProps({
   canSync: { type: Boolean, default: false }
 })
 
+const USE_OTP_URL = window.USE_OTP_URL
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync'])
 
 // TODO le mettre dans le parent
@@ -77,60 +81,71 @@ watch(() => props.existingConfig, (config) => {
 </script>
 
 <template>
-  <h3 class="fr-mb-3w">2. Démarche numérique</h3>
+  <div>
+    <h6 class="fr-mb-3w">2. Démarche numérique</h6>
 
-  <DsfrAccordionsGroup v-model="activeAccordion">
-    <DsfrAccordion
-      id="accordion-dn"
-      :title="accordionTitleDN"
-    >
-      <DsfrInputGroup
-          :error-message="dnErrorMessage"
+    <DsfrAccordionsGroup v-model="activeAccordion">
+      <DsfrAccordion
+        id="accordion-dn"
+        :title="accordionTitleDN"
       >
-        <DsfrInput
-          :error-message="dnErrorMessage"
-          data-test-id="dn-token"
-          v-model="inputDNToken"
-          @change="handleDNInputsChange"
-          label="DN token"
-          :placeholder="dnTokenPlaceholder"
-          type="password"
-          required
-        />
+        <DsfrInputGroup
+            :error-message="dnErrorMessage"
+        >
+          <h5 class="fr-mt-3w fr-mb-0">Renseignez les informations de votre démarche numérique</h5>
+          <p class="fr-mb-0">Jeton d'API *</p>
+          <DsfrInput
+            :error-message="dnErrorMessage"
+            data-test-id="dn-token"
+            v-model="inputDNToken"
+            @change="handleDNInputsChange"
+            label="DN token"
+            :placeholder="dnTokenPlaceholder"
+            type="password"
+            required
+          />
+          <p class="fr-mt-2w">
+            <DsfrInfoIcon class="fr-mr-1v"/>
+            <a
+              :href="`${USE_OTP_URL}#help-ds`"
+              class="fr-link fr-text--xs">Où trouver votre jeton API ?</a>
+          </p>
 
-        <DsfrInput
-          data-test-id="dn-number"
-          v-model="inputDNNumber"
-          @change="handleDNInputsChange"
-          label="DN number"
-          placeholder="Saisissez votre numéro DN"
-          required
-        />
-      </DsfrInputGroup>
+          <p class="fr-mb-0">Numéro de démarche *</p>
+          <DsfrInput
+            data-test-id="dn-number"
+            v-model="inputDNNumber"
+            @change="handleDNInputsChange"
+            label="DN number"
+            placeholder="Saisissez votre numéro DN"
+            required
+          />
+        </DsfrInputGroup>
 
-      <DsfrButtonGroup inline-layout-when="always" size="large">
-        <DsfrButton
-          label="Lancer la synchronisation"
-          data-test-id="sync-button"
-          primary
-          :disabled="!canSync"
-          @click="$emit('sync')"
-        />
-        <DsfrButton
-          label="Sauvegarder"
-          data-test-id="submit-form-button"
-          secondary
-          :disabled="!canSave"
-          @click="$emit('save')"
-        />
-        <DsfrButton
-          label="Supprimer"
-          data-test-id="delete-config-button"
-          secondary
-          :disabled="!canDelete"
-          @click="$emit('delete')"
-        />
-      </DsfrButtonGroup>
-    </DsfrAccordion>
-  </DsfrAccordionsGroup>
+        <DsfrButtonGroup inline-layout-when="always" size="large">
+          <DsfrButton
+            label="Lancer la synchronisation"
+            data-test-id="sync-button"
+            primary
+            :disabled="!canSync"
+            @click="$emit('sync')"
+          />
+          <DsfrButton
+            label="Sauvegarder"
+            data-test-id="submit-form-button"
+            secondary
+            :disabled="!canSave"
+            @click="$emit('save')"
+          />
+          <DsfrButton
+            label="Supprimer"
+            data-test-id="delete-config-button"
+            secondary
+            :disabled="!canDelete"
+            @click="$emit('delete')"
+          />
+        </DsfrButtonGroup>
+      </DsfrAccordion>
+    </DsfrAccordionsGroup>
+  </div>
 </template>
