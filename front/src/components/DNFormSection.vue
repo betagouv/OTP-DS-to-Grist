@@ -36,6 +36,10 @@ const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
 const handleDNInputsChange = async () => {
   dnErrorMessage.value = null
 
+  // Only check with both values setted
+  if (!inputDNToken.value || !inputDNNumber.value)
+    return emit('error-update', null)
+
   const response = await fetch('/api/test-connection', {
     method: 'POST',
     headers: {

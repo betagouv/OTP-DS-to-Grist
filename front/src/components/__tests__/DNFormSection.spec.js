@@ -20,11 +20,9 @@ describe('DN form section', () => {
 
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('mauvais-token')
-    await tokenInput.trigger('change')
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('mauvais-numéro')
-    await numberInput.trigger('change')
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -58,11 +56,9 @@ describe('DN form section', () => {
 
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('bon-token')
-    await tokenInput.trigger('change')
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('bon-numéro')
-    await numberInput.trigger('change')
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -113,6 +109,55 @@ describe('DN form section', () => {
 
     const passwordInput = wrapper.find('input[type="password"]')
     expect(passwordInput.attributes('placeholder')).toBe('Saisissez votre clé Démarche Numérique')
+  })
+
+  it('does not call API when only token is filled', async () => {
+    const mockFetch = vi.fn()
+    globalThis.fetch = mockFetch
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('un-token')
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(wrapper.emitted('error-update')).toBeTruthy()
+    expect(wrapper.emitted('error-update')[0]).toEqual([null])
+  })
+
+  it('does not call API when only number is filled', async () => {
+    const mockFetch = vi.fn()
+    globalThis.fetch = mockFetch
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(wrapper.emitted('error-update')[0]).toEqual([null])
+  })
+
+  it('clears error when a field is emptied after failed test', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ success: false, message: 'Erreur de connexion' })
+    })
+    globalThis.fetch = mockFetch
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('mauvais-token')
+
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+
+    expect(wrapper.find('.fr-error-text').exists()).toBe(true)
+
+    await tokenInput.setValue('')
+
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
+    expect(mockFetch).toHaveBeenCalledTimes(1) // seulement la première fois
   })
 })
 
