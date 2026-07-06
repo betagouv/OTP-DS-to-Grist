@@ -875,17 +875,19 @@ def use_otp():
 def wip():
     return render_template("wip.html")
 
-def vite_asset(entry):
+def vite_asset(entry="src/main.js"):
     if app.debug:
-        return f"http://localhost:5173/{entry}"
+        return {"js": f"http://localhost:5173/{entry}", "css": None}
 
     manifest_path = Path("static/dist/.vite/manifest.json")
     manifest = json.loads(manifest_path.read_text())
+    entry_data = manifest[entry]
+    css_list = entry_data.get("css", [])
 
-    return url_for(
-        "static",
-        filename=f"dist/{manifest[entry]['file']}"
-    )
+    return {
+        "js": url_for("static", filename=f"dist/{entry_data['file']}"),
+        "css": url_for("static", filename=f"dist/{css_list[0]}") if css_list else None,
+    }
 
 app.jinja_env.globals["vite_asset"] = vite_asset
 
