@@ -19,9 +19,9 @@ const gristSectionRef = ref(null)
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
 
-const canSave = computed(() => gristError.value === '' && dnError.value === '')
+const configValid = computed(() => gristError.value === '' && dnError.value === '')
 const canDelete = computed(() => !!otpConfigId.value)
-const canSync = computed(() => !!otpConfigId.value && !props.syncRunning)
+const canSync = computed(() => !!otpConfigId.value && !props.syncRunning && configValid.value)
 const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
   return serverConfigs.value
@@ -46,7 +46,7 @@ const loadConfig = async () => {
 onMounted(loadConfig)
 
 const handleSave = async () => {
-  if (!canSave.value) return
+  if (!configValid.value) return
 
   const config = {
     ds_api_token: dnSectionRefs.value[0].getData().token,
@@ -130,7 +130,7 @@ const handleSync = async () => {
       @save="handleSave"
       @delete="handleDelete"
       @sync="handleSync"
-      :can-save="canSave"
+      :config-valid="configValid"
       :can-delete="canDelete"
       :can-sync="canSync"
       :existing-config="config"

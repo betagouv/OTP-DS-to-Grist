@@ -5,7 +5,7 @@ import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
 
-describe('canSave computation', () => {
+describe('configValid computation', () => {
   let wrapper
 
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe('canSave computation', () => {
   })
 
   it('is false on load', () => {
-    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(false)
+    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(false)
   })
 
   it('is false when Grist has error', async () => {
@@ -30,7 +30,7 @@ describe('canSave computation', () => {
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', 'Erreur de connexion')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(false)
+    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(false)
   })
 
   it('is false when DN has error', async () => {
@@ -38,7 +38,7 @@ describe('canSave computation', () => {
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', 'Erreur de connexion')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(false)
+    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(false)
   })
 
   it('is true when both verifications succeed', async () => {
@@ -46,7 +46,7 @@ describe('canSave computation', () => {
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.getComponent(DNFormSection).props('canSave')).toBe(true)
+    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(true)
   })
 })
 
@@ -82,6 +82,24 @@ describe('canSync computation', () => {
   it('is false when syncRunning is true', async () => {
     wrapper.vm.otpConfigId = 42
     await wrapper.setProps({ syncRunning: true })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(false)
+  })
+
+  it('is false when Grist has an error', async () => {
+    wrapper.vm.otpConfigId = 42
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', 'Erreur de connexion')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(false)
+  })
+
+  it('is false when DN has an error', async () => {
+    wrapper.vm.otpConfigId = 42
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', 'Erreur de connexion')
     await wrapper.vm.$nextTick()
 
     expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(false)
@@ -140,7 +158,7 @@ describe('Save button action', () => {
     })
   })
 
-  it('does not call API when canSave is false', async () => {
+  it('does not call API when configValid is false', async () => {
     const mockFetch = vi.fn()
     globalThis.fetch = mockFetch
     wrapper.getComponent(DNFormSection).vm.$emit('save')

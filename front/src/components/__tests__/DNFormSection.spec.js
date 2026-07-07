@@ -172,22 +172,22 @@ describe('Save button', () => {
     })
   })
 
-  it('is disabled when canSave is false', async () => {
-    await wrapper.setProps({ canSave: false })
+  it('is disabled when configValid is false', async () => {
+    await wrapper.setProps({ configValid: false })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
 
     expect(saveButton.attributes('disabled')).toBeDefined()
   })
 
-  it('is enabled when canSave is true', async () => {
-    await wrapper.setProps({ canSave: true })
+  it('is enabled when configValid is true', async () => {
+    await wrapper.setProps({ configValid: true })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
 
     expect(saveButton.attributes('disabled')).toBeUndefined()
   })
 
   it('emits save event when clicked and enabled', async () => {
-    await wrapper.setProps({ canSave: true })
+    await wrapper.setProps({ configValid: true })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     await saveButton.trigger('click')
 

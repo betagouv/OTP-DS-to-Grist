@@ -14,7 +14,7 @@ import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
-  canSave: { type: Boolean, default: false },
+  configValid: { type: Boolean, default: false },
   canDelete: { type: Boolean, default: false },
   canSync: { type: Boolean, default: false }
 })
@@ -138,7 +138,7 @@ watch(() => props.existingConfig, (config) => {
             label="Sauvegarder"
             data-test-id="submit-form-button"
             secondary
-            :disabled="!canSave"
+            :disabled="!configValid"
             @click="$emit('save')"
           />
           <DsfrButton
