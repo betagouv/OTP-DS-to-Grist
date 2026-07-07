@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
@@ -20,11 +20,9 @@ describe('DN form section', () => {
 
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('mauvais-token')
-    await tokenInput.trigger('change')
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('mauvais-numéro')
-    await numberInput.trigger('change')
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -36,7 +34,9 @@ describe('DN form section', () => {
         demarche_number: 'mauvais-numéro',
       })
     })
+
     const errorText = wrapper.find('.fr-error-text')
+
     expect(errorText.exists()).toBe(true)
     expect(errorText.text()).toBe('Token invalide')
   })
@@ -56,11 +56,9 @@ describe('DN form section', () => {
 
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('bon-token')
-    await tokenInput.trigger('change')
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('bon-numéro')
-    await numberInput.trigger('change')
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -112,6 +110,55 @@ describe('DN form section', () => {
     const passwordInput = wrapper.find('input[type="password"]')
     expect(passwordInput.attributes('placeholder')).toBe('Saisissez votre clé Démarche Numérique')
   })
+
+  it('does not call API when only token is filled', async () => {
+    const mockFetch = vi.fn()
+    globalThis.fetch = mockFetch
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('un-token')
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(wrapper.emitted('error-update')).toBeTruthy()
+    expect(wrapper.emitted('error-update')[0]).toEqual([null])
+  })
+
+  it('does not call API when only number is filled', async () => {
+    const mockFetch = vi.fn()
+    globalThis.fetch = mockFetch
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(wrapper.emitted('error-update')[0]).toEqual([null])
+  })
+
+  it('clears error when a field is emptied after failed test', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ success: false, message: 'Erreur de connexion' })
+    })
+    globalThis.fetch = mockFetch
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('mauvais-token')
+
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+
+    expect(wrapper.find('.fr-error-text').exists()).toBe(true)
+
+    await tokenInput.setValue('')
+
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
+    expect(mockFetch).toHaveBeenCalledTimes(1) // seulement la première fois
+  })
 })
 
 describe('Save button', () => {
@@ -125,34 +172,32 @@ describe('Save button', () => {
     })
   })
 
-  it('renders the save button', () => {
+  it('is disabled when configValid is false', async () => {
+    await wrapper.setProps({ configValid: false })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-    expect(saveButton.exists()).toBe(true)
-    expect(saveButton.text()).toBe('Sauvegarder')
-  })
 
-  it('is disabled when canSave is false', async () => {
-    await wrapper.setProps({ canSave: false })
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     expect(saveButton.attributes('disabled')).toBeDefined()
   })
 
-  it('is enabled when canSave is true', async () => {
-    await wrapper.setProps({ canSave: true })
+  it('is enabled when configValid is true', async () => {
+    await wrapper.setProps({ configValid: true })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+
     expect(saveButton.attributes('disabled')).toBeUndefined()
   })
 
   it('emits save event when clicked and enabled', async () => {
-    await wrapper.setProps({ canSave: true })
+    await wrapper.setProps({ configValid: true })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     await saveButton.trigger('click')
+
     expect(wrapper.emitted('save')).toBeTruthy()
   })
 
   it('does not emit save event when clicked and disabled', async () => {
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     await saveButton.trigger('click')
+
     expect(wrapper.emitted('save')).toBeFalsy()
   })
 })
@@ -168,21 +213,17 @@ describe('Delete button', () => {
     })
   })
 
-  it('renders the delete button', () => {
-    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
-    expect(deleteButton.exists()).toBe(true)
-    expect(deleteButton.text()).toBe('Supprimer')
-  })
-
   it('is disabled when canDelete is false', async () => {
     await wrapper.setProps({ canDelete: false })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+
     expect(deleteButton.attributes('disabled')).toBeDefined()
   })
 
   it('is enabled when canDelete is true', async () => {
     await wrapper.setProps({ canDelete: true })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+
     expect(deleteButton.attributes('disabled')).toBeUndefined()
   })
 
@@ -190,12 +231,55 @@ describe('Delete button', () => {
     await wrapper.setProps({ canDelete: true })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     await deleteButton.trigger('click')
+
     expect(wrapper.emitted('delete')).toBeTruthy()
   })
 
   it('does not emit delete event when clicked and disabled', async () => {
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     await deleteButton.trigger('click')
+
     expect(wrapper.emitted('delete')).toBeFalsy()
+  })
+})
+
+describe('Sync button', () => {
+  let wrapper
+
+  beforeEach(() => {
+    wrapper = mount(DNFormSection, {
+      global: {
+        components: { DsfrInput, DsfrInputGroup }
+      }
+    })
+  })
+
+  it('is disabled when canSync is false', async () => {
+    await wrapper.setProps({ canSync: false })
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+
+    expect(syncButton.attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled when canSync is true', async () => {
+    await wrapper.setProps({ canSync: true })
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+
+    expect(syncButton.attributes('disabled')).toBeUndefined()
+  })
+
+  it('emits sync event when clicked and enabled', async () => {
+    await wrapper.setProps({ canSync: true })
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    await syncButton.trigger('click')
+
+    expect(wrapper.emitted('sync')).toBeTruthy()
+  })
+
+  it('does not emit sync event when clicked and disabled', async () => {
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    await syncButton.trigger('click')
+
+    expect(wrapper.emitted('sync')).toBeFalsy()
   })
 })

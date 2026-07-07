@@ -1,29 +1,43 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
 
+import { useDemarcheContext } from '../composables/useDemarcheContext'
+
+const props = defineProps({
+  syncRunning: { type: Boolean, default: false }
+})
+
+const { setDemarcheCount } = useDemarcheContext()
 const gristError = ref(null)
 const dnError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 
-const canSave = computed(() => gristError.value === '' && dnError.value === '')
-const canDelete = computed(() => !!otpConfigId.value)
-const nbDemarches = [{}]
-
-const existingConfig = ref(null)
+const serverConfigs = ref([])
 const otpConfigId = ref(null)
+
+const configValid = computed(() => gristError.value === '' && dnError.value === '')
+const canDelete = computed(() => !!otpConfigId.value)
+const canSync = computed(() => !!otpConfigId.value && !props.syncRunning && configValid.value)
+const configs = computed(() => {
+  if (serverConfigs.value.length === 0) return [null]
+  return serverConfigs.value
+})
+
+watch(serverConfigs, (val) => {
+  setDemarcheCount(val.length)
+}, { immediate: true })
 
 const loadConfig = async () => {
   try {
     const context = await getGristContext()
     const response = await fetch(`/api/config${context.params}`)
     const data = await response.json()
-    const config = data.configs?.[0] || null
-    existingConfig.value = config
-    otpConfigId.value = config?.otp_config_id || null
+    serverConfigs.value = data.configs || []
+    otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
   } catch (e) {
     console.error('Erreur lors du chargement de la configuration :', e)
   }
@@ -31,8 +45,8 @@ const loadConfig = async () => {
 
 onMounted(loadConfig)
 
-const handleSaveButtonClick = async () => {
-  if (!canSave.value) return
+const handleSave = async () => {
+  if (!configValid.value) return
 
   const config = {
     ds_api_token: dnSectionRefs.value[0].getData().token,
@@ -64,7 +78,7 @@ const handleSaveButtonClick = async () => {
   }
 }
 
-const handleDeleteButtonClick = async () => {
+const handleDelete = async () => {
   if (!otpConfigId.value) return
 
   const confirmed = window.confirm(
@@ -82,31 +96,47 @@ const handleDeleteButtonClick = async () => {
     if (!result.success)
       throw Error(result.message)
 
-    existingConfig.value = null
     otpConfigId.value = null
+    serverConfigs.value = [] // TMP
   } catch (e) {
     console.error('Erreur lors de la suppression :', e.message)
   }
 }
 
+const handleSync = async () => {
+  if (!otpConfigId.value || props.syncRunning) return
+  try {
+    await fetch('/api/start-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp_config_id: otpConfigId.value })
+    })
+  } catch {}
+}
+
 </script>
 
 <template>
+    <p class="fr-mb-4w">Les champs suivis d’un astérisque (*) sont obligatoires.</p>
+
     <GristFormSection
       @error-update="gristError = $event"
-      :existing-config="existingConfig"
+      :existing-config="serverConfigs[0] || null"
       ref="gristSectionRef"
     />
 
     <DNFormSection 
       @error-update="dnError = $event"
-      @save="handleSaveButtonClick"
-      @delete="handleDeleteButtonClick"
-      :can-save="canSave"
+      @save="handleSave"
+      @delete="handleDelete"
+      @sync="handleSync"
+      :config-valid="configValid"
       :can-delete="canDelete"
-      :existing-config="existingConfig"
-      v-for="(_, index) in nbDemarches"
+      :can-sync="canSync"
+      :existing-config="config"
+      v-for="(config, index) in configs"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
+      class="fr-mt-5w"
     />
 </template>

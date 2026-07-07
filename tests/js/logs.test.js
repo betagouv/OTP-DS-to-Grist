@@ -1,7 +1,8 @@
 /** @jest-environment jsdom */
 const {
   toggleLogs,
-  extractStatsFromLog,
+  parseLogMessage,
+  updateStatsFromLog,
   copyLogs
 } = require('../../static/js/logs.js')
 
@@ -24,7 +25,7 @@ describe('toggleLogs', () => {
     jest.useRealTimers()
   })
 
-  it('affiche les logs et scroll vers le bas', () => {
+  it('display logs dans scroll bottom', () => {
     const container = document.getElementById('logs_container')
     const icon = document.getElementById('logs_toggle_icon')
     const text = document.getElementById('logs_toggle_text')
@@ -44,7 +45,7 @@ describe('toggleLogs', () => {
     expect(container.scrollTop).toBe(container.scrollHeight)
   })
 
-  it('masque les logs', () => {
+  it('hide logs', () => {
     const container = document.getElementById('logs_container')
     const icon = document.getElementById('logs_toggle_icon')
     const text = document.getElementById('logs_toggle_text')
@@ -58,10 +59,10 @@ describe('toggleLogs', () => {
   })
 })
 
-describe('extractStatsFromLog', () => {
+describe('updateStatsFromLog', () => {
   beforeEach(() => {
-    // Setup DOM simulé pour les éléments utilisés par extractStatsFromLog
-    document.body.innerHTML = ` <div id="processed_count">0</div>`
+    // Setup DOM simulé pour les éléments utilisés par updateStatsFromLog
+    document.body.innerHTML = '<div id="processed_count">0</div>'
 
     // Reset des variables globales
     global.totalDossiers = 0
@@ -82,7 +83,7 @@ describe('extractStatsFromLog', () => {
 
     const message = `Nombre total de dossiers trouvés: ${nbDossiers}`
 
-    extractStatsFromLog(message)
+    updateStatsFromLog(message)
 
     expect(global.totalDossiers).toBe(150)
     expect(global.successCount).toBe(0)
@@ -99,7 +100,7 @@ describe('extractStatsFromLog', () => {
 
     const message = `Dossiers traités avec succès: ${nbDossiers}`
 
-    extractStatsFromLog(message)
+    updateStatsFromLog(message)
 
     expect(global.successCount).toBe(nbDossiers)
     expect(global.totalDossiers).toBe(0)
@@ -118,7 +119,7 @@ describe('extractStatsFromLog', () => {
 
     const message = `Dossiers en échec: ${nbDossiers}`
 
-    extractStatsFromLog(message)
+    updateStatsFromLog(message)
 
     expect(global.errorCount).toBe(10)
     expect(global.totalDossiers).toBe(0)
@@ -134,7 +135,7 @@ describe('extractStatsFromLog', () => {
 
     const message = `${nbDossiers}/100 dossiers récupérés (50%)`
 
-    extractStatsFromLog(message)
+    updateStatsFromLog(message)
 
     expect(global.errorCount).toBe(50)
     expect(global.totalDossiers).toBe(0)
@@ -173,7 +174,7 @@ describe('copyLogs', () => {
     jest.restoreAllMocks()
   })
 
-  it('copies logs text to clipboard successfully', async () => {
+  it('copy logs text to clipboard successfully', async () => {
     clipboardWriteTextMock.mockResolvedValue()
 
     copyLogs()
@@ -218,5 +219,145 @@ describe('copyLogs', () => {
     copyLogs()
 
     expect(clipboardWriteTextMock).toHaveBeenCalledWith('Text content')
+  })
+})
+
+describe('parseLogMessage', () => {
+  it('return default counts with empty message', () => {
+    const result = parseLogMessage('')
+    expect(result).toEqual({ success: 0, error: 0, total: 0 })
+  })
+
+  it('extract "Nombre total de dossiers trouvés"', () => {
+    const result = parseLogMessage('Nombre total de dossiers trouvés: 150')
+    expect(result.total).toBe(150)
+  })
+
+  it('extract "Après filtrage: N dossiers"', () => {
+    const result = parseLogMessage('Après filtrage: 120 dossiers')
+    expect(result.total).toBe(120)
+  })
+
+  it('extract "N dossiers trouvés"', () => {
+    const result = parseLogMessage('120 dossiers trouvés')
+    expect(result.total).toBe(120)
+  })
+
+  it('extract "N dossiers à traiter"', () => {
+    const result = parseLogMessage('88 dossiers à traiter')
+    expect(result.total).toBe(88)
+  })
+
+  it('extract "Dossiers traités avec succès"', () => {
+    const result = parseLogMessage('Dossiers traités avec succès: 75')
+    expect(result.success).toBe(75)
+  })
+
+  it('extract "Résumé upsert table..._dossiers...: N succès"', () => {
+    const result = parseLogMessage(
+      'Résumé upsert table Demarche_123_dossiers: 10 succès, 2 échecs'
+    )
+    expect(result.success).toBe(10)
+  })
+
+  it('accumulated success from upsert', () => {
+    const result = parseLogMessage(
+      'Résumé upsert table Demarche_123_dossiers: 10 succès, 2 échecs',
+      { success: 5, error: 0, total: 0 }
+    )
+    expect(result.success).toBe(15)
+  })
+
+  it('extract "Dossiers en échec"', () => {
+    const result = parseLogMessage('Dossiers en échec: 5')
+    expect(result.error).toBe(5)
+  })
+
+  it('extract "Échec: N"', () => {
+    const result = parseLogMessage('Échec: 3')
+    expect(result.error).toBe(3)
+  })
+
+  it('extract "Échecs: N"', () => {
+    const result = parseLogMessage('Échecs: 3')
+    expect(result.error).toBe(3)
+  })
+
+  it('extract "N erreurs détectées"', () => {
+    const result = parseLogMessage('3 erreurs détectées')
+    expect(result.error).toBe(3)
+  })
+
+  it('extract "N dossiers n\'ont pas pu être récupérés"', () => {
+    const result = parseLogMessage("5 dossiers n'ont pas pu être récupérés")
+    expect(result.error).toBe(5)
+  })
+
+  it('ne compte pas comme erreur un ratio >= 80%', () => {
+    const result = parseLogMessage('80/100 dossiers récupérés (80%)')
+    expect(result.error).toBe(0)
+  })
+
+  it('error if ratio < 80%', () => {
+    const result = parseLogMessage('50/100 dossiers récupérés (50%)')
+    expect(result.error).toBe(50)
+  })
+
+  it('detect "Erreur lors de la récupération du dossier"', () => {
+    const result = parseLogMessage(
+      'Erreur lors de la récupération du dossier 12345'
+    )
+    expect(result.error).toBe(1)
+  })
+
+  it('detect "max retries exceeded"', () => {
+    const result = parseLogMessage('max retries exceeded for request')
+    expect(result.error).toBe(1)
+  })
+
+  it('detect "sslerror" (insensitive case)', () => {
+    const result = parseLogMessage('SSLerror during request')
+    expect(result.error).toBe(1)
+  })
+
+  it('detect "connection failed"', () => {
+    const result = parseLogMessage('The connection failed')
+    expect(result.error).toBe(1)
+  })
+
+  it('detect "timeout"', () => {
+    const result = parseLogMessage('Request timeout after 30s')
+    expect(result.error).toBe(1)
+  })
+
+  it('accumulated counts from initial object', () => {
+    const result = parseLogMessage('', { success: 1, error: 2, total: 3 })
+    expect(result).toEqual({ success: 1, error: 2, total: 3 })
+  })
+
+  it('100 maximum', () => {
+    const result = parseLogMessage(
+      'Nombre total de dossiers trouvés: 200',
+      { success: 0, error: 0, total: 100 }
+    )
+    expect(result.total).toBe(200)
+  })
+
+  it('dont replace with lower value', () => {
+    const result = parseLogMessage(
+      'Nombre total de dossiers trouvés: 50',
+      { success: 0, error: 0, total: 100 }
+    )
+
+    expect(result.total).toBe(100)
+  })
+
+  it('conserve la plus grande valeur d\'erreur', () => {
+    const result = parseLogMessage(
+      'Dossiers en échec: 10',
+      { success: 0, error: 3, total: 0 }
+    )
+
+    expect(result.error).toBe(10)
   })
 })

@@ -17,6 +17,9 @@
   "directories": {
     "doc": "docs"
   },
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "test": "jest",
     "test:vue": "cd front && npm run test:unit",
