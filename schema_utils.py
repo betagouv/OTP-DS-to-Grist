@@ -505,7 +505,6 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         {"id": "date_derniere_modification", "type": "DateTime"},
         {"id": "date_expiration", "type": "DateTime"},
         {"id": "date_traitement", "type": "DateTime"},
-        {"id": "supprime_par_usager", "type": "Bool"},
         {"id": "date_suppression", "type": "DateTime"},
         {"id": "date_derniere_correction_en_attente", "type": "DateTime"},
         {"id": "date_derniere_modification_champs", "type": "DateTime"},

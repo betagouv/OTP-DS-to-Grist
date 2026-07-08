@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from utils.constants import DEMARCHES_API_URL
 from queries_util import timed
+from utils.constants import DEMARCHES_API_URL
 
 load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
@@ -1146,109 +1146,12 @@ def get_demarche_dossiers_filtered(
     return filtered_dossiers
 
 
-# ================================================
-# SCRIPT DE TEST SIMPLE qui fonctionne
-# ================================================
-
-
-def test_working_filter():
-    """
-    Test avec SEULEMENT les paramètres qui fonctionnent
-    """
-    print("=== TEST avec seulement createdSince (qui fonctionne) ===")
-
-    query = """
-    query testWorkingFilter($demarcheNumber: Int!, $createdSince: ISO8601DateTime) {
-        demarche(number: $demarcheNumber) {
-            id
-            title
-            dossiers(first: 5, createdSince: $createdSince) {
-                pageInfo {
-                    hasNextPage
-                    endCursor
-                }
-                nodes {
-                    id
-                    number
-                    dateDepot
-                    state
-                    groupeInstructeur {
-                        id
-                        number
-                        label
-                    }
-                }
-            }
-        }
-    }
-    """
-
-    variables = {"demarcheNumber": 70018, "createdSince": "2025-06-15T00:00:00Z"}
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    session = get_session_with_retries()  # ✅ AJOUTE
-    response = session.post(
-        API_URL, json={"query": query, "variables": variables}, headers=headers
-    )
-
-    if response.status_code == 200:
-        result = response.json()
-        if "errors" in result:
-            print(f"Erreurs: {result['errors']}")
-        else:
-            dossiers = result["data"]["demarche"]["dossiers"]["nodes"]
-            print(f"[OK]SUCCESS! {len(dossiers)} dossiers après 2025-06-15")
-
-            for dossier in dossiers:
-                groupe = dossier["groupeInstructeur"]
-                print(
-                    f"{dossier['number']}: {dossier['dateDepot'][:10]} - Groupe {groupe['number']}"
-                )
-    else:
-        print(f"Erreur HTTP: {response.status_code}")
-
-
-if __name__ == "__main__":
-    test_working_filter()
-
-
-# ================================================
-# RÉCAPITULATIF des paramètres API réels
-# ================================================
-
-"""
-[FILTRAGE] PARAMÈTRES GRAPHQL RÉELLEMENT SUPPORTÉS (testé) :
-
-[OK]CÔTÉ SERVEUR :
-- createdSince: ISO8601DateTime  # Date de début uniquement
-
-❌ NON SUPPORTÉS côté serveur :
-- createdUntil                   # Date de fin
-- groupeInstructeurNumber        # Groupe instructeur
-- states                         # Statuts des dossiers
-
-SOLUTION HYBRIDE :
-1. Filtrer par date de début côté serveur (gain majeur)
-2. Filtrer le reste côté client sur le résultat réduit
-
-🎯 PERFORMANCE :
-Au lieu de récupérer 6450 dossiers puis tout filtrer,
-on récupère ~200 dossiers (après 2025-06-15) puis on filtre
-seulement ceux-là par groupe et statut.
-
-GAIN ESTIMÉ : 30x plus rapide !
-"""
-
-
 def get_demarche_dossiers(demarche_number: int):
     """
-    Récupère uniquement la liste des dossiers d'une démarche, avec gestion de la pagination.
-    Récupère tous les dossiers même s'il y en a plus de 100.
-    ANCIENNE VERSION - utilisez get_demarche_dossiers_filtered pour de meilleures performances.
+    Récupère tous les dossiers d'une démarche, sans filtre, avec pagination
+    (délègue à get_demarche_dossiers_filtered sans arguments).
+    Utilisée pour l'échantillonnage lors de la détection du schéma et comme
+    fallback "récupération classique" quand aucun filtre optimisé n'est actif.
     """
     return get_demarche_dossiers_filtered(demarche_number)
 
@@ -1276,3 +1179,93 @@ def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
     response.raise_for_status()
 
     return response.json()
+
+
+def get_deleted_dossiers(
+    demarche_number: int, deleted_since: str = None
+) -> List[Dict[str, Any]]:
+    """
+    Récupère les dossiers supprimés d'une démarche, en fusionnant :
+    - deletedDossiers : suppression confirmée par DN
+    - pendingDeletedDossiers : suppression en attente (période de grâce), mais déjà
+    invisible pour les instructeurs dans DN — traité ici comme supprimé.
+    Pagination complète sur les deux connexions.
+    deleted_since (ISO8601) limite deletedDossiers aux suppressions récentes.
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    if not deleted_since:
+        deleted_since = None
+
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    session = get_session_with_retries()
+    all_deleted = []
+
+    # --- deletedDossiers (suppression confirmée) ---
+    query_deleted = """
+    query getDeletedDossiers($demarcheNumber: Int!, $first: Int, $after: String, $since: ISO8601DateTime) {
+        demarche(number: $demarcheNumber) {
+            deletedDossiers(first: $first, after: $after, deletedSince: $since) {
+                pageInfo { hasNextPage endCursor }
+                nodes { number dateSupression state reason }
+            }
+        }
+    }
+    """
+    cursor = None
+    has_next_page = True
+    while has_next_page:
+        variables = {
+            "demarcheNumber": demarche_number,
+            "first": 100,
+            "after": cursor,
+            "since": deleted_since,
+        }
+        response = session.post(
+            API_URL,
+            json={"query": query_deleted, "variables": variables},
+            headers=headers,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if "errors" in result:
+            raise Exception(f"GraphQL errors: {result['errors']}")
+        connection = result["data"]["demarche"]["deletedDossiers"]
+        all_deleted.extend(connection["nodes"])
+        has_next_page = connection["pageInfo"]["hasNextPage"]
+        cursor = connection["pageInfo"]["endCursor"]
+
+    # --- pendingDeletedDossiers (en attente, mais déjà invisible pour les instructeurs) ---
+    query_pending = """
+    query getPendingDeletedDossiers($demarcheNumber: Int!, $first: Int, $after: String) {
+        demarche(number: $demarcheNumber) {
+            pendingDeletedDossiers(first: $first, after: $after) {
+                pageInfo { hasNextPage endCursor }
+                nodes { number dateSupression state reason }
+            }
+        }
+    }
+    """
+    cursor = None
+    has_next_page = True
+    while has_next_page:
+        variables = {"demarcheNumber": demarche_number, "first": 100, "after": cursor}
+        response = session.post(
+            API_URL,
+            json={"query": query_pending, "variables": variables},
+            headers=headers,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if "errors" in result:
+            raise Exception(f"GraphQL errors: {result['errors']}")
+        connection = result["data"]["demarche"]["pendingDeletedDossiers"]
+        all_deleted.extend(connection["nodes"])
+        has_next_page = connection["pageInfo"]["hasNextPage"]
+        cursor = connection["pageInfo"]["endCursor"]
+
+    return all_deleted

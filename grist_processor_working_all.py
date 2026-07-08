@@ -220,7 +220,6 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
         {"id": "groupe_instructeur_id", "type": "Text"},
         {"id": "groupe_instructeur_number", "type": "Int"},
         {"id": "groupe_instructeur_label", "type": "Text"},
-        {"id": "supprime_par_usager", "type": "Bool"},
         {"id": "date_suppression", "type": "DateTime"},
         {"id": "label_names", "type": "Text"},
         {"id": "labels_json", "type": "Text"},
@@ -2332,6 +2331,12 @@ def process_demarche_for_grist_optimized(
                 updated_since_cursor, tz=timezone.utc
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
         sync_meta_grist_id = sync_meta.get("grist_id") if sync_meta else None
+        deleted_since_cursor = (
+            None
+            if force_full_sync
+            else (sync_meta.get("deleted_since_cursor") if sync_meta else None)
+        )
+
         if force_full_sync:
             log("force_full_sync activé → sync complète forcée")
         elif updated_since_cursor:
@@ -2505,6 +2510,7 @@ def process_demarche_for_grist_optimized(
                     {
                         "last_sync_at": sync_end_time,
                         "updated_since_cursor": sync_start_time,
+                        "deleted_since_cursor": sync_start_time,
                         "last_sync_status": "success",
                         "last_sync_duration": round(elapsed_time, 1),
                         "force_full_sync": False,
@@ -2512,6 +2518,22 @@ def process_demarche_for_grist_optimized(
                 )
             except Exception as e:
                 log_error(f"Erreur sauvegarde Sync_metadata: {e}")
+
+            try:
+                from deleted_dossiers_checker import check_deleted_dossiers
+
+                check_deleted_dossiers(
+                    client=client,
+                    table_id=table_ids["dossier_table_id"],
+                    demarche_number=demarche_number,
+                    log=log,
+                    log_error=log_error,
+                    deleted_since=deleted_since_cursor,
+                )
+
+            except Exception as e:
+                log_error(f"Erreur vérification dossiers supprimés : {e}")
+
             return True
 
         # Organiser les dossiers en lots
@@ -3170,6 +3192,7 @@ def process_demarche_for_grist_optimized(
                 {
                     "last_sync_at": sync_end_time,
                     "updated_since_cursor": sync_start_time,
+                    "deleted_since_cursor": sync_start_time,
                     "last_sync_status": "success" if total_errors == 0 else "partial",
                     "last_sync_duration": round(elapsed_time, 1),
                     "force_full_sync": False,
@@ -3178,6 +3201,21 @@ def process_demarche_for_grist_optimized(
             )
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
+
+        try:
+            from deleted_dossiers_checker import check_deleted_dossiers
+
+            check_deleted_dossiers(
+                client=client,
+                table_id=table_ids["dossier_table_id"],
+                demarche_number=demarche_number,
+                log=log,
+                log_error=log_error,
+                deleted_since=deleted_since_cursor,
+            )
+
+        except Exception as e:
+            log_error(f"Erreur vérification dossiers supprimés : {e}")
 
         if schema_method_successful:
             try:
