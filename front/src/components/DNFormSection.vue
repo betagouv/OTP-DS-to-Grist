@@ -36,21 +36,29 @@ const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
 const handleDNInputsChange = async () => {
   dnErrorMessage.value = null
 
-  // Only check with both values setted
-  if (!inputDNToken.value || !inputDNNumber.value)
+  if (!inputDNNumber.value)
     return emit('error-update', null)
+
+  const body = {
+    type: 'demarches',
+    api_url: dnApiUrl,
+    demarche_number: inputDNNumber.value
+  }
+
+  if (inputDNToken.value) {
+    body.api_token = inputDNToken.value
+  } else if (props.existingConfig?.otp_config_id) {
+    body.otp_config_id = props.existingConfig.otp_config_id
+  } else {
+    return emit('error-update', null)
+  }
 
   const response = await fetch('/api/test-connection', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      type: 'demarches',
-      api_token: inputDNToken.value,
-      api_url: dnApiUrl,
-      demarche_number: inputDNNumber.value
-    })
+    body: JSON.stringify(body)
   })
   const result = await response.json()
 

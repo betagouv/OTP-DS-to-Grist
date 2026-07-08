@@ -29,9 +29,9 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_token: 'mauvais-token',
         api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: 'mauvais-numéro',
+        api_token: 'mauvais-token',
       })
     })
 
@@ -65,9 +65,9 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_token: 'bon-token',
         api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: 'bon-numéro',
+        api_token: 'bon-token',
       })
     })
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
@@ -136,6 +136,54 @@ describe('DN form section', () => {
 
     expect(mockFetch).not.toHaveBeenCalled()
     expect(wrapper.emitted('error-update')[0]).toEqual([null])
+  })
+
+  it('sends otp_config_id when token empty and config has otp_config_id', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } },
+      props: { existingConfig: { otp_config_id: 42, has_ds_token: true } }
+    })
+
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'demarches',
+        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+        demarche_number: '12345',
+        otp_config_id: 42
+      })
+    })
+  })
+
+  it('uses explicit token over otp_config_id', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } },
+      props: { existingConfig: { otp_config_id: 42, has_ds_token: true } }
+    })
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('explicit-token')
+
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+
+    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(callBody.api_token).toBe('explicit-token')
+    expect(callBody.otp_config_id).toBeUndefined()
   })
 
   it('clears error when a field is emptied after failed test', async () => {
