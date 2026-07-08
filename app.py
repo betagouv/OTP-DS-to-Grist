@@ -259,7 +259,6 @@ def api_config():
         try:
             new_config = request.get_json()
 
-            from configuration.config_manager import ConfigManager
             new_config = ConfigManager.normalize_config(new_config)
 
             otp_config_id = new_config.get("otp_config_id")
@@ -508,9 +507,28 @@ def api_test_connection():
     connection_type = data.get("type")
 
     if connection_type == "demarches":
-        success, message = test_demarches_api(
-            data.get("api_token"), data.get("demarche_number")
-        )
+        api_token = data.get("api_token")
+        demarche_number = data.get("demarche_number")
+        otp_config_id = data.get("otp_config_id")
+
+        if not api_token:
+            if otp_config_id:
+                try:
+                    config = config_manager.load_config_by_id(otp_config_id)
+                except Exception:
+                    logger.error(
+                        f"Configuration introuvable pour otp_config_id={otp_config_id}"
+                    )
+                    return jsonify(
+                        {"success": False, "message": "Configuration introuvable"}
+                    ), 500
+                api_token = config.get("ds_api_token", "")
+            if not api_token:
+                return jsonify(
+                    {"success": False, "message": "Token API non fourni"}
+                ), 400
+
+        success, message = test_demarches_api(api_token, demarche_number)
     elif connection_type == "grist":
         success, message = test_grist_api(
             data.get("base_url"), data.get("api_key"), data.get("doc_id")
@@ -643,13 +661,15 @@ def api_sync_log_latest():
 
             return jsonify(
                 {
-                    "success": True, # ?
+                    "success": True,
                     "auto": format_sync(latest_auto),
                     "manual": format_sync(latest_manual),
                 }
             )
 
-        otp_config = db.query(OtpConfiguration).filter_by(grist_doc_id=grist_doc_id).first()
+        otp_config = (
+            db.query(OtpConfiguration).filter_by(grist_doc_id=grist_doc_id).first()
+        )
 
         if not otp_config:
             return jsonify({"success": False, "message": "Config not found"}), 404
@@ -871,9 +891,11 @@ def debug():
 def use_otp():
     return render_template("use-otp.html")
 
+
 @app.route("/wip")
 def wip():
     return render_template("wip.html")
+
 
 def vite_asset(entry="src/main.js"):
     if app.debug:
