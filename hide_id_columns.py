@@ -87,6 +87,8 @@ class IdColumnHider:
 
         nb_ok = 0
         nb_skip = 0
+        hidden = []
+        skipped = []
 
         for col in columns:
             col_id = col["fields"].get("colId", "")
@@ -99,19 +101,27 @@ class IdColumnHider:
             section_id = first_section.get(table_ref)
 
             if section_id is None:
-                log(f"[SKIP] {table_name}.{col_id} — aucune section trouvée")
+                log(f"[SKIP] {table_name}.{col_id} — aucune section trouvée", 2)
+                skipped.append(f"{table_name}.{col_id}")
                 nb_skip += 1
                 continue
 
             field_id = field_index.get((section_id, col_ref))
             if field_id is None:
-                log(f"[SKIP] {table_name}.{col_id} — déjà cachée ou absente")
+                log(f"[SKIP] {table_name}.{col_id} — déjà cachée ou absente", 2)
+                skipped.append(f"{table_name}.{col_id}")
                 nb_skip += 1
                 continue
 
             self._hide_field(field_id)
-            log(f"[OK]   {table_name}.{col_id} cachée (section {section_id})")
+            log(f"[OK]   {table_name}.{col_id} cachée (section {section_id})", 2)
+            hidden.append(f"{table_name}.{col_id}")
             nb_ok += 1
+
+        if hidden:
+            log(f"[OK] {len(hidden)} colonne(s) cachée(s) : {', '.join(hidden)}")
+        if skipped:
+            log(f"[SKIP] {len(skipped)} colonne(s) déjà cachée(s) ou absente(s)")
 
         return nb_ok, nb_skip
 
