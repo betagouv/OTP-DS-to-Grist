@@ -3179,6 +3179,15 @@ def process_demarche_for_grist_optimized(
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
+        if schema_method_successful:
+            try:
+                from hide_id_columns import IdColumnHider
+
+                hider = IdColumnHider(client.base_url, client.api_key, client.doc_id)
+                hider.hide_id_columns()
+            except Exception as e:
+                log_error(f"Erreur lors du masquage des colonnes _id: {e}")
+
         return total_success > 0 or schema_method_successful
 
     except Exception as e:
