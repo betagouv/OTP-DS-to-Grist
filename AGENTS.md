@@ -12,6 +12,26 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   - Ces étapes ne doivent pas contenir régression
   - Ces étapes devraient être autonome et ne pas dépendre d'une prochaine étape dans la mesure du possible
 
+## Architecture du projet
+
+### Frontend
+
+Le projet contient deux frontends coexistants :
+
+- **front/ (*nouveau*)** — Application Vue.js (Vite). C'est la cible pour toutes les
+  nouvelles fonctionnalités (ex: gestion multi-démarches).
+- **templates/ + static/js/ (*legacy*)** — Ancien frontend Flask/Jinja. À conserver
+  jusqu'à migration complète. S'inspirer de son fonctionnement pour les fonctionnalités
+  manquantes dans front/.
+
+**Règles :**
+- Les nouvelles fonctionnalités UI vont dans `front/` (Vue.js)
+- Les modifications du front legacy se limitent au correctif ou au portage vers `front/`
+- Le code partagé entre les deux (dans `static/js/`) doit être maintenu et testé via les
+  tests unitaires existants
+- Toujours vérifier si une fonctionnalité demandée existe déjà dans le legacy avant de la
+  coder from scratch
+
 ## Contexte du projet
 
 Ce projet a été initialement créé par un non-développeur avec assistance IA.
