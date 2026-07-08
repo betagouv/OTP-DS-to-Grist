@@ -71,20 +71,22 @@ const checkConfiguration = async (silent = false) => {
 
     if (missingFields.length !== 0) {
       if (silent)
-        return
+        return config
 
       const onlyGristKeyMissing = missingFields.length === 1
         && missingFields[0] === 'has_grist_key'
+
       if (onlyGristKeyMissing) {
         resultDiv.innerHTML = ''
-        return
+        return config
       }
 
-      return resultDiv.innerHTML = `
+      resultDiv.innerHTML = `
         <div class="fr-alert fr-alert--error">
           <h3 class="fr-alert__title">Configuration incomplète</h3>
           <p>Champs manquants: ${missingFields.join(', ')}</p>
         </div>`
+      return config
     }
 
     resultDiv.innerHTML = `

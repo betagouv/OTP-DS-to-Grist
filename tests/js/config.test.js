@@ -209,7 +209,9 @@ describe('checkConfiguration', () => {
         })
       })
 
-      await checkConfiguration()
+      const result = await checkConfiguration()
+
+      expect(result.otp_config_id).toBe(123)
 
       const resultDiv = document.getElementById('config_check_result')
       expect(resultDiv.innerHTML).toBe('')
@@ -239,7 +241,9 @@ describe('checkConfiguration', () => {
       })
 
       // Appel de la fonction
-      await checkConfiguration()
+      const result = await checkConfiguration()
+
+      expect(result.otp_config_id).toBe(123)
 
       // Vérifications
       const resultDiv = document.getElementById('config_check_result')
@@ -269,7 +273,9 @@ describe('checkConfiguration', () => {
         })
       })
 
-      await checkConfiguration()
+      const result = await checkConfiguration()
+
+      expect(result.otp_config_id).toBe(123)
 
       const resultDiv = document.getElementById('config_check_result')
       expect(resultDiv.innerHTML).toContain('Configuration incomplète')
