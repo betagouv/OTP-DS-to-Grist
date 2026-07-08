@@ -9,23 +9,23 @@ const testDemarchesConnection = async (silent = false) => {
     const ds_api_url = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
     const demarche_number = document.getElementById('demarche_number').value || ''
 
-    // Utiliser le token saisi OU recharger la config si vide
+    // Utiliser le token saisi ou envoyer otp_config_id pour la récupération côté serveur
     let ds_token = ds_token_input
+    let otp_config_id = null
     let config = null
 
     if (!ds_token) {
       try {
-        config = (await getConfiguration())[0]
-        ds_token = config.ds_api_token || ''
+        [config] = (await getConfiguration())
+        if (config?.otp_config_id) {
+          otp_config_id = config.otp_config_id
+        }
       } catch (e) {
         console.error('Erreur rechargement config:', e)
       }
-
-      if (config && config.has_ds_token)
-        return true  // Déjà configuré, pas besoin de tester
     }
 
-    if (!ds_token) {
+    if (!ds_token && !otp_config_id) {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
         <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
       </div>`
@@ -33,17 +33,24 @@ const testDemarchesConnection = async (silent = false) => {
       return false
     }
 
+    const body = {
+      type: 'demarches',
+      api_url: ds_api_url,
+      demarche_number: demarche_number
+    }
+
+    if (otp_config_id) {
+      body.otp_config_id = otp_config_id
+    } else {
+      body.api_token = ds_token
+    }
+
     const response = await fetch('/api/test-connection', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        type: 'demarches',
-        api_token: ds_token,
-        api_url: ds_api_url,
-        demarche_number: demarche_number
-      })
+      body: JSON.stringify(body)
     })
 
     const result = await response.json()
