@@ -59,10 +59,13 @@ class IdColumnHider:
             )
         resp.raise_for_status()
 
-    def hide_id_columns(self, suffix="_id"):
+    def hide_id_columns(self, suffix="_id", table_ids=None):
         """
         Cache dans la première section de chaque table toutes les colonnes
         dont le colId se termine par `suffix`. Retourne (nb_ok, nb_skip).
+
+        table_ids : ensemble optionnel de tableId (ex: {"Demarche_149930_dossiers", ...})
+        à traiter. Si None, traite tout le document.
         """
         tables = {
             r["id"]: r["fields"]["tableId"]
@@ -97,6 +100,10 @@ class IdColumnHider:
 
             table_ref = col["fields"].get("parentId")
             table_name = tables.get(table_ref, f"tableRef={table_ref}")
+
+            if table_ids is not None and table_name not in table_ids:
+                continue
+
             col_ref = col["id"]
             section_id = first_section.get(table_ref)
 

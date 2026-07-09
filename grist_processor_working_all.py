@@ -67,6 +67,18 @@ def print_api_timings():
     print("=" * 50 + "\n")
 
 
+def _flatten_table_ids(value, acc):
+    """Aplatit récursivement table_ids (dict/list/str imbriqués) en un set de tableId."""
+    if isinstance(value, str):
+        acc.add(value)
+    elif isinstance(value, dict):
+        for v in value.values():
+            _flatten_table_ids(v, acc)
+    elif isinstance(value, (list, tuple, set)):
+        for v in value:
+            _flatten_table_ids(v, acc)
+
+
 def get_optimized_schema(demarche_number):
     """
     Récupération optimisée du schéma avec fallback automatique.
