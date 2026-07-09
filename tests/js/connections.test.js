@@ -53,25 +53,95 @@ describe('testDemarchesConnection', () => {
 
       const mockResponse = {
         ok: true,
-        json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
+        json: jest.fn().mockResolvedValue({
+          success: true,
+          message: 'Connexion réussie'
+        })
       }
       global.fetch.mockResolvedValue(mockResponse)
 
       await testDemarchesConnection()
 
-      expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          type: 'demarches',
-          api_token: 'test-token',
-          api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
-          demarche_number: '123'
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/test-connection',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'demarches',
+            api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+            demarche_number: '123',
+            api_token: 'test-token'
+          })
         })
-      }))
+      )
       expect(mockResultDiv.innerHTML).toContain('Connexion réussie')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
-      expect(showNotification).toHaveBeenCalledWith('Connexion réussie', 'success')
+      expect(showNotification).toHaveBeenCalledWith(
+        'Connexion réussie',
+        'success'
+      )
       expect(global.console.error).not.toHaveBeenCalled()
+    }
+  )
+
+  it(
+    'should test connection successfully with otp_config_id',
+    async () => {
+      mockTokenInput.value = ''
+      global.getConfiguration.mockResolvedValue([{ otp_config_id: 42, has_ds_token: true }])
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
+      }
+      global.fetch.mockResolvedValue(mockResponse)
+      await testDemarchesConnection()
+      expect(global.getConfiguration).toHaveBeenCalled()
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/test-connection',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'demarches',
+            api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+            demarche_number: '',
+            otp_config_id: 42
+          })
+        })
+      )
+      const callBody = JSON.parse(global.fetch.mock.calls[0][1].body)
+      expect(callBody.otp_config_id).toBe(42)
+      expect(callBody.api_token).toBeUndefined()
+      expect(mockResultDiv.innerHTML).toContain('Connexion réussie')
+      expect(mockResultDiv.innerHTML).toContain('fr-alert--success')
+    }
+  )
+
+  it(
+    'should use explicit token over otp_config_id',
+    async () => {
+      mockTokenInput.value = 'explicit-token'
+      mockDemarcheInput.value = '123'
+      global.getConfiguration.mockResolvedValue([{ otp_config_id: 42, has_ds_token: true }])
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
+      })
+      await testDemarchesConnection()
+      expect(global.getConfiguration).not.toHaveBeenCalled()
+      const callBody = JSON.parse(global.fetch.mock.calls[0][1].body)
+      expect(callBody.api_token).toBe('explicit-token')
+      expect(callBody.otp_config_id).toBeUndefined()
+  }
+  )
+
+  it(
+    'should show error when no token and no otp_config_id',
+    async () => {
+      mockTokenInput.value = ''
+      global.getConfiguration.mockResolvedValue([{ has_ds_token: false }])
+      await testDemarchesConnection()
+      expect(mockResultDiv.innerHTML).toContain('Token API requis')
+      expect(global.fetch).not.toHaveBeenCalled()
     }
   )
 
@@ -91,31 +161,6 @@ describe('testDemarchesConnection', () => {
       expect(mockResultDiv.innerHTML).toContain('Erreur de connexion')
       expect(mockResultDiv.innerHTML).toContain('fr-alert--error')
       expect(showNotification).toHaveBeenCalledWith('Erreur de connexion', 'error')
-      expect(global.console.error).not.toHaveBeenCalled()
-    }
-  )
-
-  it(
-    'should reload config when no token in input but config exists',
-    async () => {
-      mockTokenInput.value = ''
-      global.getConfiguration.mockResolvedValue([{ds_api_token: 'config-token' }])
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: jest.fn().mockResolvedValue({ success: true, message: 'Connexion réussie' })
-      })
-
-      const result = await testDemarchesConnection()
-
-      expect(global.getConfiguration).toHaveBeenCalled()
-      expect(global.fetch).toHaveBeenCalledWith('/api/test-connection', expect.objectContaining({
-        body: JSON.stringify({
-          type: 'demarches',
-          api_token: 'config-token',
-          api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
-          demarche_number: ''
-        })
-      }))
       expect(global.console.error).not.toHaveBeenCalled()
     }
   )
@@ -148,6 +193,8 @@ describe('testDemarchesConnection', () => {
       expect(global.console.error).toHaveBeenCalledWith('Erreur lors du test DS:', expect.any(Error))
     }
   )
+
+
 })
 
 describe('testGristConnection', () => {

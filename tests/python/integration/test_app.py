@@ -208,6 +208,102 @@ class TestEndpoints:
         assert data["success"] is True
         assert data["message"] == "Connexion réussie"
 
+    @patch.object(ConfigManager, "load_config_by_id")
+    @patch("app.test_demarches_api")
+    def test_api_test_connection_demarches_with_otp_config_id(
+        self, mock_test, mock_load, client
+    ):
+        """otp_config_id sans api_token → charge le token serveur"""
+        mock_load.return_value = {"ds_api_token": "server-token"}
+        mock_test.return_value = (True, "Connexion réussie")
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "demarches",
+                    "otp_config_id": 42,
+                    "demarche_number": "123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is True
+        mock_load.assert_called_once_with(42)
+        mock_test.assert_called_once_with("server-token", "123")
+
+    @patch.object(ConfigManager, "load_config_by_id")
+    @patch("app.test_demarches_api")
+    def test_api_test_connection_demarches_with_both_token_and_otp_id(
+        self, mock_test, mock_load, client
+    ):
+        """api_token présent → prioritaire, pas d'appel à load_config_by_id"""
+        mock_test.return_value = (True, "Connexion réussie")
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "demarches",
+                    "api_token": "explicit-token",
+                    "otp_config_id": 42,
+                    "demarche_number": "123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        mock_load.assert_not_called()
+        mock_test.assert_called_once_with("explicit-token", "123")
+
+    @patch.object(ConfigManager, "load_config_by_id")
+    @patch("app.test_demarches_api")
+    def test_api_test_connection_demarches_with_otp_config_id_empty_token(
+        self, mock_test, mock_load, client
+    ):
+        """otp_config_id présent mais token vide en base → 400"""
+        mock_load.return_value = {"ds_api_token": ""}
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "demarches",
+                    "otp_config_id": 42,
+                    "demarche_number": "123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "non fourni" in data["message"]
+        mock_test.assert_not_called()
+
+    def test_api_test_connection_demarches_no_token_no_otp_id(self, client):
+        """ni api_token ni otp_config_id → 400"""
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "demarches",
+                    "demarche_number": "123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "non fourni" in data["message"]
+
     @patch("app.test_grist_api")
     def test_api_test_connection_grist(self, mock_test, client):
         """Test du endpoint de test de connexion Grist"""
@@ -479,6 +575,30 @@ class TestErrorHandling:
         data = json.loads(response.data)
         assert data["success"] is False
         assert "Unauthorized" in data["message"]
+
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_test_connection_demarches_with_otp_config_id_not_found(
+        self, mock_load, client
+    ):
+        """otp_config_id inexistant → 500 avec message JSON"""
+        mock_load.side_effect = Exception("Configuration not found")
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "demarches",
+                    "otp_config_id": 999,
+                    "demarche_number": "123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 500
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "introuvable" in data["message"]
 
     @patch("app.test_grist_api")
     def test_api_test_connection_grist_network_error(self, mock_test, client):
@@ -1140,6 +1260,7 @@ class TestApiSyncLogLatestWithOTPConfigId:
         data = json.loads(response.data)
         assert data["success"] is False
         assert "otp_config_id" in data["message"]
+
 
 class TestApiSyncLogLatestWithGristDocId:
     """Tests pour la route /api/sync-log/latest utilisant grist_doc_id"""
