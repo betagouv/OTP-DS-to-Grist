@@ -267,7 +267,7 @@ class SyncManager:
                 {
                     "status": "completed" if is_success else "error",
                     "progress": 100,
-                    "message": "Tâche terminée avec succès"
+                    "message": result.get("message", "Tâche terminée avec succès")
                     if is_success
                     else result.get("message", "Erreur"),
                     "result": result,
