@@ -5,8 +5,8 @@ from typing import Any, Dict, List
 
 import requests
 
-from utils.formatter import unwrap_json_list
 from utils.constants import DEMARCHES_API_URL
+from utils.formatter import unwrap_json_list
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -854,7 +854,10 @@ def extract_instructeurs_from_demarche(demarche_number: int) -> List[Dict[str, A
 
 
 def dossier_to_flat_data(
-    dossier_data: Dict[str, Any], exclude_repetition_champs=True, problematic_ids=None
+    dossier_data: Dict[str, Any],
+    exclude_repetition_champs=True,
+    problematic_ids=None,
+    descriptor_to_column_id=None,
 ) -> Dict[str, Any]:
     """
     Transforme les données d'un dossier en un format plat pour faciliter l'intégration.
@@ -864,6 +867,7 @@ def dossier_to_flat_data(
         dossier_data: Données du dossier récupérées via l'API
         exclude_repetition_champs: Si True, exclut les blocs répétables des champs standards
         problematic_ids: Set des IDs de descripteurs problématiques à filtrer
+        descriptor_to_column_id: Mapping stable {descriptor_id: colonne_id} issu du schéma DS
 
     Returns:
         Dictionnaire avec les données du dossier en format plat
@@ -947,16 +951,19 @@ def dossier_to_flat_data(
 
         # Appliquer les suffixes pour les doublons
         for item in extracted:
-            base_label = item["base_label"]
-            normalized = normalize_column_name(base_label)
-
-            # Gérer les doublons
-            if normalized in label_counters:
-                label_counters[normalized] += 1
-                item["label"] = f"{base_label}_{label_counters[normalized]}"
+            descriptor_id = item.get("descriptor_id")
+            if descriptor_to_column_id and descriptor_id in descriptor_to_column_id:
+                item["label"] = descriptor_to_column_id[descriptor_id]
             else:
-                label_counters[normalized] = 0
-                item["label"] = base_label
+                base_label = item["base_label"]
+                normalized = normalize_column_name(base_label)
+                if normalized not in label_counters:
+                    label_counters[normalized] = {}
+                descriptor_map = label_counters[normalized]
+                if descriptor_id not in descriptor_map:
+                    descriptor_map[descriptor_id] = len(descriptor_map)
+                suffix = descriptor_map[descriptor_id]
+                item["label"] = base_label if suffix == 0 else f"{base_label}_{suffix}"
 
         champ_values.extend(extracted)
 
@@ -981,31 +988,29 @@ def dossier_to_flat_data(
 
         # Appliquer les suffixes pour les doublons
         for item in extracted:
-            base_label = item["base_label"]
-            # Enlever le préfixe "annotation_" si présent pour la normalisation
-            label_for_normalization = base_label
-            if label_for_normalization.startswith("annotation_"):
-                label_for_normalization = label_for_normalization[11:]
-
-            normalized = normalize_column_name(label_for_normalization)
-
-            # Gérer les doublons
-            if normalized in annotation_label_counters:
-                annotation_label_counters[normalized] += 1
-                # Reconstruire le label avec annotation_ et le suffixe
-                if base_label.startswith("annotation_"):
-                    item["label"] = (
-                        f"{base_label}_{annotation_label_counters[normalized]}"
-                    )
-                else:
-                    item["label"] = (
-                        f"annotation_{base_label}_{annotation_label_counters[normalized]}"
-                    )
+            descriptor_id = item.get("descriptor_id")
+            if descriptor_to_column_id and descriptor_id in descriptor_to_column_id:
+                item["label"] = f"annotation_{descriptor_to_column_id[descriptor_id]}"
             else:
-                annotation_label_counters[normalized] = 0
-                # Garder le label tel quel (avec annotation_ si déjà présent)
-                if not base_label.startswith("annotation_"):
-                    item["label"] = f"annotation_{base_label}"
+                base_label = item["base_label"]
+                label_for_normalization = base_label
+                if label_for_normalization.startswith("annotation_"):
+                    label_for_normalization = label_for_normalization[11:]
+                normalized = normalize_column_name(label_for_normalization)
+                if normalized not in annotation_label_counters:
+                    annotation_label_counters[normalized] = {}
+                descriptor_map = annotation_label_counters[normalized]
+                if descriptor_id not in descriptor_map:
+                    descriptor_map[descriptor_id] = len(descriptor_map)
+                suffix = descriptor_map[descriptor_id]
+                base_with_prefix = (
+                    base_label
+                    if base_label.startswith("annotation_")
+                    else f"annotation_{base_label}"
+                )
+                item["label"] = (
+                    base_with_prefix if suffix == 0 else f"{base_with_prefix}_{suffix}"
+                )
 
         annotation_values.extend(extracted)
 

@@ -532,6 +532,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     has_repetable_blocks = False
     repetable_blocks = {}  # NOUVEAU : Dict au lieu d'une seule liste
     has_carto_fields = False
+    descriptor_to_column_id = {}  # {descriptor_id: colonne_id_suffixée stable}
 
     # Traiter les descripteurs de champs
     if demarche_schema.get("activeRevision") and demarche_schema["activeRevision"].get(
@@ -679,6 +680,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                     counter += 1
 
                 # ✅ FORMAT AVEC FIELDS
+                descriptor_to_column_id[descriptor.get("id")] = normalized_label
                 champ_columns.append(
                     {
                         "id": normalized_label,
@@ -905,6 +907,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                 counter += 1
 
             # ✅ FORMAT AVEC FIELDS
+            descriptor_to_column_id[descriptor.get("id")] = annotation_label
             annotation_columns.append(
                 {
                     "id": annotation_label,
@@ -919,6 +922,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         "annotations": annotation_columns,
         "has_repetable_blocks": has_repetable_blocks,
         "has_carto_fields": has_carto_fields,
+        "descriptor_to_column_id": descriptor_to_column_id,
     }
 
     if has_repetable_blocks:
