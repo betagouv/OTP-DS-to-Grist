@@ -28,6 +28,7 @@ const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
   return serverConfigs.value
 })
+const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
 watch(serverConfigs, (val) => {
   setDemarcheCount(val.length)
@@ -49,6 +50,8 @@ onMounted(loadConfig)
 
 const handleSave = async () => {
   if (!configValid.value) return
+
+  const hadEmpty = serverConfigs.value.includes(null)
 
   const config = {
     ds_api_token: dnSectionRefs.value[0].getData().token,
@@ -75,6 +78,7 @@ const handleSave = async () => {
 
   if (result.success) {
     await loadConfig()
+    if (hadEmpty) serverConfigs.value.push(null)
   } else {
     console.error('Erreur lors de la sauvegarde :', result.message)
   }
@@ -116,6 +120,10 @@ const handleSync = async () => {
   } catch {}
 }
 
+const handleAddDemarche = async () => {
+  serverConfigs.value.push(null)
+}
+
 </script>
 
 <template>
@@ -140,7 +148,8 @@ const handleSync = async () => {
           icon="fr-icon-add-circle-line"
           data-test-id="add-dn-section-button"
           secondary
-          @click="console.log('WIP')"
+          @click="handleAddDemarche"
+          :disabled="hasUnsavedSection"
         />
       </div>
     </div>

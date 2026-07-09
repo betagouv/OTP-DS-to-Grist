@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 import {
   DsfrAccordion,
@@ -32,6 +32,12 @@ const dnErrorMessage = ref(null)
 const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
+
+const sectionEmpty = computed(() => {
+  const isUnsaved = props.existingConfig === null
+    || props.existingConfig?.otp_config_id === null
+  return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
+})
 
 const handleDNInputsChange = async () => {
   dnErrorMessage.value = null
@@ -137,21 +143,21 @@ watch(() => props.existingConfig, (config) => {
             label="Lancer la synchronisation"
             data-test-id="sync-button"
             primary
-            :disabled="!canSync"
+            :disabled="!canSync || sectionEmpty"
             @click="$emit('sync')"
           />
           <DsfrButton
             label="Sauvegarder"
             data-test-id="submit-form-button"
             secondary
-            :disabled="!configValid"
+            :disabled="!configValid || sectionEmpty"
             @click="$emit('save')"
           />
           <DsfrButton
             label="Supprimer"
             data-test-id="delete-config-button"
             secondary
-            :disabled="!canDelete"
+            :disabled="!canDelete || sectionEmpty"
             @click="$emit('delete')"
           />
         </DsfrButtonGroup>

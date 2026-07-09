@@ -94,8 +94,6 @@ defineExpose({
 
 <template>
   <div>
-    <h6 class="fr-mb-3w">1. Grist</h6>
-
     <DsfrAccordionsGroup v-model="activeAccordion">
       <DsfrAccordion
         id="accordion-grist"
