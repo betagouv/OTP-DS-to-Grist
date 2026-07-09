@@ -3233,6 +3233,8 @@ def process_demarche_for_grist_optimized(
             try:
                 from hide_id_columns import IdColumnHider
 
+                current_table_ids = set()
+                _flatten_table_ids(table_ids, current_table_ids)
                 hider = IdColumnHider(client.base_url, client.api_key, client.doc_id)
                 hider.hide_id_columns()
             except Exception as e:
