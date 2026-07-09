@@ -123,9 +123,11 @@ class IdColumnHider:
             nb_ok += 1
 
         if hidden:
-            log(f"[OK] {len(hidden)} colonne(s) cachée(s) : {', '.join(hidden)}")
+            hidden_tables = sorted({h.split(".")[0] for h in hidden})
+            log(f"[OK] {len(hidden)} colonne(s) cachée(s) sur : {', '.join(hidden_tables)}")
         if skipped:
-            log(f"[SKIP] {len(skipped)} colonne(s) déjà cachée(s) ou absente(s)")
+            skipped_tables = sorted({s.split(".")[0] for s in skipped})
+            log(f"[SKIP] {len(skipped)} colonne(s) sur : {', '.join(skipped_tables)}")
 
         return nb_ok, nb_skip
 
