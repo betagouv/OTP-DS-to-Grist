@@ -667,13 +667,6 @@ def api_sync_log_latest():
                 }
             )
 
-        otp_config = (
-            db.query(OtpConfiguration).filter_by(grist_doc_id=grist_doc_id).first()
-        )
-
-        if not otp_config:
-            return jsonify({"success": False, "message": "Config not found"}), 404
-
         latest_auto = (
             db.query(SyncLog)
             .filter_by(

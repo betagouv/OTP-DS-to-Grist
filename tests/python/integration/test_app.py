@@ -1271,7 +1271,6 @@ class TestApiSyncLogLatestWithGristDocId:
         mock_db = MagicMock()
         mock_session.return_value = mock_db
 
-        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
         mock_sync_auto = SyncLogMock(
             "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
         )
@@ -1279,26 +1278,10 @@ class TestApiSyncLogLatestWithGristDocId:
             "2026-04-20T14:30:00+00:00", "success", 5, 1, "Sync manuelle réussie"
         )
 
-        query_calls = []
-
-        def query_side_effect(model):
-            query_calls.append(model)
-            mock_result = MagicMock()
-            mock_filter = MagicMock()
-            mock_order = MagicMock()
-
-            if model.__name__ == "OtpConfiguration":
-                mock_filter.order_by.return_value.first.return_value = mock_otp_config
-            elif query_calls.count(model) == 1:
-                mock_filter.order_by.return_value.first.return_value = mock_sync_auto
-            else:
-                mock_filter.order_by.return_value.first.return_value = mock_sync_manual
-
-            mock_result.filter_by.return_value = mock_filter
-            mock_order.first.return_value = None
-            return mock_result
-
-        mock_db.query.side_effect = query_side_effect
+        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
+            mock_sync_auto,
+            mock_sync_manual,
+        ]
 
         response = client.get("/api/sync-log/latest?grist_doc_id=1")
         assert response.status_code == 200
@@ -1318,29 +1301,14 @@ class TestApiSyncLogLatestWithGristDocId:
         mock_db = MagicMock()
         mock_session.return_value = mock_db
 
-        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
         mock_sync_auto = SyncLogMock(
             "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
         )
 
-        query_count = [0]
-
-        def query_side_effect(model):
-            query_count[0] += 1
-            mock_result = MagicMock()
-            mock_filter = MagicMock()
-
-            if model.__name__ == "OtpConfiguration":
-                mock_filter.order_by.return_value.first.return_value = mock_otp_config
-            elif query_count[0] == 2:
-                mock_filter.order_by.return_value.first.return_value = mock_sync_auto
-            else:
-                mock_filter.order_by.return_value.first.return_value = None
-
-            mock_result.filter_by.return_value = mock_filter
-            return mock_result
-
-        mock_db.query.side_effect = query_side_effect
+        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
+            mock_sync_auto,
+            None,
+        ]
 
         response = client.get("/api/sync-log/latest?grist_doc_id=1")
         assert response.status_code == 200
@@ -1356,25 +1324,10 @@ class TestApiSyncLogLatestWithGristDocId:
         mock_db = MagicMock()
         mock_session.return_value = mock_db
 
-        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
-
-        query_count = [0]
-
-        def query_side_effect(model):
-            query_count[0] += 1
-            mock_result = MagicMock()
-            mock_filter = MagicMock()
-            mock_order = MagicMock()
-            if model.__name__ == "OtpConfiguration":
-                mock_order.first.return_value = mock_otp_config
-            else:
-                mock_order.first.return_value = None
-            mock_filter.order_by.return_value = mock_order
-            mock_result.filter_by.return_value = mock_filter
-
-            return mock_result
-
-        mock_db.query.side_effect = query_side_effect
+        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
+            None,
+            None,
+        ]
 
         response = client.get("/api/sync-log/latest?grist_doc_id=1")
         assert response.status_code == 200
@@ -1385,14 +1338,20 @@ class TestApiSyncLogLatestWithGristDocId:
         assert data["manual"] is None
 
     @patch("app.SessionLocal")
-    def test_api_sync_log_latest_missing_config(self, mock_session, client):
-        """Test avec config inexistante - 404"""
+    def test_api_sync_log_latest_no_sync_for_grist_doc(self, mock_session, client):
+        """Test retour null quand aucun SyncLog pour ce grist_doc_id"""
         mock_db = MagicMock()
         mock_session.return_value = mock_db
-        mock_db.query.return_value.filter_by.return_value.first.return_value = None
+
+        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
+            None,
+            None,
+        ]
 
         response = client.get("/api/sync-log/latest?grist_doc_id=999")
-        assert response.status_code == 404
+        assert response.status_code == 200
 
         data = json.loads(response.data)
-        assert data["success"] is False
+        assert data["success"] is True
+        assert data["auto"] is None
+        assert data["manual"] is None
