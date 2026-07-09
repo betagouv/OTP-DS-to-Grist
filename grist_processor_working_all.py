@@ -3236,7 +3236,7 @@ def process_demarche_for_grist_optimized(
                 current_table_ids = set()
                 _flatten_table_ids(table_ids, current_table_ids)
                 hider = IdColumnHider(client.base_url, client.api_key, client.doc_id)
-                hider.hide_id_columns()
+                hider.hide_id_columns(table_ids=current_table_ids)
             except Exception as e:
                 log_error(f"Erreur lors du masquage des colonnes _id: {e}")
 
