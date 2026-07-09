@@ -108,20 +108,17 @@ class IdColumnHider:
             section_id = first_section.get(table_ref)
 
             if section_id is None:
-                log(f"[SKIP] {table_name}.{col_id} — aucune section trouvée", 2)
                 skipped.append(f"{table_name}.{col_id}")
                 nb_skip += 1
                 continue
 
             field_id = field_index.get((section_id, col_ref))
             if field_id is None:
-                log(f"[SKIP] {table_name}.{col_id} — déjà cachée ou absente", 2)
                 skipped.append(f"{table_name}.{col_id}")
                 nb_skip += 1
                 continue
 
             self._hide_field(field_id)
-            log(f"[OK]   {table_name}.{col_id} cachée (section {section_id})", 2)
             hidden.append(f"{table_name}.{col_id}")
             nb_ok += 1
 
