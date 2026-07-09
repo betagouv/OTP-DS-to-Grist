@@ -2534,7 +2534,7 @@ def process_demarche_for_grist_optimized(
             try:
                 from deleted_dossiers_checker import check_deleted_dossiers
 
-                check_deleted_dossiers(
+                deletion_result = check_deleted_dossiers(
                     client=client,
                     table_id=table_ids["dossier_table_id"],
                     demarche_number=demarche_number,
@@ -2542,7 +2542,8 @@ def process_demarche_for_grist_optimized(
                     log_error=log_error,
                     deleted_since=deleted_since_cursor,
                 )
-
+                nb_deleted = (deletion_result or {}).get("newly_marked", 0)
+                log(f"Nombre de dossiers marqués supprimés dans Grist : {nb_deleted}")
             except Exception as e:
                 log_error(f"Erreur vérification dossiers supprimés : {e}")
 
@@ -3217,7 +3218,7 @@ def process_demarche_for_grist_optimized(
         try:
             from deleted_dossiers_checker import check_deleted_dossiers
 
-            check_deleted_dossiers(
+            deletion_result = check_deleted_dossiers(
                 client=client,
                 table_id=table_ids["dossier_table_id"],
                 demarche_number=demarche_number,
@@ -3225,6 +3226,8 @@ def process_demarche_for_grist_optimized(
                 log_error=log_error,
                 deleted_since=deleted_since_cursor,
             )
+            nb_deleted = (deletion_result or {}).get("newly_marked", 0)
+            log(f"Nombre de dossiers marqués supprimés dans Grist : {nb_deleted}")
 
         except Exception as e:
             log_error(f"Erreur vérification dossiers supprimés : {e}")

@@ -55,6 +55,7 @@ def parse_output(output_lines: list[str]) -> dict:
     total_processed = 0
     errors_list = []
 
+    nb_deleted = 0
     # Parser la sortie pour extraire les statistiques
     for line in output_lines:
         # Essayer de parser succès
@@ -76,6 +77,17 @@ def parse_output(output_lines: list[str]) -> dict:
             except (ValueError, IndexError):
                 pass
 
+        # Essayer de parser le nombre de dossiers supprimés côté DN
+        if "Nombre de dossiers marqués supprimés dans Grist :" in line:
+            try:
+                nb_deleted = int(
+                    line.split("Nombre de dossiers marqués supprimés dans Grist :")[
+                        -1
+                    ].strip()
+                )
+            except (ValueError, IndexError):
+                pass
+
     # Calculer total si pas déjà extrait
     if total_processed == 0:
         total_processed = success_count + error_count
@@ -90,16 +102,23 @@ def parse_output(output_lines: list[str]) -> dict:
         )
     )
 
+    message = (
+        f"Synchronisation terminée: {success_count}/{total_processed} dossiers synchronisés"
+        if error_count == 0
+        else f"Synchronisation terminée avec {error_count} erreurs sur {total_processed} dossiers"
+    )
+    if nb_deleted > 0:
+        message += f" — {nb_deleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist)"
+
     return {
         "success": error_count == 0,
         "sync_reason": "already_up_to_date" if already_up_to_date else "synced",
-        "message": f"Synchronisation terminée: {success_count}/{total_processed} dossiers synchronisés"
-        if error_count == 0
-        else f"Synchronisation terminée avec {error_count} erreurs sur {total_processed} dossiers",
+        "message": message,
         "dossier_count": total_processed,
         "success_count": success_count,
         "error_count": error_count,
         "total_processed": total_processed,
+        "deleted_dossiers_count": nb_deleted,
         "errors": errors_list,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
