@@ -229,9 +229,14 @@ const updateTaskProgress = (task) => {
     if (task.status === 'completed' && !hasSignificantErrors) {
       // TODO use showSyncBanner or derivated
       if (task.sync_reason === 'already_up_to_date') {
+         const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
+        const deletedLine = nbDeleted > 0
+          ? `<p>${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist)</p>`
+          : ''
         if (resultContentManual) resultContentManual.innerHTML = `<div class="fr-alert fr-alert--info">
           <h3 class="fr-alert__title">Grist déjà à jour</h3>
           <p>Aucun dossier nouveau ou modifié depuis la dernière synchronisation.</p>
+          ${deletedLine}
           <p>${task.message}</p>
         </div>`
         showNotification('Grist déjà à jour', 'info')
