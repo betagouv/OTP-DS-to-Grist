@@ -66,7 +66,7 @@ onUnmounted(() => {
     class="fr-card fr-card--light-grey fr-card--no-border fr-mb-4w"
   >
     <div class="fr-card__body">
-      <div class="fr-card__content">
+      <div class="fr-card__content fr-mb-3w">
         <h2 class="fr-card__title">Synchronisation des données</h2>
         <p v-if="totalDemarches > 0" class="fr-text--bold fr-mb-2w">{{ demarcheIndex }}/{{ totalDemarches }} démarche(s) synchronisée(s)</p>
         <p class="fr-mb-2w">{{ task.message }}</p>
@@ -84,7 +84,7 @@ onUnmounted(() => {
           />
         </div>
         <div v-if="counts && (counts.success > 0 || counts.error > 0)" class="fr-grid-row fr-grid-row--gutters fr-mt-2w">
-          <div v-if="counts.success > 0" class="fr-col-6">
+          <div v-if="counts.success > 0" class="fr-col-2">
             <SyncStatsCard :count="counts.success" label="Dossiers synchronisés" color="green" />
           </div>
           <div v-if="counts.error > 0" class="fr-col-6">

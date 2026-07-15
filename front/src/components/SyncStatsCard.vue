@@ -22,9 +22,14 @@ defineProps({
 </template>
 
 <style scoped>
+.fr-card {
+  aspect-ratio: 1;
+}
+
 .border-green {
   border-bottom: 4px solid var(--text-default-success);
 }
+
 .border-red {
   border-bottom: 4px solid var(--text-default-error);
 }
