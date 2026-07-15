@@ -418,6 +418,27 @@ describe('Config loading on mount', () => {
     expect(consoleSpy).toHaveBeenCalled()
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
   })
+
+  it('emits config-loaded with configs after successful load', async () => {
+    const configs = [
+      { otp_config_id: 1, grist_base_url: 'https://example.com' },
+      { otp_config_id: 2, grist_base_url: 'https://other.com' }
+    ]
+    globalThis.getGristContext.mockResolvedValue(mockContext)
+    globalThis.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ configs })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('config-loaded')).toBeTruthy()
+    expect(wrapper.emitted('config-loaded')[0][0]).toEqual(configs)
+  })
 })
 
 describe('Save with existing config (UPDATE)', () => {

@@ -114,6 +114,52 @@ describe('SyncProgress', () => {
     expect(emitted[1][0]).toBe(false)
   })
 
+  it('emit sync-started on running', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('sync-started')).toBeTruthy()
+    expect(wrapper.emitted('sync-started').length).toBe(1)
+  })
+
+  it('emit sync-finished with result on completed', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'completed', progress: 100, message: 'Terminé',
+      result: { success_count: 5, error_count: 1 },
+      end_time: 1752600000
+    })
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('sync-finished')
+    expect(emitted).toBeTruthy()
+    expect(emitted[0][0]).toEqual({
+      status: 'completed',
+      success_count: 5,
+      error_count: 1,
+      timestamp: new Date(1752600000 * 1000).toISOString()
+    })
+  })
+
+  it('emit sync-finished with error on error', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'error', progress: 50, message: 'Erreur',
+      result: { success_count: 2, error_count: 3 },
+      end_time: 1752600000
+    })
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('sync-finished')
+    expect(emitted).toBeTruthy()
+    expect(emitted[0][0]).toEqual({
+      status: 'error',
+      success_count: 2,
+      error_count: 3,
+      timestamp: new Date(1752600000 * 1000).toISOString()
+    })
+  })
+
   it('scrolls into view when sync starts running', async () => {
     triggerTaskUpdate({ status: 'running', progress: 0, message: 'Démarrage' })
 
