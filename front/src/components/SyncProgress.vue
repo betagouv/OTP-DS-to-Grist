@@ -8,7 +8,7 @@ import SyncStatsCard from './SyncStatsCard.vue'
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 
 const { totalDemarches, demarcheIndex } = useDemarcheContext()
-const emit = defineEmits(['sync-running-changed'])
+const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
 const task = ref(null)
 const socket = ref(null)
 const syncCardEl = ref(null)
@@ -35,9 +35,18 @@ onMounted(() => {
   socket.value.on('task_update', (data) => {
     task.value = data.task
     if (data.task.status === 'running') {
+      emit('sync-started')
       emit('sync-running-changed', true)
     } else if (data.task.status === 'completed' || data.task.status === 'error') {
       emit('sync-running-changed', false)
+      emit('sync-finished', {
+        status: data.task.status,
+        success_count: data.task.result?.success_count ?? counts.value?.success ?? 0,
+        error_count: data.task.result?.error_count ?? counts.value?.error ?? 0,
+        timestamp: data.task.end_time
+          ? new Date(data.task.end_time * 1000).toISOString()
+          : new Date().toISOString()
+      })
     }
   })
 })

@@ -12,6 +12,8 @@ const props = defineProps({
   syncRunning: { type: Boolean, default: false }
 })
 
+const emit = defineEmits(['config-loaded'])
+
 const { setDemarcheCount } = useDemarcheContext()
 const gristError = ref(null)
 const dnError = ref(null)
@@ -41,6 +43,7 @@ const loadConfig = async () => {
     const data = await response.json()
     serverConfigs.value = data.configs || []
     otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
+    emit('config-loaded', serverConfigs.value)
   } catch (e) {
     console.error('Erreur lors du chargement de la configuration :', e)
   }
