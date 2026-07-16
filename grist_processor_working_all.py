@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 import repetable_processor as rp
 from queries import dossier_to_flat_data, get_demarche, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
+from deleted_dossiers_checker import check_deleted_dossiers
 from queries_util import get_timings
 from schema_utils import (
     create_columns_from_schema,
@@ -2532,8 +2533,6 @@ def process_demarche_for_grist_optimized(
                 log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
             try:
-                from deleted_dossiers_checker import check_deleted_dossiers
-
                 deletion_result = check_deleted_dossiers(
                     client=client,
                     table_id=table_ids["dossier_table_id"],
@@ -3216,8 +3215,6 @@ def process_demarche_for_grist_optimized(
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
         try:
-            from deleted_dossiers_checker import check_deleted_dossiers
-
             deletion_result = check_deleted_dossiers(
                 client=client,
                 table_id=table_ids["dossier_table_id"],
