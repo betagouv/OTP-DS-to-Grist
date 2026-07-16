@@ -229,7 +229,7 @@ const updateTaskProgress = (task) => {
     if (task.status === 'completed' && !hasSignificantErrors) {
       // TODO use showSyncBanner or derivated
       if (task.sync_reason === 'already_up_to_date') {
-         const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
+        const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
         const deletedLine = nbDeleted > 0
           ? `<p>${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist)</p>`
           : ''
