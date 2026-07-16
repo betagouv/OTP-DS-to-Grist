@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
@@ -7,6 +7,7 @@ import DNFormSection from '../DNFormSection.vue'
 describe('DN form section', () => {
   it('shows error message when form validation fails', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: false, message: 'Token invalide' })
     })
 
@@ -23,6 +24,7 @@ describe('DN form section', () => {
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('mauvais-numéro')
+    await flushPromises()
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -43,6 +45,7 @@ describe('DN form section', () => {
 
   it('shows no error when form is valid', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
 
@@ -140,6 +143,7 @@ describe('DN form section', () => {
 
   it('sends otp_config_id when token empty and config has otp_config_id', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
     globalThis.fetch = mockFetch
@@ -166,6 +170,7 @@ describe('DN form section', () => {
 
   it('uses explicit token over otp_config_id', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
     globalThis.fetch = mockFetch
@@ -188,6 +193,7 @@ describe('DN form section', () => {
 
   it('clears error when a field is emptied after failed test', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: false, message: 'Erreur de connexion' })
     })
     globalThis.fetch = mockFetch
@@ -199,6 +205,7 @@ describe('DN form section', () => {
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('12345')
+    await flushPromises()
 
     expect(wrapper.find('.fr-error-text').exists()).toBe(true)
 

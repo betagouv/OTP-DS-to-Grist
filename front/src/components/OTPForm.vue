@@ -7,6 +7,7 @@ import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
+import { api } from '../utils/InternalApi'
 
 const props = defineProps({
   syncRunning: { type: Boolean, default: false }
@@ -39,8 +40,7 @@ watch(serverConfigs, (val) => {
 const loadConfig = async () => {
   try {
     const context = await getGristContext()
-    const response = await fetch(`/api/config${context.params}`)
-    const data = await response.json()
+    const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
     otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
     emit('config-loaded', serverConfigs.value)
@@ -69,15 +69,7 @@ const handleSave = async () => {
     config.otp_config_id = otpConfigId.value
   }
 
-  const response = await fetch('/api/config', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(config)
-  })
-
-  const result = await response.json()
+  const result = await api.saveConfig(config)
 
   if (result.success) {
     await loadConfig()
@@ -96,11 +88,7 @@ const handleDelete = async () => {
   if (!confirmed) return
 
   try {
-    const response = await fetch(`/api/config/${otpConfigId.value}`, {
-      method: 'DELETE'
-    })
-
-    const result = await response.json()
+    const result = await api.deleteConfig(otpConfigId.value)
 
     if (!result.success)
       throw Error(result.message)
@@ -115,11 +103,7 @@ const handleDelete = async () => {
 const handleSync = async () => {
   if (!otpConfigId.value || props.syncRunning) return
   try {
-    await fetch('/api/start-sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ otp_config_id: otpConfigId.value })
-    })
+    await api.startSync(otpConfigId.value)
   } catch {}
 }
 

@@ -290,6 +290,7 @@ describe('Save button action', () => {
 
   it('sends correct config to API on save', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
 
@@ -353,6 +354,7 @@ describe('Config loading on mount', () => {
   it('loads existing config via GET /api/config with Grist context params', async () => {
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [{ otp_config_id: 1, grist_base_url: 'https://example.com' }] })
     })
 
@@ -426,6 +428,7 @@ describe('Config loading on mount', () => {
     ]
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs })
     })
 
@@ -451,6 +454,7 @@ describe('Save with existing config (UPDATE)', () => {
       params: '?grist_user_id=5&grist_doc_id=doc-123'
     })
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({
         configs: [{
           otp_config_id: 1,
@@ -476,6 +480,7 @@ describe('Save with existing config (UPDATE)', () => {
   it('includes otp_config_id in POST body when updating', async () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
 
@@ -511,8 +516,8 @@ describe('Save with existing config (UPDATE)', () => {
 
   it('re-fetches config after successful save', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
     globalThis.fetch = fetchMock
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
@@ -548,6 +553,7 @@ describe('Save with existing config (UPDATE)', () => {
   it('handles save error gracefully without crashing', async () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: false, message: 'Erreur de typage' })
     })
 
@@ -608,6 +614,7 @@ describe('Delete action', () => {
     vi.restoreAllMocks()
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({
         configs: [{
           otp_config_id: 1,
@@ -638,6 +645,7 @@ describe('Delete action', () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
 
@@ -655,6 +663,7 @@ describe('Delete action', () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
 
@@ -681,6 +690,7 @@ describe('Delete action', () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: false, message: 'Erreur de suppression' })
     })
 
@@ -709,6 +719,7 @@ describe('Delete action', () => {
   it('does not delete when there is no otpConfigId', async () => {
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [] })
     })
 
@@ -738,6 +749,7 @@ describe('Sync action', () => {
       params: '?grist_user_id=5&grist_doc_id=doc-123'
     })
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({
         configs: [{
           otp_config_id: 1,
@@ -779,6 +791,7 @@ describe('Sync action', () => {
       params: '?grist_user_id=5&grist_doc_id=doc-123'
     })
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [] })
     })
 
@@ -802,6 +815,7 @@ describe('Sync action', () => {
       params: '?grist_user_id=5&grist_doc_id=doc-123'
     })
     const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [{
         otp_config_id: 1,
         grist_base_url: 'https://example.com'

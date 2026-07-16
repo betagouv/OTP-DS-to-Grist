@@ -13,6 +13,7 @@ describe('useSyncStatus', () => {
   describe('fetchLatestSync', () => {
     it('populates lastAutoSync and lastManualSync from API response', async () => {
       globalThis.fetch.mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({
           success: true,
           auto: { status: 'success', success_count: 5, error_count: 1, timestamp: '2026-07-15T10:00:00' },
@@ -30,6 +31,7 @@ describe('useSyncStatus', () => {
 
     it('sets refs to null when API returns no sync logs', async () => {
       globalThis.fetch.mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({ success: true, auto: null, manual: null })
       })
 
@@ -42,6 +44,7 @@ describe('useSyncStatus', () => {
 
     it('does not update refs when API returns success: false', async () => {
       globalThis.fetch.mockResolvedValue({
+        ok: true,
         json: () => Promise.resolve({ success: false, message: 'Config not found' })
       })
 
@@ -65,6 +68,7 @@ describe('useSyncStatus', () => {
     it('aggregates sync logs from multiple configs', async () => {
       globalThis.fetch
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             success: true,
             auto: { status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00' },
@@ -72,6 +76,7 @@ describe('useSyncStatus', () => {
           })
         })
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             success: true,
             auto: { status: 'success', success_count: 5, error_count: 1, timestamp: '2026-07-15T09:00:00' },
@@ -93,6 +98,7 @@ describe('useSyncStatus', () => {
     it('keeps the most recent sync when multiple autos exist', async () => {
       globalThis.fetch
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             success: true,
             auto: { status: 'success', success_count: 10, error_count: 0, timestamp: '2026-07-15T12:00:00' },
@@ -100,6 +106,7 @@ describe('useSyncStatus', () => {
           })
         })
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             success: true,
             auto: { status: 'error', success_count: 2, error_count: 5, timestamp: '2026-07-15T08:00:00' },
@@ -126,9 +133,11 @@ describe('useSyncStatus', () => {
     it('skips configs whose API call fails', async () => {
       globalThis.fetch
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({ success: false })
         })
         .mockResolvedValueOnce({
+          ok: true,
           json: () => Promise.resolve({
             success: true,
             auto: { status: 'success', success_count: 4, error_count: 0, timestamp: '2026-07-15T10:00:00' },

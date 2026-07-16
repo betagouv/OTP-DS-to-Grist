@@ -11,6 +11,7 @@ import {
 } from '@gouvminint/vue-dsfr'
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import { api } from '../utils/InternalApi'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
@@ -59,14 +60,7 @@ const handleDNInputsChange = async () => {
     return emit('error-update', null)
   }
 
-  const response = await fetch('/api/test-connection', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body)
-  })
-  const result = await response.json()
+  const result = await api.testConnection(body)
 
   dnErrorMessage.value = result.success ? '' : result.message
 

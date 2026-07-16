@@ -1,13 +1,13 @@
 import { ref } from 'vue'
+import { api } from '../utils/InternalApi'
 
 export const useSyncStatus = () => {
   const lastAutoSync = ref(null)
   const lastManualSync = ref(null)
 
+
   const fetchLatestSync = async (otpConfigId) => {
-    const url = `/api/sync-log/latest?otp_config_id=${otpConfigId}`
-    const response = await fetch(url)
-    const data = await response.json()
+    const data = await api.getSyncLogLatest(otpConfigId)
     if (data.success) {
       lastAutoSync.value = data.auto || null
       lastManualSync.value = data.manual || null
@@ -19,9 +19,7 @@ export const useSyncStatus = () => {
     if (validConfigs.length === 0) return
 
     const results = await Promise.all(
-      validConfigs.map(c =>
-        fetch(`/api/sync-log/latest?otp_config_id=${c.otp_config_id}`).then(r => r.json())
-      )
+      validConfigs.map(c => api.getSyncLogLatest(c.otp_config_id))
     )
 
     const autos = []
