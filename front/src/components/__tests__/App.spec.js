@@ -28,7 +28,7 @@ const OTPFormStub = {
   emits: ['config-loaded']
 }
 
-function createWrapper() {
+const createWrapper = () => {
   return mount(App, {
     global: {
       stubs: {
