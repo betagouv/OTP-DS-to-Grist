@@ -4,6 +4,7 @@ import OTPForm from './components/OTPForm.vue'
 import SyncProgress from './components/SyncProgress.vue'
 import SyncResultBanner from './components/SyncResultBanner.vue'
 import { useSyncStatus } from './composables/useSyncStatus'
+import NotificationToast from './components/NotificationToast.vue'
 
 const syncRunning = ref(false)
 const lastSyncResult = ref(null)
@@ -33,6 +34,7 @@ const handleSyncFinished = (result) => {
 <template>
   <header>
     <div class="wrapper">
+      <NotificationToast />
       <template v-if="!syncRunning">
         <SyncResultBanner
           v-if="lastSyncResult"
