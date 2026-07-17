@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 
+import { DsfrButton } from '@gouvminint/vue-dsfr'
+
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
 
@@ -26,6 +28,7 @@ const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
   return serverConfigs.value
 })
+const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
 watch(serverConfigs, (val) => {
   setDemarcheCount(val.length)
@@ -47,6 +50,8 @@ onMounted(loadConfig)
 
 const handleSave = async () => {
   if (!configValid.value) return
+
+  const hadEmpty = serverConfigs.value.includes(null)
 
   const config = {
     ds_api_token: dnSectionRefs.value[0].getData().token,
@@ -73,6 +78,7 @@ const handleSave = async () => {
 
   if (result.success) {
     await loadConfig()
+    if (hadEmpty) serverConfigs.value.push(null)
   } else {
     console.error('Erreur lors de la sauvegarde :', result.message)
   }
@@ -114,16 +120,39 @@ const handleSync = async () => {
   } catch {}
 }
 
+const handleAddDemarche = async () => {
+  serverConfigs.value.push(null)
+}
+
 </script>
 
 <template>
     <p class="fr-mb-4w">Les champs suivis d’un astérisque (*) sont obligatoires.</p>
+
+    <h6 class="fr-mb-3w">1. Grist</h6>
 
     <GristFormSection
       @error-update="gristError = $event"
       :existing-config="serverConfigs[0] || null"
       ref="gristSectionRef"
     />
+
+    <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w">
+      <div class="fr-col-6">
+        <h6 class="fr-mb-3w">2. Démarche numérique</h6>
+      </div>
+
+      <div class="fr-col-6" style="text-align: right">
+        <DsfrButton
+          label="Ajouter une démarche numérique"
+          icon="fr-icon-add-circle-line"
+          data-test-id="add-dn-section-button"
+          secondary
+          @click="handleAddDemarche"
+          :disabled="hasUnsavedSection"
+        />
+      </div>
+    </div>
 
     <DNFormSection 
       @error-update="dnError = $event"
@@ -137,6 +166,6 @@ const handleSync = async () => {
       v-for="(config, index) in configs"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
-      class="fr-mt-5w"
+      class="fr-mt-1w"
     />
 </template>

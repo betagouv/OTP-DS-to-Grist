@@ -214,6 +214,7 @@ describe('Save button', () => {
 
   beforeEach(() => {
     wrapper = mount(DNFormSection, {
+      props: { existingConfig: { otp_config_id: 1 } },
       global: {
         components: { DsfrInput, DsfrInputGroup }
       }
@@ -255,6 +256,7 @@ describe('Delete button', () => {
 
   beforeEach(() => {
     wrapper = mount(DNFormSection, {
+      props: { existingConfig: { otp_config_id: 1 } },
       global: {
         components: { DsfrInput, DsfrInputGroup }
       }
@@ -296,6 +298,7 @@ describe('Sync button', () => {
 
   beforeEach(() => {
     wrapper = mount(DNFormSection, {
+      props: { existingConfig: { otp_config_id: 1 } },
       global: {
         components: { DsfrInput, DsfrInputGroup }
       }
@@ -329,5 +332,66 @@ describe('Sync button', () => {
     await syncButton.trigger('click')
 
     expect(wrapper.emitted('sync')).toBeFalsy()
+  })
+})
+
+describe('sectionEmpty computed', () => {
+  it('is true when existingConfig is null and inputs are empty', () => {
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    expect(wrapper.vm.sectionEmpty).toBe(true)
+  })
+
+  it('is true when existingConfig has otp_config_id null and inputs are empty', async () => {
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    await wrapper.setProps({ existingConfig: { otp_config_id: null } })
+    expect(wrapper.vm.sectionEmpty).toBe(true)
+  })
+
+  it('is false when no existingConfig but a token is filled', async () => {
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('some-token')
+    expect(wrapper.vm.sectionEmpty).toBe(false)
+  })
+
+  it('is false when existingConfig has a valid otp_config_id', () => {
+    const wrapper = mount(DNFormSection, {
+      props: { existingConfig: { otp_config_id: 42 } },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    expect(wrapper.vm.sectionEmpty).toBe(false)
+  })
+
+  it('disables Save button when sectionEmpty is true', async () => {
+    const wrapper = mount(DNFormSection, {
+      props: { configValid: true },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+    expect(saveButton.attributes('disabled')).toBeDefined()
+  })
+
+  it('disables Sync button when sectionEmpty is true', async () => {
+    const wrapper = mount(DNFormSection, {
+      props: { canSync: true },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const syncButton = wrapper.find('[data-test-id="sync-button"]')
+    expect(syncButton.attributes('disabled')).toBeDefined()
+  })
+
+  it('disables Delete button when sectionEmpty is true', async () => {
+    const wrapper = mount(DNFormSection, {
+      props: { canDelete: true },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
+    expect(deleteButton.attributes('disabled')).toBeDefined()
   })
 })

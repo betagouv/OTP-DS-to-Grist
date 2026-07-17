@@ -5,6 +5,172 @@ import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
 
+describe('hasUnsavedSection computation', () => {
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+
+  beforeEach(() => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
+    })
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('is true when serverConfigs is empty (fallback [null])', async () => {
+    globalThis.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ configs: [] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.hasUnsavedSection).toBe(true)
+  })
+
+  it('is true when config has otp_config_id null', async () => {
+    globalThis.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ configs: [{ otp_config_id: null }] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.hasUnsavedSection).toBe(true)
+  })
+
+  it('is false when all configs have a valid otp_config_id', async () => {
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.hasUnsavedSection).toBe(false)
+  })
+
+  it('is true when mixing saved config and null entry', async () => {
+    globalThis.getGristContext.mockResolvedValue(mockContext)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    wrapper.vm.serverConfigs.push(null)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.hasUnsavedSection).toBe(true)
+  })
+})
+
+describe('Add demarche button', () => {
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+
+  beforeEach(() => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
+    })
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('is rendered with correct test id', async () => {
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const button = wrapper.find('[data-test-id="add-dn-section-button"]')
+    expect(button.exists()).toBe(true)
+  })
+
+  it('is disabled when hasUnsavedSection is true', async () => {
+    globalThis.getGristContext.mockResolvedValue(mockContext)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ configs: [] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    const button = wrapper.find('[data-test-id="add-dn-section-button"]')
+    expect(button.attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled when hasUnsavedSection is false', async () => {
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const button = wrapper.find('[data-test-id="add-dn-section-button"]')
+    expect(button.attributes('disabled')).toBeUndefined()
+  })
+})
+
+describe('handleAddDemarche', () => {
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+
+  beforeEach(() => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
+    })
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('adds a null entry to serverConfigs', async () => {
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const initialLength = wrapper.vm.serverConfigs.length
+    wrapper.vm.handleAddDemarche()
+    expect(wrapper.vm.serverConfigs.length).toBe(initialLength + 1)
+    expect(wrapper.vm.serverConfigs[initialLength]).toBeNull()
+  })
+
+  it('renders a new DNFormSection after add', async () => {
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    wrapper.vm.handleAddDemarche()
+    await wrapper.vm.$nextTick()
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+    expect(dnSections.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
 describe('configValid computation', () => {
   let wrapper
 
@@ -381,6 +547,34 @@ describe('Save with existing config (UPDATE)', () => {
     await wrapper.vm.$nextTick()
 
     expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la sauvegarde :', 'Erreur de typage')
+  })
+
+  it('re-injects null in serverConfigs after save when hadEmpty', async () => {
+    wrapper.vm.serverConfigs = [null]
+    await wrapper.vm.$nextTick()
+
+    globalThis.fetch.mockReset()
+    globalThis.fetch
+      .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.serverConfigs.some(c => c === null)).toBe(true)
   })
 })
 
