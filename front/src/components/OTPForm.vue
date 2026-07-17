@@ -24,7 +24,7 @@ const dnError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 const configError = ref(null)
-const dnErrors = ref([])
+const actionErrors = ref([])
 
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
@@ -61,7 +61,7 @@ const handleSave = async () => {
 
   const hadEmpty = serverConfigs.value.includes(null)
 
-  dnErrors.value[0] = null
+  actionErrors.value[0] = null
 
   try {
     const config = {
@@ -84,10 +84,10 @@ const handleSave = async () => {
       if (hadEmpty) serverConfigs.value.push(null)
       notify('Configuration sauvegardée', 'success')
     } else {
-      dnErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'
+      actionErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'
     }
   } catch (e) {
-    dnErrors.value[0] = 'Erreur lors de la sauvegarde'
+    actionErrors.value[0] = 'Erreur lors de la sauvegarde'
   }
 }
 
@@ -99,7 +99,7 @@ const handleDelete = async () => {
   )
   if (!confirmed) return
 
-  dnErrors.value[0] = null
+  actionErrors.value[0] = null
 
   try {
     const result = await api.deleteConfig(otpConfigId.value)
@@ -111,17 +111,17 @@ const handleDelete = async () => {
     serverConfigs.value = [] // TMP
     notify('Configuration supprimée', 'success')
   } catch (e) {
-    dnErrors.value[0] = 'Erreur lors de la suppression'
+    actionErrors.value[0] = 'Erreur lors de la suppression'
   }
 }
 
 const handleSync = async () => {
   if (!otpConfigId.value || props.syncRunning) return
-  dnErrors.value[0] = null
+  actionErrors.value[0] = null
   try {
     await api.startSync(otpConfigId.value)
   } catch (e) {
-    dnErrors.value[0] = 'Erreur lors de la synchronisation'
+    actionErrors.value[0] = 'Erreur lors de la synchronisation'
   }
 }
 
@@ -177,8 +177,8 @@ const handleAddDemarche = async () => {
       :can-delete="canDelete"
       :can-sync="canSync"
       :existing-config="config"
-      :error="dnErrors[0] || null"
-      @clear-error="dnErrors[0] = null"
+      :error="actionErrors[0] || null"
+      @clear-error="actionErrors[0] = null"
       v-for="(config, index) in configs"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
