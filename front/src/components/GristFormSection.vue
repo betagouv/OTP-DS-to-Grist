@@ -10,6 +10,7 @@ import {
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
+import { useNotification } from '../composables/useNotification'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }
@@ -30,20 +31,24 @@ const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 const gristTokenErrorMessage = ref(null)
 const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
 const gristTokenPlaceholder = ref(DEFAULT_GRIST_PLACEHOLDER)
+const { notify } = useNotification()
 
 const handleGristInputChange = async () => {
   gristTokenErrorMessage.value = null
 
-  const result = await api.testConnection({
-    type: 'grist',
-    base_url: baseUrl.value,
-    api_key: inputGristToken.value,
-    doc_id: docId.value
-  })
+  try {
+    const result = await api.testConnection({
+      type: 'grist',
+      base_url: baseUrl.value,
+      api_key: inputGristToken.value,
+      doc_id: docId.value
+    })
 
-  gristTokenErrorMessage.value = result.success ? '' : result.message
-
-  emit('error-update', gristTokenErrorMessage.value)
+    gristTokenErrorMessage.value = result.success ? '' : result.message
+    emit('error-update', gristTokenErrorMessage.value)
+  } catch (e) {
+    notify('Erreur lors du test de connexion Grist', 'error')
+  }
 }
 
 onMounted(async () => {
@@ -54,7 +59,7 @@ onMounted(async () => {
     docId.value = context.value.docId
     baseUrl.value = context.value.baseUrl
   } catch (e) {
-    alert(e.message)
+    notify(e.message, 'error')
   }
 })
 

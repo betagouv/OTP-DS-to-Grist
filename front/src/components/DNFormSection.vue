@@ -12,6 +12,7 @@ import {
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
+import { useNotification } from '../composables/useNotification'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
@@ -33,6 +34,7 @@ const dnErrorMessage = ref(null)
 const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
+const { notify } = useNotification()
 
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null
@@ -60,11 +62,13 @@ const handleDNInputsChange = async () => {
     return emit('error-update', null)
   }
 
-  const result = await api.testConnection(body)
-
-  dnErrorMessage.value = result.success ? '' : result.message
-
-  emit('error-update', dnErrorMessage.value)
+  try {
+    const result = await api.testConnection(body)
+    dnErrorMessage.value = result.success ? '' : result.message
+    emit('error-update', dnErrorMessage.value)
+  } catch (e) {
+    notify('Erreur lors du test de connexion Démarches Simplifiées', 'error')
+  }
 }
 
 defineExpose({

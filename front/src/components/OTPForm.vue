@@ -8,6 +8,7 @@ import DNFormSection from './DNFormSection.vue'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { api } from '../utils/InternalApi'
+import { useNotification } from '../composables/useNotification'
 
 const props = defineProps({
   syncRunning: { type: Boolean, default: false }
@@ -16,6 +17,7 @@ const props = defineProps({
 const emit = defineEmits(['config-loaded'])
 
 const { setDemarcheCount } = useDemarcheContext()
+const { notify } = useNotification()
 const gristError = ref(null)
 const dnError = ref(null)
 const dnSectionRefs = ref([])
@@ -45,7 +47,7 @@ const loadConfig = async () => {
     otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
     emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
   } catch (e) {
-    console.error('Erreur lors du chargement de la configuration :', e)
+    notify('Erreur lors du chargement de la configuration', 'error')
   }
 }
 
@@ -56,26 +58,31 @@ const handleSave = async () => {
 
   const hadEmpty = serverConfigs.value.includes(null)
 
-  const config = {
-    ds_api_token: dnSectionRefs.value[0].getData().token,
-    demarche_number: dnSectionRefs.value[0].getData().demarche_number,
-    grist_base_url: gristSectionRef.value.getData().baseUrl,
-    grist_doc_id: gristSectionRef.value.getData().docId,
-    grist_user_id: gristSectionRef.value.getData().userId,
-    grist_api_key: gristSectionRef.value.getData().token
-  }
+  try {
+    const config = {
+      ds_api_token: dnSectionRefs.value[0].getData().token,
+      demarche_number: dnSectionRefs.value[0].getData().demarche_number,
+      grist_base_url: gristSectionRef.value.getData().baseUrl,
+      grist_doc_id: gristSectionRef.value.getData().docId,
+      grist_user_id: gristSectionRef.value.getData().userId,
+      grist_api_key: gristSectionRef.value.getData().token
+    }
 
-  if (otpConfigId.value) {
-    config.otp_config_id = otpConfigId.value
-  }
+    if (otpConfigId.value) {
+      config.otp_config_id = otpConfigId.value
+    }
 
-  const result = await api.saveConfig(config)
+    const result = await api.saveConfig(config)
 
-  if (result.success) {
-    await loadConfig()
-    if (hadEmpty) serverConfigs.value.push(null)
-  } else {
-    console.error('Erreur lors de la sauvegarde :', result.message)
+    if (result.success) {
+      await loadConfig()
+      if (hadEmpty) serverConfigs.value.push(null)
+      notify('Configuration sauvegardée', 'success')
+    } else {
+      notify(result.message || 'Erreur lors de la sauvegarde', 'error')
+    }
+  } catch (e) {
+    notify('Erreur lors de la sauvegarde', 'error')
   }
 }
 
@@ -95,8 +102,9 @@ const handleDelete = async () => {
 
     otpConfigId.value = null
     serverConfigs.value = [] // TMP
+    notify('Configuration supprimée', 'success')
   } catch (e) {
-    console.error('Erreur lors de la suppression :', e.message)
+    notify('Erreur lors de la suppression', 'error')
   }
 }
 
@@ -104,7 +112,9 @@ const handleSync = async () => {
   if (!otpConfigId.value || props.syncRunning) return
   try {
     await api.startSync(otpConfigId.value)
-  } catch {}
+  } catch (e) {
+    notify('Erreur lors de la synchronisation', 'error')
+  }
 }
 
 const handleAddDemarche = async () => {
