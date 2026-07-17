@@ -10,26 +10,25 @@ const showSyncBanner = (
   successCount,
   errorCount,
   timestamp,
-  syncType
+  syncType,
+  nbDeleted = 0
 ) => {
   const container = document.getElementById(containerId)
   const subContainer = container.querySelector('.sync_banner_template')
   if (!container || !subContainer) throw new Error('Missing container(s)')
-
   const isSuccess = status === 'success'
   const isWarning = status === 'warning'
   const alertClass = isSuccess ? 'fr-alert--success' : isWarning ? 'fr-alert--warning' : 'fr-alert--error'
   const typeLabel = syncType === 'auto' ? '(automatique)' : '(déclenchée manuellement)'
   const message = isSuccess ? 'Synchronisation terminée avec succès' : 'Synchronisation terminée avec erreur(s)'
-  const title = typeLabel ? `${message} ${typeLabel}`: message
-  const count = `${successCount} dossiers traités avec succès, ${errorCount} en échec`
+  const title = typeLabel ? `${message} ${typeLabel}`: message
+  const deletedPart = nbDeleted > 0 ? `, ${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist)` : ''
+  const count = `${successCount} dossiers traités avec succès, ${errorCount} en échec${deletedPart}`
   const date = timestamp ? new Date(timestamp).toLocaleString('fr-FR') : new Date().toLocaleString('fr-FR')
-
   subContainer.querySelector('.fr-alert').classList.add(alertClass)
   subContainer.querySelector('h3').innerText = title
   subContainer.querySelector('.sync-banner-count').innerText = count
   subContainer.querySelector('.sync-banner-date').innerText = date
-
   container.style.display = 'block'
 }
 
@@ -229,14 +228,20 @@ const updateTaskProgress = (task) => {
     if (task.status === 'completed' && !hasSignificantErrors) {
       // TODO use showSyncBanner or derivated
       if (task.sync_reason === 'already_up_to_date') {
+        const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
+        const deletedLine = nbDeleted > 0
+          ? `<p>${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist)</p>`
+          : ''
         if (resultContentManual) resultContentManual.innerHTML = `<div class="fr-alert fr-alert--info">
           <h3 class="fr-alert__title">Grist déjà à jour</h3>
           <p>Aucun dossier nouveau ou modifié depuis la dernière synchronisation.</p>
+          ${deletedLine}
           <p>${task.message}</p>
         </div>`
         showNotification('Grist déjà à jour', 'info')
       } else {
-        showSyncBanner('result_content_manual', 'success', successCount, errorCount)
+        const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
+        showSyncBanner('result_content_manual', 'success', successCount, errorCount, undefined, undefined, nbDeleted)
         showNotification('Synchronisation terminée avec succès!', 'success')
       }
     } else if (

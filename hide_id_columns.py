@@ -59,10 +59,13 @@ class IdColumnHider:
             )
         resp.raise_for_status()
 
-    def hide_id_columns(self, suffix="_id"):
+    def hide_id_columns(self, suffix="_id", table_ids=None):
         """
         Cache dans la première section de chaque table toutes les colonnes
         dont le colId se termine par `suffix`. Retourne (nb_ok, nb_skip).
+
+        table_ids : ensemble optionnel de tableId (ex: {"Demarche_149930_dossiers", ...})
+        à traiter. Si None, traite tout le document.
         """
         tables = {
             r["id"]: r["fields"]["tableId"]
@@ -97,31 +100,34 @@ class IdColumnHider:
 
             table_ref = col["fields"].get("parentId")
             table_name = tables.get(table_ref, f"tableRef={table_ref}")
+
+            if table_ids is not None and table_name not in table_ids:
+                continue
+
             col_ref = col["id"]
             section_id = first_section.get(table_ref)
 
             if section_id is None:
-                log(f"[SKIP] {table_name}.{col_id} — aucune section trouvée", 2)
                 skipped.append(f"{table_name}.{col_id}")
                 nb_skip += 1
                 continue
 
             field_id = field_index.get((section_id, col_ref))
             if field_id is None:
-                log(f"[SKIP] {table_name}.{col_id} — déjà cachée ou absente", 2)
                 skipped.append(f"{table_name}.{col_id}")
                 nb_skip += 1
                 continue
 
             self._hide_field(field_id)
-            log(f"[OK]   {table_name}.{col_id} cachée (section {section_id})", 2)
             hidden.append(f"{table_name}.{col_id}")
             nb_ok += 1
 
         if hidden:
-            log(f"[OK] {len(hidden)} colonne(s) cachée(s) : {', '.join(hidden)}")
+            hidden_tables = sorted({h.split(".")[0] for h in hidden})
+            log(f"[OK] {len(hidden)} colonne(s) cachée(s) sur : {', '.join(hidden_tables)}")
         if skipped:
-            log(f"[SKIP] {len(skipped)} colonne(s) déjà cachée(s) ou absente(s)")
+            skipped_tables = sorted({s.split(".")[0] for s in skipped})
+            log(f"[SKIP] {len(skipped)} colonne(s) sur : {', '.join(skipped_tables)}")
 
         return nb_ok, nb_skip
 
