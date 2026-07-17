@@ -68,6 +68,8 @@ const handleDNInputsChange = async () => {
     dnErrorMessage.value = result.success ? '' : result.message
     emit('error-update', dnErrorMessage.value)
   } catch (e) {
+    dnErrorMessage.value = 'Erreur lors du test de connexion'
+    emit('error-update', dnErrorMessage.value)
   }
 }
 
