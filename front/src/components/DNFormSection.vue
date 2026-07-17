@@ -13,16 +13,18 @@ import {
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
 import { useNotification } from '../composables/useNotification'
+import OtpAlert from './OtpAlert.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
   configValid: { type: Boolean, default: false },
   canDelete: { type: Boolean, default: false },
-  canSync: { type: Boolean, default: false }
+  canSync: { type: Boolean, default: false },
+  error: { type: String, default: null }
 })
 
 const HELP_LINKS = window.HELP_LINKS
-const emit = defineEmits(['error-update', 'save', 'delete', 'sync'])
+const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
 
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
@@ -34,7 +36,6 @@ const dnErrorMessage = ref(null)
 const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
-const { notify } = useNotification()
 
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null
@@ -67,7 +68,6 @@ const handleDNInputsChange = async () => {
     dnErrorMessage.value = result.success ? '' : result.message
     emit('error-update', dnErrorMessage.value)
   } catch (e) {
-    notify('Erreur lors du test de connexion Démarches Simplifiées', 'error')
   }
 }
 
@@ -98,6 +98,17 @@ watch(() => props.existingConfig, (config) => {
 
 <template>
   <div>
+    <h6 class="fr-mb-3w">2. Démarche numérique</h6>
+
+    <OtpAlert
+      v-if="error"
+      type="error"
+      :title="error"
+      closeable
+      @close="$emit('clear-error')"
+      class="fr-mb-3w"
+    />
+
     <DsfrAccordionsGroup v-model="activeAccordion">
       <DsfrAccordion
         id="accordion-dn"

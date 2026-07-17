@@ -11,6 +11,7 @@ import {
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
 import { useNotification } from '../composables/useNotification'
+import OtpAlert from './OtpAlert.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }
@@ -31,10 +32,11 @@ const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 const gristTokenErrorMessage = ref(null)
 const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
 const gristTokenPlaceholder = ref(DEFAULT_GRIST_PLACEHOLDER)
-const { notify } = useNotification()
+const gristFetchError = ref(null)
 
 const handleGristInputChange = async () => {
   gristTokenErrorMessage.value = null
+  gristFetchError.value = null
 
   try {
     const result = await api.testConnection({
@@ -47,7 +49,7 @@ const handleGristInputChange = async () => {
     gristTokenErrorMessage.value = result.success ? '' : result.message
     emit('error-update', gristTokenErrorMessage.value)
   } catch (e) {
-    notify('Erreur lors du test de connexion Grist', 'error')
+    gristFetchError.value = 'Erreur lors du test de connexion Grist'
   }
 }
 
@@ -59,7 +61,7 @@ onMounted(async () => {
     docId.value = context.value.docId
     baseUrl.value = context.value.baseUrl
   } catch (e) {
-    notify(e.message, 'error')
+    gristFetchError.value = e.message
   }
 })
 
@@ -93,6 +95,17 @@ defineExpose({
 
 <template>
   <div>
+    <h6 class="fr-mb-3w">1. Grist</h6>
+
+    <OtpAlert
+      v-if="gristFetchError"
+      type="error"
+      :title="gristFetchError"
+      closeable
+      @close="gristFetchError = null"
+      class="fr-mb-3w"
+    />
+
     <DsfrAccordionsGroup v-model="activeAccordion">
       <DsfrAccordion
         id="accordion-grist"

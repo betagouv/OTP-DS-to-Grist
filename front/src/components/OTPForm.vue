@@ -5,6 +5,7 @@ import { DsfrButton } from '@gouvminint/vue-dsfr'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
+import OtpAlert from './OtpAlert.vue'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { api } from '../utils/InternalApi'
@@ -22,6 +23,8 @@ const gristError = ref(null)
 const dnError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
+const configError = ref(null)
+const dnErrors = ref([])
 
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
@@ -47,7 +50,7 @@ const loadConfig = async () => {
     otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
     emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
   } catch (e) {
-    notify('Erreur lors du chargement de la configuration', 'error')
+    configError.value = 'Erreur lors du chargement de la configuration'
   }
 }
 
@@ -57,6 +60,8 @@ const handleSave = async () => {
   if (!configValid.value) return
 
   const hadEmpty = serverConfigs.value.includes(null)
+
+  dnErrors.value[0] = null
 
   try {
     const config = {
@@ -79,10 +84,10 @@ const handleSave = async () => {
       if (hadEmpty) serverConfigs.value.push(null)
       notify('Configuration sauvegardée', 'success')
     } else {
-      notify(result.message || 'Erreur lors de la sauvegarde', 'error')
+      dnErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'
     }
   } catch (e) {
-    notify('Erreur lors de la sauvegarde', 'error')
+    dnErrors.value[0] = 'Erreur lors de la sauvegarde'
   }
 }
 
@@ -94,6 +99,8 @@ const handleDelete = async () => {
   )
   if (!confirmed) return
 
+  dnErrors.value[0] = null
+
   try {
     const result = await api.deleteConfig(otpConfigId.value)
 
@@ -104,16 +111,17 @@ const handleDelete = async () => {
     serverConfigs.value = [] // TMP
     notify('Configuration supprimée', 'success')
   } catch (e) {
-    notify('Erreur lors de la suppression', 'error')
+    dnErrors.value[0] = 'Erreur lors de la suppression'
   }
 }
 
 const handleSync = async () => {
   if (!otpConfigId.value || props.syncRunning) return
+  dnErrors.value[0] = null
   try {
     await api.startSync(otpConfigId.value)
   } catch (e) {
-    notify('Erreur lors de la synchronisation', 'error')
+    dnErrors.value[0] = 'Erreur lors de la synchronisation'
   }
 }
 
@@ -124,7 +132,16 @@ const handleAddDemarche = async () => {
 </script>
 
 <template>
-    <p class="fr-mb-4w">Les champs suivis d’un astérisque (*) sont obligatoires.</p>
+    <OtpAlert
+      v-if="configError"
+      type="error"
+      :title="configError"
+      closeable
+      @close="configError = null"
+      class="fr-mb-4w"
+    />
+
+    <p class="fr-mb-4w">Les champs suivis d'un astérisque (*) sont obligatoires.</p>
 
     <h6 class="fr-mb-3w">1. Grist</h6>
 
@@ -160,6 +177,8 @@ const handleAddDemarche = async () => {
       :can-delete="canDelete"
       :can-sync="canSync"
       :existing-config="config"
+      :error="dnErrors[0] || null"
+      @clear-error="dnErrors[0] = null"
       v-for="(config, index) in configs"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
