@@ -409,7 +409,7 @@ describe('Config loading on mount', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalled()
+    expect(wrapper.vm.configError).toBe('Erreur lors du chargement de la configuration')
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
   })
 
@@ -424,7 +424,7 @@ describe('Config loading on mount', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalled()
+    expect(wrapper.vm.configError).toBe('Erreur lors du chargement de la configuration')
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
   })
 
@@ -580,7 +580,7 @@ describe('Save with existing config (UPDATE)', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la sauvegarde :', 'Erreur de typage')
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur de typage')
   })
 
   it('re-injects null in serverConfigs after save when hadEmpty', async () => {
@@ -705,7 +705,7 @@ describe('Delete action', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la suppression :', 'Erreur de suppression')
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la suppression')
   })
 
   it('handles network error in catch block', async () => {
@@ -717,10 +717,7 @@ describe('Delete action', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      'Erreur lors de la suppression :',
-      'network error'
-    )
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la suppression')
   })
 
   it('does not delete when there is no otpConfigId', async () => {
