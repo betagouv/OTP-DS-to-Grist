@@ -16,8 +16,12 @@ export const useNotification = () => {
 
   const notify = (message, type = 'info') => {
     if (permission === 'granted') {
-      new Notification(message)
-      return
+      try {
+        new Notification(message)
+        return
+      } catch {
+        // Fallback toast si le constructeur échoue
+      }
     }
 
     const id = nextId++
