@@ -1,11 +1,13 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import OTPForm from './components/OTPForm.vue'
 import SyncProgress from './components/SyncProgress.vue'
 import SyncResultBanner from './components/SyncResultBanner.vue'
 import { useSyncStatus } from './composables/useSyncStatus'
 import NotificationToast from './components/NotificationToast.vue'
+import { useNotification } from './composables/useNotification'
 
+const { requestPermission } = useNotification()
 const syncRunning = ref(false)
 const lastSyncResult = ref(null)
 
@@ -29,6 +31,10 @@ const handleSyncFinished = (result) => {
     syncReason: result.sync_reason || null,
   }
 }
+
+onMounted(() => {
+  requestPermission()
+})
 </script>
 
 <template>
