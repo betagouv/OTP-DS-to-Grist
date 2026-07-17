@@ -11,6 +11,7 @@ describe('hasUnsavedSection computation', () => {
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
     })
   })
@@ -22,6 +23,7 @@ describe('hasUnsavedSection computation', () => {
 
   it('is true when serverConfigs is empty (fallback [null])', async () => {
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [] })
     })
     const wrapper = mount(OTPForm, {
@@ -35,6 +37,7 @@ describe('hasUnsavedSection computation', () => {
 
   it('is true when config has otp_config_id null', async () => {
     globalThis.fetch.mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [{ otp_config_id: null }] })
     })
     const wrapper = mount(OTPForm, {
@@ -59,6 +62,7 @@ describe('hasUnsavedSection computation', () => {
   it('is true when mixing saved config and null entry', async () => {
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
     })
     const wrapper = mount(OTPForm, {
@@ -80,6 +84,7 @@ describe('Add demarche button', () => {
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
     })
   })
@@ -103,6 +108,7 @@ describe('Add demarche button', () => {
   it('is disabled when hasUnsavedSection is true', async () => {
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [] })
     })
     const wrapper = mount(OTPForm, {
@@ -134,6 +140,7 @@ describe('handleAddDemarche', () => {
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] })
     })
   })
@@ -582,8 +589,8 @@ describe('Save with existing config (UPDATE)', () => {
 
     globalThis.fetch.mockReset()
     globalThis.fetch
-      .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
