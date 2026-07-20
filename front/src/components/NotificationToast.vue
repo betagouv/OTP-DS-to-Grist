@@ -11,7 +11,7 @@ const { notifications, remove } = useNotification()
       v-for="notif in notifications"
       :key="notif.id"
       :type="notif.type"
-      :title="notif.message"
+      :description="notif.message"
       closeable
       @close="remove(notif.id)"
       class="notification-toast"

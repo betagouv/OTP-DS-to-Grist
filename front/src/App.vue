@@ -38,9 +38,9 @@ onMounted(() => {
 </script>
 
 <template>
+  <NotificationToast />
   <header>
     <div class="wrapper">
-      <NotificationToast />
       <template v-if="!syncRunning">
         <SyncResultBanner
           v-if="lastSyncResult"
