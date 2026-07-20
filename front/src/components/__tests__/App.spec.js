@@ -136,6 +136,21 @@ describe('App', () => {
     expect(banner.props('message')).toBe('Synchro auto terminée')
   })
 
+  it('cache les bannières historiques quand une synchro démarre', async () => {
+    mockLastAutoSync.value = {
+      status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00',
+      message: 'Synchro auto terminée'
+    }
+    const wrapper = createWrapper()
+
+    expect(wrapper.findAllComponents(SyncResultBanner).length).toBe(1)
+
+    wrapper.findComponent(SyncProgressStub).vm.$emit('sync-running-changed', true)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAllComponents(SyncResultBanner).length).toBe(0)
+  })
+
   it('live result takes priority over auto/manual banners', async () => {
     mockLastAutoSync.value = {
       status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00',

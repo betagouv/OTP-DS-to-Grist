@@ -34,38 +34,40 @@ const handleSyncFinished = (result) => {
 <template>
   <header>
     <div class="wrapper">
-      <SyncResultBanner
-        v-if="lastSyncResult"
-        :status="lastSyncResult.status"
-        :success-count="lastSyncResult.successCount"
-        :error-count="lastSyncResult.errorCount"
-        :timestamp="lastSyncResult.timestamp"
-        :sync-type="lastSyncResult.syncType"
-        :sync-reason="lastSyncResult.syncReason"
-        :message="lastSyncResult.message"
-        class="fr-mb-4w"
-      />
-      <template v-else>
+      <template v-if="!syncRunning">
         <SyncResultBanner
-          v-if="lastAutoSync"
-          :status="lastAutoSync.status"
-          :success-count="lastAutoSync.success_count"
-          :error-count="lastAutoSync.error_count"
-          :timestamp="lastAutoSync.timestamp"
-          sync-type="auto"
-          :message="lastAutoSync.message"
+          v-if="lastSyncResult"
+          :status="lastSyncResult.status"
+          :success-count="lastSyncResult.successCount"
+          :error-count="lastSyncResult.errorCount"
+          :timestamp="lastSyncResult.timestamp"
+          :sync-type="lastSyncResult.syncType"
+          :sync-reason="lastSyncResult.syncReason"
+          :message="lastSyncResult.message"
           class="fr-mb-4w"
         />
-        <SyncResultBanner
-          v-if="lastManualSync"
-          :status="lastManualSync.status"
-          :success-count="lastManualSync.success_count"
-          :error-count="lastManualSync.error_count"
-          :timestamp="lastManualSync.timestamp"
-          sync-type="manual"
-          :message="lastManualSync.message"
-          class="fr-mb-4w"
-        />
+        <template v-else>
+          <SyncResultBanner
+            v-if="lastAutoSync"
+            :status="lastAutoSync.status"
+            :success-count="lastAutoSync.success_count"
+            :error-count="lastAutoSync.error_count"
+            :timestamp="lastAutoSync.timestamp"
+            sync-type="auto"
+            :message="lastAutoSync.message"
+            class="fr-mb-4w"
+          />
+          <SyncResultBanner
+            v-if="lastManualSync"
+            :status="lastManualSync.status"
+            :success-count="lastManualSync.success_count"
+            :error-count="lastManualSync.error_count"
+            :timestamp="lastManualSync.timestamp"
+            sync-type="manual"
+            :message="lastManualSync.message"
+            class="fr-mb-4w"
+          />
+        </template>
       </template>
       <SyncProgress
         @sync-running-changed="syncRunning = $event"
