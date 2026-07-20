@@ -4,7 +4,6 @@ import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
-import SyncStatsCard from './SyncStatsCard.vue'
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 
 const { totalDemarches, demarcheIndex } = useDemarcheContext()
@@ -82,14 +81,6 @@ onUnmounted(() => {
             :style="{ left: Math.round(task.progress) + '%' }"
             no-icon
           />
-        </div>
-        <div v-if="counts && (counts.success > 0 || counts.error > 0)" class="fr-grid-row fr-grid-row--gutters fr-mt-2w">
-          <div v-if="counts.success > 0" class="fr-col-2">
-            <SyncStatsCard :count="counts.success" label="Dossiers synchronisés" color="green" />
-          </div>
-          <div v-if="counts.error > 0" class="fr-col-6">
-            <SyncStatsCard :count="counts.error" label="Échecs" color="red" />
-          </div>
         </div>
       </div>
     </div>

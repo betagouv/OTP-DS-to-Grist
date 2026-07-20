@@ -29,18 +29,11 @@ describe('SyncProgress', () => {
     scrollIntoView.mockClear()
     const { setDemarcheCount } = useDemarcheContext()
     setDemarcheCount(0)
-    globalThis.parseLogMessage = vi.fn((msg, counts = { success: 0, error: 0, total: 0 }) => {
-      const r = { ...counts }
-      if (msg.includes('succès')) r.success++
-      if (msg === 'error') r.error++
-      return r
-    })
     wrapper = mount(SyncProgress)
   })
 
   afterEach(() => {
     wrapper?.unmount()
-    delete globalThis.parseLogMessage
   })
 
   it('hided by default', () => {
@@ -185,37 +178,5 @@ describe('SyncProgress', () => {
     const localWrapper = mount(SyncProgress)
     localWrapper.unmount()
     expect(mockDisconnect).toHaveBeenCalled()
-  })
-
-  it('display success card from logs', async () => {
-    triggerTaskUpdate({
-      status: 'running', progress: 50, message: 'En cours',
-      logs: [{ message: 'succès' }]
-    })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('Dossiers synchronisés')
-  })
-
-  it('display success and failed cards', async () => {
-    triggerTaskUpdate({
-      status: 'running', progress: 50, message: 'En cours',
-      logs: [{ message: 'succès' }, { message: 'error' }]
-    })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('Dossiers synchronisés')
-    expect(wrapper.text()).toContain('Échecs')
-  })
-
-  it('hide card without log', async () => {
-    triggerTaskUpdate({
-      status: 'running', progress: 50, message: 'En cours',
-      logs: [{ message: 'autre information' }]
-    })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).not.toContain('Dossiers synchronisés')
-    expect(wrapper.text()).not.toContain('Échecs')
   })
 })
