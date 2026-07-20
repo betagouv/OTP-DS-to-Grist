@@ -610,6 +610,29 @@ describe('Save with existing config (UPDATE)', () => {
 
     expect(wrapper.vm.serverConfigs.some(c => c === null)).toBe(true)
   })
+
+  it('sets actionErrors on handleSave network error', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockRejectedValue(new Error('network error'))
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la sauvegarde')
+  })
 })
 
 describe('Delete action', () => {
@@ -837,5 +860,16 @@ describe('Sync action', () => {
     wrapperSync.getComponent(DNFormSection).vm.$emit('sync')
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('sets actionErrors on handleSync network error', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockRejectedValue(new Error('network error'))
+
+    wrapper.getComponent(DNFormSection).vm.$emit('sync')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la synchronisation')
   })
 })

@@ -156,4 +156,31 @@ describe('Grist form section', () => {
 
     expect(input.attributes('placeholder')).toBe('Saisissez votre clé grist')
   })
+
+  it('sets gristFetchError when getGristContext fails on mount', async () => {
+    window.getGristContext = vi.fn().mockRejectedValue(new Error('context error'))
+
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.gristFetchError).toBe('context error')
+  })
+
+  it('sets gristFetchError when test-connection fetch fails', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+    await tokenInput.setValue('some-token')
+    await tokenInput.trigger('change')
+
+    expect(wrapper.vm.gristFetchError).toBe('Erreur lors du test de connexion Grist')
+  })
 })

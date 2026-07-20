@@ -222,6 +222,38 @@ describe('DN form section', () => {
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
     expect(mockFetch).toHaveBeenCalledTimes(1) // seulement la première fois
   })
+
+  it('sets dnErrorMessage when test-connection fetch fails', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('some-token')
+
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+
+    expect(wrapper.vm.dnErrorMessage).toBe('Erreur lors du test de connexion')
+    expect(wrapper.emitted('error-update')).toBeTruthy()
+    const lastEmit = wrapper.emitted('error-update').at(-1)
+    expect(lastEmit).toEqual(['Erreur lors du test de connexion'])
+  })
+
+  it('emits clear-error when OtpAlert close is triggered', async () => {
+    const wrapper = mount(DNFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } },
+      props: { error: 'Une erreur' }
+    })
+
+    const alert = wrapper.find('.fr-alert')
+    expect(alert.exists()).toBe(true)
+
+    await alert.find('button').trigger('click')
+
+    expect(wrapper.emitted('clear-error')).toHaveLength(1)
+  })
 })
 
 describe('Save button', () => {

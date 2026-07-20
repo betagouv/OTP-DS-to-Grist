@@ -12,6 +12,11 @@ vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket)
 }))
 
+const mockNotify = vi.fn()
+vi.mock('../../composables/useNotification.js', () => ({
+  useNotification: () => ({ notify: mockNotify })
+}))
+
 const scrollIntoView = vi.fn()
 Element.prototype.scrollIntoView = scrollIntoView
 
@@ -27,6 +32,7 @@ describe('SyncProgress', () => {
     mockOn.mockClear()
     mockDisconnect.mockClear()
     scrollIntoView.mockClear()
+    mockNotify.mockClear()
     const { setDemarcheCount } = useDemarcheContext()
     setDemarcheCount(0)
     wrapper = mount(SyncProgress)
@@ -184,5 +190,47 @@ describe('SyncProgress', () => {
     const localWrapper = mount(SyncProgress)
     localWrapper.unmount()
     expect(mockDisconnect).toHaveBeenCalled()
+  })
+
+  it('calls notify with success message on sync completed', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'completed', progress: 100, message: 'Terminé',
+      logs: [{ message: 'succès' }]
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'Synchronisation terminée : 1 dossier(s) synchronisé(s)',
+      'success'
+    )
+  })
+
+  it('calls notify with error message on sync error', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'error', progress: 50, message: 'Erreur',
+      logs: [{ message: 'error' }]
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'Échec de la synchronisation (1 erreur(s))',
+      'error'
+    )
+  })
+
+  it('calls notify with generic error message when no error count', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'error', progress: 50, message: 'Erreur',
+      logs: []
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      'Échec de la synchronisation',
+      'error'
+    )
   })
 })
