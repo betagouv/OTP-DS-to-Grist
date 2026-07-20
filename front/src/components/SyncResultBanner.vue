@@ -7,16 +7,25 @@ const props = defineProps({
   successCount: { type: Number, required: true },
   errorCount: { type: Number, required: true },
   timestamp: { type: String, default: null },
-  syncType: { type: String, required: true }
+  syncType: { type: String, required: true },
+  syncReason: { type: String, default: null },
+  message: { type: String, default: null }
 })
 
+const isUpToDate = computed(() =>
+  props.syncReason === 'already_up_to_date'
+  || (!props.syncReason && props.status === 'success' && props.successCount === 0 && props.errorCount === 0)
+)
+
 const alertType = computed(() => {
+  if (isUpToDate.value) return 'info'
   if (props.status === 'success') return 'success'
   if (props.status === 'warning') return 'info'
   return 'error'
 })
 
 const title = computed(() => {
+  if (isUpToDate.value) return 'Grist déjà à jour'
   const message = props.status === 'success'
     ? 'Synchronisation terminée avec succès'
     : 'Synchronisation terminée avec erreur(s)'
@@ -24,9 +33,10 @@ const title = computed(() => {
   return `${message} ${typeLabel}`
 })
 
-const count = computed(() =>
-  `${props.successCount} dossiers traités avec succès, ${props.errorCount} en échec`
-)
+const description = computed(() => {
+  if (isUpToDate.value) return 'Aucun dossier nouveau ou modifié depuis la dernière synchronisation.'
+  return `${props.successCount} dossiers traités avec succès, ${props.errorCount} en échec`
+})
 
 const date = computed(() =>
   props.timestamp
@@ -40,7 +50,8 @@ const date = computed(() =>
     :type="alertType"
     :title="title"
   >
-    <p>{{ count }}</p>
+    <p>{{ description }}</p>
+    <p v-if="message" class="fr-text--sm">{{ message }}</p>
     <p class="fr-text--sm">{{ date }}</p>
   </DsfrAlert>
 </template>

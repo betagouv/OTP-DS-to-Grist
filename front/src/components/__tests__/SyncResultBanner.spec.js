@@ -54,4 +54,47 @@ describe('SyncResultBanner', () => {
 
     expect(wrapper.text()).toContain('(déclenchée manuellement)')
   })
+
+  it('affiche "Grist déjà à jour" avec alerte info quand sync_reason est already_up_to_date', () => {
+    const wrapper = mount(SyncResultBanner, {
+      props: {
+        status: 'success',
+        successCount: 0,
+        errorCount: 0,
+        timestamp: '2026-07-15T11:26:02',
+        syncType: 'manual',
+        syncReason: 'already_up_to_date'
+      }
+    })
+
+    expect(wrapper.text()).toContain('Grist déjà à jour')
+    expect(wrapper.text()).toContain('Aucun dossier nouveau ou modifié depuis la dernière synchronisation.')
+  })
+
+  it('détecte "Grist déjà à jour" via les compteurs quand sync_reason est absent (logs historiques)', () => {
+    const wrapper = mount(SyncResultBanner, {
+      props: {
+        status: 'success',
+        successCount: 0,
+        errorCount: 0,
+        timestamp: '2026-07-15T11:26:02',
+        syncType: 'auto',
+        syncReason: null
+      }
+    })
+
+    expect(wrapper.text()).toContain('Grist déjà à jour')
+    expect(wrapper.findComponent({ name: 'DsfrAlert' }).exists())
+  })
+
+  it('affiche le message de la tâche quand présent', () => {
+    const wrapper = mount(SyncResultBanner, {
+      props: {
+        ...defaultProps,
+        message: 'Synchronisation terminée: 5/5 dossiers synchronisés'
+      }
+    })
+
+    expect(wrapper.text()).toContain('Synchronisation terminée: 5/5 dossiers synchronisés')
+  })
 })

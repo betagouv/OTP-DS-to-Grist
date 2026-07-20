@@ -120,7 +120,8 @@ describe('SyncProgress', () => {
     triggerTaskUpdate({
       status: 'completed', progress: 100, message: 'Terminé',
       result: { success_count: 5, error_count: 1 },
-      end_time: 1752600000
+      end_time: 1752600000,
+      sync_reason: 'synced'
     })
     await wrapper.vm.$nextTick()
 
@@ -130,7 +131,9 @@ describe('SyncProgress', () => {
       status: 'completed',
       success_count: 5,
       error_count: 1,
-      timestamp: new Date(1752600000 * 1000).toISOString()
+      timestamp: new Date(1752600000 * 1000).toISOString(),
+      sync_reason: 'synced',
+      message: 'Terminé'
     })
   })
 
@@ -139,7 +142,8 @@ describe('SyncProgress', () => {
     triggerTaskUpdate({
       status: 'error', progress: 50, message: 'Erreur',
       result: { success_count: 2, error_count: 3 },
-      end_time: 1752600000
+      end_time: 1752600000,
+      sync_reason: 'synced'
     })
     await wrapper.vm.$nextTick()
 
@@ -149,7 +153,9 @@ describe('SyncProgress', () => {
       status: 'error',
       success_count: 2,
       error_count: 3,
-      timestamp: new Date(1752600000 * 1000).toISOString()
+      timestamp: new Date(1752600000 * 1000).toISOString(),
+      sync_reason: 'synced',
+      message: 'Erreur'
     })
   })
 

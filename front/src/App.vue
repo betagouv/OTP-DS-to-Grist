@@ -24,7 +24,9 @@ const handleSyncFinished = (result) => {
     successCount: result.success_count,
     errorCount: result.error_count,
     timestamp: result.timestamp,
-    syncType: 'manual'
+    syncType: 'manual',
+    syncReason: result.sync_reason || null,
+    message: result.message || null
   }
 }
 </script>
@@ -39,6 +41,8 @@ const handleSyncFinished = (result) => {
         :error-count="lastSyncResult.errorCount"
         :timestamp="lastSyncResult.timestamp"
         :sync-type="lastSyncResult.syncType"
+        :sync-reason="lastSyncResult.syncReason"
+        :message="lastSyncResult.message"
         class="fr-mb-4w"
       />
       <template v-else>
@@ -49,6 +53,7 @@ const handleSyncFinished = (result) => {
           :error-count="lastAutoSync.error_count"
           :timestamp="lastAutoSync.timestamp"
           sync-type="auto"
+          :message="lastAutoSync.message"
           class="fr-mb-4w"
         />
         <SyncResultBanner
@@ -58,6 +63,7 @@ const handleSyncFinished = (result) => {
           :error-count="lastManualSync.error_count"
           :timestamp="lastManualSync.timestamp"
           sync-type="manual"
+          :message="lastManualSync.message"
           class="fr-mb-4w"
         />
       </template>

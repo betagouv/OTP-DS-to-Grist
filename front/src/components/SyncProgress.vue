@@ -44,7 +44,9 @@ onMounted(() => {
         error_count: data.task.result?.error_count ?? counts.value?.error ?? 0,
         timestamp: data.task.end_time
           ? new Date(data.task.end_time * 1000).toISOString()
-          : new Date().toISOString()
+          : new Date().toISOString(),
+        sync_reason: data.task.sync_reason,
+        message: data.task.message
       })
     }
   })
