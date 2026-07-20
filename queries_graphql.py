@@ -317,6 +317,7 @@ query getDossier(
     $includeTraitements: Boolean = true
     $includeInstructeurs: Boolean = true
     $includeAvis: Boolean = true
+    $includeCorrections: Boolean = true
 ) {
     dossier(number: $dossierNumber) {
         ...DossierFragment
@@ -354,6 +355,7 @@ fragment DossierFragment on Dossier {
     dateTraitement
     dateExpiration
     dateSuppressionParUsager
+    dateDerniereCorrectionEnAttente @include(if: $includeCorrections)
     dateDerniereModificationChamps
     dateAccuseLectureAgreement
     dateDerniereModificationAnnotations
@@ -649,6 +651,7 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
         "includeTraitements": True,
         "includeInstructeurs": True,
         "includeAvis": True,
+        "includeCorrections": True,
     }
 
     # En-têtes pour la requête
