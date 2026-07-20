@@ -3,19 +3,10 @@ import { ref } from 'vue'
 let nextId = 0
 const notifications = ref([])
 
-let permission = typeof Notification !== 'undefined' ? Notification.permission : 'denied'
-
 export const useNotification = () => {
 
-  const requestPermission = async () => {
-    if (typeof Notification === 'undefined') return
-    if (Notification.permission === 'default') {
-      permission = await Notification.requestPermission()
-    }
-  }
-
   const notify = (message, type = 'info') => {
-    if (permission === 'granted') {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
         new Notification(message)
         return
@@ -38,5 +29,5 @@ export const useNotification = () => {
     notifications.value = notifications.value.filter(n => n.id !== id)
   }
 
-  return { notifications, notify, remove, requestPermission }
+  return { notifications, notify, remove }
 }
