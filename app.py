@@ -2,36 +2,34 @@
 Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
-from pathlib import Path
-import json
-from flask import url_for
-from flask import Flask, render_template, request, jsonify
-from utils.socketio import socketio
-import os
-from datetime import datetime, timezone, timedelta
-from dotenv import load_dotenv
-import requests
-from werkzeug.serving import WSGIRequestHandler
-import logging
 import atexit
+import json
+import logging
+import os
 import re
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import requests
+from dotenv import load_dotenv
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sync.scheduled_sync import scheduler, reload_scheduler_jobs
-from database.database_manager import DatabaseManager
-from database.models import OtpConfiguration, UserSchedule, SyncLog
+from werkzeug.serving import WSGIRequestHandler
+
 from configuration.config_manager import ConfigManager
+from database.database_manager import DatabaseManager
+from database.models import OtpConfiguration, SyncLog, UserSchedule
+from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
-from utils.constants import (
-    GITHUB_CHANGELOG_BASE_URL,
-    CHANGELOG_PATH,
-    DEMARCHES_API_URL
-)
 from utils.api_validator import (
     test_demarches_api,
     test_grist_api,
     verify_api_connections,
 )
+from utils.constants import CHANGELOG_PATH, DEMARCHES_API_URL, GITHUB_CHANGELOG_BASE_URL
+from utils.help_links import HELP_LINKS
+from utils.socketio import socketio
 
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -172,7 +170,7 @@ def test_current_config_connections(otp_config_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Erreur lors du test des connexions")
         return jsonify(
             {
@@ -614,7 +612,9 @@ def api_sync_log_latest():
     grist_doc_id = request.args.get("grist_doc_id")
 
     if not otp_config_id and not grist_doc_id:
-        return jsonify({"success": False, "message": "otp_config_id or grist_doc_id is required"}), 400
+        return jsonify(
+            {"success": False, "message": "otp_config_id or grist_doc_id is required"}
+        ), 400
 
     db = SessionLocal()
 
@@ -880,9 +880,14 @@ def debug():
     )
 
 
+@app.context_processor
+def inject_help_links():
+    return {"help_links": HELP_LINKS}
+
+
 @app.route("/utiliser-le-connecteur")
 def use_otp():
-    return render_template("use-otp.html")
+    return redirect(HELP_LINKS["faq"])
 
 
 @app.route("/wip")
@@ -904,13 +909,14 @@ def vite_asset(entry="src/main.js"):
         "css": url_for("static", filename=f"dist/{css_list[0]}") if css_list else None,
     }
 
+
 app.jinja_env.globals["vite_asset"] = vite_asset
+
 
 @app.context_processor
 def inject_vite():
-    return {
-        "vite_asset": vite_asset
-    }
+    return {"vite_asset": vite_asset}
+
 
 # WebSocket events
 

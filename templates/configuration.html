@@ -1,16 +1,20 @@
 {% include 'sync_progression.html' %}
 
-<div id="config_check_result" class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border" style="display: none;">
-    <div class="fr-card__body">
-        <div class="fr-card__content">
-            <h2 class="fr-card__title">Statut de la configuration</h2>
-            <div class="fr-mt-2w">
-                <div class="fr-alert fr-alert--info">
-                    <p>Vérification de la configuration en cours...</p>
-                </div>
-            </div>
+<div
+  id="config_check_result"
+  class="fr-card fr-card--light-grey fr-mb-4w fr-card--no-border"
+  style="display: none"
+>
+  <div class="fr-card__body">
+    <div class="fr-card__content">
+      <h2 class="fr-card__title">Statut de la configuration</h2>
+      <div class="fr-mt-2w">
+        <div class="fr-alert fr-alert--info">
+          <p>Vérification de la configuration en cours...</p>
         </div>
+      </div>
     </div>
+  </div>
 </div>
 
 <div class="fr-mb-4w">
@@ -21,7 +25,15 @@
 <!-- Configuration Démarches Simplifiées -->
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
-    <button type="button" id="accordion-ds" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-1">1. Démarche numérique</button>
+    <button
+      type="button"
+      id="accordion-ds"
+      class="fr-accordion__btn"
+      aria-expanded="true"
+      aria-controls="accordion-1"
+    >
+      1. Démarche numérique
+    </button>
   </h2>
   <div id="accordion-1" class="fr-collapse fr-accordion--light-grey fr-px-4w">
     <div class="fr-mt-4w">
@@ -34,25 +46,44 @@
 
           <div class="fr-input-group">
             <label class="fr-label" for="ds_api_token">
-              Token API * <a href="{{ url_for('use_otp') }}#help-ds" class="fr-link fr-text--xs">Où trouver votre token API ?</a>
+              Token API *
+              <a
+                href="{{ help_links.token_api }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="fr-link fr-text--xs"
+                aria-label="Où trouver votre token API ? (nouvelle fenêtre)"
+                >Où trouver votre token API ?</a
+              >
             </label>
-            <input class="fr-input input-config" type="password" id="ds_api_token" name="ds_api_token">
+            <input
+              class="fr-input input-config"
+              type="password"
+              id="ds_api_token"
+              name="ds_api_token"
+            />
             <div id="ds_token_status" class="fr-mt-1v"></div>
           </div>
         </div>
-        <div class="fr-col-12 fr-col-md-6 fr-hidden">
-
-        </div>
+        <div class="fr-col-12 fr-col-md-6 fr-hidden"></div>
       </div>
 
       <div class="fr-mt-3w">
         <div class="fr-input-group">
           <label class="fr-label" for="demarche_number">
             Numéro de démarche *
-            <span class="fr-hint-text">Identifiant numérique de votre démarche</span>
+            <span class="fr-hint-text"
+              >Identifiant numérique de votre démarche</span
+            >
           </label>
-          <input class="fr-input input-config" type="number" id="demarche_number" name="demarche_number" 
-            placeholder="Ex: 12345" style="max-width: 200px;">
+          <input
+            class="fr-input input-config"
+            type="number"
+            id="demarche_number"
+            name="demarche_number"
+            placeholder="Ex: 12345"
+            style="max-width: 200px"
+          />
         </div>
       </div>
     </div>
@@ -62,7 +93,15 @@
 <!-- Configuration Grist -->
 <section class="fr-accordion">
   <h2 class="fr-accordion__title">
-    <button type="button" id="accordion-grist" class="fr-accordion__btn" aria-expanded="true" aria-controls="accordion-2">2. API Grist</button>
+    <button
+      type="button"
+      id="accordion-grist"
+      class="fr-accordion__btn"
+      aria-expanded="true"
+      aria-controls="accordion-2"
+    >
+      2. API Grist
+    </button>
   </h2>
   <div id="accordion-2" class="fr-collapse fr-accordion--light-grey fr-px-4w">
     <div class="fr-mt-4w">
@@ -73,8 +112,13 @@
               URL de base Grist
               <span class="fr-hint-text">URL de votre instance Grist</span>
             </label>
-            <input class="fr-input input-config" type="url" id="grist_base_url" name="grist_base_url" 
-              value="https://grist.numerique.gouv.fr/api">
+            <input
+              class="fr-input input-config"
+              type="url"
+              id="grist_base_url"
+              name="grist_base_url"
+              value="https://grist.numerique.gouv.fr/api"
+            />
           </div>
         </div>
         <div class="fr-col-12 fr-col-md-8">
@@ -85,9 +129,22 @@
 
           <div class="fr-input-group">
             <label class="fr-label" for="grist_api_key">
-              Clé API Grist * <a href="{{ url_for('use_otp') }}#help-grist" class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
+              Clé API Grist *
+              <a
+                href="{{ help_links.grist_api_key }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="fr-link fr-text--xs"
+                aria-label="Où trouver votre clé API Grist ? (nouvelle fenêtre)"
+                >Où trouver votre clé API Grist ?</a
+              >
             </label>
-            <input class="fr-input input-config" type="password" id="grist_api_key" name="grist_api_key">
+            <input
+              class="fr-input input-config"
+              type="password"
+              id="grist_api_key"
+              name="grist_api_key"
+            />
             <div id="grist_key_status" class="fr-mt-1v"></div>
           </div>
         </div>
@@ -99,18 +156,32 @@
             <div class="fr-input-group">
               <label class="fr-label" for="grist_doc_id">
                 ID du document Grist
-                <span class="fr-hint-text">Identifiant du document de destination</span>
+                <span class="fr-hint-text"
+                  >Identifiant du document de destination</span
+                >
               </label>
-              <input class="fr-input input-config" type="text" id="grist_doc_id" name="grist_doc_id">
+              <input
+                class="fr-input input-config"
+                type="text"
+                id="grist_doc_id"
+                name="grist_doc_id"
+              />
             </div>
           </div>
           <div class="fr-col-12 fr-col-md-6">
             <div class="fr-input-group">
               <label class="fr-label" for="grist_user_id">
                 ID utilisateur Grist
-                <span class="fr-hint-text">Identifiant de l'utilisateur (récupéré depuis Grist)</span>
+                <span class="fr-hint-text"
+                  >Identifiant de l'utilisateur (récupéré depuis Grist)</span
+                >
               </label>
-              <input class="fr-input input-config" type="text" id="grist_user_id" name="grist_user_id">
+              <input
+                class="fr-input input-config"
+                type="text"
+                id="grist_user_id"
+                name="grist_user_id"
+              />
             </div>
           </div>
         </div>
