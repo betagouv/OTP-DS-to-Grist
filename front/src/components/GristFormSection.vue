@@ -95,8 +95,6 @@ defineExpose({
 
 <template>
   <div>
-    <h6 class="fr-mb-3w">1. Grist</h6>
-
     <OtpAlert
       v-if="gristFetchError"
       type="error"

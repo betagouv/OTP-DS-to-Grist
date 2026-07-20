@@ -100,8 +100,6 @@ watch(() => props.existingConfig, (config) => {
 
 <template>
   <div>
-    <h6 class="fr-mb-3w">2. Démarche numérique</h6>
-
     <OtpAlert
       v-if="error"
       type="error"
