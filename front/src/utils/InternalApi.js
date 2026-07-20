@@ -57,6 +57,12 @@ class InternalApi {
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
     return response.json()
   }
+
+  async getSyncLogLatestByDocId(docId) {
+    const response = await fetch(`${ROUTES.SYNC_LOG_LATEST}?grist_doc_id=${docId}`)
+    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+    return response.json()
+  }
 }
 
 export const api = new InternalApi()

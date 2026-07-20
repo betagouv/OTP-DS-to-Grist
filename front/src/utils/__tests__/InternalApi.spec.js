@@ -145,4 +145,24 @@ describe('InternalApi', () => {
       await expect(api.getSyncLogLatest(1)).rejects.toThrow('Erreur HTTP 503')
     })
   })
+
+  describe('getSyncLogLatestByDocId', () => {
+    it('calls GET /api/sync-log/latest with grist_doc_id', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, auto: null, manual: null })
+      })
+
+      const result = await api.getSyncLogLatestByDocId('doc-abc')
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/sync-log/latest?grist_doc_id=doc-abc')
+      expect(result).toEqual({ success: true, auto: null, manual: null })
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
+
+      await expect(api.getSyncLogLatestByDocId('doc-abc')).rejects.toThrow('Erreur HTTP 500')
+    })
+  })
 })

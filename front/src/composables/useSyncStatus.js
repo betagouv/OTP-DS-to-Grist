@@ -5,7 +5,6 @@ export const useSyncStatus = () => {
   const lastAutoSync = ref(null)
   const lastManualSync = ref(null)
 
-
   const fetchLatestSync = async (otpConfigId) => {
     const data = await api.getSyncLogLatest(otpConfigId)
     if (data.success) {
@@ -14,12 +13,22 @@ export const useSyncStatus = () => {
     }
   }
 
-  const fetchAllLatestSyncs = async (configs) => {
+  const fetchAllLatestSyncs = async (configs, fallbackDocId) => {
     const validConfigs = configs.filter(c => c?.otp_config_id)
-    if (validConfigs.length === 0) return
 
+    if (validConfigs.length > 0) {
+      await fetchByConfigs(validConfigs)
+      return
+    }
+
+    if (fallbackDocId) {
+      await fetchByDocId(fallbackDocId)
+    }
+  }
+
+  const fetchByConfigs = async (configs) => {
     const results = await Promise.all(
-      validConfigs.map(c => api.getSyncLogLatest(c.otp_config_id))
+      configs.map(c => api.getSyncLogLatest(c.otp_config_id))
     )
 
     const autos = []
@@ -33,6 +42,14 @@ export const useSyncStatus = () => {
 
     lastAutoSync.value = mergeSyncs(autos)
     lastManualSync.value = mergeSyncs(manuals)
+  }
+
+  const fetchByDocId = async (docId) => {
+    const data = await api.getSyncLogLatestByDocId(docId)
+    if (data.success) {
+      lastAutoSync.value = data.auto || null
+      lastManualSync.value = data.manual || null
+    }
   }
 
   const mergeSyncs = (syncs) => {

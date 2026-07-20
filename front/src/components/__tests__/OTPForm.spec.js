@@ -6,7 +6,7 @@ import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
 
 describe('hasUnsavedSection computation', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
 
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
@@ -79,7 +79,7 @@ describe('hasUnsavedSection computation', () => {
 })
 
 describe('Add demarche button', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
 
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
@@ -135,7 +135,7 @@ describe('Add demarche button', () => {
 })
 
 describe('handleAddDemarche', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
 
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
@@ -343,7 +343,7 @@ describe('Save button action', () => {
 })
 
 describe('Config loading on mount', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
   let consoleSpy = null
 
   beforeEach(() => {
@@ -447,7 +447,7 @@ describe('Config loading on mount', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.emitted('config-loaded')).toBeTruthy()
-    expect(wrapper.emitted('config-loaded')[0][0]).toEqual(configs)
+    expect(wrapper.emitted('config-loaded')[0][0]).toEqual({ configs, docId: 'doc-123' })
   })
 })
 
@@ -615,7 +615,7 @@ describe('Save with existing config (UPDATE)', () => {
 describe('Delete action', () => {
   let wrapper
   let consoleSpy = null
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123' }
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
 
   beforeEach(async () => {
     vi.restoreAllMocks()

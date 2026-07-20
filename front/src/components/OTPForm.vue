@@ -43,7 +43,7 @@ const loadConfig = async () => {
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
     otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
-    emit('config-loaded', serverConfigs.value)
+    emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
   } catch (e) {
     console.error('Erreur lors du chargement de la configuration :', e)
   }

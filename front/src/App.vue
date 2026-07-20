@@ -10,8 +10,8 @@ const lastSyncResult = ref(null)
 
 const { lastAutoSync, lastManualSync, fetchAllLatestSyncs } = useSyncStatus()
 
-const handleConfigLoaded = (configs) => {
-  fetchAllLatestSyncs(configs).catch(() => {})
+const handleConfigLoaded = ({ configs, docId }) => {
+  fetchAllLatestSyncs(configs, docId).catch(() => {})
 }
 
 const handleSyncStarted = () => {
