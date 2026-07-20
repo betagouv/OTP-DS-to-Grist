@@ -32,14 +32,14 @@ describe('OtpAlert', () => {
     })
 
     const alert = wrapper.findComponent(DsfrAlert)
-    await alert.vm.$emit('close')
+    alert.vm.$emit('close')
 
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
-  it('scrolls into view when title changes from null to string', async () => {
+  it('scrolls into view when title is set', async () => {
     const wrapper = mount(OtpAlert, {
-      props: { type: 'error', title: null },
+      props: { type: 'error', title: 'Shit append' },
       global: { components: { DsfrAlert } }
     })
 

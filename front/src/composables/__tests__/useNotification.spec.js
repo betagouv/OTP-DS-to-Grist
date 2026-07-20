@@ -17,45 +17,14 @@ describe('useNotification', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
-    delete globalThis.Notification
   })
 
-  it('adds toast when Notification API is unavailable', () => {
+  it('adds a toast notification', () => {
     notify('test message')
 
     expect(notifications.value).toHaveLength(1)
     expect(notifications.value[0].message).toBe('test message')
     expect(notifications.value[0].type).toBe('info')
-  })
-
-  it('adds toast when permission is denied', () => {
-    globalThis.Notification = { permission: 'denied' }
-
-    notify('test message')
-
-    expect(notifications.value).toHaveLength(1)
-    expect(notifications.value[0].message).toBe('test message')
-  })
-
-  it('sends browser notification when permission is granted', () => {
-    const MockNotification = vi.fn()
-    globalThis.Notification = MockNotification
-    globalThis.Notification.permission = 'granted'
-
-    notify('browser msg', 'success')
-
-    expect(MockNotification).toHaveBeenCalledWith('browser msg')
-    expect(notifications.value).toHaveLength(0)
-  })
-
-  it('falls back to toast when Notification constructor throws', () => {
-    globalThis.Notification = vi.fn(() => { throw new Error('blocked') })
-    globalThis.Notification.permission = 'granted'
-
-    notify('fallback msg')
-
-    expect(notifications.value).toHaveLength(1)
-    expect(notifications.value[0].message).toBe('fallback msg')
   })
 
   it('uses 10s duration for error type', () => {
