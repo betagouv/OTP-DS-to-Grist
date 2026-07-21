@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { vi, describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SyncResultBanner from '../SyncResultBanner.vue'
 
@@ -69,6 +69,19 @@ describe('SyncResultBanner', () => {
 
     expect(wrapper.text()).toContain('Grist déjà à jour')
     expect(wrapper.text()).toContain('Aucun dossier nouveau ou modifié depuis la dernière synchronisation.')
+  })
+
+  it('scrolls into view on mount', async () => {
+    const original = Element.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+
+    mount(SyncResultBanner, { props: defaultProps })
+    await new Promise(resolve => setTimeout(resolve))
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' })
+
+    Element.prototype.scrollIntoView = original
   })
 
   it('détecte "Grist déjà à jour" via les compteurs quand sync_reason est absent (logs historiques)', () => {

@@ -1,6 +1,12 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, nextTick } from 'vue'
 import { DsfrAlert } from '@gouvminint/vue-dsfr'
+
+const bannerEl = ref(null)
+
+onMounted(() => {
+  nextTick(() => bannerEl.value?.scrollIntoView({ behavior: 'smooth' }))
+})
 
 const props = defineProps({
   status: { type: String, required: true },
@@ -45,11 +51,13 @@ const date = computed(() =>
 </script>
 
 <template>
-  <DsfrAlert
-    :type="alertType"
-    :title="title"
-  >
-    <p>{{ description }}</p>
-    <p class="fr-text--sm">{{ date }}</p>
-  </DsfrAlert>
+  <div ref="bannerEl">
+    <DsfrAlert
+      :type="alertType"
+      :title="title"
+    >
+      <p>{{ description }}</p>
+      <p class="fr-text--sm">{{ date }}</p>
+    </DsfrAlert>
+  </div>
 </template>
