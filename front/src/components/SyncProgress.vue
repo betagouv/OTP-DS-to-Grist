@@ -4,11 +4,10 @@ import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
-import SyncStatsCard from './SyncStatsCard.vue'
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 
 const { totalDemarches, demarcheIndex } = useDemarcheContext()
-const emit = defineEmits(['sync-running-changed'])
+const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
 const task = ref(null)
 const socket = ref(null)
 const syncCardEl = ref(null)
@@ -35,9 +34,20 @@ onMounted(() => {
   socket.value.on('task_update', (data) => {
     task.value = data.task
     if (data.task.status === 'running') {
+      emit('sync-started')
       emit('sync-running-changed', true)
     } else if (data.task.status === 'completed' || data.task.status === 'error') {
       emit('sync-running-changed', false)
+      emit('sync-finished', {
+        status: data.task.status,
+        success_count: data.task.result?.success_count ?? counts.value?.success ?? 0,
+        error_count: data.task.result?.error_count ?? counts.value?.error ?? 0,
+        timestamp: data.task.end_time
+          ? new Date(data.task.end_time * 1000).toISOString()
+          : new Date().toISOString(),
+        sync_reason: data.task.sync_reason,
+        message: data.task.message
+      })
     }
   })
 })
@@ -57,7 +67,7 @@ onUnmounted(() => {
     class="fr-card fr-card--light-grey fr-card--no-border fr-mb-4w"
   >
     <div class="fr-card__body">
-      <div class="fr-card__content">
+      <div class="fr-card__content fr-mb-3w">
         <h2 class="fr-card__title">Synchronisation des données</h2>
         <p v-if="totalDemarches > 0" class="fr-text--bold fr-mb-2w">{{ demarcheIndex }}/{{ totalDemarches }} démarche(s) synchronisée(s)</p>
         <p class="fr-mb-2w">{{ task.message }}</p>
@@ -73,14 +83,6 @@ onUnmounted(() => {
             :style="{ left: Math.round(task.progress) + '%' }"
             no-icon
           />
-        </div>
-        <div v-if="counts && (counts.success > 0 || counts.error > 0)" class="fr-grid-row fr-grid-row--gutters fr-mt-2w">
-          <div v-if="counts.success > 0" class="fr-col-6">
-            <SyncStatsCard :count="counts.success" label="Dossiers synchronisés" color="green" />
-          </div>
-          <div v-if="counts.error > 0" class="fr-col-6">
-            <SyncStatsCard :count="counts.error" label="Échecs" color="red" />
-          </div>
         </div>
       </div>
     </div>

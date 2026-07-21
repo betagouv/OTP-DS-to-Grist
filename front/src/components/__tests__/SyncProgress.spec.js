@@ -29,18 +29,11 @@ describe('SyncProgress', () => {
     scrollIntoView.mockClear()
     const { setDemarcheCount } = useDemarcheContext()
     setDemarcheCount(0)
-    globalThis.parseLogMessage = vi.fn((msg, counts = { success: 0, error: 0, total: 0 }) => {
-      const r = { ...counts }
-      if (msg.includes('succès')) r.success++
-      if (msg === 'error') r.error++
-      return r
-    })
     wrapper = mount(SyncProgress)
   })
 
   afterEach(() => {
     wrapper?.unmount()
-    delete globalThis.parseLogMessage
   })
 
   it('hided by default', () => {
@@ -114,6 +107,58 @@ describe('SyncProgress', () => {
     expect(emitted[1][0]).toBe(false)
   })
 
+  it('emit sync-started on running', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('sync-started')).toBeTruthy()
+    expect(wrapper.emitted('sync-started').length).toBe(1)
+  })
+
+  it('emit sync-finished with result on completed', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'completed', progress: 100, message: 'Terminé',
+      result: { success_count: 5, error_count: 1 },
+      end_time: 1752600000,
+      sync_reason: 'synced'
+    })
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('sync-finished')
+    expect(emitted).toBeTruthy()
+    expect(emitted[0][0]).toEqual({
+      status: 'completed',
+      success_count: 5,
+      error_count: 1,
+      timestamp: new Date(1752600000 * 1000).toISOString(),
+      sync_reason: 'synced',
+      message: 'Terminé'
+    })
+  })
+
+  it('emit sync-finished with error on error', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'error', progress: 50, message: 'Erreur',
+      result: { success_count: 2, error_count: 3 },
+      end_time: 1752600000,
+      sync_reason: 'synced'
+    })
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('sync-finished')
+    expect(emitted).toBeTruthy()
+    expect(emitted[0][0]).toEqual({
+      status: 'error',
+      success_count: 2,
+      error_count: 3,
+      timestamp: new Date(1752600000 * 1000).toISOString(),
+      sync_reason: 'synced',
+      message: 'Erreur'
+    })
+  })
+
   it('scrolls into view when sync starts running', async () => {
     triggerTaskUpdate({ status: 'running', progress: 0, message: 'Démarrage' })
 
@@ -139,37 +184,5 @@ describe('SyncProgress', () => {
     const localWrapper = mount(SyncProgress)
     localWrapper.unmount()
     expect(mockDisconnect).toHaveBeenCalled()
-  })
-
-  it('display success card from logs', async () => {
-    triggerTaskUpdate({
-      status: 'running', progress: 50, message: 'En cours',
-      logs: [{ message: 'succès' }]
-    })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('Dossiers synchronisés')
-  })
-
-  it('display success and failed cards', async () => {
-    triggerTaskUpdate({
-      status: 'running', progress: 50, message: 'En cours',
-      logs: [{ message: 'succès' }, { message: 'error' }]
-    })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('Dossiers synchronisés')
-    expect(wrapper.text()).toContain('Échecs')
-  })
-
-  it('hide card without log', async () => {
-    triggerTaskUpdate({
-      status: 'running', progress: 50, message: 'En cours',
-      logs: [{ message: 'autre information' }]
-    })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).not.toContain('Dossiers synchronisés')
-    expect(wrapper.text()).not.toContain('Échecs')
   })
 })

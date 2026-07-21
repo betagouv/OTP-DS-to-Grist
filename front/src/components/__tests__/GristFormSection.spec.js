@@ -31,6 +31,7 @@ describe('Grist form section', () => {
 
   it('shows error message when token validation fails', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: false, message: 'Token invalide' })
     })
 
@@ -63,6 +64,7 @@ describe('Grist form section', () => {
 
   it('shows no error when token is valid', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve({ success: true })
     })
 

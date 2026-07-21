@@ -32,6 +32,15 @@ Le projet contient deux frontends coexistants :
 - Toujours vérifier si une fonctionnalité demandée existe déjà dans le legacy avant de la
   coder from scratch
 
+### Contexte d'évolution
+
+L'application gère initialement une synchronisation unique (une démarche DS vers un document Grist).
+L'évolution en cours consiste à supporter la **gestion multi-configurations** (plusieurs paires
+DS ↔ Grist) par utilisateur. Le backend supporte déjà le multi-config (`otp_configurations`,
+`ConfigManager`), mais le front-end est encore en phase de migration : le legacy (templates/)
+reste single-config, le nouveau front (`front/`) vise le multi-config et est en cours de
+développement. Toute intervention doit considérer cette trajectoire.
+
 ## Contexte du projet
 
 Ce projet a été initialement créé par un non-développeur avec assistance IA.

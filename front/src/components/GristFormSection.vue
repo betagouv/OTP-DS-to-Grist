@@ -9,6 +9,7 @@ import {
 } from '@gouvminint/vue-dsfr'
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import { api } from '../utils/InternalApi'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }
@@ -33,19 +34,12 @@ const gristTokenPlaceholder = ref(DEFAULT_GRIST_PLACEHOLDER)
 const handleGristInputChange = async () => {
   gristTokenErrorMessage.value = null
 
-  const response = await fetch('/api/test-connection', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      type: 'grist',
-      base_url: baseUrl.value,
-      api_key: inputGristToken.value,
-      doc_id: docId.value
-    })
+  const result = await api.testConnection({
+    type: 'grist',
+    base_url: baseUrl.value,
+    api_key: inputGristToken.value,
+    doc_id: docId.value
   })
-  const result = await response.json()
 
   gristTokenErrorMessage.value = result.success ? '' : result.message
 
