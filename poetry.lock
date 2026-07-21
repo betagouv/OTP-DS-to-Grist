@@ -296,18 +296,18 @@ markers = {main = "platform_system == \"Windows\""}
 
 [[package]]
 name = "commitizen"
-version = "4.16.3"
+version = "4.16.5"
 description = "Python commitizen client tool"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["dev"]
 files = [
-    {file = "commitizen-4.16.3-py3-none-any.whl", hash = "sha256:ce1be39fe98a16725fd0c960daf0f360acac86db7ae8db1e1df8d3541005b5be"},
-    {file = "commitizen-4.16.3.tar.gz", hash = "sha256:5cdca4c02715cc770312f4b505c65a6c39024c73ece41b943bccaf81c44436ed"},
+    {file = "commitizen-4.16.5-py3-none-any.whl", hash = "sha256:cd80978a61bb3e0b18137da9e10d03edba0b9c184b9bc964dba8a31c42a7630c"},
+    {file = "commitizen-4.16.5.tar.gz", hash = "sha256:a953394a8625ab6e3619d7e97ffc032cac8a13c5854a12010d0a9d415cdb80ca"},
 ]
 
 [package.dependencies]
-argcomplete = ">=1.12.1,<3.7"
+argcomplete = ">=1.12.1,<3.8"
 charset-normalizer = ">=2.1.0,<4"
 colorama = ">=0.4.1,<1.0"
 decli = ">=0.6.0,<1.0"
@@ -1829,4 +1829,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "522c5228447dae260c5ed8b1669ba46a083bbb70462b8b4c229c05521f774efc"
+content-hash = "11c3c6882e181f2a6e5ad5cec21c041b51d20500a06e9752afca3ccd9d83b513"
