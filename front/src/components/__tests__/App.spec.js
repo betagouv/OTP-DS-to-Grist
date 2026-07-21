@@ -67,7 +67,7 @@ describe('App', () => {
 
     syncProgress.vm.$emit('sync-finished', {
       status: 'completed', success_count: 5, error_count: 0, timestamp: '2026-07-15T10:00:00',
-      sync_reason: 'synced', message: 'Terminé'
+      sync_reason: 'synced'
     })
     await wrapper.vm.$nextTick()
 
@@ -84,7 +84,7 @@ describe('App', () => {
 
     wrapper.findComponent(SyncProgressStub).vm.$emit('sync-finished', {
       status: 'completed', success_count: 5, error_count: 1, timestamp: '2026-07-15T10:00:00',
-      sync_reason: 'synced', message: 'Terminé'
+      sync_reason: 'synced'
     })
     await wrapper.vm.$nextTick()
 
@@ -95,7 +95,6 @@ describe('App', () => {
     expect(banner.props('errorCount')).toBe(1)
     expect(banner.props('syncType')).toBe('manual')
     expect(banner.props('syncReason')).toBe('synced')
-    expect(banner.props('message')).toBe('Terminé')
   })
 
   it('maps completed status to success for the banner', async () => {
@@ -103,7 +102,7 @@ describe('App', () => {
 
     wrapper.findComponent(SyncProgressStub).vm.$emit('sync-finished', {
       status: 'completed', success_count: 10, error_count: 0, timestamp: '2026-07-15T11:00:00',
-      sync_reason: 'synced', message: 'Terminé'
+      sync_reason: 'synced'
     })
     await wrapper.vm.$nextTick()
 
@@ -115,7 +114,7 @@ describe('App', () => {
 
     wrapper.findComponent(SyncProgressStub).vm.$emit('sync-finished', {
       status: 'error', success_count: 2, error_count: 3, timestamp: '2026-07-15T11:00:00',
-      sync_reason: 'synced', message: 'Erreur'
+      sync_reason: 'synced'
     })
     await wrapper.vm.$nextTick()
 
@@ -124,8 +123,7 @@ describe('App', () => {
 
   it('shows auto sync banner from page load when lastAutoSync exists', async () => {
     mockLastAutoSync.value = {
-      status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00',
-      message: 'Synchro auto terminée'
+      status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00'
     }
     const wrapper = createWrapper()
 
@@ -133,13 +131,11 @@ describe('App', () => {
     expect(banner.exists()).toBe(true)
     expect(banner.props('syncType')).toBe('auto')
     expect(banner.props('successCount')).toBe(3)
-    expect(banner.props('message')).toBe('Synchro auto terminée')
   })
 
   it('cache les bannières historiques quand une synchro démarre', async () => {
     mockLastAutoSync.value = {
-      status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00',
-      message: 'Synchro auto terminée'
+      status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00'
     }
     const wrapper = createWrapper()
 
@@ -153,12 +149,10 @@ describe('App', () => {
 
   it('live result takes priority over auto/manual banners', async () => {
     mockLastAutoSync.value = {
-      status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00',
-      message: 'Synchro auto terminée'
+      status: 'success', success_count: 3, error_count: 0, timestamp: '2026-07-15T08:00:00'
     }
     mockLastManualSync.value = {
-      status: 'error', success_count: 1, error_count: 2, timestamp: '2026-07-15T09:00:00',
-      message: 'Synchro manu terminée'
+      status: 'error', success_count: 1, error_count: 2, timestamp: '2026-07-15T09:00:00'
     }
     const wrapper = createWrapper()
 
@@ -166,7 +160,7 @@ describe('App', () => {
 
     wrapper.findComponent(SyncProgressStub).vm.$emit('sync-finished', {
       status: 'completed', success_count: 10, error_count: 0, timestamp: '2026-07-15T11:00:00',
-      sync_reason: 'synced', message: 'Terminé'
+      sync_reason: 'synced'
     })
     await wrapper.vm.$nextTick()
 

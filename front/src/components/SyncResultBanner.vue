@@ -9,7 +9,6 @@ const props = defineProps({
   timestamp: { type: String, default: null },
   syncType: { type: String, required: true },
   syncReason: { type: String, default: null },
-  message: { type: String, default: null }
 })
 
 const isUpToDate = computed(() =>
@@ -51,7 +50,6 @@ const date = computed(() =>
     :title="title"
   >
     <p>{{ description }}</p>
-    <p v-if="message" class="fr-text--sm">{{ message }}</p>
     <p class="fr-text--sm">{{ date }}</p>
   </DsfrAlert>
 </template>

@@ -86,15 +86,4 @@ describe('SyncResultBanner', () => {
     expect(wrapper.text()).toContain('Grist déjà à jour')
     expect(wrapper.findComponent({ name: 'DsfrAlert' }).exists())
   })
-
-  it('affiche le message de la tâche quand présent', () => {
-    const wrapper = mount(SyncResultBanner, {
-      props: {
-        ...defaultProps,
-        message: 'Synchronisation terminée: 5/5 dossiers synchronisés'
-      }
-    })
-
-    expect(wrapper.text()).toContain('Synchronisation terminée: 5/5 dossiers synchronisés')
-  })
 })
