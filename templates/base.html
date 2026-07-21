@@ -1,27 +1,44 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-store" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
 
     <title>{% block title %}🦄 One Trick Pony DN to Grist{% endblock %}</title>
-    
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦄</text></svg>">
-    
+
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦄</text></svg>"
+    />
+
     <!-- DSFR CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/utility/utility.min.css" rel="stylesheet">
-    
+    <link
+      href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/utility/utility.min.css"
+      rel="stylesheet"
+    />
+
     <!-- Font Awesome pour les icônes -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
 
     <!-- Scripts DSFR -->
-    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.module.min.js" type="module"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.nomodule.min.js" nomodule></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.module.min.js"
+      type="module"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.11.2/dist/dsfr.nomodule.min.js"
+      nomodule
+    ></script>
 
     <!-- Grist Plugin API pour les widgets -->
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
@@ -38,212 +55,243 @@
     <script src="static/js/config.js"></script>
     <script src="static/js/sync.js"></script>
     <script src="static/js/form.js"></script>
-    
+
     <style>
-        /* Styles personnalisés complémentaires */
-        .hide {
-          display: none;
-        }
+      /* Styles personnalisés complémentaires */
+      .hide {
+        display: none;
+      }
 
-        .progress-bar {
-            background-color: var(--background-action-high-blue-france);
-        }
-        
-        .log-area {
-            background-color: #f6f6f6;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 1rem;
-            font-family: 'Courier New', monospace;
-            font-size: 0.875rem;
-            white-space: pre-wrap;
-            overflow-y: auto;
-            max-height: 400px;
-        }
-        
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        
-        .status-success { background-color: #18753c; }
-        .status-error { background-color: #ce0500; }
-        .status-warning { background-color: #b34000; }
-        .status-info { background-color: var(--blue-france-sun-113); }
-        
-        .fade-in {
-            animation: fadeIn 0.3s ease-in;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
+      .progress-bar {
+        background-color: var(--background-action-high-blue-france);
+      }
 
-        /* Customisation pour les notifications */
-        .notification {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            max-width: 400px;
-            z-index: 9999;
+      .log-area {
+        background-color: #f6f6f6;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 1rem;
+        font-family: 'Courier New', monospace;
+        font-size: 0.875rem;
+        white-space: pre-wrap;
+        overflow-y: auto;
+        max-height: 400px;
+      }
+
+      .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+      }
+
+      .status-success {
+        background-color: #18753c;
+      }
+      .status-error {
+        background-color: #ce0500;
+      }
+      .status-warning {
+        background-color: #b34000;
+      }
+      .status-info {
+        background-color: var(--blue-france-sun-113);
+      }
+
+      .fade-in {
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
         }
-
-        /* Fix pour éviter les espaces énormes */
-        .fr-container {
-            max-width: 1200px;
+        to {
+          opacity: 1;
         }
+      }
 
-        /* Fix pour l'espacement des cartes */
-        .fr-card {
-            margin-bottom: 2rem;
+      .pulse {
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
         }
-
-        /* Fix pour la navigation active */
-        .fr-nav__link[aria-current="page"] {
-            font-weight: bold;
+        50% {
+          opacity: 0.5;
         }
+      }
 
-        .fr-notice--error {
-          background-color: #ce0500;
-          color: white;
-        }
+      /* Customisation pour les notifications */
+      .notification {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        max-width: 400px;
+        z-index: 9999;
+      }
 
-        .fr-notice--error .fr-btn--close:before {
-          background-color: white;
-        }
+      /* Fix pour éviter les espaces énormes */
+      .fr-container {
+        max-width: 1200px;
+      }
 
-        /* Utilitaires de bordure manquants dans DSFR */
-        .fr-border-bottom {
-          border-bottom: 1px solid var(--border-default-grey);
-        }
+      /* Fix pour l'espacement des cartes */
+      .fr-card {
+        margin-bottom: 2rem;
+      }
 
-        .fr-border-grey {
-          border-color: var(--border-default-grey) !important;
-        }
+      /* Fix pour la navigation active */
+      .fr-nav__link[aria-current='page'] {
+        font-weight: bold;
+      }
 
-        .fr-border-black {
-          border-color: black !important;
-        }
+      .fr-notice--error {
+        background-color: #ce0500;
+        color: white;
+      }
 
-        .fr-border-width--4px {
-          border-width: 4px;
-        }
+      .fr-notice--error .fr-btn--close:before {
+        background-color: white;
+      }
 
-        /* Force l'ordre d'affichage des titres de cartes */
-        .fr-card__title {
-          order: -1 !important;
-          margin-bottom: 1rem !important;
-        }
+      /* Utilitaires de bordure manquants dans DSFR */
+      .fr-border-bottom {
+        border-bottom: 1px solid var(--border-default-grey);
+      }
 
-        .fr-card__content {
-          display: flex !important;
-          flex-direction: column !important;
-        }
+      .fr-border-grey {
+        border-color: var(--border-default-grey) !important;
+      }
 
-        .fr-card--light-grey {
-          background-color: var(--grey-975-100) !important; /* Gris très clair DSFR */
-        }
+      .fr-border-black {
+        border-color: black !important;
+      }
 
-        .fr-card--no-border {
-          border: none !important;
-        }
+      .fr-border-width--4px {
+        border-width: 4px;
+      }
 
-        .fr-notice {
-          text-align: center;
-        }
+      /* Force l'ordre d'affichage des titres de cartes */
+      .fr-card__title {
+        order: -1 !important;
+        margin-bottom: 1rem !important;
+      }
 
-        .fr-notice--info .fr-notice__body:before {
-          display: none;
-        }
+      .fr-card__content {
+        display: flex !important;
+        flex-direction: column !important;
+      }
 
-        .fr-notice--info .fr-notice__body p:before {
-          content: "";
-          display: inline-block;
-          -webkit-mask-image: url(/static/img/fr--info-fill.svg);
-          mask-image: url(/static/img/fr--info-fill.svg);
+      .fr-card--light-grey {
+        background-color: var(
+          --grey-975-100
+        ) !important; /* Gris très clair DSFR */
+      }
 
-          width: var(--icon-size);
-          height: var(--icon-size);
-          background-color: currentColor;
-          --icon-size: 1.5rem;
-          flex: 0 0 auto;
-          vertical-align: calc((.75em - var(--icon-size)) * .5);
+      .fr-card--no-border {
+        border: none !important;
+      }
 
-          width:  1.5rem;
-          height: 1.5rem;
-        }
+      .fr-notice {
+        text-align: center;
+      }
 
-        .fr-table {
-          width: 100%;
-        }
+      .fr-notice--info .fr-notice__body:before {
+        display: none;
+      }
 
-        .fr-accordion--light-grey {
-          background-color: var(--grey-975-100) !important; /* Gris très clair DSFR */
-        }
+      .fr-notice--info .fr-notice__body p:before {
+        content: '';
+        display: inline-block;
+        -webkit-mask-image: url(/static/img/fr--info-fill.svg);
+        mask-image: url(/static/img/fr--info-fill.svg);
 
-        .fr-collapse {
-          margin: 0 !important;
-        }
+        width: var(--icon-size);
+        height: var(--icon-size);
+        background-color: currentColor;
+        --icon-size: 1.5rem;
+        flex: 0 0 auto;
+        vertical-align: calc((0.75em - var(--icon-size)) * 0.5);
 
-        .fr-text--center {
-          text-align: center;
-        }
+        width: 1.5rem;
+        height: 1.5rem;
+      }
 
-        .fr-link--no-decoration {
-          text-decoration: none;
-          background-image: none;
-        }
+      .fr-table {
+        width: 100%;
+      }
 
-        .fr-header__brand .fr-badge--info:before {
-          display: none;
-        }
+      .fr-accordion--light-grey {
+        background-color: var(
+          --grey-975-100
+        ) !important; /* Gris très clair DSFR */
+      }
 
-        .otp-nav {
-          padding-top: 1em;
-          border-style: solid;
-          border-width: 1px;
-          border-color: var(--border-default-grey) !important;
-        }
+      .fr-collapse {
+        margin: 0 !important;
+      }
 
-        .otp-nav ul {
-          display: flex;
-          flex-direction: row;
-          gap: 2rem;
-          list-style: none; 
-        }
+      .fr-text--center {
+        text-align: center;
+      }
 
+      .fr-link--no-decoration {
+        text-decoration: none;
+        background-image: none;
+      }
 
-        .otp-nav .fr-link {
-          font-size: 0.875rem!important;
-        }
+      .fr-header__brand .fr-badge--info:before {
+        display: none;
+      }
 
-        .otp-nav .active {
-          padding-bottom: 1em;
-          border-bottom: 2px solid var(--background-action-high-blue-france);
-          font-weight: bold;
-        }
+      .otp-nav {
+        padding-top: 1em;
+        border-style: solid;
+        border-width: 1px;
+        border-color: var(--border-default-grey) !important;
+      }
+
+      .otp-nav ul {
+        display: flex;
+        flex-direction: row;
+        gap: 2rem;
+        list-style: none;
+      }
+
+      .otp-nav .fr-link {
+        font-size: 0.875rem !important;
+      }
+
+      .otp-nav .active {
+        padding-bottom: 1em;
+        border-bottom: 2px solid var(--background-action-high-blue-france);
+        font-weight: bold;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="fr-notice fr-notice--info">
       <div class="fr-container">
         <div class="fr-notice__body">
           <p>
-            <span class="fr-notice__title">Produit en expérimentation {% if env_name %} - {{ env_name }} {% endif %} - </span>
-       Aidez-nous à l'améliorer, <a class="fr-link" href="https://tally.so/r/QKd0Wg" target="_blank" rel="noopener noreferrer" aria-label="Ouvrir le formulaire de contact One Trick Pony (nouvel onglet)">donnez-nous votre avis !</a>
+            <span class="fr-notice__title"
+              >Produit en expérimentation {% if env_name %} - {{ env_name }} {%
+              endif %} -
+            </span>
+            Aidez-nous à l'améliorer,
+            <a
+              class="fr-link"
+              href="https://tally.so/r/QKd0Wg"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Ouvrir le formulaire de contact One Trick Pony (nouvel onglet)"
+              >donnez-nous votre avis !</a
+            >
           </p>
         </div>
       </div>
@@ -251,116 +299,156 @@
 
     <!-- En-tête avec logo Marianne -->
     <header class="fr-header">
-        <div class="fr-header__body">
-            <div class="fr-container">
-                <div class="fr-header__body-row">
-                    <div class="fr-header__brand fr-enlarge-link">
-                        <div class="fr-header__brand-top">
-                            <div class="fr-header__logo">
-                                <p class="fr-logo">
-                                    République
-                                    <br>Française
-                                </p>
-                            </div>
-                        </div>
-                        <div class="fr-header__service">
-                            <a href="/" title="Accueil - One Trick Pony DS to Grist">
-                                <span class="fr-header__service-title">
-                                  <span style="vertical-align: text-top; line-height: 22px;">🦄</span>
-                                  One Trick Pony DN to Grist<span class="fr-badge fr-badge--info fr-badge--sm fr-ml-1w">BETA</span>
-                                </span>
-                            </a>
-                            <p class="fr-header__service-tagline fr-mt-1w">Synchronisation Démarche Numérique vers Grist</p>
-                        </div>
-                    </div>
+      <div class="fr-header__body">
+        <div class="fr-container">
+          <div class="fr-header__body-row">
+            <div class="fr-header__brand fr-enlarge-link">
+              <div class="fr-header__brand-top">
+                <div class="fr-header__logo">
+                  <p class="fr-logo">
+                    République
+                    <br />Française
+                  </p>
                 </div>
+              </div>
+              <div class="fr-header__service">
+                <a href="/" title="Accueil - One Trick Pony DS to Grist">
+                  <span class="fr-header__service-title">
+                    <span style="vertical-align: text-top; line-height: 22px"
+                      >🦄</span
+                    >
+                    One Trick Pony DN to Grist<span
+                      class="fr-badge fr-badge--info fr-badge--sm fr-ml-1w"
+                      >BETA</span
+                    >
+                  </span>
+                </a>
+                <p class="fr-header__service-tagline fr-mt-1w">
+                  Synchronisation Démarche Numérique vers Grist
+                </p>
+              </div>
             </div>
+          </div>
         </div>
+      </div>
 
-        <nav class="otp-nav">
-          <div class="fr-container">
+      <nav class="otp-nav">
+        <div class="fr-container">
           <ul class="otp-list-horizontal">
-            <li class="fr-nav-custom__item {% if request.path == '/' %}active{% endif %}">
+            <li
+              class="fr-nav-custom__item {% if request.path == '/' %}active{% endif %}"
+            >
               <a class="fr-link" href="/">Synchroniser</a>
             </li>
             {% if not 'prod' in env_name|lower %}
-              <li class="fr-nav-custom__item {% if request.endpoint == 'wip' %}active{% endif %}">
-                <a class="fr-link" href="{{ url_for('wip') }}">WIP</a>
-              </li>
+            <li
+              class="fr-nav-custom__item {% if request.endpoint == 'wip' %}active{% endif %}"
+            >
+              <a class="fr-link" href="{{ url_for('wip') }}">WIP</a>
+            </li>
             {% endif %}
-            <li class="fr-nav-custom__item {% if request.endpoint == 'use_otp' %}active{% endif %}">
-              <a class="fr-link" href="{{ url_for('use_otp') }}">Aide</a>
+            <li class="fr-nav-custom__item">
+              <a
+                class="fr-link"
+                href="{{ help_links.faq }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Aide (nouvelle fenêtre)"
+                >Aide</a
+              >
             </li>
           </ul>
-          </div>
-        </nav>
-
-        <!-- Navigation -->
-        <div style="display: none;" class="fr-header__menu fr-modal" id="modal-menu" aria-labelledby="modal-menu">
-            <div class="fr-container">
-                <button class="fr-btn--close fr-btn" aria-controls="modal-menu" title="Fermer">
-                    Fermer
-                </button>
-                <nav class="fr-nav" role="navigation" aria-label="Menu principal">
-                    <ul class="fr-nav__list">
-                        <li class="fr-nav__item">
-                            <a class="fr-nav__link" href="/">
-                              Synchroniser
-                            </a>
-                        </li>
-                        <li class="fr-nav__item">
-                            <a class="fr-nav__link" href="{{ url_for('use_otp') }}">
-                              Aide
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
-            </div>
         </div>
+      </nav>
+
+      <!-- Navigation -->
+      <div
+        style="display: none"
+        class="fr-header__menu fr-modal"
+        id="modal-menu"
+        aria-labelledby="modal-menu"
+      >
+        <div class="fr-container">
+          <button
+            class="fr-btn--close fr-btn"
+            aria-controls="modal-menu"
+            title="Fermer"
+          >
+            Fermer
+          </button>
+          <nav class="fr-nav" role="navigation" aria-label="Menu principal">
+            <ul class="fr-nav__list">
+              <li class="fr-nav__item">
+                <a class="fr-nav__link" href="/"> Synchroniser </a>
+              </li>
+              <li class="fr-nav__item">
+                <a
+                  class="fr-nav__link fr-link--icon-left fr-icon-external-link-line"
+                  href="{{ help_links.faq }}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Aide (nouvelle fenêtre)"
+                >
+                  Aide
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </div>
+      </div>
     </header>
 
     <!-- Contenu principal -->
     <main class="fr-container fr-py-4w">
-      <h1 id="welcome-title" class="fr-border-bottom"; style="display: none;">Bienvenue sur le connecteur DS vers Grist</h1>
+      <h1 id="welcome-title" class="fr-border-bottom" ; style="display: none">
+        Bienvenue sur le connecteur DS vers Grist
+      </h1>
       {% block content %}{% endblock %}
     </main>
 
     <!-- Pied de page -->
     <footer class="fr-footer" role="contentinfo">
-        <div class="fr-container">
-            <div class="fr-footer__body">
-                <div class="fr-footer__brand fr-enlarge-link">
-                    <a href="/" title="Retour à l'accueil">
-                        <p class="fr-logo">
-                            République
-                            <br>Française
-                        </p>
-                    </a>
-                </div>
-                <div class="fr-footer__content">
-                    <p class="fr-footer__content-desc">
-                        Application de synchronisation pour Démarche Numérique et Grist
-                    </p>
-                </div>
-            </div>
-            <div class="fr-footer__bottom">
-                <ul class="fr-footer__bottom-list">
-                    <li class="fr-footer__bottom-item">
-                        <span class="fr-footer__bottom-link">Version Flask optimisée - {{build_time}}</span>
-                    </li>
-                    <li class="fr-footer__bottom-item">
-                        <a class="fr-footer__bottom-link" href="{{release_url}}" target="_blank" rel="noopener noreferrer">
-                            {{version_display}}
-                        </a>
-                    </li>
-                    <li class="fr-footer__bottom-item">
-                        <a class="fr-footer__bottom-link" href="/debug">debug</a>
-                    </li>
-                </ul>
-            </div>
+      <div class="fr-container">
+        <div class="fr-footer__body">
+          <div class="fr-footer__brand fr-enlarge-link">
+            <a href="/" title="Retour à l'accueil">
+              <p class="fr-logo">
+                République
+                <br />Française
+              </p>
+            </a>
+          </div>
+          <div class="fr-footer__content">
+            <p class="fr-footer__content-desc">
+              Application de synchronisation pour Démarche Numérique et Grist
+            </p>
+          </div>
         </div>
+        <div class="fr-footer__bottom">
+          <ul class="fr-footer__bottom-list">
+            <li class="fr-footer__bottom-item">
+              <span class="fr-footer__bottom-link"
+                >Version Flask optimisée - {{build_time}}</span
+              >
+            </li>
+            <li class="fr-footer__bottom-item">
+              <a
+                class="fr-footer__bottom-link"
+                href="{{release_url}}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {{version_display}}
+              </a>
+            </li>
+            <li class="fr-footer__bottom-item">
+              <a class="fr-footer__bottom-link" href="/debug">debug</a>
+            </li>
+          </ul>
+        </div>
+      </div>
     </footer>
-    
+
     {% block scripts %}{% endblock %}
-</body>
+  </body>
 </html>

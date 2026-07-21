@@ -1,7 +1,10 @@
-import pytest
 import json
-from unittest.mock import patch, MagicMock
-from app import app, ConfigManager, sync_manager
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app import ConfigManager, app, sync_manager
+from utils.help_links import HELP_LINKS
 
 
 @pytest.fixture
@@ -49,10 +52,10 @@ class TestEndpoints:
         assert b"debug" in response.data
 
     def test_use_otp_route(self, client):
-        """Test de la route d'utilisation"""
+        """Test de la route d'aide (redirection vers la documentation externe)"""
         response = client.get("/utiliser-le-connecteur")
-        assert response.status_code == 200
-        assert b"utiliser" in response.data
+        assert response.status_code == 302
+        assert response.location == HELP_LINKS["faq"]
 
     @patch.object(sync_manager, "start_sync")
     @patch.object(ConfigManager, "load_config_by_id")
