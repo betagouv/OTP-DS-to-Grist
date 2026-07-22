@@ -29,7 +29,6 @@ const handleSyncFinished = (result) => {
     syncReason: result.sync_reason || null,
   }
 }
-
 </script>
 
 <template>

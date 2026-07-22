@@ -12,7 +12,6 @@ import {
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
-import { useNotification } from '../composables/useNotification'
 import OtpAlert from './OtpAlert.vue'
 
 const props = defineProps({

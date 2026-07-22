@@ -39,7 +39,7 @@ describe('OtpAlert', () => {
 
   it('scrolls into view when title is set', async () => {
     const wrapper = mount(OtpAlert, {
-      props: { type: 'error', title: 'Shit append' },
+      props: { type: 'error', title: 'Error' },
       global: { components: { DsfrAlert } }
     })
 
