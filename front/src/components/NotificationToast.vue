@@ -11,7 +11,7 @@ const { notifications, remove } = useNotification()
       v-for="notif in notifications"
       :key="notif.id"
       :type="notif.type"
-      :description="notif.message"
+      :title="notif.message"
       closeable
       @close="remove(notif.id)"
       class="notification-toast"
@@ -32,6 +32,16 @@ const { notifications, remove } = useNotification()
 }
 
 .notification-toast {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+:deep(.fr-alert) {
+  background-color: var(--background-contrast-grey);
+}
+
+
+:deep(.fr-alert__title) {
+  font-weight: 400;
+  font-size: 1rem;
 }
 </style>
