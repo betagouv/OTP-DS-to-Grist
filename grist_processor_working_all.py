@@ -14,9 +14,9 @@ import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
+from deleted_dossiers_checker import check_deleted_dossiers
 from queries import dossier_to_flat_data, get_demarche, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
-from deleted_dossiers_checker import check_deleted_dossiers
 from queries_util import get_timings
 from schema_utils import (
     create_columns_from_schema,
@@ -238,6 +238,7 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
         {"id": "labels_json", "type": "Text"},
         {"id": "suivi_par", "type": "Text"},
         {"id": "date_accuse_lecture", "type": "DateTime"},
+        {"id": "date_derniere_correction_en_attente", "type": "DateTime"},
     ]
 
     # Colonnes de base pour la table des champs

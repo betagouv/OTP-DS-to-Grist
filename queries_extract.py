@@ -5,8 +5,8 @@ from typing import Any, Dict, List
 
 import requests
 
-from utils.formatter import unwrap_json_list
 from utils.constants import DEMARCHES_API_URL
+from utils.formatter import unwrap_json_list
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -890,6 +890,9 @@ def dossier_to_flat_data(
         "date_traitement": dossier_data.get("dateTraitement"),
         "date_suppression_par_usager": dossier_data.get("dateSuppressionParUsager"),
         "date_accuse_lecture": dossier_data.get("dateAccuseLectureAgreement"),
+        "date_derniere_correction_en_attente": dossier_data.get(
+            "dateDerniereCorrectionEnAttente"
+        ),
     }
 
     # Ajouter les informations sur les labels (étiquettes)
