@@ -4,6 +4,14 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
 
+beforeEach(() => {
+  window.HELP_LINKS = {
+    token_api: 'https://fake-url.example.com/token-api',
+    grist_api_key: 'https://fake-url.example.com/grist-api-key',
+    faq: 'https://fake-url.example.com/faq'
+  }
+})
+
 describe('DN form section', () => {
   it('shows error message when form validation fails', async () => {
     const mockFetch = vi.fn().mockResolvedValue({

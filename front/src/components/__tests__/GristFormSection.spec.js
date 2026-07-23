@@ -5,6 +5,11 @@ import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import GristFormSection from '../GristFormSection.vue'
 
 beforeEach(() => {
+  window.HELP_LINKS = {
+    token_api: 'https://fake-url.example.com/token-api',
+    grist_api_key: 'https://fake-url.example.com/grist-api-key',
+    faq: 'https://fake-url.example.com/faq'
+  }
   window.getGristContext = vi.fn().mockResolvedValue({
     userId: 'user-abc123',
     docId: 'doc-xyz789',

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, jsonify, render_template, request, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from werkzeug.serving import WSGIRequestHandler
@@ -883,11 +883,6 @@ def debug():
 @app.context_processor
 def inject_help_links():
     return {"help_links": HELP_LINKS}
-
-
-@app.route("/utiliser-le-connecteur")
-def use_otp():
-    return redirect(HELP_LINKS["faq"])
 
 
 @app.route("/wip")

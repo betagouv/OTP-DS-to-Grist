@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
   <script>
-    window.USE_OTP_URL = "{{ url_for('use_otp') }}"
+    window.HELP_LINKS = {{ help_links | tojson }}
   </script>
   <div id="app"></div>
   {% if config.DEBUG %}
