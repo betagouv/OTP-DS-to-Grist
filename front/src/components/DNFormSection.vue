@@ -20,7 +20,7 @@ const props = defineProps({
   canSync: { type: Boolean, default: false }
 })
 
-const USE_OTP_URL = window.USE_OTP_URL
+const HELP_LINKS = window.HELP_LINKS
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync'])
 
 // TODO le mettre dans le parent
@@ -117,7 +117,9 @@ watch(() => props.existingConfig, (config) => {
           <p class="fr-mt-2w">
             <DsfrInfoIcon class="fr-mr-1v"/>
             <a
-              :href="`${USE_OTP_URL}#help-ds`"
+              :href="HELP_LINKS.token_api"
+              target="_blank"
+              rel="noopener noreferrer"
               class="fr-link fr-text--xs">Où trouver votre jeton API ?</a>
           </p>
 

@@ -15,7 +15,7 @@ const props = defineProps({
   existingConfig: { type: Object, default: null }
 })
 
-const USE_OTP_URL = window.USE_OTP_URL
+const HELP_LINKS = window.HELP_LINKS
 const emit = defineEmits(['error-update'])
 const context = ref(null)
 
@@ -111,7 +111,9 @@ defineExpose({
           <p class="fr-mt-2w">
             <DsfrInfoIcon class="fr-mr-1v"/>
             <a
-              :href="`${USE_OTP_URL}#help-grist`"
+              :href="HELP_LINKS.grist_api_key"
+              target="_blank"
+              rel="noopener noreferrer"
               class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
           </p>
         </DsfrInputGroup>
