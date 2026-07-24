@@ -30,9 +30,15 @@ const otpConfigId = ref(null)
 
 const canDeleteConfig = (config) => !!config?.otp_config_id
 const canSyncConfig = (config) => !!config?.otp_config_id && !props.syncRunning
+const sortConfigs = (configs) => {
+  const unsaved = configs.filter(config => !config)
+  const saved = configs.filter(config => config)
+    .sort((a, b) => a.otp_config_id - b.otp_config_id)
+  return [...saved, ...unsaved]
+}
 const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
-  return serverConfigs.value
+  return sortConfigs(serverConfigs.value)
 })
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
@@ -177,7 +183,7 @@ const handleAddDemarche = async () => {
       :error="actionErrors[index] || null"
       @clear-error="actionErrors[index] = null"
       v-for="(config, index) in configs"
-      :key="index"
+      :key="config?.otp_config_id || 'new'"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
       class="fr-mt-1w"
     />

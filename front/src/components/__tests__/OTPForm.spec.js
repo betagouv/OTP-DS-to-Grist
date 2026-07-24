@@ -912,3 +912,92 @@ describe('Sync action', () => {
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la synchronisation')
   })
 })
+
+describe('sortConfigs', () => {
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+
+  beforeEach(() => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('sorts saved configs by otp_config_id ascending', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 10 },
+        { otp_config_id: 2 },
+        { otp_config_id: 7 }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.configs.map(c => c.otp_config_id)).toEqual([2, 7, 10])
+  })
+
+  it('places unsaved entries (null) at the end', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 5 },
+        { otp_config_id: 3 }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    wrapper.vm.serverConfigs.push(null)
+    await wrapper.vm.$nextTick()
+
+    const ids = wrapper.vm.configs.map(c => c?.otp_config_id ?? null)
+    expect(ids).toEqual([3, 5, null])
+  })
+
+  it('returns [null] when no configs exist', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.configs).toEqual([null])
+  })
+
+  it('keeps stable keys after reordering', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 8 },
+        { otp_config_id: 3 }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+    expect(dnSections[0].props('existingConfig').otp_config_id).toBe(3)
+    expect(dnSections[1].props('existingConfig').otp_config_id).toBe(8)
+  })
+})

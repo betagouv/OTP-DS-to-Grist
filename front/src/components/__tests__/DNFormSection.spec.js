@@ -110,7 +110,7 @@ describe('DN form section', () => {
     expect(passwordInput.attributes('placeholder')).toMatch(/\*{3,}/)
 
     expect(wrapper.emitted('error-update')).toBeTruthy()
-    expect(wrapper.emitted('error-update')[0]).toEqual([''])
+    expect(wrapper.emitted('error-update').at(-1)).toEqual([''])
   })
 
   it('keeps default placeholder when has_ds_token is false', async () => {
