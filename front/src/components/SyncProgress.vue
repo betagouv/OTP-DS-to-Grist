@@ -5,11 +5,8 @@ import { io } from 'socket.io-client'
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
-import { useNotification } from '../composables/useNotification'
-
 const { totalDemarches, demarcheIndex } = useDemarcheContext()
 const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
-const { notify } = useNotification()
 const task = ref(null)
 const socket = ref(null)
 const syncCardEl = ref(null)
@@ -50,17 +47,6 @@ onMounted(() => {
         sync_reason: data.task.sync_reason,
         message: data.task.message
       })
-
-      if (data.task.status === 'error') {
-        const errorCount = counts.value?.error || 0
-        const msg = errorCount > 0
-          ? `Échec de la synchronisation (${errorCount} erreur(s))`
-          : 'Échec de la synchronisation'
-        notify(msg, 'error')
-      } else {
-        const successCount = counts.value?.success || 0
-        notify(`Synchronisation terminée : ${successCount} dossier(s) synchronisé(s)`, 'success')
-      }
     }
   })
 })
