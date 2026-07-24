@@ -703,12 +703,17 @@ describe('Delete action', () => {
   it('calls DELETE route when config exists', async () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
-    globalThis.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true })
-    })
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [] })
+      })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -721,12 +726,17 @@ describe('Delete action', () => {
   it('resets config refs after successful deletion', async () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
-    globalThis.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true })
-    })
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [] })
+      })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -738,7 +748,7 @@ describe('Delete action', () => {
     globalThis.confirm.mockReturnValue(false)
     globalThis.fetch.mockReset()
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -753,7 +763,7 @@ describe('Delete action', () => {
       json: () => Promise.resolve({ success: false, message: 'Erreur de suppression' })
     })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -765,14 +775,14 @@ describe('Delete action', () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockRejectedValue(new Error('network error'))
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la suppression')
   })
 
-  it('does not delete when there is no otpConfigId', async () => {
+  it('does not delete when section has no otp_config_id', async () => {
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch.mockResolvedValue({
       ok: true,
@@ -788,7 +798,7 @@ describe('Delete action', () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
 
-    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('delete')
+    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapperNoConfig.vm.$nextTick()
 

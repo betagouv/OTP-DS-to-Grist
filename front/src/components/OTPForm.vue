@@ -28,7 +28,7 @@ const actionErrors = ref([])
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
 
-const canDelete = computed(() => !!otpConfigId.value)
+const canDeleteConfig = (config) => !!config?.otp_config_id
 const canSync = computed(() => !!otpConfigId.value && !props.syncRunning)
 const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
@@ -86,27 +86,27 @@ const handleSave = async (index) => {
   }
 }
 
-const handleDelete = async () => {
-  if (!otpConfigId.value) return
+const handleDelete = async (index) => {
+  const otpConfigIdToDelete = configs.value[index]?.otp_config_id
+  if (!otpConfigIdToDelete) return
 
   const confirmed = window.confirm(
     'Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.'
   )
   if (!confirmed) return
 
-  actionErrors.value[0] = null
+  actionErrors.value[index] = null
 
   try {
-    const result = await api.deleteConfig(otpConfigId.value)
+    const result = await api.deleteConfig(otpConfigIdToDelete)
 
     if (!result.success)
       throw Error(result.message)
 
-    otpConfigId.value = null
-    serverConfigs.value = []
+    await loadConfig()
     notify('Configuration supprimée', 'success')
   } catch (e) {
-    actionErrors.value[0] = 'Erreur lors de la suppression'
+    actionErrors.value[index] = 'Erreur lors de la suppression'
   }
 }
 
@@ -169,11 +169,11 @@ const handleAddDemarche = async () => {
       @delete="handleDelete"
       @sync="handleSync"
       :grist-error="gristError"
-      :can-delete="canDelete"
+      :can-delete="canDeleteConfig(config)"
       :can-sync="canSync"
       :existing-config="config"
-      :error="actionErrors[0] || null"
-      @clear-error="actionErrors[0] = null"
+      :error="actionErrors[index] || null"
+      @clear-error="actionErrors[index] = null"
       v-for="(config, index) in configs"
       :key="index"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"

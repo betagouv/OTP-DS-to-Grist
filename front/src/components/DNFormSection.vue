@@ -171,7 +171,7 @@ watch(() => props.existingConfig, (config) => {
             data-test-id="delete-config-button"
             secondary
             :disabled="!canDelete || sectionEmpty"
-            @click="$emit('delete')"
+            @click="$emit('delete', index)"
           />
         </DsfrButtonGroup>
       </DsfrAccordion>

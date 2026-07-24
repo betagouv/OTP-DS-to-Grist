@@ -385,12 +385,13 @@ describe('Delete button', () => {
     expect(deleteButton.attributes('disabled')).toBeUndefined()
   })
 
-  it('emits delete event when clicked and enabled', async () => {
+  it('emits delete event with index when clicked and enabled', async () => {
     await wrapper.setProps({ canDelete: true })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     await deleteButton.trigger('click')
 
     expect(wrapper.emitted('delete')).toBeTruthy()
+    expect(wrapper.emitted('delete')[0]).toEqual([0])
   })
 
   it('does not emit delete event when clicked and disabled', async () => {
