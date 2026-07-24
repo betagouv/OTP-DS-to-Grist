@@ -97,7 +97,7 @@ watch(() => props.existingConfig, (config) => {
     dnTokenPlaceholder.value = DEFAULT_DN_PLACEHOLDER
     emit('error-update', null)
   }
-})
+}, {immediate: true})
 </script>
 
 <template>
