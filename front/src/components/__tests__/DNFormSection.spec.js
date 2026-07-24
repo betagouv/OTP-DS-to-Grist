@@ -359,6 +359,29 @@ describe('Save button', () => {
 
     expect(wrapper.emitted('save')).toBeFalsy()
   })
+
+  it('disables save button after existingConfig changes (post-save reload)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+
+    expect(wrapper.vm.dnErrorMessage).toBeNull()
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+  })
 })
 
 describe('Delete button', () => {

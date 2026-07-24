@@ -83,6 +83,7 @@ defineExpose({
 })
 
 watch(() => props.existingConfig, (config) => {
+  dnErrorMessage.value = null
   if (config) {
     if (config.demarche_number)
       inputDNNumber.value = config.demarche_number
