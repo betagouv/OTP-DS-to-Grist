@@ -185,7 +185,7 @@ class TestEndpoints:
     @patch("app.test_demarches_api")
     def test_api_test_connection_demarches(self, mock_test, client):
         """Test du endpoint de test de connexion Démarches"""
-        mock_test.return_value = (True, "Connexion réussie")
+        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
 
         test_data = {
             "type": "demarches",
@@ -203,6 +203,7 @@ class TestEndpoints:
         data = json.loads(response.data)
         assert data["success"] is True
         assert data["message"] == "Connexion réussie"
+        assert data["title"] == "Titre démarche"
 
     @patch.object(ConfigManager, "load_config_by_id")
     @patch("app.test_demarches_api")
@@ -211,7 +212,7 @@ class TestEndpoints:
     ):
         """otp_config_id sans api_token → charge le token serveur"""
         mock_load.return_value = {"ds_api_token": "server-token"}
-        mock_test.return_value = (True, "Connexion réussie")
+        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
 
         response = client.post(
             "/api/test-connection",
@@ -237,7 +238,7 @@ class TestEndpoints:
         self, mock_test, mock_load, client
     ):
         """api_token présent → prioritaire, pas d'appel à load_config_by_id"""
-        mock_test.return_value = (True, "Connexion réussie")
+        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
 
         response = client.post(
             "/api/test-connection",
@@ -322,6 +323,7 @@ class TestEndpoints:
         data = json.loads(response.data)
         assert data["success"] is False
         assert "Erreur" in data["message"]
+        assert data["title"] is None
 
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_test_connection_no_params_missing_ds_token(self, mock_load, client):
@@ -381,7 +383,7 @@ class TestEndpoints:
         }
 
         mock_load.return_value = test_data
-        mock_demarches.return_value = (True, "DS OK")
+        mock_demarches.return_value = (True, "DS OK", "Titre démarche")
         mock_grist.return_value = (True, "Grist OK")
 
         response = client.post(
@@ -416,7 +418,7 @@ class TestEndpoints:
         }
 
         mock_load.return_value = test_data
-        mock_demarches.return_value = (True, "DS OK")
+        mock_demarches.return_value = (True, "DS OK", "Titre démarche")
         mock_grist.return_value = (False, "Grist Error")
 
         response = client.post(
@@ -531,7 +533,11 @@ class TestErrorHandling:
     @patch("app.test_demarches_api")
     def test_api_test_connection_demarches_timeout(self, mock_test, client):
         """Test timeout API Démarches"""
-        mock_test.return_value = (False, "Timeout: L'API met trop de temps à répondre")
+        mock_test.return_value = (
+            False,
+            "Timeout: L'API met trop de temps à répondre",
+            None,
+        )
 
         test_data = {
             "type": "demarches",
@@ -549,11 +555,12 @@ class TestErrorHandling:
         data = json.loads(response.data)
         assert data["success"] is False
         assert "Timeout" in data["message"]
+        assert data["title"] is None
 
     @patch("app.test_demarches_api")
     def test_api_test_connection_demarches_invalid_token(self, mock_test, client):
         """Test token invalide Démarches"""
-        mock_test.return_value = (False, "Erreur API: Unauthorized")
+        mock_test.return_value = (False, "Erreur API: Unauthorized", None)
 
         test_data = {
             "type": "demarches",

@@ -526,7 +526,7 @@ def api_test_connection():
                     {"success": False, "message": "Token API non fourni"}
                 ), 400
 
-        success, message = test_demarches_api(api_token, demarche_number)
+        success, message, title = test_demarches_api(api_token, demarche_number)
     elif connection_type == "grist":
         api_key = data.get("api_key")
         base_url = data.get("base_url")
@@ -553,10 +553,11 @@ def api_test_connection():
                 ), 400
 
         success, message = test_grist_api(base_url, api_key, doc_id)
+        title = None
     else:
         return test_current_config_connections(data.get("otp_config_id"))
 
-    return jsonify({"success": success, "message": message})
+    return jsonify({"success": success, "message": message, "title": title})
 
 
 @app.route("/api/groups")
