@@ -10,6 +10,7 @@ import OtpAlert from './OtpAlert.vue'
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { api } from '../utils/InternalApi'
 import { useNotification } from '../composables/useNotification'
+import { sortConfigs, canDeleteConfig, canSyncConfig } from '../utils/configUtils'
 
 const props = defineProps({
   syncRunning: { type: Boolean, default: false }
@@ -28,19 +29,9 @@ const actionErrors = ref([])
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
 
-const canDeleteConfig = (config) => !!config?.otp_config_id
-const canSyncConfig = (config) => !!config?.otp_config_id && !props.syncRunning
-const sortConfigs = (configs) => {
-  const unsaved = configs.filter(config => !config)
-  const saved = configs.filter(config => config)
-    .sort((a, b) => a.otp_config_id - b.otp_config_id)
-  return [...saved, ...unsaved]
-}
-const configs = computed(() => {
-  if (serverConfigs.value.length === 0) return [null]
-  return sortConfigs(serverConfigs.value)
-})
-const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
+const canDelete = (config) => canDeleteConfig(config)
+
+const canSync = (config) => canSyncConfig(config, props.syncRunning)
 
 watch(serverConfigs, (val) => {
   setDemarcheCount(val.length)
@@ -57,6 +48,13 @@ const loadConfig = async () => {
     configError.value = 'Erreur lors du chargement de la configuration'
   }
 }
+
+const configs = computed(() => {
+  if (serverConfigs.value.length === 0) return [null]
+  return sortConfigs(serverConfigs.value)
+})
+
+const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
 onMounted(loadConfig)
 
@@ -177,8 +175,8 @@ const handleAddDemarche = async () => {
       @delete="handleDelete"
       @sync="handleSync"
       :grist-error="gristError"
-      :can-delete="canDeleteConfig(config)"
-      :can-sync="canSyncConfig(config)"
+      :can-delete="canDelete(config)"
+      :can-sync="canSync(config)"
       :existing-config="config"
       :error="actionErrors[index] || null"
       @clear-error="actionErrors[index] = null"

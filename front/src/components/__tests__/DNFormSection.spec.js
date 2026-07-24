@@ -232,6 +232,7 @@ describe('DN form section', () => {
   it('sets dnErrorMessage when test-connection fetch fails', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
     const wrapper = mount(DNFormSection, {
+      props: { index: 0},
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
 
@@ -250,7 +251,7 @@ describe('DN form section', () => {
   it('emits clear-error when OtpAlert close is triggered', async () => {
     const wrapper = mount(DNFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } },
-      props: { error: 'Une erreur' }
+      props: { error: 'Une erreur', index: 0 }
     })
 
     const alert = wrapper.find('.fr-alert')
