@@ -528,9 +528,31 @@ def api_test_connection():
 
         success, message = test_demarches_api(api_token, demarche_number)
     elif connection_type == "grist":
-        success, message = test_grist_api(
-            data.get("base_url"), data.get("api_key"), data.get("doc_id")
-        )
+        api_key = data.get("api_key")
+        base_url = data.get("base_url")
+        doc_id = data.get("doc_id")
+        otp_config_id = data.get("otp_config_id")
+
+        if not api_key:
+            if otp_config_id:
+                try:
+                    config = config_manager.load_config_by_id(otp_config_id)
+                except Exception:
+                    logger.error(
+                        f"Configuration introuvable pour otp_config_id={otp_config_id}"
+                    )
+                    return jsonify(
+                        {"success": False, "message": "Configuration introuvable"}
+                    ), 500
+                api_key = config.get("grist_api_key", "")
+                base_url = base_url or config.get("grist_base_url", "")
+                doc_id = doc_id or config.get("grist_doc_id", "")
+            if not api_key:
+                return jsonify(
+                    {"success": False, "message": "Clé API Grist non fourni"}
+                ), 400
+
+        success, message = test_grist_api(base_url, api_key, doc_id)
     else:
         return test_current_config_connections(data.get("otp_config_id"))
 
