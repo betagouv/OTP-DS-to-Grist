@@ -33,23 +33,31 @@ const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
 const gristTokenPlaceholder = ref(DEFAULT_GRIST_PLACEHOLDER)
 const gristFetchError = ref(null)
 
-const handleGristInputChange = async () => {
-  gristTokenErrorMessage.value = null
-  gristFetchError.value = null
+const validateGristConnection = async () => {
+  const body = {
+    type: 'grist',
+    base_url: baseUrl.value,
+    api_key: inputGristToken.value,
+    doc_id: docId.value
+  }
+
+  if (!inputGristToken.value && props.existingConfig?.otp_config_id) {
+    body.otp_config_id = props.existingConfig.otp_config_id
+  }
 
   try {
-    const result = await api.testConnection({
-      type: 'grist',
-      base_url: baseUrl.value,
-      api_key: inputGristToken.value,
-      doc_id: docId.value
-    })
-
+    const result = await api.testConnection(body)
     gristTokenErrorMessage.value = result.success ? '' : result.message
-    emit('error-update', gristTokenErrorMessage.value)
   } catch (e) {
     gristFetchError.value = 'Erreur lors du test de connexion Grist'
   }
+  emit('error-update', gristTokenErrorMessage.value === '' ? '' : gristTokenErrorMessage.value)
+}
+
+const handleGristInputChange = () => {
+  gristTokenErrorMessage.value = null
+  gristFetchError.value = null
+  validateGristConnection()
 }
 
 onMounted(async () => {
@@ -64,13 +72,18 @@ onMounted(async () => {
   }
 })
 
-const applyExistingConfig = (config) => {
+const applyExistingConfig = async (config) => {
   if (config.otp_config_id && config.grist_base_url)
     baseUrl.value = config.grist_base_url
 
   if (config.has_grist_key) {
     gristTokenPlaceholder.value = '****************************************'
-    emit('error-update', '')
+  }
+
+  if (config.otp_config_id) {
+    await validateGristConnection()
+  } else {
+    emit('error-update', null)
   }
 }
 
