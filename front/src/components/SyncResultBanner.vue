@@ -30,12 +30,14 @@ const alertType = computed(() => {
 })
 
 const title = computed(() => {
-  if (isUpToDate.value) return 'Grist déjà à jour'
+  const syncTypeMessage = props.syncType === 'auto' ? '(automatique)' : '(déclenchée manuellement)'
+
+  if (isUpToDate.value) return `Grist déjà à jour ${syncTypeMessage}`
+
   const message = props.status === 'success'
     ? 'Synchronisation terminée avec succès'
     : 'Synchronisation terminée avec erreur(s)'
-  const typeLabel = props.syncType === 'auto' ? '(automatique)' : '(déclenchée manuellement)'
-  return `${message} ${typeLabel}`
+  return `${message} ${syncTypeMessage}`
 })
 
 const description = computed(() => {

@@ -4,6 +4,7 @@ import OTPForm from './components/OTPForm.vue'
 import SyncProgress from './components/SyncProgress.vue'
 import SyncResultBanner from './components/SyncResultBanner.vue'
 import { useSyncStatus } from './composables/useSyncStatus'
+import NotificationToast from './components/NotificationToast.vue'
 
 const syncRunning = ref(false)
 const lastSyncResult = ref(null)
@@ -31,6 +32,7 @@ const handleSyncFinished = (result) => {
 </script>
 
 <template>
+  <NotificationToast />
   <header>
     <div class="wrapper">
       <template v-if="!syncRunning">
@@ -45,31 +47,35 @@ const handleSyncFinished = (result) => {
           class="fr-mb-4w"
         />
         <template v-else>
-          <SyncResultBanner
-            v-if="lastAutoSync"
-            :status="lastAutoSync.status"
-            :success-count="lastAutoSync.success_count"
-            :error-count="lastAutoSync.error_count"
-            :timestamp="lastAutoSync.timestamp"
-            sync-type="auto"
-            class="fr-mb-4w"
-          />
-          <SyncResultBanner
-            v-if="lastManualSync"
-            :status="lastManualSync.status"
-            :success-count="lastManualSync.success_count"
-            :error-count="lastManualSync.error_count"
-            :timestamp="lastManualSync.timestamp"
-            sync-type="manual"
-            class="fr-mb-4w"
-          />
+          <div class="fr-grid-row fr-grid-row--gutters fr-mb-4w">
+            <SyncResultBanner
+              v-if="lastAutoSync"
+              :status="lastAutoSync.status"
+              :success-count="lastAutoSync.success_count"
+              :error-count="lastAutoSync.error_count"
+              :timestamp="lastAutoSync.timestamp"
+              sync-type="auto"
+              class="fr-col"
+            />
+            <SyncResultBanner
+              v-if="lastManualSync"
+              :status="lastManualSync.status"
+              :success-count="lastManualSync.success_count"
+              :error-count="lastManualSync.error_count"
+              :timestamp="lastManualSync.timestamp"
+              sync-type="manual"
+              class="fr-col"
+            />
+          </div>
         </template>
       </template>
+
       <SyncProgress
         @sync-running-changed="syncRunning = $event"
         @sync-started="handleSyncStarted"
         @sync-finished="handleSyncFinished"
       />
+
       <OTPForm
         :sync-running="syncRunning"
         @config-loaded="handleConfigLoaded"
@@ -77,6 +83,3 @@ const handleSyncFinished = (result) => {
     </div>
   </header>
 </template>
-
-<style scoped>
-</style>

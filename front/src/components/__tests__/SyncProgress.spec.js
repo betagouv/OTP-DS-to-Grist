@@ -1,4 +1,4 @@
-import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
+import { vi, describe, beforeAll, afterAll, beforeEach, afterEach, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import SyncProgress from '../SyncProgress.vue'
@@ -22,6 +22,19 @@ function triggerTaskUpdate(task) {
 
 describe('SyncProgress', () => {
   let wrapper
+
+  beforeAll(() => {
+    globalThis.parseLogMessage = vi.fn((msg, counts = { success: 0, error: 0, total: 0 }) => {
+      const r = { ...counts }
+      if (msg.includes('succès')) r.success++
+      if (msg === 'error') r.error++
+      return r
+    })
+  })
+
+  afterAll(() => {
+    delete globalThis.parseLogMessage
+  })
 
   beforeEach(() => {
     mockOn.mockClear()
@@ -185,4 +198,5 @@ describe('SyncProgress', () => {
     localWrapper.unmount()
     expect(mockDisconnect).toHaveBeenCalled()
   })
+
 })

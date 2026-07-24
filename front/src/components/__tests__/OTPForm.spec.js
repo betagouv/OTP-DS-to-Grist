@@ -409,7 +409,7 @@ describe('Config loading on mount', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalled()
+    expect(wrapper.vm.configError).toBe('Erreur lors du chargement de la configuration')
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
   })
 
@@ -424,7 +424,7 @@ describe('Config loading on mount', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalled()
+    expect(wrapper.vm.configError).toBe('Erreur lors du chargement de la configuration')
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
   })
 
@@ -580,7 +580,7 @@ describe('Save with existing config (UPDATE)', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la sauvegarde :', 'Erreur de typage')
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur de typage')
   })
 
   it('re-injects null in serverConfigs after save when hadEmpty', async () => {
@@ -609,6 +609,29 @@ describe('Save with existing config (UPDATE)', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.serverConfigs.some(c => c === null)).toBe(true)
+  })
+
+  it('sets actionErrors on handleSave network error', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockRejectedValue(new Error('network error'))
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la sauvegarde')
   })
 })
 
@@ -705,7 +728,7 @@ describe('Delete action', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalledWith('Erreur lors de la suppression :', 'Erreur de suppression')
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la suppression')
   })
 
   it('handles network error in catch block', async () => {
@@ -717,10 +740,7 @@ describe('Delete action', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      'Erreur lors de la suppression :',
-      'network error'
-    )
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la suppression')
   })
 
   it('does not delete when there is no otpConfigId', async () => {
@@ -840,5 +860,16 @@ describe('Sync action', () => {
     wrapperSync.getComponent(DNFormSection).vm.$emit('sync')
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('sets actionErrors on handleSync network error', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockRejectedValue(new Error('network error'))
+
+    wrapper.getComponent(DNFormSection).vm.$emit('sync')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la synchronisation')
   })
 })

@@ -12,16 +12,18 @@ import {
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
+import OtpAlert from './OtpAlert.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
   configValid: { type: Boolean, default: false },
   canDelete: { type: Boolean, default: false },
-  canSync: { type: Boolean, default: false }
+  canSync: { type: Boolean, default: false },
+  error: { type: String, default: null }
 })
 
 const HELP_LINKS = window.HELP_LINKS
-const emit = defineEmits(['error-update', 'save', 'delete', 'sync'])
+const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
 
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
@@ -60,11 +62,14 @@ const handleDNInputsChange = async () => {
     return emit('error-update', null)
   }
 
-  const result = await api.testConnection(body)
-
-  dnErrorMessage.value = result.success ? '' : result.message
-
-  emit('error-update', dnErrorMessage.value)
+  try {
+    const result = await api.testConnection(body)
+    dnErrorMessage.value = result.success ? '' : result.message
+    emit('error-update', dnErrorMessage.value)
+  } catch (e) {
+    dnErrorMessage.value = 'Erreur lors du test de connexion'
+    emit('error-update', dnErrorMessage.value)
+  }
 }
 
 defineExpose({
@@ -94,6 +99,15 @@ watch(() => props.existingConfig, (config) => {
 
 <template>
   <div>
+    <OtpAlert
+      v-if="error"
+      type="error"
+      :title="error"
+      closeable
+      @close="$emit('clear-error')"
+      class="fr-mb-3w"
+    />
+
     <DsfrAccordionsGroup v-model="activeAccordion">
       <DsfrAccordion
         id="accordion-dn"
