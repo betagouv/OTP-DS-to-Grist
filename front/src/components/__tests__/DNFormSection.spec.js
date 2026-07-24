@@ -229,7 +229,7 @@ describe('DN form section', () => {
   it('validates DS connection automatically on load with existing config', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ success: true })
+      json: () => Promise.resolve({ success: true, title: 'Ma démarche' })
     })
     globalThis.fetch = mockFetch
 
@@ -255,6 +255,7 @@ describe('DN form section', () => {
     })
 
     expect(wrapper.vm.dnErrorMessage).toBe('')
+    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
@@ -276,6 +277,7 @@ describe('DN form section', () => {
     await flushPromises()
 
     expect(wrapper.vm.dnErrorMessage).toBe('Token invalide')
+    expect(wrapper.vm.accordionTitleDN).toBe('Échec')
     expect(wrapper.find('.fr-error-text').text()).toBe('Token invalide')
   })
 
@@ -437,6 +439,7 @@ describe('Save button', () => {
     await flushPromises()
 
     expect(wrapper.vm.dnErrorMessage).toBe('Token expiré')
+    expect(wrapper.vm.accordionTitleDN).toBe('Échec')
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
   })
 })
@@ -584,5 +587,77 @@ describe('sectionEmpty computed', () => {
     })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     expect(deleteButton.attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('Accordion title', () => {
+  it('shows default title for empty section', () => {
+    const wrapper = mount(DNFormSection, {
+      props: { index: 0 },
+      global: globalComponents
+    })
+    expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')
+  })
+
+  it('shows demarche title after successful validation on load', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Draaf-Srfd Occitanie Prévisions' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.accordionTitleDN).toBe('Draaf-Srfd Occitanie Prévisions')
+  })
+
+  it('shows "Échec" after failed validation on load', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Token invalide' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.accordionTitleDN).toBe('Échec')
+  })
+
+  it('resets title to default when config is cleared', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Ma démarche' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
+
+    await wrapper.setProps({ existingConfig: null })
+    expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')
   })
 })

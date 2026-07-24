@@ -24,11 +24,14 @@ const props = defineProps({
 })
 
 const HELP_LINKS = window.HELP_LINKS
+const DEFAULT_DN_TITLE = 'Configurer votre démarche'
+const ERROR_DN_TITLE = 'Échec'
+
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
 
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
-const accordionTitleDN = ref('Configurer votre démarche')
+const accordionTitleDN = ref(DEFAULT_DN_TITLE)
 
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
@@ -47,27 +50,30 @@ const configValid = computed(() => props.gristError === '' && dnErrorMessage.val
 
 const validateDSConnection = async () => {
   if (!inputDNNumber.value) return
+  if (!inputDNToken.value && !props.existingConfig?.otp_config_id) return
 
   const body = {
     type: 'demarches',
     api_url: dnApiUrl,
-    demarche_number: inputDNNumber.value
+    demarche_number: inputDNNumber.value,
+    ...(inputDNToken.value
+      ? { api_token: inputDNToken.value }
+      : { otp_config_id: props.existingConfig.otp_config_id })
   }
 
-  if (inputDNToken.value) {
-    body.api_token = inputDNToken.value
-  } else if (props.existingConfig?.otp_config_id) {
-    body.otp_config_id = props.existingConfig.otp_config_id
-  } else {
-    return
-  }
+  accordionTitleDN.value = '...'
 
   try {
     const result = await api.testConnection(body)
     dnErrorMessage.value = result.success ? '' : result.message
+    accordionTitleDN.value = result.success
+      ? (result.title || DEFAULT_DN_TITLE)
+      : ERROR_DN_TITLE
   } catch (e) {
     dnErrorMessage.value = 'Erreur lors du test de connexion'
+    accordionTitleDN.value = ERROR_DN_TITLE
   }
+
   emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
 }
 
@@ -88,9 +94,8 @@ const applyExistingConfig = async (config) => {
   if (config.demarche_number)
     inputDNNumber.value = config.demarche_number
 
-  if (config.has_ds_token) {
+  if (config.has_ds_token)
     dnTokenPlaceholder.value = '****************************************'
-  }
 
   if (config.otp_config_id && config.demarche_number) {
     await validateDSConnection()
@@ -103,6 +108,7 @@ const resetConfig = () => {
   inputDNNumber.value = ''
   inputDNToken.value = ''
   dnTokenPlaceholder.value = DEFAULT_DN_PLACEHOLDER
+  accordionTitleDN.value = DEFAULT_DN_TITLE
   emit('error-update', null)
 }
 
