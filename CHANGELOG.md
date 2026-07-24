@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.8.0...v0.9.0) (2026-07-24)
+
+
+### Features
+
+* ajoute la date de dernière correction en attente ([#411](https://github.com/betagouv/OTP-DS-to-Grist/issues/411)) ([e13b2ef](https://github.com/betagouv/OTP-DS-to-Grist/commit/e13b2effb45ebb10c4220c1b1473fe2dffbf494f))
+* **multi démarches:** Ajouter une nouvelle section DN ([#394](https://github.com/betagouv/OTP-DS-to-Grist/issues/394)) ([9e289c4](https://github.com/betagouv/OTP-DS-to-Grist/commit/9e289c42d93984f69d4c5a5bf214912af613859b))
+* **multi:** Afficher la bannière de statut de synchronisation ([#403](https://github.com/betagouv/OTP-DS-to-Grist/issues/403)) ([1898f34](https://github.com/betagouv/OTP-DS-to-Grist/commit/1898f3476f1d1baa38e1a05a039f062392456d1f))
+* **Synchro:** Maj des liens d'aides ([#423](https://github.com/betagouv/OTP-DS-to-Grist/issues/423)) ([46c5289](https://github.com/betagouv/OTP-DS-to-Grist/commit/46c5289d3526558f871e34eb2637643b8992ad6c))
+
 ## [0.8.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.7.0...v0.8.0) (2026-07-10)
 
 
