@@ -288,12 +288,15 @@ class TestConfigManager:
         os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
     )
     def test_save_config_partial_without_grist_key(self, mock_db_manager):
-        """Test de la sauvegarde partielle sans clé API Grist (nouvelle config)"""
+        """Test de la sauvegarde partielle sans clé API Grist — aucune config existante → fallback vide"""
         # Mock de la connexion DB
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager.get_connection.return_value = mock_conn
+
+        # Aucune config existante pour copier la clé
+        mock_cursor.fetchone.return_value = None
 
         # Mock des méthodes de chiffrement (ne chiffre que les valeurs non vides)
         with patch.object(
@@ -319,9 +322,9 @@ class TestConfigManager:
 
         assert result is True
 
-        # Vérifier que INSERT a été appelé (pas de SELECT COUNT)
-        assert mock_cursor.execute.call_count == 1  # Juste INSERT
-        insert_call = mock_cursor.execute.call_args_list[0]
+        # SELECT (copy query) + INSERT = 2 appels
+        assert mock_cursor.execute.call_count == 2
+        insert_call = mock_cursor.execute.call_args_list[1]
         assert "INSERT INTO otp_configurations" in insert_call[0][0]
 
         # Vérifier que les valeurs chiffrées sont correctes
@@ -331,7 +334,52 @@ class TestConfigManager:
         assert (
             call_args[1][2] == "https://grist.numerique.gouv.fr/api"
         )  # grist_base_url
-        assert call_args[1][3] == ""  # grist_api_key vide (pas chiffré)
+        assert call_args[1][3] == ""  # grist_api_key vide (pas de config existante)
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_save_config_insert_copies_grist_key_from_existing(self, mock_db_manager):
+        """Test INSERT avec grist_api_key vide — copie la clé depuis une config existante"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        # La SELECT de copie retourne une config existante avec clé chiffrée
+        mock_cursor.fetchone.return_value = ("existing_encrypted_grist_key",)
+
+        with patch.object(
+            ConfigManager,
+            "encrypt_value",
+            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        ):
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                    # grist_api_key manquant
+                }
+            )
+
+        assert result is True
+
+        # SELECT (copy) + INSERT = 2 appels
+        assert mock_cursor.execute.call_count == 2
+        copy_call = mock_cursor.execute.call_args_list[0]
+        assert "grist_api_key" in copy_call[0][0]
+        assert "WHERE grist_user_id = %s AND grist_doc_id = %s" in copy_call[0][0]
+        assert copy_call[0][1] == ("test_user", "test_doc")
+
+        insert_call = mock_cursor.execute.call_args_list[1]
+        assert "INSERT INTO otp_configurations" in insert_call[0][0]
+        # La clé copiée est déjà chiffrée — pas de re-chiffrement
+        assert insert_call[0][1][3] == "existing_encrypted_grist_key"
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(

@@ -16,10 +16,11 @@ import OtpAlert from './OtpAlert.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
-  configValid: { type: Boolean, default: false },
+  gristError: { type: String, default: null },
   canDelete: { type: Boolean, default: false },
   canSync: { type: Boolean, default: false },
-  error: { type: String, default: null }
+  error: { type: String, default: null },
+  index: { type: Number, required: true }
 })
 
 const HELP_LINKS = window.HELP_LINKS
@@ -41,6 +42,8 @@ const sectionEmpty = computed(() => {
     || props.existingConfig?.otp_config_id === null
   return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
 })
+
+const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
 
 const handleDNInputsChange = async () => {
   dnErrorMessage.value = null
@@ -161,7 +164,7 @@ watch(() => props.existingConfig, (config) => {
             data-test-id="submit-form-button"
             secondary
             :disabled="!configValid || sectionEmpty"
-            @click="$emit('save')"
+            @click="$emit('save', index)"
           />
           <DsfrButton
             label="Supprimer"

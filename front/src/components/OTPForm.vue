@@ -20,7 +20,6 @@ const emit = defineEmits(['config-loaded'])
 const { setDemarcheCount } = useDemarcheContext()
 const { notify } = useNotification()
 const gristError = ref(null)
-const dnError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 const configError = ref(null)
@@ -29,9 +28,8 @@ const actionErrors = ref([])
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
 
-const configValid = computed(() => gristError.value === '' && dnError.value === '')
 const canDelete = computed(() => !!otpConfigId.value)
-const canSync = computed(() => !!otpConfigId.value && !props.syncRunning && configValid.value)
+const canSync = computed(() => !!otpConfigId.value && !props.syncRunning)
 const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
   return serverConfigs.value
@@ -56,26 +54,23 @@ const loadConfig = async () => {
 
 onMounted(loadConfig)
 
-const handleSave = async () => {
-  if (!configValid.value) return
-
+const handleSave = async (index) => {
   const hadEmpty = serverConfigs.value.includes(null)
 
   actionErrors.value[0] = null
 
   try {
     const config = {
-      ds_api_token: dnSectionRefs.value[0].getData().token,
-      demarche_number: dnSectionRefs.value[0].getData().demarche_number,
+      ds_api_token: dnSectionRefs.value[index].getData().token,
+      demarche_number: dnSectionRefs.value[index].getData().demarche_number,
       grist_base_url: gristSectionRef.value.getData().baseUrl,
       grist_doc_id: gristSectionRef.value.getData().docId,
       grist_user_id: gristSectionRef.value.getData().userId,
       grist_api_key: gristSectionRef.value.getData().token
     }
 
-    if (otpConfigId.value) {
-      config.otp_config_id = otpConfigId.value
-    }
+    if (configs.value[index]?.otp_config_id)
+      config.otp_config_id = configs.value[index].otp_config_id
 
     const result = await api.saveConfig(config)
 
@@ -169,11 +164,11 @@ const handleAddDemarche = async () => {
     </div>
 
     <DNFormSection 
-      @error-update="dnError = $event"
+      :index="index"
       @save="handleSave"
       @delete="handleDelete"
       @sync="handleSync"
-      :config-valid="configValid"
+      :grist-error="gristError"
       :can-delete="canDelete"
       :can-sync="canSync"
       :existing-config="config"
