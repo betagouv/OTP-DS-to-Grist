@@ -98,7 +98,7 @@ describe('DN form section', () => {
     expect(wrapper.vm.getData().demarche_number).toBe('67890')
   })
 
-  it('shows placeholder **** and emits empty error-update when has_ds_token is true', async () => {
+  it('shows placeholder **** when has_ds_token is true', async () => {
     const wrapper = mount(DNFormSection, {
       props: { index: 0 },
       global: globalComponents
@@ -108,9 +108,6 @@ describe('DN form section', () => {
 
     const passwordInput = wrapper.find('input[type="password"]')
     expect(passwordInput.attributes('placeholder')).toMatch(/\*{3,}/)
-
-    expect(wrapper.emitted('error-update')).toBeTruthy()
-    expect(wrapper.emitted('error-update').at(-1)).toEqual([''])
   })
 
   it('keeps default placeholder when has_ds_token is false', async () => {
@@ -227,6 +224,59 @@ describe('DN form section', () => {
 
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
     expect(mockFetch).toHaveBeenCalledTimes(1) // seulement la première fois
+  })
+
+  it('validates DS connection automatically on load with existing config', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'demarches',
+        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+        demarche_number: '67890',
+        otp_config_id: 42
+      })
+    })
+
+    expect(wrapper.vm.dnErrorMessage).toBe('')
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
+  })
+
+  it('shows error on load when DS connection fails automatically', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Token invalide' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.dnErrorMessage).toBe('Token invalide')
+    expect(wrapper.find('.fr-error-text').text()).toBe('Token invalide')
   })
 
   it('sets dnErrorMessage when test-connection fetch fails', async () => {
@@ -378,9 +428,15 @@ describe('Save button', () => {
 
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
 
-    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Token expiré' })
+    })
 
-    expect(wrapper.vm.dnErrorMessage).toBeNull()
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+    await flushPromises()
+
+    expect(wrapper.vm.dnErrorMessage).toBe('Token expiré')
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
   })
 })

@@ -45,11 +45,8 @@ const sectionEmpty = computed(() => {
 
 const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
 
-const handleDNInputsChange = async () => {
-  dnErrorMessage.value = null
-
-  if (!inputDNNumber.value)
-    return emit('error-update', null)
+const validateDSConnection = async () => {
+  if (!inputDNNumber.value) return
 
   const body = {
     type: 'demarches',
@@ -62,17 +59,22 @@ const handleDNInputsChange = async () => {
   } else if (props.existingConfig?.otp_config_id) {
     body.otp_config_id = props.existingConfig.otp_config_id
   } else {
-    return emit('error-update', null)
+    return
   }
 
   try {
     const result = await api.testConnection(body)
     dnErrorMessage.value = result.success ? '' : result.message
-    emit('error-update', dnErrorMessage.value)
   } catch (e) {
     dnErrorMessage.value = 'Erreur lors du test de connexion'
-    emit('error-update', dnErrorMessage.value)
   }
+  emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
+}
+
+const handleDNInputsChange = () => {
+  dnErrorMessage.value = null
+  emit('error-update', null)
+  validateDSConnection()
 }
 
 defineExpose({
@@ -82,13 +84,18 @@ defineExpose({
   })
 })
 
-const applyExistingConfig = (config) => {
+const applyExistingConfig = async (config) => {
   if (config.demarche_number)
     inputDNNumber.value = config.demarche_number
 
   if (config.has_ds_token) {
     dnTokenPlaceholder.value = '****************************************'
-    emit('error-update', '')
+  }
+
+  if (config.otp_config_id && config.demarche_number) {
+    await validateDSConnection()
+  } else {
+    emit('error-update', null)
   }
 }
 
