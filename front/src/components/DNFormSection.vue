@@ -82,22 +82,26 @@ defineExpose({
   })
 })
 
+const applyExistingConfig = (config) => {
+  if (config.demarche_number)
+    inputDNNumber.value = config.demarche_number
+
+  if (config.has_ds_token) {
+    dnTokenPlaceholder.value = '****************************************'
+    emit('error-update', '')
+  }
+}
+
+const resetConfig = () => {
+  inputDNNumber.value = ''
+  inputDNToken.value = ''
+  dnTokenPlaceholder.value = DEFAULT_DN_PLACEHOLDER
+  emit('error-update', null)
+}
+
 watch(() => props.existingConfig, (config) => {
   dnErrorMessage.value = null
-  if (config) {
-    if (config.demarche_number)
-      inputDNNumber.value = config.demarche_number
-
-    if (config.has_ds_token) {
-      dnTokenPlaceholder.value = '****************************************'
-      emit('error-update', '')
-    }
-  } else {
-    inputDNNumber.value = ''
-    inputDNToken.value = ''
-    dnTokenPlaceholder.value = DEFAULT_DN_PLACEHOLDER
-    emit('error-update', null)
-  }
+  config ? applyExistingConfig(config) : resetConfig()
 }, {immediate: true})
 </script>
 

@@ -64,21 +64,25 @@ onMounted(async () => {
   }
 })
 
-watch(() => props.existingConfig, (config) => {
-  if (config) {
-    if (config.otp_config_id && config.grist_base_url)
-      baseUrl.value = config.grist_base_url
+const applyExistingConfig = (config) => {
+  if (config.otp_config_id && config.grist_base_url)
+    baseUrl.value = config.grist_base_url
 
-    if (config.has_grist_key) {
-      gristTokenPlaceholder.value = '****************************************'
-      emit('error-update', '')
-    }
-  } else {
-    inputGristToken.value = ''
-    gristTokenPlaceholder.value = DEFAULT_GRIST_PLACEHOLDER
-    baseUrl.value = context.value?.baseUrl || ''
-    emit('error-update', null)
+  if (config.has_grist_key) {
+    gristTokenPlaceholder.value = '****************************************'
+    emit('error-update', '')
   }
+}
+
+const resetConfig = () => {
+  inputGristToken.value = ''
+  gristTokenPlaceholder.value = DEFAULT_GRIST_PLACEHOLDER
+  baseUrl.value = context.value?.baseUrl || ''
+  emit('error-update', null)
+}
+
+watch(() => props.existingConfig, (config) => {
+  config ? applyExistingConfig(config) : resetConfig()
 })
 
 defineExpose({
