@@ -157,7 +157,7 @@ watch(() => props.existingConfig, (config) => {
             data-test-id="sync-button"
             primary
             :disabled="!canSync || sectionEmpty"
-            @click="$emit('sync')"
+            @click="$emit('sync', index)"
           />
           <DsfrButton
             label="Sauvegarder"

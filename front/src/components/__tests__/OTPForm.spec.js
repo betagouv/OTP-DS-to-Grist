@@ -199,14 +199,14 @@ describe('canSync computation', () => {
   })
 
   it('is true when config exists and not syncing', async () => {
-    wrapper.vm.otpConfigId = 42
+    wrapper.vm.serverConfigs = [{ otp_config_id: 42 }]
     await wrapper.vm.$nextTick()
 
     expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(true)
   })
 
   it('is false when syncRunning is true', async () => {
-    wrapper.vm.otpConfigId = 42
+    wrapper.vm.serverConfigs = [{ otp_config_id: 42 }]
     await wrapper.setProps({ syncRunning: true })
     await wrapper.vm.$nextTick()
 
@@ -841,7 +841,7 @@ describe('Sync action', () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({ ok: true })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('sync')
+    wrapper.getComponent(DNFormSection).vm.$emit('sync', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -869,7 +869,7 @@ describe('Sync action', () => {
 
     globalThis.fetch.mockReset()
 
-    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('sync')
+    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('sync', 0)
     await new Promise(process.nextTick)
     await wrapperNoConfig.vm.$nextTick()
 
@@ -896,7 +896,7 @@ describe('Sync action', () => {
     await new Promise(process.nextTick)
     await wrapperSync.vm.$nextTick()
 
-    wrapperSync.getComponent(DNFormSection).vm.$emit('sync')
+    wrapperSync.getComponent(DNFormSection).vm.$emit('sync', 0)
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
@@ -905,7 +905,7 @@ describe('Sync action', () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockRejectedValue(new Error('network error'))
 
-    wrapper.getComponent(DNFormSection).vm.$emit('sync')
+    wrapper.getComponent(DNFormSection).vm.$emit('sync', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 

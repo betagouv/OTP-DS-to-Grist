@@ -29,7 +29,7 @@ const serverConfigs = ref([])
 const otpConfigId = ref(null)
 
 const canDeleteConfig = (config) => !!config?.otp_config_id
-const canSync = computed(() => !!otpConfigId.value && !props.syncRunning)
+const canSyncConfig = (config) => !!config?.otp_config_id && !props.syncRunning
 const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
   return serverConfigs.value
@@ -110,13 +110,15 @@ const handleDelete = async (index) => {
   }
 }
 
-const handleSync = async () => {
-  if (!otpConfigId.value || props.syncRunning) return
-  actionErrors.value[0] = null
+const handleSync = async (index) => {
+  if (props.syncRunning) return
+  const otpConfigIdToSync = configs.value[index]?.otp_config_id
+  if (!otpConfigIdToSync) return
+  actionErrors.value[index] = null
   try {
-    await api.startSync(otpConfigId.value)
+    await api.startSync(otpConfigIdToSync)
   } catch (e) {
-    actionErrors.value[0] = 'Erreur lors de la synchronisation'
+    actionErrors.value[index] = 'Erreur lors de la synchronisation'
   }
 }
 
@@ -170,7 +172,7 @@ const handleAddDemarche = async () => {
       @sync="handleSync"
       :grist-error="gristError"
       :can-delete="canDeleteConfig(config)"
-      :can-sync="canSync"
+      :can-sync="canSyncConfig(config)"
       :existing-config="config"
       :error="actionErrors[index] || null"
       @clear-error="actionErrors[index] = null"

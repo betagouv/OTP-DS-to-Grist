@@ -426,12 +426,13 @@ describe('Sync button', () => {
     expect(syncButton.attributes('disabled')).toBeUndefined()
   })
 
-  it('emits sync event when clicked and enabled', async () => {
+  it('emits sync event with index when clicked and enabled', async () => {
     await wrapper.setProps({ canSync: true })
     const syncButton = wrapper.find('[data-test-id="sync-button"]')
     await syncButton.trigger('click')
 
     expect(wrapper.emitted('sync')).toBeTruthy()
+    expect(wrapper.emitted('sync')[0]).toEqual([0])
   })
 
   it('does not emit sync event when clicked and disabled', async () => {
