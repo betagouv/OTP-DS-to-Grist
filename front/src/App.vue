@@ -83,6 +83,3 @@ const handleSyncFinished = (result) => {
     </div>
   </header>
 </template>
-
-<style scoped>
-</style>

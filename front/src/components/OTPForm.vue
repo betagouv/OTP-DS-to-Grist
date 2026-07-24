@@ -108,7 +108,7 @@ const handleDelete = async () => {
       throw Error(result.message)
 
     otpConfigId.value = null
-    serverConfigs.value = [] // TMP
+    serverConfigs.value = []
     notify('Configuration supprimée', 'success')
   } catch (e) {
     actionErrors.value[0] = 'Erreur lors de la suppression'

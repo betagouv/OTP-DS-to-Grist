@@ -5,6 +5,7 @@ import { io } from 'socket.io-client'
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
+
 const { totalDemarches, demarcheIndex } = useDemarcheContext()
 const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
 const task = ref(null)

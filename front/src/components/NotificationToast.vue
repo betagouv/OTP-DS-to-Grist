@@ -39,7 +39,6 @@ const { notifications, remove } = useNotification()
   background-color: var(--background-contrast-grey);
 }
 
-
 :deep(.fr-alert__title) {
   font-weight: 400;
   font-size: 1rem;
