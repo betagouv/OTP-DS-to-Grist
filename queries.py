@@ -45,7 +45,7 @@ if __name__ == "__main__":
             exit(1)
 
         print("Vérification de la connexion à l'API Démarches Simplifiées")
-        success, message = test_demarches_api(api_token, demarche_number)
+        success, message, _ = test_demarches_api(api_token, demarche_number)
 
         if not success:
             print(f"✗ Échec de la connexion: {message}")
