@@ -895,6 +895,13 @@ def dossier_to_flat_data(
         ),
     }
 
+    # Email de l'instructeur ayant demandé la dernière correction
+    correction_instructeur = None
+    for traitement in dossier_data.get("traitements", []):
+        if traitement.get("event") == "depose_correction_instructeur":
+            correction_instructeur = traitement.get("emailAgentTraitant")
+    flat_data["correction_instructeur"] = correction_instructeur
+
     # Ajouter les informations sur les labels (étiquettes)
     if "labels" in dossier_data and dossier_data["labels"]:
         # Création d'une liste des noms de labels

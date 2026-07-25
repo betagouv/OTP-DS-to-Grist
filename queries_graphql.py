@@ -384,6 +384,7 @@ fragment DossierFragment on Dossier {
     }
     traitements @include(if: $includeTraitements) {
         state
+        event
         emailAgentTraitant
         dateTraitement
         motivation
@@ -558,6 +559,7 @@ fragment DossierFragment on Dossier {
     }
     traitements @include(if: $includeTraitements) {
         state
+        event
         emailAgentTraitant
         dateTraitement
         motivation
