@@ -384,6 +384,12 @@ const getUserEmail = async (params) => {
   return response.json()
 }
 
+const getDocUsers = async (params) => {
+  const response = await fetch(`/api/doc-users${params}`)
+  if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+  return response.json()
+}
+
 // Exposer globalement pour accès depuis templates
 window.setButtonsDisabled = setButtonsDisabled
 
@@ -396,5 +402,6 @@ if (typeof module !== 'undefined' && module.exports) {
     deleteConfig,
     updateDeleteButton,
     getUserEmail,
+    getDocUsers,
   }
 }

@@ -642,6 +642,74 @@ def api_user_email():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/api/doc-users")
+def api_doc_users():
+    """API pour récupérer les utilisateurs ayant accès au document Grist"""
+    try:
+        grist_user_id = request.args.get("grist_user_id")
+        grist_doc_id = request.args.get("grist_doc_id")
+
+        if not grist_user_id or not grist_doc_id:
+            return jsonify({"success": False, "message": "Paramètres manquants"}), 400
+
+        configs = config_manager.load_config(
+            grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+        )
+        if not configs:
+            return jsonify(
+                {"success": False, "message": "Configuration non trouvée"}
+            ), 404
+
+        config = configs[0]
+        api_key = config.get("grist_api_key")
+        base_url = config.get("grist_base_url")
+        doc_id = config.get("grist_doc_id")
+
+        if not api_key or not base_url or not doc_id:
+            return jsonify(
+                {"success": False, "message": "Configuration Grist incomplète"}
+            ), 400
+
+        headers = {"Authorization": f"Bearer {api_key}"}
+        response = requests.get(
+            f"{base_url}/docs/{doc_id}/access", headers=headers, timeout=10
+        )
+
+        if response.status_code != 200:
+            try:
+                error_data = response.json()
+            except Exception:
+                error_data = {}
+            error_msg = (
+                error_data.get("detail")
+                or error_data.get("message")
+                or response.text
+                or f"Erreur HTTP {response.status_code}"
+            )
+            return jsonify(
+                {"success": False, "message": error_msg}
+            ), response.status_code
+
+        data = response.json()
+        users = [
+            {
+                "id": u["id"],
+                "name": u.get("name"),
+                "email": u.get("email"),
+                "access": u.get("access"),
+            }
+            for u in data.get("users", [])
+        ]
+
+        return jsonify({"success": True, "users": users})
+
+    except requests.exceptions.Timeout:
+        return jsonify({"success": False, "message": "Timeout API Grist"}), 504
+    except Exception as e:
+        logger.error(f"Erreur récupération utilisateurs: {str(e)}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/api/sync-report", methods=["GET"])
 def api_sync_report():
     """Route pour récupérer le rapport des synchronisations des dernières 24h"""

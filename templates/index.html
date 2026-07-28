@@ -55,6 +55,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     // silencieux — ne pas bloquer l'expérience utilisateur
   }
 
+  // Récupérer les utilisateurs du document Grist (POC — affiché en pied de page)
+  try {
+    const ctx = await getGristContext()
+    const res = await getDocUsers(ctx.params)
+    if (res.success && res.users) {
+      const count = res.users.length
+      const emails = res.users.map(u => u.email).filter(Boolean).join(', ')
+      document.getElementById('doc-users').textContent = `${count} utilisateur${count > 1 ? 's' : ''} · ${emails}`
+    }
+  } catch (_) {
+    // silencieux
+  }
+
   if (checkedConfig?.otp_config_id) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
