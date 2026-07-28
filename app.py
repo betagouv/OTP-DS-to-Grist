@@ -578,6 +578,70 @@ def api_groups():
         return jsonify({"error": "Erreur lors de la récupération des groupes"}), 400
 
 
+@app.route("/api/user-email")
+def api_user_email():
+    """API pour récupérer l'email de l'utilisateur Grist courant"""
+    try:
+        grist_user_id = request.args.get("grist_user_id")
+        grist_doc_id = request.args.get("grist_doc_id")
+
+        if not grist_user_id or not grist_doc_id:
+            return jsonify({"success": False, "message": "Paramètres manquants"}), 400
+
+        configs = config_manager.load_config(
+            grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+        )
+        if not configs:
+            return jsonify(
+                {"success": False, "message": "Configuration non trouvée"}
+            ), 404
+
+        config = configs[0]
+        api_key = config.get("grist_api_key")
+        base_url = config.get("grist_base_url")
+
+        if not api_key or not base_url:
+            return jsonify(
+                {"success": False, "message": "Clé API Grist non configurée"}
+            ), 400
+
+        headers = {"Authorization": f"Bearer {api_key}"}
+        response = requests.get(f"{base_url}/scim/v2/Me", headers=headers, timeout=10)
+
+        if response.status_code != 200:
+            try:
+                error_data = response.json()
+            except Exception:
+                error_data = {}
+            error_msg = (
+                error_data.get("detail")
+                or error_data.get("message")
+                or response.text
+                or f"Erreur HTTP {response.status_code}"
+            )
+            return jsonify(
+                {"success": False, "message": error_msg}
+            ), response.status_code
+
+        data = response.json()
+        email = data.get("userName") or (
+            data.get("emails", [{}])[0].get("value") if data.get("emails") else None
+        )
+
+        if not email:
+            return jsonify(
+                {"success": False, "message": "Email non trouvé dans la réponse SCIM"}
+            ), 404
+
+        return jsonify({"success": True, "email": email})
+
+    except requests.exceptions.Timeout:
+        return jsonify({"success": False, "message": "Timeout API Grist"}), 504
+    except Exception as e:
+        logger.error(f"Erreur récupération email: {str(e)}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/api/sync-report", methods=["GET"])
 def api_sync_report():
     """Route pour récupérer le rapport des synchronisations des dernières 24h"""

@@ -378,6 +378,12 @@ const updateDeleteButton = (id) => {
   }
 }
 
+const getUserEmail = async (params) => {
+  const response = await fetch(`/api/user-email${params}`)
+  if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+  return response.json()
+}
+
 // Exposer globalement pour accès depuis templates
 window.setButtonsDisabled = setButtonsDisabled
 
@@ -389,5 +395,6 @@ if (typeof module !== 'undefined' && module.exports) {
     saveConfiguration,
     deleteConfig,
     updateDeleteButton,
+    getUserEmail,
   }
 }
