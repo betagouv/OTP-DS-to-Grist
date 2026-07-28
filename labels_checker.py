@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Rafraîchissement des labels (étiquettes) des dossiers dans Grist.
-
-L'ajout ou le retrait d'un label ne met pas à jour `dateDerniereModification` côté DN :
-un dossier dont seuls les labels ont changé n'est donc jamais remonté par le filtre
-`updatedSince`, et ses colonnes `label_names` / `labels_json` restent périmées.
-
 Ce script interroge tous les dossiers de la démarche avec une requête minimaliste
 (number + labels) et met à jour les seules lignes dont les labels ont changé.
 
@@ -55,7 +50,7 @@ def _build_label_fields(labels):
     }
 
 
-def _fetch_existing_labels(client, table_id, log_error):
+def _fetch_existing_labels(client, table_id):
     """
     Récupère l'état actuel des labels dans Grist.
 
@@ -66,11 +61,10 @@ def _fetch_existing_labels(client, table_id, log_error):
     response = requests.get(url, headers=client.headers)
 
     if response.status_code != 200:
-        log_error(
-            f"  Erreur récupération des dossiers Grist: "
+        raise RuntimeError(
+            f"Lecture de la table {table_id} impossible : "
             f"{response.status_code} - {response.text}"
         )
-        return {}
 
     existing = {}
     for record in response.json().get("records", []):
@@ -126,13 +120,14 @@ def sync_labels_for_demarche(
         dict: {"checked": int, "updated": int, "missing_in_grist": int}
     """
     start_time = time.time()
+    result = {"checked": 0, "updated": 0, "missing_in_grist": 0}
     log("\n--- Rafraîchissement des labels ---")
 
-    existing = _fetch_existing_labels(client, table_id, log_error)
+    existing = _fetch_existing_labels(client, table_id)
     if not existing:
         log("  Aucun dossier dans Grist — rien à rafraîchir.")
         log("--- Fin rafraîchissement des labels ---\n")
-        return {"checked": 0, "updated": 0, "missing_in_grist": 0}
+        return result
 
     dossiers = get_demarche_dossiers_labels_only(demarche_number)
     log(f"  {len(dossiers)} dossier(s) interrogé(s) côté DN")
@@ -158,18 +153,21 @@ def sync_labels_for_demarche(
 
     if not to_update:
         log("  Labels déjà à jour (aucun changement)")
-        updated = 0
-    else:
-        updated = _patch_records(client, table_id, to_update, log, log_error)
+
+    updated = _patch_records(client, table_id, to_update, log, log_error)
 
     log(f"[TIMING] Labels rafraîchis en {time.time() - start_time:.1f}s")
     log("--- Fin rafraîchissement des labels ---\n")
 
-    return {
-        "checked": len(dossiers),
-        "updated": updated,
-        "missing_in_grist": missing_in_grist,
-    }
+    result.update(
+        {
+            "checked": len(dossiers),
+            "updated": updated,
+            "missing_in_grist": missing_in_grist,
+        }
+    )
+
+    return result
 
 
 def main():

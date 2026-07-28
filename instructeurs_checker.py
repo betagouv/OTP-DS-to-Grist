@@ -36,12 +36,21 @@ def _composite_key(instructeur_id, groupe_instructeur_id):
 
 
 def _fetch_existing_records(client, table_id):
-    """Récupère les enregistrements actuels de la table instructeurs."""
+    """Récupère les enregistrements actuels de la table instructeurs.
+
+    Raises:
+        RuntimeError: si Grist ne répond pas correctement. Confondre un échec de
+            lecture avec une table vide provoquerait la recréation de tous les
+            instructeurs, donc des doublons.
+    """
     url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
     response = requests.get(url, headers=client.headers)
 
     if response.status_code != 200:
-        return []
+        raise RuntimeError(
+            f"Lecture de la table {table_id} impossible : "
+            f"{response.status_code} - {response.text}"
+        )
 
     return response.json().get("records", [])
 
@@ -61,8 +70,9 @@ def _build_existing_map(existing_records):
     return existing_map
 
 
-def _compute_operations(existing_map, new_map):
-    """Détermine les enregistrements à supprimer, mettre à jour et créer."""
+def _diff_records(existing_map, new_map):
+    """Compare l'état Grist et l'état DN, et retourne les enregistrements
+    à supprimer, à mettre à jour et à créer."""
     to_delete = [
         data["grist_id"] for key, data in existing_map.items() if key not in new_map
     ]
@@ -82,7 +92,7 @@ def _compute_operations(existing_map, new_map):
     return to_delete, to_update, to_create
 
 
-def _apply_operations(
+def _apply_records_diff(
     client, table_id, to_delete, to_update, to_create, log, log_error
 ):
     """Applique les suppressions, mises à jour et créations dans Grist."""
@@ -136,13 +146,14 @@ def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=pr
         dict: {"total": int, "created": int, "updated": int, "deleted": int}
     """
     start_time = time.time()
+    result = {"total": 0, "created": 0, "updated": 0, "deleted": 0}
     log(f"  Récupération des instructeurs de la démarche {demarche_number}...")
 
     instructeurs_records = extract_instructeurs_from_demarche(demarche_number)
 
     if not instructeurs_records:
         log("  Aucun instructeur trouvé pour cette démarche")
-        return {"total": 0, "created": 0, "updated": 0, "deleted": 0}
+        return result
 
     log(f"  {len(instructeurs_records)} instructeur(s) trouvé(s)")
 
@@ -152,9 +163,9 @@ def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=pr
         for r in instructeurs_records
     }
 
-    to_delete, to_update, to_create = _compute_operations(existing_map, new_map)
+    to_delete, to_update, to_create = _diff_records(existing_map, new_map)
 
-    operations_count = _apply_operations(
+    operations_count = _apply_records_diff(
         client, table_id, to_delete, to_update, to_create, log, log_error
     )
 
@@ -165,12 +176,16 @@ def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=pr
 
     log(f"[TIMING] Instructeurs synchronisés en {time.time() - start_time:.1f}s")
 
-    return {
-        "total": len(instructeurs_records),
-        "created": len(to_create),
-        "updated": len(to_update),
-        "deleted": len(to_delete),
-    }
+    result.update(
+        {
+            "total": len(instructeurs_records),
+            "created": len(to_create),
+            "updated": len(to_update),
+            "deleted": len(to_delete),
+        }
+    )
+
+    return result
 
 
 def main():

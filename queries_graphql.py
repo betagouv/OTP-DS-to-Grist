@@ -1206,7 +1206,12 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     cursor = None
     page_num = 0
 
-    while True:
+    dossiers = []
+    cursor = None
+    page_num = 0
+    has_next_page = True
+
+    while has_next_page:
         page_num += 1
         response = session.post(
             API_URL,
@@ -1223,17 +1228,10 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
             messages = [e.get("message", "Unknown error") for e in result["errors"]]
             raise Exception(f"GraphQL errors: {', '.join(messages)}")
 
-        demarche_data = (result.get("data") or {}).get("demarche") or {}
-        connection = demarche_data.get("dossiers") or {}
-        if not connection:
-            break
-
-        dossiers.extend(connection.get("nodes", []))
-
-        page_info = connection.get("pageInfo", {})
-        if not page_info.get("hasNextPage"):
-            break
-        cursor = page_info.get("endCursor")
+        connection = result["data"]["demarche"]["dossiers"]
+        dossiers.extend(connection["nodes"])
+        has_next_page = connection["pageInfo"]["hasNextPage"]
+        cursor = connection["pageInfo"]["endCursor"]
 
     print(f"[LABELS] {len(dossiers)} dossiers récupérés en {page_num} page(s)")
 

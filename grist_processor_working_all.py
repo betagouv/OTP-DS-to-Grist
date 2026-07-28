@@ -14,6 +14,10 @@ import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
+from deleted_dossiers_checker import check_deleted_dossiers
+from hide_id_columns import IdColumnHider
+from instructeurs_checker import sync_instructeurs
+from labels_checker import sync_labels_for_demarche
 from queries import dossier_to_flat_data, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
@@ -1633,17 +1637,18 @@ def run_demarche_level_tasks(
     """
     Opérations de niveau démarche, indépendantes des dossiers effectivement traités.
 
-    Doit être appelée aussi bien sur le chemin nominal que sur la sortie anticipée
-    « aucun dossier modifié » : poser une étiquette, ajouter un instructeur ou
-    supprimer un dossier ne fait remonter aucun dossier via `updatedSince`.
+    À appeler depuis les deux `return` de `process_demarche_for_grist_optimized` :
+    celui de fin de fonction et celui du cas `total_dossiers == 0`. Poser une
+    étiquette, ajouter un instructeur ou supprimer un dossier ne met à jour aucun
+    dossier au sens d'`updatedSince` : sans le second appel, ces changements ne
+    remonteraient dans Grist que si un dossier avait bougé par ailleurs.
 
-    Chaque tâche est isolée : un échec n'empêche pas les suivantes.
+    Chaque tâche est isolée dans son propre try/except : un échec n'empêche pas
+    les suivantes.
     """
     # 1. Instructeurs (niveau démarche, à chaque sync)
     if table_ids.get("instructeurs"):
         try:
-            from instructeurs_checker import sync_instructeurs
-
             sync_instructeurs(
                 client, table_ids["instructeurs"], demarche_number, log, log_error
             )
@@ -1655,8 +1660,6 @@ def run_demarche_level_tasks(
     #    par le chemin principal — ce passage serait redondant.
     if updated_since_cursor and not force_full_sync:
         try:
-            from labels_checker import sync_labels_for_demarche
-
             sync_labels_for_demarche(
                 client, table_ids["dossier_table_id"], demarche_number, log, log_error
             )
@@ -1667,8 +1670,6 @@ def run_demarche_level_tasks(
 
     # 3. Dossiers supprimés (API DN, curseur dédié)
     try:
-        from deleted_dossiers_checker import check_deleted_dossiers
-
         deletion_result = check_deleted_dossiers(
             client=client,
             table_id=table_ids["dossier_table_id"],
@@ -1685,8 +1686,6 @@ def run_demarche_level_tasks(
     # 4. Masquage des colonnes _id (toujours en dernier)
     if schema_method_successful:
         try:
-            from hide_id_columns import IdColumnHider
-
             current_table_ids = set()
             _flatten_table_ids(table_ids, current_table_ids)
             hider = IdColumnHider(client.base_url, client.api_key, client.doc_id)
