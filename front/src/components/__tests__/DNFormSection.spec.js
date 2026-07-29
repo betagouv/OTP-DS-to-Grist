@@ -4,6 +4,12 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
 
+// Microtask pour que le v-model ait le temps de setter les refs avant validation
+vi.mock(
+  '../../utils/debounce',
+  () => ({ debounce: (fn) => (...args) => Promise.resolve().then(() => fn(...args)) })
+)
+
 beforeEach(() => {
   window.HELP_LINKS = {
     token_api: 'https://fake-url.example.com/token-api',
@@ -11,6 +17,7 @@ beforeEach(() => {
     faq: 'https://fake-url.example.com/faq'
   }
 })
+
 
 const globalComponents = { components: { DsfrInput, DsfrInputGroup } }
 
@@ -70,6 +77,7 @@ describe('DN form section', () => {
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('bon-numéro')
+    await flushPromises()
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -165,6 +173,7 @@ describe('DN form section', () => {
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('12345')
+    await flushPromises()
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -195,6 +204,7 @@ describe('DN form section', () => {
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('12345')
+    await flushPromises()
 
     const callBody = JSON.parse(mockFetch.mock.calls[0][1].body)
     expect(callBody.api_token).toBe('explicit-token')
@@ -293,6 +303,7 @@ describe('DN form section', () => {
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('12345')
+    await flushPromises()
 
     expect(wrapper.vm.dnErrorMessage).toBe('Erreur lors du test de connexion')
     expect(wrapper.emitted('error-update')).toBeTruthy()
