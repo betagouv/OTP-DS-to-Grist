@@ -12,6 +12,8 @@ beforeEach(() => {
   }
 })
 
+const globalComponents = { components: { DsfrInput, DsfrInputGroup } }
+
 describe('DN form section', () => {
   it('shows error message when form validation fails', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
@@ -22,9 +24,8 @@ describe('DN form section', () => {
     globalThis.fetch = mockFetch
 
     const wrapper = mount(DNFormSection, {
-      global: {
-        components: { DsfrInput, DsfrInputGroup }
-      }
+      props: { index: 0 },
+      global: globalComponents
     })
 
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
@@ -60,9 +61,8 @@ describe('DN form section', () => {
     globalThis.fetch = mockFetch
 
     const wrapper = mount(DNFormSection, {
-      global: {
-        components: { DsfrInput, DsfrInputGroup }
-      }
+      props: { index: 0 },
+      global: globalComponents
     })
 
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
@@ -86,7 +86,8 @@ describe('DN form section', () => {
 
   it('pre-fills demarche_number from existingConfig when config is loaded', async () => {
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
 
     expect(wrapper.vm.inputDNNumber).toBe('')
@@ -97,23 +98,22 @@ describe('DN form section', () => {
     expect(wrapper.vm.getData().demarche_number).toBe('67890')
   })
 
-  it('shows placeholder **** and emits empty error-update when has_ds_token is true', async () => {
+  it('shows placeholder **** when has_ds_token is true', async () => {
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
 
     await wrapper.setProps({ existingConfig: { has_ds_token: true } })
 
     const passwordInput = wrapper.find('input[type="password"]')
     expect(passwordInput.attributes('placeholder')).toMatch(/\*{3,}/)
-
-    expect(wrapper.emitted('error-update')).toBeTruthy()
-    expect(wrapper.emitted('error-update')[0]).toEqual([''])
   })
 
   it('keeps default placeholder when has_ds_token is false', async () => {
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
 
     await wrapper.setProps({ existingConfig: { demarche_number: '67890', has_ds_token: false } })
@@ -126,7 +126,8 @@ describe('DN form section', () => {
     const mockFetch = vi.fn()
     globalThis.fetch = mockFetch
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('un-token')
@@ -140,7 +141,8 @@ describe('DN form section', () => {
     const mockFetch = vi.fn()
     globalThis.fetch = mockFetch
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('12345')
@@ -157,8 +159,8 @@ describe('DN form section', () => {
     globalThis.fetch = mockFetch
 
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } },
-      props: { existingConfig: { otp_config_id: 42, has_ds_token: true } }
+      props: { index: 0, existingConfig: { otp_config_id: 42, has_ds_token: true } },
+      global: globalComponents
     })
 
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
@@ -184,8 +186,8 @@ describe('DN form section', () => {
     globalThis.fetch = mockFetch
 
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } },
-      props: { existingConfig: { otp_config_id: 42, has_ds_token: true } }
+      props: { index: 0, existingConfig: { otp_config_id: 42, has_ds_token: true } },
+      global: globalComponents
     })
 
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
@@ -206,7 +208,8 @@ describe('DN form section', () => {
     })
     globalThis.fetch = mockFetch
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('mauvais-token')
@@ -223,9 +226,65 @@ describe('DN form section', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1) // seulement la première fois
   })
 
+  it('validates DS connection automatically on load with existing config', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Ma démarche' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'demarches',
+        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
+        demarche_number: '67890',
+        otp_config_id: 42
+      })
+    })
+
+    expect(wrapper.vm.dnErrorMessage).toBe('')
+    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
+  })
+
+  it('shows error on load when DS connection fails automatically', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Token invalide' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.dnErrorMessage).toBe('Token invalide')
+    expect(wrapper.vm.accordionTitleDN).toBe('Échec')
+    expect(wrapper.find('.fr-error-text').text()).toBe('Token invalide')
+  })
+
   it('sets dnErrorMessage when test-connection fetch fails', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
     const wrapper = mount(DNFormSection, {
+      props: { index: 0},
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
 
@@ -244,7 +303,7 @@ describe('DN form section', () => {
   it('emits clear-error when OtpAlert close is triggered', async () => {
     const wrapper = mount(DNFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } },
-      props: { error: 'Une erreur' }
+      props: { error: 'Une erreur', index: 0 }
     })
 
     const alert = wrapper.find('.fr-alert')
@@ -256,38 +315,95 @@ describe('DN form section', () => {
   })
 })
 
+describe('index prop', () => {
+  it('accepts index prop', () => {
+    const wrapper = mount(DNFormSection, {
+      props: { index: 3 },
+      global: globalComponents
+    })
+    expect(wrapper.props('index')).toBe(3)
+  })
+
+  it('emits save with index value', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: { index: 2, gristError: '', existingConfig: { otp_config_id: 1 } },
+      global: globalComponents
+    })
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+    await saveButton.trigger('click')
+
+    expect(wrapper.emitted('save')).toBeTruthy()
+    expect(wrapper.emitted('save')[0]).toEqual([2])
+  })
+})
+
 describe('Save button', () => {
   let wrapper
 
   beforeEach(() => {
     wrapper = mount(DNFormSection, {
-      props: { existingConfig: { otp_config_id: 1 } },
-      global: {
-        components: { DsfrInput, DsfrInputGroup }
-      }
+      props: { index: 0, existingConfig: { otp_config_id: 1 } },
+      global: globalComponents
     })
   })
 
-  it('is disabled when configValid is false', async () => {
-    await wrapper.setProps({ configValid: false })
+  it('is disabled when gristError is null (default)', async () => {
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
 
     expect(saveButton.attributes('disabled')).toBeDefined()
   })
 
-  it('is enabled when configValid is true', async () => {
-    await wrapper.setProps({ configValid: true })
+  it('is enabled when gristError is empty string and DN validated', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
 
     expect(saveButton.attributes('disabled')).toBeUndefined()
   })
 
-  it('emits save event when clicked and enabled', async () => {
-    await wrapper.setProps({ configValid: true })
+  it('emits save event with index when clicked and enabled', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     await saveButton.trigger('click')
 
     expect(wrapper.emitted('save')).toBeTruthy()
+    expect(wrapper.emitted('save')[0]).toEqual([0])
   })
 
   it('does not emit save event when clicked and disabled', async () => {
@@ -296,6 +412,36 @@ describe('Save button', () => {
 
     expect(wrapper.emitted('save')).toBeFalsy()
   })
+
+  it('disables save button after existingConfig changes (post-save reload)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Token expiré' })
+    })
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+    await flushPromises()
+
+    expect(wrapper.vm.dnErrorMessage).toBe('Token expiré')
+    expect(wrapper.vm.accordionTitleDN).toBe('Échec')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+  })
 })
 
 describe('Delete button', () => {
@@ -303,10 +449,8 @@ describe('Delete button', () => {
 
   beforeEach(() => {
     wrapper = mount(DNFormSection, {
-      props: { existingConfig: { otp_config_id: 1 } },
-      global: {
-        components: { DsfrInput, DsfrInputGroup }
-      }
+      props: { index: 0, existingConfig: { otp_config_id: 1 } },
+      global: globalComponents
     })
   })
 
@@ -324,12 +468,13 @@ describe('Delete button', () => {
     expect(deleteButton.attributes('disabled')).toBeUndefined()
   })
 
-  it('emits delete event when clicked and enabled', async () => {
+  it('emits delete event with index when clicked and enabled', async () => {
     await wrapper.setProps({ canDelete: true })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     await deleteButton.trigger('click')
 
     expect(wrapper.emitted('delete')).toBeTruthy()
+    expect(wrapper.emitted('delete')[0]).toEqual([0])
   })
 
   it('does not emit delete event when clicked and disabled', async () => {
@@ -345,10 +490,8 @@ describe('Sync button', () => {
 
   beforeEach(() => {
     wrapper = mount(DNFormSection, {
-      props: { existingConfig: { otp_config_id: 1 } },
-      global: {
-        components: { DsfrInput, DsfrInputGroup }
-      }
+      props: { index: 0, existingConfig: { otp_config_id: 1 } },
+      global: globalComponents
     })
   })
 
@@ -366,12 +509,13 @@ describe('Sync button', () => {
     expect(syncButton.attributes('disabled')).toBeUndefined()
   })
 
-  it('emits sync event when clicked and enabled', async () => {
+  it('emits sync event with index when clicked and enabled', async () => {
     await wrapper.setProps({ canSync: true })
     const syncButton = wrapper.find('[data-test-id="sync-button"]')
     await syncButton.trigger('click')
 
     expect(wrapper.emitted('sync')).toBeTruthy()
+    expect(wrapper.emitted('sync')[0]).toEqual([0])
   })
 
   it('does not emit sync event when clicked and disabled', async () => {
@@ -385,14 +529,16 @@ describe('Sync button', () => {
 describe('sectionEmpty computed', () => {
   it('is true when existingConfig is null and inputs are empty', () => {
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
     expect(wrapper.vm.sectionEmpty).toBe(true)
   })
 
   it('is true when existingConfig has otp_config_id null and inputs are empty', async () => {
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
     await wrapper.setProps({ existingConfig: { otp_config_id: null } })
     expect(wrapper.vm.sectionEmpty).toBe(true)
@@ -400,7 +546,8 @@ describe('sectionEmpty computed', () => {
 
   it('is false when no existingConfig but a token is filled', async () => {
     const wrapper = mount(DNFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0 },
+      global: globalComponents
     })
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('some-token')
@@ -409,16 +556,16 @@ describe('sectionEmpty computed', () => {
 
   it('is false when existingConfig has a valid otp_config_id', () => {
     const wrapper = mount(DNFormSection, {
-      props: { existingConfig: { otp_config_id: 42 } },
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0, existingConfig: { otp_config_id: 42 } },
+      global: globalComponents
     })
     expect(wrapper.vm.sectionEmpty).toBe(false)
   })
 
   it('disables Save button when sectionEmpty is true', async () => {
     const wrapper = mount(DNFormSection, {
-      props: { configValid: true },
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0, gristError: '' },
+      global: globalComponents
     })
     const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
     expect(saveButton.attributes('disabled')).toBeDefined()
@@ -426,8 +573,8 @@ describe('sectionEmpty computed', () => {
 
   it('disables Sync button when sectionEmpty is true', async () => {
     const wrapper = mount(DNFormSection, {
-      props: { canSync: true },
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0, canSync: true },
+      global: globalComponents
     })
     const syncButton = wrapper.find('[data-test-id="sync-button"]')
     expect(syncButton.attributes('disabled')).toBeDefined()
@@ -435,10 +582,82 @@ describe('sectionEmpty computed', () => {
 
   it('disables Delete button when sectionEmpty is true', async () => {
     const wrapper = mount(DNFormSection, {
-      props: { canDelete: true },
-      global: { components: { DsfrInput, DsfrInputGroup } }
+      props: { index: 0, canDelete: true },
+      global: globalComponents
     })
     const deleteButton = wrapper.find('[data-test-id="delete-config-button"]')
     expect(deleteButton.attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('Accordion title', () => {
+  it('shows default title for empty section', () => {
+    const wrapper = mount(DNFormSection, {
+      props: { index: 0 },
+      global: globalComponents
+    })
+    expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')
+  })
+
+  it('shows demarche title after successful validation on load', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Draaf-Srfd Occitanie Prévisions' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.accordionTitleDN).toBe('Draaf-Srfd Occitanie Prévisions')
+  })
+
+  it('shows "Échec" after failed validation on load', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Token invalide' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.accordionTitleDN).toBe('Échec')
+  })
+
+  it('resets title to default when config is cleared', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Ma démarche' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
+
+    await wrapper.setProps({ existingConfig: null })
+    expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')
   })
 })

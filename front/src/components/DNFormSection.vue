@@ -16,18 +16,22 @@ import OtpAlert from './OtpAlert.vue'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
-  configValid: { type: Boolean, default: false },
+  gristError: { type: String, default: null },
   canDelete: { type: Boolean, default: false },
   canSync: { type: Boolean, default: false },
-  error: { type: String, default: null }
+  error: { type: String, default: null },
+  index: { type: Number, required: true }
 })
 
 const HELP_LINKS = window.HELP_LINKS
+const DEFAULT_DN_TITLE = 'Configurer votre démarche'
+const ERROR_DN_TITLE = 'Échec'
+
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
 
 // TODO le mettre dans le parent
 const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
-const accordionTitleDN = ref('Configurer votre démarche')
+const accordionTitleDN = ref(DEFAULT_DN_TITLE)
 
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
@@ -42,34 +46,41 @@ const sectionEmpty = computed(() => {
   return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
 })
 
-const handleDNInputsChange = async () => {
-  dnErrorMessage.value = null
+const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
 
-  if (!inputDNNumber.value)
-    return emit('error-update', null)
+const validateDSConnection = async () => {
+  if (!inputDNNumber.value) return
+  if (!inputDNToken.value && !props.existingConfig?.otp_config_id) return
 
   const body = {
     type: 'demarches',
     api_url: dnApiUrl,
-    demarche_number: inputDNNumber.value
+    demarche_number: inputDNNumber.value,
+    ...(inputDNToken.value
+      ? { api_token: inputDNToken.value }
+      : { otp_config_id: props.existingConfig.otp_config_id })
   }
 
-  if (inputDNToken.value) {
-    body.api_token = inputDNToken.value
-  } else if (props.existingConfig?.otp_config_id) {
-    body.otp_config_id = props.existingConfig.otp_config_id
-  } else {
-    return emit('error-update', null)
-  }
+  accordionTitleDN.value = '...'
 
   try {
     const result = await api.testConnection(body)
     dnErrorMessage.value = result.success ? '' : result.message
-    emit('error-update', dnErrorMessage.value)
+    accordionTitleDN.value = result.success
+      ? (result.title || DEFAULT_DN_TITLE)
+      : ERROR_DN_TITLE
   } catch (e) {
     dnErrorMessage.value = 'Erreur lors du test de connexion'
-    emit('error-update', dnErrorMessage.value)
+    accordionTitleDN.value = ERROR_DN_TITLE
   }
+
+  emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
+}
+
+const handleDNInputsChange = () => {
+  dnErrorMessage.value = null
+  emit('error-update', null)
+  validateDSConnection()
 }
 
 defineExpose({
@@ -79,22 +90,32 @@ defineExpose({
   })
 })
 
-watch(() => props.existingConfig, (config) => {
-  if (config) {
-    if (config.demarche_number)
-      inputDNNumber.value = config.demarche_number
+const applyExistingConfig = async (config) => {
+  if (config.demarche_number)
+    inputDNNumber.value = config.demarche_number
 
-    if (config.has_ds_token) {
-      dnTokenPlaceholder.value = '****************************************'
-      emit('error-update', '')
-    }
+  if (config.has_ds_token)
+    dnTokenPlaceholder.value = '****************************************'
+
+  if (config.otp_config_id && config.demarche_number) {
+    await validateDSConnection()
   } else {
-    inputDNNumber.value = ''
-    inputDNToken.value = ''
-    dnTokenPlaceholder.value = DEFAULT_DN_PLACEHOLDER
     emit('error-update', null)
   }
-})
+}
+
+const resetConfig = () => {
+  inputDNNumber.value = ''
+  inputDNToken.value = ''
+  dnTokenPlaceholder.value = DEFAULT_DN_PLACEHOLDER
+  accordionTitleDN.value = DEFAULT_DN_TITLE
+  emit('error-update', null)
+}
+
+watch(() => props.existingConfig, (config) => {
+  dnErrorMessage.value = null
+  config ? applyExistingConfig(config) : resetConfig()
+}, {immediate: true})
 </script>
 
 <template>
@@ -154,21 +175,21 @@ watch(() => props.existingConfig, (config) => {
             data-test-id="sync-button"
             primary
             :disabled="!canSync || sectionEmpty"
-            @click="$emit('sync')"
+            @click="$emit('sync', index)"
           />
           <DsfrButton
             label="Sauvegarder"
             data-test-id="submit-form-button"
             secondary
             :disabled="!configValid || sectionEmpty"
-            @click="$emit('save')"
+            @click="$emit('save', index)"
           />
           <DsfrButton
             label="Supprimer"
             data-test-id="delete-config-button"
             secondary
             :disabled="!canDelete || sectionEmpty"
-            @click="$emit('delete')"
+            @click="$emit('delete', index)"
           />
         </DsfrButtonGroup>
       </DsfrAccordion>

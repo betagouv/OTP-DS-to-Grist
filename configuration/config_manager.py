@@ -317,6 +317,24 @@ class ConfigManager:
                             logger.error(f"Champ requis manquant: {field}")
                             return False
 
+                    grist_api_key_encrypted = (
+                        ConfigManager.encrypt_value(config["grist_api_key"])
+                        if config.get("grist_api_key")
+                        else ""
+                    )
+
+                    if not grist_api_key_encrypted:
+                        cursor.execute(
+                            "SELECT grist_api_key FROM otp_configurations "
+                            "WHERE grist_user_id = %s AND grist_doc_id = %s "
+                            "AND grist_api_key IS NOT NULL AND grist_api_key != '' "
+                            "LIMIT 1",
+                            (config["grist_user_id"], config["grist_doc_id"]),
+                        )
+                        existing = cursor.fetchone()
+                        if existing:
+                            grist_api_key_encrypted = existing[0]
+
                     cursor.execute(
                         """
                         INSERT INTO otp_configurations
@@ -336,7 +354,7 @@ class ConfigManager:
                             ConfigManager.encrypt_value(config["ds_api_token"]),
                             config["demarche_number"],
                             config["grist_base_url"],
-                            ConfigManager.encrypt_value(config["grist_api_key"]),
+                            grist_api_key_encrypted,
                             config["grist_doc_id"],
                             config["grist_user_id"],
                             config["filter_date_start"],

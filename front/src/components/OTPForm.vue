@@ -10,6 +10,7 @@ import OtpAlert from './OtpAlert.vue'
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { api } from '../utils/InternalApi'
 import { useNotification } from '../composables/useNotification'
+import { sortConfigs, canDeleteConfig, canSyncConfig } from '../utils/configUtils'
 
 const props = defineProps({
   syncRunning: { type: Boolean, default: false }
@@ -20,7 +21,6 @@ const emit = defineEmits(['config-loaded'])
 const { setDemarcheCount } = useDemarcheContext()
 const { notify } = useNotification()
 const gristError = ref(null)
-const dnError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 const configError = ref(null)
@@ -29,14 +29,9 @@ const actionErrors = ref([])
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
 
-const configValid = computed(() => gristError.value === '' && dnError.value === '')
-const canDelete = computed(() => !!otpConfigId.value)
-const canSync = computed(() => !!otpConfigId.value && !props.syncRunning && configValid.value)
-const configs = computed(() => {
-  if (serverConfigs.value.length === 0) return [null]
-  return serverConfigs.value
-})
-const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
+const canDelete = (config) => canDeleteConfig(config)
+
+const canSync = (config) => canSyncConfig(config, props.syncRunning)
 
 watch(serverConfigs, (val) => {
   setDemarcheCount(val.length)
@@ -54,28 +49,32 @@ const loadConfig = async () => {
   }
 }
 
+const configs = computed(() => {
+  if (serverConfigs.value.length === 0) return [null]
+  return sortConfigs(serverConfigs.value)
+})
+
+const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
+
 onMounted(loadConfig)
 
-const handleSave = async () => {
-  if (!configValid.value) return
-
+const handleSave = async (index) => {
   const hadEmpty = serverConfigs.value.includes(null)
 
   actionErrors.value[0] = null
 
   try {
     const config = {
-      ds_api_token: dnSectionRefs.value[0].getData().token,
-      demarche_number: dnSectionRefs.value[0].getData().demarche_number,
+      ds_api_token: dnSectionRefs.value[index].getData().token,
+      demarche_number: dnSectionRefs.value[index].getData().demarche_number,
       grist_base_url: gristSectionRef.value.getData().baseUrl,
       grist_doc_id: gristSectionRef.value.getData().docId,
       grist_user_id: gristSectionRef.value.getData().userId,
       grist_api_key: gristSectionRef.value.getData().token
     }
 
-    if (otpConfigId.value) {
-      config.otp_config_id = otpConfigId.value
-    }
+    if (configs.value[index]?.otp_config_id)
+      config.otp_config_id = configs.value[index].otp_config_id
 
     const result = await api.saveConfig(config)
 
@@ -91,37 +90,39 @@ const handleSave = async () => {
   }
 }
 
-const handleDelete = async () => {
-  if (!otpConfigId.value) return
+const handleDelete = async (index) => {
+  const otpConfigIdToDelete = configs.value[index]?.otp_config_id
+  if (!otpConfigIdToDelete) return
 
   const confirmed = window.confirm(
     'Êtes-vous sûr de vouloir supprimer cette configuration ? Cette action est irréversible.'
   )
   if (!confirmed) return
 
-  actionErrors.value[0] = null
+  actionErrors.value[index] = null
 
   try {
-    const result = await api.deleteConfig(otpConfigId.value)
+    const result = await api.deleteConfig(otpConfigIdToDelete)
 
     if (!result.success)
       throw Error(result.message)
 
-    otpConfigId.value = null
-    serverConfigs.value = []
+    await loadConfig()
     notify('Configuration supprimée', 'success')
   } catch (e) {
-    actionErrors.value[0] = 'Erreur lors de la suppression'
+    actionErrors.value[index] = 'Erreur lors de la suppression'
   }
 }
 
-const handleSync = async () => {
-  if (!otpConfigId.value || props.syncRunning) return
-  actionErrors.value[0] = null
+const handleSync = async (index) => {
+  if (props.syncRunning) return
+  const otpConfigIdToSync = configs.value[index]?.otp_config_id
+  if (!otpConfigIdToSync) return
+  actionErrors.value[index] = null
   try {
-    await api.startSync(otpConfigId.value)
+    await api.startSync(otpConfigIdToSync)
   } catch (e) {
-    actionErrors.value[0] = 'Erreur lors de la synchronisation'
+    actionErrors.value[index] = 'Erreur lors de la synchronisation'
   }
 }
 
@@ -169,18 +170,18 @@ const handleAddDemarche = async () => {
     </div>
 
     <DNFormSection 
-      @error-update="dnError = $event"
+      :index="index"
       @save="handleSave"
       @delete="handleDelete"
       @sync="handleSync"
-      :config-valid="configValid"
-      :can-delete="canDelete"
-      :can-sync="canSync"
+      :grist-error="gristError"
+      :can-delete="canDelete(config)"
+      :can-sync="canSync(config)"
       :existing-config="config"
-      :error="actionErrors[0] || null"
-      @clear-error="actionErrors[0] = null"
+      :error="actionErrors[index] || null"
+      @clear-error="actionErrors[index] = null"
       v-for="(config, index) in configs"
-      :key="index"
+      :key="config?.otp_config_id || 'new'"
       :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
       class="fr-mt-1w"
     />

@@ -178,51 +178,6 @@ describe('handleAddDemarche', () => {
   })
 })
 
-describe('configValid computation', () => {
-  let wrapper
-
-  beforeEach(() => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    wrapper = mount(OTPForm, {
-      global: {
-        stubs: { GristFormSection: true, DNFormSection: true }
-      }
-    })
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('is false on load', () => {
-    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(false)
-  })
-
-  it('is false when Grist has error', async () => {
-    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
-    wrapper.getComponent(GristFormSection).vm.$emit('error-update', 'Erreur de connexion')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(false)
-  })
-
-  it('is false when DN has error', async () => {
-    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
-    wrapper.getComponent(DNFormSection).vm.$emit('error-update', 'Erreur de connexion')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(false)
-  })
-
-  it('is true when both verifications succeed', async () => {
-    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
-    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.getComponent(DNFormSection).props('configValid')).toBe(true)
-  })
-})
-
 describe('canSync computation', () => {
   let wrapper
 
@@ -244,35 +199,15 @@ describe('canSync computation', () => {
   })
 
   it('is true when config exists and not syncing', async () => {
-    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
-    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
-    wrapper.vm.otpConfigId = 42
+    wrapper.vm.serverConfigs = [{ otp_config_id: 42 }]
     await wrapper.vm.$nextTick()
 
     expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(true)
   })
 
   it('is false when syncRunning is true', async () => {
-    wrapper.vm.otpConfigId = 42
+    wrapper.vm.serverConfigs = [{ otp_config_id: 42 }]
     await wrapper.setProps({ syncRunning: true })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(false)
-  })
-
-  it('is false when Grist has an error', async () => {
-    wrapper.vm.otpConfigId = 42
-    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
-    wrapper.getComponent(GristFormSection).vm.$emit('error-update', 'Erreur de connexion')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(false)
-  })
-
-  it('is false when DN has an error', async () => {
-    wrapper.vm.otpConfigId = 42
-    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
-    wrapper.getComponent(DNFormSection).vm.$emit('error-update', 'Erreur de connexion')
     await wrapper.vm.$nextTick()
 
     expect(wrapper.getComponent(DNFormSection).props('canSync')).toBe(false)
@@ -315,7 +250,7 @@ describe('Save button action', () => {
       demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
     await wrapper.vm.$nextTick()
 
     expect(mockFetch).toHaveBeenCalledWith('/api/config', {
@@ -332,14 +267,6 @@ describe('Save button action', () => {
     })
   })
 
-  it('does not call API when configValid is false', async () => {
-    const mockFetch = vi.fn()
-    globalThis.fetch = mockFetch
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
-    await wrapper.vm.$nextTick()
-
-    expect(mockFetch).not.toHaveBeenCalled()
-  })
 })
 
 describe('Config loading on mount', () => {
@@ -503,7 +430,7 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
     await wrapper.vm.$nextTick()
 
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/config', {
@@ -539,7 +466,7 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -576,7 +503,7 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -604,7 +531,7 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -633,6 +560,108 @@ describe('Save with existing config (UPDATE)', () => {
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la sauvegarde')
   })
+})
+
+describe('Multi-section save', () => {
+  let wrapper
+  let consoleSpy = null
+
+  beforeEach(async () => {
+    vi.restoreAllMocks()
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_user_id=5&grist_doc_id=doc-123'
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        configs: [
+          { otp_config_id: 1, demarche_number: '11111' },
+          { otp_config_id: 2, demarche_number: '22222' }
+        ]
+      })
+    })
+
+    wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    consoleSpy.mockRestore()
+  })
+
+  it('sends correct otp_config_id when saving second section', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'dn-token-1', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'dn-token-2', demarche_number: '22222' })
+
+    await wrapper.vm.$nextTick()
+    dnSections[1].vm.$emit('save', 1)
+    await wrapper.vm.$nextTick()
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ds_api_token: 'dn-token-2',
+        demarche_number: '22222',
+        grist_base_url: 'https://grist.example.com',
+        grist_doc_id: 'doc-123',
+        grist_user_id: '5',
+        grist_api_key: 'grist-token',
+        otp_config_id: 2
+      })
+    })
+  })
+
+  it('does not mix data between sections', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'token-aaa', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'token-bbb', demarche_number: '22222' })
+
+    await wrapper.vm.$nextTick()
+    dnSections[0].vm.$emit('save', 0)
+    await wrapper.vm.$nextTick()
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.ds_api_token).toBe('token-aaa')
+    expect(body.demarche_number).toBe('11111')
+    expect(body.otp_config_id).toBe(1)
+  })
+
 })
 
 describe('Delete action', () => {
@@ -674,12 +703,17 @@ describe('Delete action', () => {
   it('calls DELETE route when config exists', async () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
-    globalThis.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true })
-    })
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [] })
+      })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -692,12 +726,17 @@ describe('Delete action', () => {
   it('resets config refs after successful deletion', async () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
-    globalThis.fetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true })
-    })
+    globalThis.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [] })
+      })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -709,7 +748,7 @@ describe('Delete action', () => {
     globalThis.confirm.mockReturnValue(false)
     globalThis.fetch.mockReset()
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -724,7 +763,7 @@ describe('Delete action', () => {
       json: () => Promise.resolve({ success: false, message: 'Erreur de suppression' })
     })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -736,14 +775,14 @@ describe('Delete action', () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockRejectedValue(new Error('network error'))
 
-    wrapper.getComponent(DNFormSection).vm.$emit('delete')
+    wrapper.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la suppression')
   })
 
-  it('does not delete when there is no otpConfigId', async () => {
+  it('does not delete when section has no otp_config_id', async () => {
     globalThis.getGristContext.mockResolvedValue(mockContext)
     globalThis.fetch.mockResolvedValue({
       ok: true,
@@ -759,7 +798,7 @@ describe('Delete action', () => {
     globalThis.confirm.mockReturnValue(true)
     globalThis.fetch.mockReset()
 
-    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('delete')
+    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('delete', 0)
     await new Promise(process.nextTick)
     await wrapperNoConfig.vm.$nextTick()
 
@@ -802,7 +841,7 @@ describe('Sync action', () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockResolvedValue({ ok: true })
 
-    wrapper.getComponent(DNFormSection).vm.$emit('sync')
+    wrapper.getComponent(DNFormSection).vm.$emit('sync', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -830,7 +869,7 @@ describe('Sync action', () => {
 
     globalThis.fetch.mockReset()
 
-    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('sync')
+    wrapperNoConfig.getComponent(DNFormSection).vm.$emit('sync', 0)
     await new Promise(process.nextTick)
     await wrapperNoConfig.vm.$nextTick()
 
@@ -857,7 +896,7 @@ describe('Sync action', () => {
     await new Promise(process.nextTick)
     await wrapperSync.vm.$nextTick()
 
-    wrapperSync.getComponent(DNFormSection).vm.$emit('sync')
+    wrapperSync.getComponent(DNFormSection).vm.$emit('sync', 0)
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
@@ -866,10 +905,99 @@ describe('Sync action', () => {
     globalThis.fetch.mockReset()
     globalThis.fetch.mockRejectedValue(new Error('network error'))
 
-    wrapper.getComponent(DNFormSection).vm.$emit('sync')
+    wrapper.getComponent(DNFormSection).vm.$emit('sync', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la synchronisation')
+  })
+})
+
+describe('sortConfigs', () => {
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+
+  beforeEach(() => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('sorts saved configs by otp_config_id ascending', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 10 },
+        { otp_config_id: 2 },
+        { otp_config_id: 7 }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.configs.map(c => c.otp_config_id)).toEqual([2, 7, 10])
+  })
+
+  it('places unsaved entries (null) at the end', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 5 },
+        { otp_config_id: 3 }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    wrapper.vm.serverConfigs.push(null)
+    await wrapper.vm.$nextTick()
+
+    const ids = wrapper.vm.configs.map(c => c?.otp_config_id ?? null)
+    expect(ids).toEqual([3, 5, null])
+  })
+
+  it('returns [null] when no configs exist', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.configs).toEqual([null])
+  })
+
+  it('keeps stable keys after reordering', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 8 },
+        { otp_config_id: 3 }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+    expect(dnSections[0].props('existingConfig').otp_config_id).toBe(3)
+    expect(dnSections[1].props('existingConfig').otp_config_id).toBe(8)
   })
 })

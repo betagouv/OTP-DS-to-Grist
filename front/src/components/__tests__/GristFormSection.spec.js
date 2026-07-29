@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import GristFormSection from '../GristFormSection.vue'
@@ -98,6 +98,62 @@ describe('Grist form section', () => {
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
+  it('validates Grist connection automatically on load with existing config', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+    })
+    await flushPromises()
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'grist',
+        base_url: 'https://grist.example.com',
+        api_key: '',
+        doc_id: 'doc-xyz789',
+        otp_config_id: 42
+      })
+    })
+
+    expect(wrapper.vm.gristTokenErrorMessage).toBe('')
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
+  })
+
+  it('shows error on load when Grist connection fails automatically', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Clé invalide' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.gristTokenErrorMessage).toBe('Clé invalide')
+    expect(wrapper.find('.fr-error-text').text()).toBe('Clé invalide')
+  })
+
   it('does not overwrite baseUrl from existingConfig', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput } }
@@ -132,7 +188,7 @@ describe('Grist form section', () => {
     expect(wrapper.vm.getData().baseUrl).toBe('https://new-url.com')
   })
 
-  it('shows placeholder **** and emits empty error-update when has_grist_key is true', async () => {
+  it('shows placeholder **** when has_grist_key is true', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
@@ -142,8 +198,6 @@ describe('Grist form section', () => {
     const input = wrapper.find('input[type="password"]')
 
     expect(input.attributes('placeholder')).toMatch(/\*{3,}/)
-    expect(wrapper.emitted('error-update')).toBeTruthy()
-    expect(wrapper.emitted('error-update')[0]).toEqual([''])
   })
 
   it('keeps default placeholder when has_grist_key is false', async () => {
