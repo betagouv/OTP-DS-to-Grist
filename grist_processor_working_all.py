@@ -238,6 +238,7 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
         {"id": "labels_json", "type": "Text"},
         {"id": "suivi_par", "type": "Text"},
         {"id": "date_accuse_lecture", "type": "DateTime"},
+        {"id": "correction_instructeur", "type": "Text"},
         {"id": "date_derniere_correction_en_attente", "type": "DateTime"},
     ]
 

@@ -514,6 +514,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         {"id": "labels_json", "type": "Text"},
         {"id": "suivi_par", "type": "Text"},
         {"id": "date_accuse_lecture", "type": "DateTime"},
+        {"id": "correction_instructeur", "type": "Text"},
     ]
 
     # Colonnes de base pour la table des champs
