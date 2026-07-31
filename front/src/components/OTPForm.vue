@@ -192,7 +192,6 @@ const handleAddDemarche = async () => {
         v-for="(config, index) in configs"
         :key="config?.otp_config_id || 'new'"
         :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
-        class="fr-mt-1w"
       />
     </DsfrAccordionsGroup>
 </template>
