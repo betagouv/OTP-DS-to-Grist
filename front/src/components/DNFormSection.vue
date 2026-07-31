@@ -27,23 +27,7 @@ const HELP_LINKS = window.HELP_LINKS
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
 const ERROR_DN_TITLE = 'Échec'
 
-const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
-
-const accordionTitleDN = ref(DEFAULT_DN_TITLE)
-const inputDNToken = ref('')
-const inputDNNumber = ref('')
-const dnErrorMessage = ref(null)
-const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
-const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
-const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
-
-const sectionEmpty = computed(() => {
-  const isUnsaved = props.existingConfig === null
-    || props.existingConfig?.otp_config_id === null
-  return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
-})
-
-const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
+const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
 const validateDSConnection = async () => {
   if (!inputDNNumber.value) return
@@ -64,7 +48,7 @@ const validateDSConnection = async () => {
     const result = await api.testConnection(body)
     dnErrorMessage.value = result.success ? '' : result.message
     accordionTitleDN.value = result.success
-      ? (result.title || DEFAULT_DN_TITLE)
+      ? formatTitle(inputDNNumber.value, result.title || DEFAULT_DN_TITLE)
       : ERROR_DN_TITLE
   } catch (e) {
     dnErrorMessage.value = 'Erreur lors du test de connexion'
@@ -73,6 +57,24 @@ const validateDSConnection = async () => {
 
   emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
 }
+
+const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
+
+const accordionTitleDN = ref(DEFAULT_DN_TITLE)
+const inputDNToken = ref('')
+const inputDNNumber = ref('')
+const dnErrorMessage = ref(null)
+const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
+const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
+const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
+
+const sectionEmpty = computed(() => {
+  const isUnsaved = props.existingConfig === null
+    || props.existingConfig?.otp_config_id === null
+  return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
+})
+
+const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
 
 const debouncedValidate = debounce(validateDSConnection)
 
@@ -128,9 +130,13 @@ watch(() => props.existingConfig, (config) => {
       class="fr-mb-3w"
     />
 
-    <DsfrAccordion
-      :title="accordionTitleDN"
-    >
+    <DsfrAccordion>
+      <template #title>
+        <span
+          class="otp-accordion-title"
+          :title="accordionTitleDN"
+        >{{ accordionTitleDN }}</span>
+      </template>
         <DsfrInputGroup
             :error-message="dnErrorMessage"
         >
@@ -192,3 +198,14 @@ watch(() => props.existingConfig, (config) => {
       </DsfrAccordion>
   </div>
 </template>
+
+<style scoped>
+.otp-accordion-title {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+</style>

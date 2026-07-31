@@ -265,7 +265,7 @@ describe('DN form section', () => {
     })
 
     expect(wrapper.vm.dnErrorMessage).toBe('')
-    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
+    expect(wrapper.vm.accordionTitleDN).toBe('N°67890 — Ma démarche')
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
@@ -627,7 +627,7 @@ describe('Accordion title', () => {
 
     await flushPromises()
 
-    expect(wrapper.vm.accordionTitleDN).toBe('Draaf-Srfd Occitanie Prévisions')
+    expect(wrapper.vm.accordionTitleDN).toBe('N°67890 — Draaf-Srfd Occitanie Prévisions')
   })
 
   it('shows "Échec" after failed validation on load', async () => {
@@ -650,6 +650,49 @@ describe('Accordion title', () => {
     expect(wrapper.vm.accordionTitleDN).toBe('Échec')
   })
 
+  it('formats the title as N°{number} — {title}', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Mon Titre' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '12345', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.accordionTitleDN).toBe('N°12345 — Mon Titre')
+  })
+
+  it('renders the title in a span with a tooltip attribute', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Mon Titre' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '12345', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    const titleSpan = wrapper.find('.otp-accordion-title')
+    expect(titleSpan.exists()).toBe(true)
+    expect(titleSpan.attributes('title')).toBe('N°12345 — Mon Titre')
+    expect(titleSpan.text()).toBe('N°12345 — Mon Titre')
+  })
+
   it('resets title to default when config is cleared', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -666,7 +709,7 @@ describe('Accordion title', () => {
     })
 
     await flushPromises()
-    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
+    expect(wrapper.vm.accordionTitleDN).toBe('N°67890 — Ma démarche')
 
     await wrapper.setProps({ existingConfig: null })
     expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')
