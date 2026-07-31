@@ -3,7 +3,6 @@ import { ref, watch, computed } from 'vue'
 
 import {
   DsfrAccordion,
-  DsfrAccordionsGroup,
   DsfrButton,
   DsfrButtonGroup,
   DsfrInputGroup,
@@ -30,10 +29,7 @@ const ERROR_DN_TITLE = 'Échec'
 
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
 
-// TODO le mettre dans le parent
-const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 const accordionTitleDN = ref(DEFAULT_DN_TITLE)
-
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
 const dnErrorMessage = ref(null)
@@ -132,11 +128,10 @@ watch(() => props.existingConfig, (config) => {
       class="fr-mb-3w"
     />
 
-    <DsfrAccordionsGroup v-model="activeAccordion">
-      <DsfrAccordion
-        id="accordion-dn"
-        :title="accordionTitleDN"
-      >
+    <DsfrAccordion
+      id="accordion-dn"
+      :title="accordionTitleDN"
+    >
         <DsfrInputGroup
             :error-message="dnErrorMessage"
         >
@@ -196,6 +191,5 @@ watch(() => props.existingConfig, (config) => {
           />
         </DsfrButtonGroup>
       </DsfrAccordion>
-    </DsfrAccordionsGroup>
   </div>
 </template>

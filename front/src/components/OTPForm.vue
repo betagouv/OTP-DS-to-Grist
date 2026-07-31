@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 
-import { DsfrButton } from '@gouvminint/vue-dsfr'
+import { DsfrButton, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
@@ -28,14 +28,11 @@ const actionErrors = ref([])
 
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
+const activeDnAccordion = ref(-1)
 
 const canDelete = (config) => canDeleteConfig(config)
 
 const canSync = (config) => canSyncConfig(config, props.syncRunning)
-
-watch(serverConfigs, (val) => {
-  setDemarcheCount(val.length)
-}, { immediate: true })
 
 const loadConfig = async () => {
   try {
@@ -55,6 +52,15 @@ const configs = computed(() => {
 })
 
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
+
+watch(serverConfigs, (val) => {
+  setDemarcheCount(val.length)
+}, { immediate: true })
+
+watch(configs, (sections) => {
+  const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
+  activeDnAccordion.value = emptyIndex
+}, { immediate: true })
 
 onMounted(loadConfig)
 
@@ -169,20 +175,22 @@ const handleAddDemarche = async () => {
       </div>
     </div>
 
-    <DNFormSection 
-      :index="index"
-      @save="handleSave"
-      @delete="handleDelete"
-      @sync="handleSync"
-      :grist-error="gristError"
-      :can-delete="canDelete(config)"
-      :can-sync="canSync(config)"
-      :existing-config="config"
-      :error="actionErrors[index] || null"
-      @clear-error="actionErrors[index] = null"
-      v-for="(config, index) in configs"
-      :key="config?.otp_config_id || 'new'"
-      :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
-      class="fr-mt-1w"
-    />
+    <DsfrAccordionsGroup v-model="activeDnAccordion">
+      <DNFormSection 
+        :index="index"
+        @save="handleSave"
+        @delete="handleDelete"
+        @sync="handleSync"
+        :grist-error="gristError"
+        :can-delete="canDelete(config)"
+        :can-sync="canSync(config)"
+        :existing-config="config"
+        :error="actionErrors[index] || null"
+        @clear-error="actionErrors[index] = null"
+        v-for="(config, index) in configs"
+        :key="config?.otp_config_id || 'new'"
+        :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
+        class="fr-mt-1w"
+      />
+    </DsfrAccordionsGroup>
 </template>
