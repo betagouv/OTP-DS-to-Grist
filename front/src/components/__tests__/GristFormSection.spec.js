@@ -230,6 +230,46 @@ describe('Grist form section', () => {
     expect(wrapper.vm.gristFetchError).toBe('context error')
   })
 
+  it('opens the accordion when no saved config exists', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeAccordion).toBe(0)
+  })
+
+  it('closes the accordion when a saved config exists', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeAccordion).toBe(-1)
+  })
+
+  it('opens the accordion when the config is not saved yet', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: null }
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeAccordion).toBe(0)
+  })
+
   it('sets gristFetchError when test-connection fetch fails', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
 

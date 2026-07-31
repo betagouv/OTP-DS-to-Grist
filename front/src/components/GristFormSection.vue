@@ -27,7 +27,7 @@ const baseUrl = ref('')
 const inputGristToken = ref('')
 
 const accordionTitleGrist = ref('Configurer Grist')
-const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
+const activeAccordion = ref(-1)
 
 const gristTokenErrorMessage = ref(null)
 const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
@@ -99,6 +99,7 @@ const resetConfig = () => {
 
 watch(() => props.existingConfig, (config) => {
   config ? applyExistingConfig(config) : resetConfig()
+  activeAccordion.value = config?.otp_config_id ? -1 : 0
 })
 
 defineExpose({
