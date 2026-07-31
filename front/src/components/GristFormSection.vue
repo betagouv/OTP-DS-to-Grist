@@ -11,6 +11,7 @@ import {
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
 import OtpAlert from './OtpAlert.vue'
+import { debounce } from '../utils/debounce'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }
@@ -54,10 +55,12 @@ const validateGristConnection = async () => {
   emit('error-update', gristTokenErrorMessage.value === '' ? '' : gristTokenErrorMessage.value)
 }
 
+const debouncedValidate = debounce(validateGristConnection)
+
 const handleGristInputChange = () => {
   gristTokenErrorMessage.value = null
   gristFetchError.value = null
-  validateGristConnection()
+  debouncedValidate()
 }
 
 onMounted(async () => {
@@ -134,7 +137,7 @@ defineExpose({
             :error-message="gristTokenErrorMessage"
             data-test-id="grist-token"
             v-model="inputGristToken"
-            @change="handleGristInputChange"
+            @input="handleGristInputChange"
             label="Grist token"
             :placeholder="gristTokenPlaceholder"
             type="password"

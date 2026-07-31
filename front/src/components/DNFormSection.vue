@@ -13,6 +13,7 @@ import {
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
 import OtpAlert from './OtpAlert.vue'
+import { debounce } from '../utils/debounce'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null },
@@ -77,10 +78,12 @@ const validateDSConnection = async () => {
   emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
 }
 
+const debouncedValidate = debounce(validateDSConnection)
+
 const handleDNInputsChange = () => {
   dnErrorMessage.value = null
   emit('error-update', null)
-  validateDSConnection()
+  debouncedValidate()
 }
 
 defineExpose({
@@ -143,7 +146,7 @@ watch(() => props.existingConfig, (config) => {
             :error-message="dnErrorMessage"
             data-test-id="dn-token"
             v-model="inputDNToken"
-            @change="handleDNInputsChange"
+            @input="handleDNInputsChange"
             label="DN token"
             :placeholder="dnTokenPlaceholder"
             type="password"
@@ -162,7 +165,7 @@ watch(() => props.existingConfig, (config) => {
           <DsfrInput
             data-test-id="dn-number"
             v-model="inputDNNumber"
-            @change="handleDNInputsChange"
+            @input="handleDNInputsChange"
             label="DN number"
             placeholder="Saisissez votre numéro DN"
             required

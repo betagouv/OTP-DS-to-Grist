@@ -4,6 +4,12 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import GristFormSection from '../GristFormSection.vue'
 
+// Microtask pour que le v-model ait le temps de setter les refs avant validation
+vi.mock(
+  '../../utils/debounce',
+  () => ({ debounce: (fn) => (...args) => Promise.resolve().then(() => fn(...args)) })
+)
+
 beforeEach(() => {
   window.HELP_LINKS = {
     token_api: 'https://fake-url.example.com/token-api',
@@ -50,7 +56,7 @@ describe('Grist form section', () => {
 
     const tokenInput = wrapper.find('[data-test-id="grist-token"]')
     await tokenInput.setValue('mauvais-token')
-    await tokenInput.trigger('change')
+    await flushPromises()
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -83,7 +89,7 @@ describe('Grist form section', () => {
 
     const tokenInput = wrapper.find('[data-test-id="grist-token"]')
     await tokenInput.setValue('bon-token')
-    await tokenInput.trigger('change')
+    await flushPromises()
 
     expect(mockFetch).toHaveBeenCalledWith('/api/test-connection', {
       method: 'POST',
@@ -233,7 +239,7 @@ describe('Grist form section', () => {
 
     const tokenInput = wrapper.find('[data-test-id="grist-token"]')
     await tokenInput.setValue('some-token')
-    await tokenInput.trigger('change')
+    await flushPromises()
 
     expect(wrapper.vm.gristFetchError).toBe('Erreur lors du test de connexion Grist')
   })
