@@ -26,6 +26,14 @@ const props = defineProps({
 const HELP_LINKS = window.HELP_LINKS
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
 const ERROR_DN_TITLE = 'Échec'
+const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
+const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
+
+const accordionTitleDN = ref(DEFAULT_DN_TITLE)
+const inputDNToken = ref('')
+const inputDNNumber = ref('')
+const dnErrorMessage = ref(null)
+const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
@@ -59,14 +67,6 @@ const validateDSConnection = async () => {
 }
 
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
-
-const accordionTitleDN = ref(DEFAULT_DN_TITLE)
-const inputDNToken = ref('')
-const inputDNNumber = ref('')
-const dnErrorMessage = ref(null)
-const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
-const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
-const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
 
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null
