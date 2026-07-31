@@ -53,6 +53,10 @@ const configs = computed(() => {
 
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
+const accordionGroupKey = computed(() =>
+  configs.value.map(config => config?.otp_config_id ?? 'empty').join('|')
+)
+
 watch(serverConfigs, (val) => {
   setDemarcheCount(val.length)
 }, { immediate: true })
@@ -65,8 +69,6 @@ watch(configs, (sections) => {
 onMounted(loadConfig)
 
 const handleSave = async (index) => {
-  const hadEmpty = serverConfigs.value.includes(null)
-
   actionErrors.value[0] = null
 
   try {
@@ -86,7 +88,6 @@ const handleSave = async (index) => {
 
     if (result.success) {
       await loadConfig()
-      if (hadEmpty) serverConfigs.value.push(null)
       notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'
@@ -127,6 +128,7 @@ const handleSync = async (index) => {
   actionErrors.value[index] = null
   try {
     await api.startSync(otpConfigIdToSync)
+    activeDnAccordion.value = -1
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'
   }
@@ -175,7 +177,7 @@ const handleAddDemarche = async () => {
       </div>
     </div>
 
-    <DsfrAccordionsGroup v-model="activeDnAccordion">
+    <DsfrAccordionsGroup v-model="activeDnAccordion" :key="accordionGroupKey">
       <DNFormSection 
         :index="index"
         @save="handleSave"

@@ -129,7 +129,6 @@ watch(() => props.existingConfig, (config) => {
     />
 
     <DsfrAccordion
-      id="accordion-dn"
       :title="accordionTitleDN"
     >
         <DsfrInputGroup
