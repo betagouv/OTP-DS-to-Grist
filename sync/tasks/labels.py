@@ -4,8 +4,8 @@ Rafraîchissement des labels (étiquettes) des dossiers dans Grist.
 Ce script interroge tous les dossiers de la démarche avec une requête minimaliste
 (number + labels) et met à jour les seules lignes dont les labels ont changé.
 
-Utilisation autonome :
-    python labels_checker.py
+Utilisation autonome (depuis la racine du projet) :
+    python -m sync.tasks.labels
 
 Variables d'environnement requises :
     GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER

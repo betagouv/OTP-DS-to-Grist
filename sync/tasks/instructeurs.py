@@ -6,8 +6,8 @@ Récupère les instructeurs de la démarche via l'API DN (groupeInstructeurs) et
 met la table Grist à jour par upsert sur la clé composite
 `instructeur_id` + `groupe_instructeur_id` : créations, mises à jour, suppressions.
 
-Utilisation autonome :
-    python instructeurs_checker.py
+Utilisation autonome (depuis la racine du projet) :
+    python -m sync.tasks.instructeurs
 
 Variables d'environnement requises :
     GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER

@@ -12,12 +12,12 @@ from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
+from sync.tasks.instructeurs import sync_instructeurs
+from sync.tasks.labels import sync_labels_for_demarche
 
 import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
 from hide_id_columns import IdColumnHider
-from instructeurs_checker import sync_instructeurs
-from labels_checker import sync_labels_for_demarche
 from queries import dossier_to_flat_data, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
