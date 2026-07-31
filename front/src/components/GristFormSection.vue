@@ -98,8 +98,13 @@ const resetConfig = () => {
 }
 
 watch(() => props.existingConfig, (config) => {
-  config ? applyExistingConfig(config) : resetConfig()
-  activeAccordion.value = config?.otp_config_id ? -1 : 0
+  if (config?.otp_config_id) {
+    applyExistingConfig(config)
+    activeAccordion.value = -1
+  } else {
+    resetConfig()
+    activeAccordion.value = 0
+  }
 })
 
 defineExpose({
