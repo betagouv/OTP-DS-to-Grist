@@ -27,7 +27,6 @@ const HELP_LINKS = window.HELP_LINKS
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
 const ERROR_DN_TITLE = 'Échec'
 const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
-const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
 
 const accordionTitleDN = ref(DEFAULT_DN_TITLE)
 const inputDNToken = ref('')
@@ -43,7 +42,6 @@ const validateDSConnection = async () => {
 
   const body = {
     type: 'demarches',
-    api_url: dnApiUrl,
     demarche_number: inputDNNumber.value,
     ...(inputDNToken.value
       ? { api_token: inputDNToken.value }

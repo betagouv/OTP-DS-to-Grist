@@ -48,7 +48,6 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: 'mauvais-numéro',
         api_token: 'mauvais-token',
       })
@@ -85,7 +84,6 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: 'bon-numéro',
         api_token: 'bon-token',
       })
@@ -181,7 +179,6 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: '12345',
         otp_config_id: 42
       })
@@ -259,7 +256,6 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: DEMARCHE_NUMBER,
         otp_config_id: 42
       })
