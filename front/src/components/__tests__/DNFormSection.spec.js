@@ -20,6 +20,7 @@ beforeEach(() => {
 
 
 const globalComponents = { components: { DsfrInput, DsfrInputGroup } }
+const DEMARCHE_NUMBER = '67890'
 
 describe('DN form section', () => {
   it('shows error message when form validation fails', async () => {
@@ -100,10 +101,10 @@ describe('DN form section', () => {
 
     expect(wrapper.vm.inputDNNumber).toBe('')
 
-    await wrapper.setProps({ existingConfig: { demarche_number: '67890' } })
+    await wrapper.setProps({ existingConfig: { demarche_number: DEMARCHE_NUMBER } })
 
-    expect(wrapper.vm.inputDNNumber).toBe('67890')
-    expect(wrapper.vm.getData().demarche_number).toBe('67890')
+    expect(wrapper.vm.inputDNNumber).toBe(DEMARCHE_NUMBER)
+    expect(wrapper.vm.getData().demarche_number).toBe(DEMARCHE_NUMBER)
   })
 
   it('shows placeholder **** when has_ds_token is true', async () => {
@@ -124,7 +125,7 @@ describe('DN form section', () => {
       global: globalComponents
     })
 
-    await wrapper.setProps({ existingConfig: { demarche_number: '67890', has_ds_token: false } })
+    await wrapper.setProps({ existingConfig: { demarche_number: DEMARCHE_NUMBER, has_ds_token: false } })
 
     const passwordInput = wrapper.find('input[type="password"]')
     expect(passwordInput.attributes('placeholder')).toBe('Saisissez votre clé Démarche Numérique')
@@ -246,7 +247,7 @@ describe('DN form section', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
@@ -259,13 +260,13 @@ describe('DN form section', () => {
       body: JSON.stringify({
         type: 'demarches',
         api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
-        demarche_number: '67890',
+        demarche_number: DEMARCHE_NUMBER,
         otp_config_id: 42
       })
     })
 
     expect(wrapper.vm.dnErrorMessage).toBe('')
-    expect(wrapper.vm.accordionTitleDN).toBe('N°67890 — Ma démarche')
+    expect(wrapper.vm.accordionTitleDN).toBe(`N°${DEMARCHE_NUMBER} — Ma démarche`)
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
@@ -279,7 +280,7 @@ describe('DN form section', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
@@ -620,14 +621,14 @@ describe('Accordion title', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
 
     await flushPromises()
 
-    expect(wrapper.vm.accordionTitleDN).toBe('N°67890 — Draaf-Srfd Occitanie Prévisions')
+    expect(wrapper.vm.accordionTitleDN).toBe(`N°${DEMARCHE_NUMBER} — Draaf-Srfd Occitanie Prévisions`)
   })
 
   it('shows "Échec" after failed validation on load', async () => {
@@ -640,7 +641,7 @@ describe('Accordion title', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
@@ -670,7 +671,7 @@ describe('Accordion title', () => {
     expect(wrapper.vm.accordionTitleDN).toBe('N°12345 — Mon Titre')
   })
 
-  it('renders the title in a span with a tooltip attribute', async () => {
+  it('renders the title as a tooltip', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ success: true, title: 'Mon Titre' })
@@ -688,7 +689,6 @@ describe('Accordion title', () => {
     await flushPromises()
 
     const titleSpan = wrapper.find('.otp-accordion-title')
-    expect(titleSpan.exists()).toBe(true)
     expect(titleSpan.attributes('title')).toBe('N°12345 — Mon Titre')
     expect(titleSpan.text()).toBe('N°12345 — Mon Titre')
   })
@@ -703,13 +703,13 @@ describe('Accordion title', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
 
     await flushPromises()
-    expect(wrapper.vm.accordionTitleDN).toBe('N°67890 — Ma démarche')
+    expect(wrapper.vm.accordionTitleDN).toBe(`N°${DEMARCHE_NUMBER} — Ma démarche`)
 
     await wrapper.setProps({ existingConfig: null })
     expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')

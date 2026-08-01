@@ -510,7 +510,7 @@ describe('Save with existing config (UPDATE)', () => {
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur de typage')
   })
 
-  it('does not inject an empty section after save when there was one before', async () => {
+  it('does not leave an empty section after save', async () => {
     wrapper.vm.serverConfigs = [null]
     await wrapper.vm.$nextTick()
 
