@@ -76,7 +76,7 @@ const handleSave = async (index) => {
   actionErrors.value[0] = null
 
   try {
-    const config = {
+    const payload = {
       ds_api_token: dnSectionRefs.value[index].getData().token,
       demarche_number: dnSectionRefs.value[index].getData().demarche_number,
       grist_base_url: gristSectionRef.value.getData().baseUrl,
@@ -86,12 +86,17 @@ const handleSave = async (index) => {
     }
 
     if (configs.value[index]?.otp_config_id)
-      config.otp_config_id = configs.value[index].otp_config_id
+      payload.otp_config_id = configs.value[index].otp_config_id
 
-    const result = await api.saveConfig(config)
+    const result = await api.saveConfig(payload)
 
     if (result.success) {
       await loadConfig()
+      const savedId = result.otp_config_id
+      const newIndex = savedId
+        ? configs.value.findIndex(config => config?.otp_config_id === savedId)
+        : configs.value.length - 1
+      activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
       notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'

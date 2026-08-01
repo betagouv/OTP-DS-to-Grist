@@ -1046,7 +1046,7 @@ describe('Accordion DN state', () => {
     expect(wrapper.vm.activeDnAccordion).toBe(-1)
   })
 
-  it('closes all sections after a save leaves no empty section', async () => {
+  it('keeps the saved section open after a save', async () => {
     const wrapper = await mountWithConfigs([null])
     expect(wrapper.vm.activeDnAccordion).toBe(0)
 
@@ -1068,6 +1068,6 @@ describe('Accordion DN state', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.vm.activeDnAccordion).toBe(-1)
+    expect(wrapper.vm.activeDnAccordion).toBe(0)
   })
 })
