@@ -12,9 +12,12 @@ from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
+from sync.tasks.instructeurs import sync_instructeurs
+from sync.tasks.labels import sync_labels_for_demarche
 
 import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
+from hide_id_columns import IdColumnHider
 from queries import dossier_to_flat_data, get_dossier
 from queries_graphql import get_demarche_dossiers_filtered
 from queries_util import get_timings
@@ -1622,6 +1625,79 @@ class GristClient:
         return success
 
 
+def run_demarche_level_tasks(
+    client,
+    table_ids,
+    demarche_number,
+    updated_since_cursor=None,
+    force_full_sync=False,
+    deleted_since_cursor=None,
+    schema_method_successful=False,
+):
+    """
+    Opérations de niveau démarche, indépendantes des dossiers effectivement traités.
+
+    À appeler depuis les deux `return` de `process_demarche_for_grist_optimized` :
+    celui de fin de fonction et celui du cas `total_dossiers == 0`. Poser une
+    étiquette, ajouter un instructeur ou supprimer un dossier ne met à jour aucun
+    dossier au sens d'`updatedSince` : sans le second appel, ces changements ne
+    remonteraient dans Grist que si un dossier avait bougé par ailleurs.
+
+    Chaque tâche est isolée dans son propre try/except : un échec n'empêche pas
+    les suivantes.
+    """
+    # 1. Instructeurs (niveau démarche, à chaque sync)
+    if table_ids.get("instructeurs"):
+        try:
+            sync_instructeurs(
+                client, table_ids["instructeurs"], demarche_number, log, log_error
+            )
+        except Exception as e:
+            log_error(f"Erreur synchronisation instructeurs: {e}")
+
+    # 2. Labels : uniquement en sync incrémentale.
+    #    En sync complète, tous les dossiers sont refetchés et leurs labels réécrits
+    #    par le chemin principal — ce passage serait redondant.
+    if updated_since_cursor and not force_full_sync:
+        try:
+            sync_labels_for_demarche(
+                client, table_ids["dossier_table_id"], demarche_number, log, log_error
+            )
+        except Exception as e:
+            log_error(f"Erreur rafraîchissement des labels: {e}")
+    else:
+        log("Sync complète — rafraîchissement des labels ignoré (déjà à jour).")
+
+    # 3. Dossiers supprimés (API DN, curseur dédié)
+    try:
+        deletion_result = check_deleted_dossiers(
+            client=client,
+            table_id=table_ids["dossier_table_id"],
+            demarche_number=demarche_number,
+            log=log,
+            log_error=log_error,
+            deleted_since=deleted_since_cursor,
+        )
+        nb_deleted = (deletion_result or {}).get("newly_marked", 0)
+        log(f"Nombre de dossiers marqués supprimés dans Grist : {nb_deleted}")
+    except Exception as e:
+        log_error(f"Erreur vérification dossiers supprimés : {e}")
+
+    # 4. Masquage des colonnes _id (toujours en dernier)
+    if schema_method_successful:
+        try:
+            current_table_ids = set()
+            _flatten_table_ids(table_ids, current_table_ids)
+            hider = IdColumnHider(client.base_url, client.api_key, client.doc_id)
+            hider.hide_id_columns(table_ids=current_table_ids)
+        except Exception as e:
+            log_error(f"Erreur lors du masquage des colonnes _id: {e}")
+
+
+# Fonction optimisée pour le traitement d'une démarche pour Grist (Possibilité d'augmenter ou de diminuer batch_size et max_workers)
+# Cette fonction est conçue pour être plus rapide et plus efficace, en utilisant le traitement par lots et le traitement parallèle.
+# Fonction optimisée complète et corrigée
+# Remplace la fonction process_demarche_for_grist_optimized dans ton fichier
 def process_demarche_for_grist_optimized(
     client,
     demarche_number,
@@ -2032,19 +2108,15 @@ def process_demarche_for_grist_optimized(
             except Exception as e:
                 log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
-            try:
-                deletion_result = check_deleted_dossiers(
-                    client=client,
-                    table_id=table_ids["dossier_table_id"],
-                    demarche_number=demarche_number,
-                    log=log,
-                    log_error=log_error,
-                    deleted_since=deleted_since_cursor,
-                )
-                nb_deleted = (deletion_result or {}).get("newly_marked", 0)
-                log(f"Nombre de dossiers marqués supprimés dans Grist : {nb_deleted}")
-            except Exception as e:
-                log_error(f"Erreur vérification dossiers supprimés : {e}")
+            run_demarche_level_tasks(
+                client,
+                table_ids,
+                demarche_number,
+                updated_since_cursor=updated_since_cursor,
+                force_full_sync=force_full_sync,
+                deleted_since_cursor=deleted_since_cursor,
+                schema_method_successful=schema_method_successful,
+            )
 
             return True
 
@@ -2213,11 +2285,6 @@ def process_demarche_for_grist_optimized(
                 table_ids.get("annotations")
             )
         cache_demandeurs = client.get_existing_dossier_numbers(table_ids["demandeurs"])
-        cache_instructeurs = {}
-        if table_ids.get("instructeurs"):
-            cache_instructeurs = client.get_existing_dossier_numbers(
-                table_ids["instructeurs"]
-            )
         log(f"Cache global préchargé en {time.time() - start_cache:.1f}s")
 
         # Construire les sets de dossiers à skipper par table
@@ -2225,130 +2292,6 @@ def process_demarche_for_grist_optimized(
         skip_champs = set()
         skip_annotations = set()
 
-        # Synchroniser les instructeurs UNE SEULE FOIS (niveau démarche)
-        if table_ids.get("instructeurs"):
-            log(f"  Récupération des instructeurs de la démarche {demarche_number}...")
-
-            from queries_extract import extract_instructeurs_from_demarche
-
-            instructeurs_records = extract_instructeurs_from_demarche(demarche_number)
-
-            if instructeurs_records:
-                log(f"  {len(instructeurs_records)} instructeur(s) trouvé(s)")
-
-                # Récupérer les enregistrements existants
-                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_ids['instructeurs']}/records"
-                response = requests.get(url, headers=client.headers)
-
-                existing_records = []
-                if response.status_code == 200:
-                    existing_records = response.json().get("records", [])
-
-                #  UPSERT INTELLIGENT - Créer un mapping par instructeur_id
-                existing_map = {}
-                for record in existing_records:
-                    fields = record.get("fields", {})
-                    instructeur_id = fields.get("instructeur_id")
-                    groupe_id = fields.get("groupe_instructeur_id")
-                    if instructeur_id and groupe_id:
-                        composite_key = f"{instructeur_id}_{groupe_id}"
-                        existing_map[composite_key] = {
-                            "grist_id": record.get("id"),
-                            "fields": fields,
-                        }
-
-                # Créer un mapping des nouveaux instructeurs
-                new_map = {
-                    f"{r['instructeur_id']}_{r['groupe_instructeur_id']}": r
-                    for r in instructeurs_records
-                }
-
-                # Identifier les opérations nécessaires
-                to_delete = []
-                to_create = []
-                to_update = []
-
-                # Qui supprimer ?
-                for composite_key, existing_data in existing_map.items():
-                    if composite_key not in new_map:
-                        to_delete.append(existing_data["grist_id"])
-
-                # Qui créer ou mettre à jour ?
-                for composite_key, new_data in new_map.items():
-                    if composite_key in existing_map:
-                        existing_fields = existing_map[composite_key]["fields"]
-                        needs_update = False
-                        for key in [
-                            "groupe_instructeur_id",
-                            "groupe_instructeur_number",
-                            "groupe_instructeur_label",
-                            "instructeur_email",
-                        ]:
-                            if existing_fields.get(key) != new_data.get(key):
-                                needs_update = True
-                                break
-                        if needs_update:
-                            to_update.append(
-                                {
-                                    "id": existing_map[composite_key]["grist_id"],
-                                    "fields": new_data,
-                                }
-                            )
-                    else:
-                        to_create.append(new_data)
-
-                # Appliquer les changements
-                operations_count = 0
-
-                if to_delete:
-                    delete_response = requests.post(
-                        f"{url}/delete", headers=client.headers, json=to_delete
-                    )
-                    if delete_response.status_code in [200, 201]:
-                        log(f"  🗑️  {len(to_delete)} instructeur(s) supprimé(s)")
-                        operations_count += len(to_delete)
-                    else:
-                        log_error(
-                            f"   Erreur suppression instructeurs: {delete_response.text}"
-                        )
-
-                if to_update:
-                    update_response = requests.patch(
-                        url, headers=client.headers, json={"records": to_update}
-                    )
-                    if update_response.status_code in [200, 201]:
-                        log(f"   {len(to_update)} instructeur(s) mis à jour")
-                        operations_count += len(to_update)
-                    else:
-                        log_error(
-                            f"   Erreur mise à jour instructeurs: {update_response.text}"
-                        )
-
-                if to_create:
-                    create_payload = {"records": [{"fields": r} for r in to_create]}
-                    create_response = requests.post(
-                        url, headers=client.headers, json=create_payload
-                    )
-                    if create_response.status_code in [200, 201]:
-                        log(f"   {len(to_create)} instructeur(s) créé(s)")
-                        operations_count += len(to_create)
-                    else:
-                        log_error(
-                            f"   Erreur création instructeurs: {create_response.text}"
-                        )
-
-                if operations_count == 0:
-                    log("   Table instructeurs à jour (aucun changement)")
-                else:
-                    log(
-                        f"   Table instructeurs synchronisée ({operations_count} opération(s))"
-                    )
-
-            else:
-                log("   Aucun instructeur trouvé pour cette démarche")
-            log(
-                f"[TIMING] Instructeurs synchronisés en {time.time() - start_cache:.1f}s"
-            )
         for batch_idx, batch in enumerate(dossier_batches):
             log(
                 f"Traitement du lot {batch_idx + 1}/{batch_count} ({len(batch)} dossiers)..."
@@ -2714,32 +2657,15 @@ def process_demarche_for_grist_optimized(
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
-        try:
-            deletion_result = check_deleted_dossiers(
-                client=client,
-                table_id=table_ids["dossier_table_id"],
-                demarche_number=demarche_number,
-                log=log,
-                log_error=log_error,
-                deleted_since=deleted_since_cursor,
-            )
-            nb_deleted = (deletion_result or {}).get("newly_marked", 0)
-            log(f"Nombre de dossiers marqués supprimés dans Grist : {nb_deleted}")
-
-        except Exception as e:
-            log_error(f"Erreur vérification dossiers supprimés : {e}")
-
-        if schema_method_successful:
-            try:
-                from hide_id_columns import IdColumnHider
-
-                current_table_ids = set()
-                _flatten_table_ids(table_ids, current_table_ids)
-                hider = IdColumnHider(client.base_url, client.api_key, client.doc_id)
-                hider.hide_id_columns(table_ids=current_table_ids)
-            except Exception as e:
-                log_error(f"Erreur lors du masquage des colonnes _id: {e}")
-
+        run_demarche_level_tasks(
+            client,
+            table_ids,
+            demarche_number,
+            updated_since_cursor=updated_since_cursor,
+            force_full_sync=force_full_sync,
+            deleted_since_cursor=deleted_since_cursor,
+            schema_method_successful=schema_method_successful,
+        )
         return total_success > 0 or schema_method_successful
 
     except Exception as e:

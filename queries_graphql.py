@@ -1161,6 +1161,83 @@ def get_demarche_dossiers(demarche_number: int):
     return get_demarche_dossiers_filtered(demarche_number)
 
 
+def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, Any]]:
+    """
+    Récupère uniquement le numéro et les labels de TOUS les dossiers d'une démarche.
+
+    Requête volontairement minimaliste (number + labels) : elle sert au rafraîchissement
+    des labels, car l'ajout ou le retrait d'un label ne met pas à jour
+    `dateDerniereModification` et échappe donc au filtre `updatedSince`.
+
+    Returns:
+        list[dict]: [{"number": int, "labels": [{"id", "name", "color"}, ...]}, ...]
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    session = get_session_with_retries()
+
+    query = """
+    query getDemarcheLabels($demarcheNumber: Int!, $after: String) {
+        demarche(number: $demarcheNumber) {
+            dossiers(first: 100, after: $after) {
+                pageInfo {
+                    hasNextPage
+                    endCursor
+                }
+                nodes {
+                    number
+                    labels {
+                        id
+                        name
+                        color
+                    }
+                }
+            }
+        }
+    }
+    """
+
+    dossiers = []
+    cursor = None
+    page_num = 0
+
+    dossiers = []
+    cursor = None
+    page_num = 0
+    has_next_page = True
+
+    while has_next_page:
+        page_num += 1
+        response = session.post(
+            API_URL,
+            json={
+                "query": query,
+                "variables": {"demarcheNumber": demarche_number, "after": cursor},
+            },
+            headers=headers,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if "errors" in result:
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            raise Exception(f"GraphQL errors: {', '.join(messages)}")
+
+        connection = result["data"]["demarche"]["dossiers"]
+        dossiers.extend(connection["nodes"])
+        has_next_page = connection["pageInfo"]["hasNextPage"]
+        cursor = connection["pageInfo"]["endCursor"]
+
+    print(f"[LABELS] {len(dossiers)} dossiers récupérés en {page_num} page(s)")
+
+    return dossiers
+
+
 def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
     """
     Récupère les données géométriques d'un dossier au format GeoJSON.
