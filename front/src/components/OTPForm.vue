@@ -53,6 +53,10 @@ const configs = computed(() => {
 
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
+// Clé de remontage du DsfrAccordionsGroup : il indexe ses enfants par un
+// compteur interne monotone qui se désynchronise des index du v-for après
+// ajout/suppression/sauvegarde. Changer cette clé force le groupe à se
+// démonter/remonter et à réaligner son compteur sur les index.
 const accordionGroupKey = computed(() =>
   configs.value.map(config => config?.otp_config_id ?? 'empty').join('|')
 )
