@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:unit": "vitest"
+    "test": "vitest"
   },
   "dependencies": {
     "@gouvfr/dsfr": "~1.14.4",
