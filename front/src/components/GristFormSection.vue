@@ -97,6 +97,11 @@ const resetConfig = () => {
   emit('error-update', null)
 }
 
+// Le backend ne renvoie jamais `null` pour existingConfig : sur une page sans
+// configuration, load_config (configuration/config_manager.py) renvoie un objet
+// config "vierge" avec otp_config_id = null. On traite donc comme "non configuré"
+// tout objet dont otp_config_id est falsy, ce qui ouvre l'accordéon pour guider
+// l'utilisateur (à la fois Grist ici et le premier volet DN dans OTPForm).
 watch(() => props.existingConfig, (config) => {
   if (config?.otp_config_id) {
     applyExistingConfig(config)
