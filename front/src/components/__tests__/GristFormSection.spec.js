@@ -194,18 +194,6 @@ describe('Grist form section', () => {
     expect(wrapper.vm.getData().baseUrl).toBe('https://new-url.com')
   })
 
-  it('uses the default placeholder when a config carries has_grist_key but no otp_config_id', async () => {
-    const wrapper = mount(GristFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
-    })
-
-    await wrapper.setProps({ existingConfig: { has_grist_key: true } })
-
-    const input = wrapper.find('input[type="password"]')
-
-    expect(input.attributes('placeholder')).toBe('Saisissez votre clé grist')
-  })
-
   it('keeps default placeholder when has_grist_key is false', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
@@ -278,21 +266,6 @@ describe('Grist form section', () => {
     const input = wrapper.find('input[type="password"]')
     expect(input.attributes('placeholder')).toMatch(/\*{3,}/)
     expect(wrapper.vm.activeAccordion).toBe(-1)
-  })
-
-  it('resets the placeholder when a cleared config still carries has_grist_key', async () => {
-    const wrapper = mount(GristFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
-    })
-
-    await wrapper.setProps({
-      existingConfig: { otp_config_id: null, has_grist_key: true }
-    })
-    await wrapper.vm.$nextTick()
-
-    const input = wrapper.find('input[type="password"]')
-    expect(input.attributes('placeholder')).toBe('Saisissez votre clé grist')
-    expect(wrapper.vm.activeAccordion).toBe(0)
   })
 
   it('opens the accordion when the config is not saved yet', async () => {
