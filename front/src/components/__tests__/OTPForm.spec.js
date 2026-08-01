@@ -1024,7 +1024,7 @@ describe('Accordion DN state', () => {
     vi.restoreAllMocks()
   })
 
-  it('opens the empty section when it exists', async () => {
+  it('opens the empty section even when there is already one config', async () => {
     const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, null])
     expect(wrapper.vm.activeDnAccordion).toBe(1)
   })

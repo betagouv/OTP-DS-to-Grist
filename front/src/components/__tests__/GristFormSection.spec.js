@@ -218,7 +218,7 @@ describe('Grist form section', () => {
     expect(wrapper.vm.gristFetchError).toBe('context error')
   })
 
-  it('opens the accordion with the default placeholder when existingConfig becomes empty', async () => {
+  it('opens the accordion when existingConfig becomes empty', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
@@ -253,7 +253,7 @@ describe('Grist form section', () => {
     expect(wrapper.vm.activeAccordion).toBe(-1)
   })
 
-  it('keeps the masked placeholder for a saved config', async () => {
+  it('keeps the key masked for a saved config', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
@@ -268,7 +268,7 @@ describe('Grist form section', () => {
     expect(wrapper.vm.activeAccordion).toBe(-1)
   })
 
-  it('opens the accordion when the config is not saved yet', async () => {
+  it('opens the accordion when the config is not saved', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
     })
