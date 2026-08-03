@@ -2,7 +2,7 @@ import os
 import logging
 from cryptography.fernet import Fernet
 from database.database_manager import DatabaseManager
-from grist_processor_working_all import GristClient
+from grist.client import GristClient
 from utils.constants import DEMARCHES_API_URL
 
 logger = logging.getLogger(__name__)

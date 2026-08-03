@@ -173,7 +173,7 @@ def sync_labels_for_demarche(
 def main():
     from dotenv import load_dotenv
 
-    from grist_processor_working_all import GristClient
+    from grist.client import GristClient
 
     load_dotenv(override=True)
 

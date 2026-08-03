@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from grist_processor_working_all import GristClient
+from grist.client import GristClient
 
 
 class TestExtractEmailFromScim:
@@ -55,7 +55,7 @@ class TestGetGristUserEmail:
             ]
         }
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             assert self.client.get_grist_user_email() == "primary@example.com"
@@ -66,7 +66,7 @@ class TestGetGristUserEmail:
         mock_response.status_code = 200
         mock_response.json.return_value = {"emails": [{"value": "first@example.com"}]}
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             assert self.client.get_grist_user_email() == "first@example.com"
@@ -76,7 +76,7 @@ class TestGetGristUserEmail:
         mock_response = MagicMock()
         mock_response.status_code = 401
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             assert self.client.get_grist_user_email() is None
@@ -84,7 +84,7 @@ class TestGetGristUserEmail:
     def test_timeout_returns_none(self):
         """Timeout -> None"""
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             side_effect=Exception("timeout"),
         ):
             assert self.client.get_grist_user_email() is None
@@ -95,7 +95,7 @@ class TestGetGristUserEmail:
         mock_response.status_code = 200
         mock_response.json.return_value = {"userName": "john.doe@example.com"}
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             assert self.client.get_grist_user_email() is None
@@ -121,7 +121,7 @@ class TestGetExistingDossierNumbers:
             ]
         }
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_existing_dossier_numbers("dossiers")
@@ -133,7 +133,7 @@ class TestGetExistingDossierNumbers:
         mock_response.status_code = 500
         mock_response.text = "boom"
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_existing_dossier_numbers("dossiers")
@@ -171,7 +171,7 @@ class TestGetExistingDossierDates:
             ]
         }
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_existing_dossier_dates("dossiers")
@@ -184,7 +184,7 @@ class TestGetExistingDossierDates:
         mock_response = MagicMock()
         mock_response.status_code = 500
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_existing_dossier_dates("dossiers")
@@ -222,7 +222,7 @@ class TestGetSyncMetadata:
             ]
         }
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_sync_metadata(123)
@@ -238,7 +238,7 @@ class TestGetSyncMetadata:
             "records": [{"id": 1, "fields": {"demarche_number": "999"}}]
         }
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_sync_metadata(123)
@@ -249,7 +249,7 @@ class TestGetSyncMetadata:
         mock_response = MagicMock()
         mock_response.status_code = 500
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_sync_metadata(123)
@@ -275,14 +275,14 @@ class TestSaveSyncMetadata:
         patch_response.status_code = 200
         with (
             patch(
-                "grist_processor_working_all.requests.get",
+                "grist.client.requests.get",
                 return_value=get_response,
             ),
             patch(
-                "grist_processor_working_all.requests.patch",
+                "grist.client.requests.patch",
                 return_value=patch_response,
             ) as mock_patch,
-            patch("grist_processor_working_all.requests.post") as mock_post,
+            patch("grist.client.requests.post") as mock_post,
         ):
             self.client.save_sync_metadata(
                 123, {"last_sync_at": "2024-01-01"}, existing_grist_id=7
@@ -302,14 +302,14 @@ class TestSaveSyncMetadata:
         post_response.status_code = 201
         with (
             patch(
-                "grist_processor_working_all.requests.get",
+                "grist.client.requests.get",
                 return_value=get_response,
             ),
             patch(
-                "grist_processor_working_all.requests.post",
+                "grist.client.requests.post",
                 return_value=post_response,
             ) as mock_post,
-            patch("grist_processor_working_all.requests.patch") as mock_patch,
+            patch("grist.client.requests.patch") as mock_patch,
         ):
             self.client.save_sync_metadata(123, {"last_sync_at": "2024-01-01"})
         mock_post.assert_called_once()
@@ -337,14 +337,14 @@ class TestUpsertDossierInGrist:
         patch_response.status_code = 200
         with (
             patch(
-                "grist_processor_working_all.requests.get",
+                "grist.client.requests.get",
                 return_value=get_response,
             ),
             patch(
-                "grist_processor_working_all.requests.patch",
+                "grist.client.requests.patch",
                 return_value=patch_response,
             ) as mock_patch,
-            patch("grist_processor_working_all.requests.post") as mock_post,
+            patch("grist.client.requests.post") as mock_post,
         ):
             ok = self.client.upsert_dossier_in_grist(
                 "dossiers", {"dossier_number": "1001", "name": "X"}
@@ -364,14 +364,14 @@ class TestUpsertDossierInGrist:
         post_response.status_code = 201
         with (
             patch(
-                "grist_processor_working_all.requests.get",
+                "grist.client.requests.get",
                 return_value=get_response,
             ),
             patch(
-                "grist_processor_working_all.requests.post",
+                "grist.client.requests.post",
                 return_value=post_response,
             ) as mock_post,
-            patch("grist_processor_working_all.requests.patch") as mock_patch,
+            patch("grist.client.requests.patch") as mock_patch,
         ):
             ok = self.client.upsert_dossier_in_grist(
                 "dossiers", {"dossier_number": "2002", "name": "Y"}
@@ -384,7 +384,7 @@ class TestUpsertDossierInGrist:
 
     def test_missing_dossier_number_returns_false(self):
         """sans dossier_number -> False, aucun appel réseau"""
-        with patch("grist_processor_working_all.requests.get") as mock_get:
+        with patch("grist.client.requests.get") as mock_get:
             ok = self.client.upsert_dossier_in_grist("dossiers", {"name": "Z"})
         assert ok is False
         mock_get.assert_not_called()
@@ -399,11 +399,11 @@ class TestUpsertDossierInGrist:
         post_response.text = "err"
         with (
             patch(
-                "grist_processor_working_all.requests.get",
+                "grist.client.requests.get",
                 return_value=get_response,
             ),
             patch(
-                "grist_processor_working_all.requests.post",
+                "grist.client.requests.post",
                 return_value=post_response,
             ),
         ):
@@ -425,7 +425,7 @@ class TestListDocuments:
         mock_response.status_code = 200
         mock_response.json.return_value = {"docs": [{"id": "a"}]}
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.list_documents()
@@ -438,7 +438,7 @@ class TestListDocuments:
         mock_response.text = "boom"
         mock_response.raise_for_status.side_effect = Exception("HTTP 500")
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             with pytest.raises(Exception):
@@ -459,7 +459,7 @@ class TestGetDocumentInfo:
         mock_response.status_code = 200
         mock_response.json.return_value = {"id": "doc123"}
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.get_document_info()
@@ -478,7 +478,7 @@ class TestGetDocumentInfo:
         mock_response.text = "boom"
         mock_response.raise_for_status.side_effect = Exception("HTTP 500")
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             with pytest.raises(Exception):
@@ -499,7 +499,7 @@ class TestListTables:
         mock_response.status_code = 200
         mock_response.json.return_value = {"tables": [{"id": "dossiers"}]}
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             result = self.client.list_tables()
@@ -518,7 +518,7 @@ class TestListTables:
         mock_response.text = "boom"
         mock_response.raise_for_status.side_effect = Exception("HTTP 500")
         with patch(
-            "grist_processor_working_all.requests.get",
+            "grist.client.requests.get",
             return_value=mock_response,
         ):
             with pytest.raises(Exception):
@@ -549,7 +549,7 @@ class TestCreateTable:
         mock_response.status_code = 200
         mock_response.json.return_value = {"tables": [{"id": "t", "columns": []}]}
         with patch(
-            "grist_processor_working_all.requests.post",
+            "grist.client.requests.post",
             return_value=mock_response,
         ) as mock_post:
             result = self.client.create_table("t", [{"id": "col1", "type": "Text"}])
@@ -666,15 +666,15 @@ class TestUpsertMultipleDossiersInGrist:
         create_response.json.return_value = {"records": [{"id": 100}]}
         with (
             patch(
-                "grist_processor_working_all.requests.get",
+                "grist.client.requests.get",
                 return_value=columns_response,
             ) as mock_get,
             patch(
-                "grist_processor_working_all.requests.patch",
+                "grist.client.requests.patch",
                 return_value=update_response,
             ) as mock_patch,
             patch(
-                "grist_processor_working_all.requests.post",
+                "grist.client.requests.post",
                 return_value=create_response,
             ) as mock_post,
         ):
@@ -706,11 +706,11 @@ class TestUpsertMultipleDossiersInGrist:
         individual_response.text = "err"
         with (
             patch(
-                "grist_processor_working_all.requests.get",
+                "grist.client.requests.get",
                 return_value=columns_response,
             ),
             patch(
-                "grist_processor_working_all.requests.patch",
+                "grist.client.requests.patch",
                 side_effect=[update_response, individual_response],
             ),
         ):
