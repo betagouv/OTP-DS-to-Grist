@@ -435,6 +435,100 @@ class TestConfigManager:
     @patch.dict(
         os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
     )
+    def test_save_config_update_new_grist_key_empty_ds_token(self, mock_db_manager):
+        """Test update : nouvelle clé Grist + token DS vide → DS conserve l'existant, Grist est chiffré"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        # Config existante avec token DS (le seul conservé)
+        mock_cursor.fetchone.return_value = [
+            "existing_encrypted_token",
+            "existing_encrypted_key",
+        ]
+
+        with patch.object(
+            ConfigManager,
+            "encrypt_value",
+            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        ):
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "otp_config_id": 1,
+                    "ds_api_token": "",  # vide → garder l'existant
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "new_key",  # nouvelle clé → chiffrer
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                    "filter_date_start": "2023-01-01",
+                    "filter_date_end": "2023-12-31",
+                    "filter_statuses": "status1,status2",
+                    "filter_groups": "group1,group2",
+                }
+            )
+
+        assert result is True
+
+        update_call = mock_cursor.execute.call_args_list[1]
+        assert "UPDATE otp_configurations SET" in update_call[0][0]
+        call_args = update_call[0][1]
+        assert call_args[0] == "existing_encrypted_token"  # DS existant conservé
+        assert call_args[3] == "encrypted_new_key"  # nouvelle clé Grist chiffrée
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_save_config_update_new_ds_token_empty_grist_key(self, mock_db_manager):
+        """Test update : nouveau token DS + clé Grist vide → Grist conserve l'existant, DS est chiffré"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        # Config existante avec clé Grist (la seule conservée)
+        mock_cursor.fetchone.return_value = [
+            "existing_encrypted_token",
+            "existing_encrypted_key",
+        ]
+
+        with patch.object(
+            ConfigManager,
+            "encrypt_value",
+            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        ):
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "otp_config_id": 1,
+                    "ds_api_token": "new_token",  # nouveau token → chiffrer
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "",  # vide → garder l'existant
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                    "filter_date_start": "2023-01-01",
+                    "filter_date_end": "2023-12-31",
+                    "filter_statuses": "status1,status2",
+                    "filter_groups": "group1,group2",
+                }
+            )
+
+        assert result is True
+
+        update_call = mock_cursor.execute.call_args_list[1]
+        assert "UPDATE otp_configurations SET" in update_call[0][0]
+        call_args = update_call[0][1]
+        assert call_args[0] == "encrypted_new_token"  # nouveau token DS chiffré
+        assert call_args[3] == "existing_encrypted_key"  # clé Grist existante conservée
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
     def test_save_config_nonexistent_id(self, mock_db_manager):
         """Test update avec otp_config_id inexistant → False"""
         # Mock de la connexion DB
