@@ -456,8 +456,6 @@ class GristClient:
             traceback.print_exc()
             raise
 
-    # 2. Ensuite, modifiez la méthode upsert_multiple_dossiers_in_grist de la classe GristClient
-
     def upsert_multiple_dossiers_in_grist(
         self, table_id, dossiers_list, existing_records=None, column_cache=None
     ):
