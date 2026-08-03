@@ -44,30 +44,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const checkedConfig = await checkConfiguration(true)
   window.otp_config_id = checkedConfig?.otp_config_id
 
-  // Récupérer l'email utilisateur (POC — affiché en pied de page)
-  try {
-    const ctx = await getGristContext()
-    const res = await getUserEmail(ctx.params)
-    if (res.success && res.email) {
-      document.getElementById('user-email').textContent = `Utilisateur: ${res.email}`
-    }
-  } catch (_) {
-    // silencieux — ne pas bloquer l'expérience utilisateur
-  }
-
-  // Récupérer les utilisateurs du document Grist (POC — affiché en pied de page)
-  try {
-    const ctx = await getGristContext()
-    const res = await getDocUsers(ctx.params)
-    if (res.success && res.users) {
-      const count = res.users.length
-      const emails = res.users.map(u => u.email).filter(Boolean).join(', ')
-      document.getElementById('doc-users').textContent = `${count} utilisateur${count > 1 ? 's' : ''} · ${emails}`
-    }
-  } catch (_) {
-    // silencieux
-  }
-
   if (checkedConfig?.otp_config_id) {
     // Charger l'état de la synchronisation automatique
     await loadAutoSyncState()
