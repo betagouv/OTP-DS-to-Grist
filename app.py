@@ -27,7 +27,12 @@ from utils.api_validator import (
     test_grist_api,
     verify_api_connections,
 )
-from utils.constants import CHANGELOG_PATH, DEMARCHES_API_URL, GITHUB_CHANGELOG_BASE_URL
+from utils.constants import (
+    CHANGELOG_PATH,
+    DEMARCHES_API_URL,
+    GITHUB_CHANGELOG_BASE_URL,
+    DATABASE_URL
+)
 from utils.help_links import HELP_LINKS
 from utils.socketio import socketio
 
@@ -36,8 +41,6 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Chargement des variables d'environnement
 load_dotenv()
-
-from utils.constants import DATABASE_URL
 
 # Initialiser la base de données au chargement du module
 DatabaseManager.init_db(DATABASE_URL)
