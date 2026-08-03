@@ -2,6 +2,7 @@ import os
 import logging
 from cryptography.fernet import Fernet
 from database.database_manager import DatabaseManager
+from grist_processor_working_all import GristClient
 from utils.constants import DEMARCHES_API_URL
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,40 @@ class ConfigManager:
         raw.setdefault("parallel", os.getenv("PARALLEL", "True"))
 
         return ConfigManager.normalize_config(raw)
+
+    def fetch_and_store_grist_user_email(
+        self, otp_config_id, base_url, api_key
+    ) -> str | None:
+        """
+        Lignes communes save/sync : récupère l'email Grist via le token et l'écrit en base.
+        Retourne l'email, ou None si indisponible (non-bloquant).
+        """
+        if not otp_config_id or not base_url or not api_key:
+            return None
+
+        email = GristClient(base_url, api_key).get_grist_user_email()
+
+        if not email:
+            return None
+
+        conn = DatabaseManager.get_connection(self.database_url)
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE otp_configurations SET grist_user_email = %s WHERE id = %s",
+                    (email, otp_config_id),
+                )
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Impossible de stocker l'email Grist: {e}")
+
+            return None
+        finally:
+            if conn:
+                conn.close()
+
+        return email
 
     def load_config(self, grist_user_id, grist_doc_id):
         """Charge la configuration depuis la base de données - retourne une liste"""

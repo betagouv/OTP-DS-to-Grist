@@ -532,3 +532,110 @@ class TestConfigNormalization:
         assert params["filter_statuses"] == "1"
         assert isinstance(params["filter_groups"], str)
         assert params["filter_groups"] == "2"
+
+
+class TestFetchAndStoreGristUserEmail:
+    """Tests unitaires pour ConfigManager.fetch_and_store_grist_user_email"""
+
+    def _mock_db(self, mock_db_manager):
+        """Configure le mock de connexion DB et retourne (conn, cursor)"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+        return mock_conn, mock_cursor
+
+    @patch("configuration.config_manager.DatabaseManager")
+    def test_guard_without_api_key(self, mock_db_manager):
+        """Sans api_key -> None, GristClient non instancié"""
+        config_manager = ConfigManager("dummy_url")
+
+        with patch("configuration.config_manager.GristClient") as mock_client_class:
+            result = config_manager.fetch_and_store_grist_user_email(
+                1, "https://grist.example.com", ""
+            )
+
+        assert result is None
+        mock_client_class.assert_not_called()
+        mock_db_manager.get_connection.assert_not_called()
+
+    @patch("configuration.config_manager.DatabaseManager")
+    def test_guard_without_otp_config_id(self, mock_db_manager):
+        """Sans otp_config_id -> None"""
+        config_manager = ConfigManager("dummy_url")
+
+        with patch("configuration.config_manager.GristClient") as mock_client_class:
+            result = config_manager.fetch_and_store_grist_user_email(
+                None, "https://grist.example.com", "test_key"
+            )
+
+        assert result is None
+        mock_client_class.assert_not_called()
+
+    @patch("configuration.config_manager.DatabaseManager")
+    def test_guard_without_base_url(self, mock_db_manager):
+        """Sans base_url -> None"""
+        config_manager = ConfigManager("dummy_url")
+
+        with patch("configuration.config_manager.GristClient") as mock_client_class:
+            result = config_manager.fetch_and_store_grist_user_email(1, "", "test_key")
+
+        assert result is None
+        mock_client_class.assert_not_called()
+
+    @patch("configuration.config_manager.DatabaseManager")
+    def test_success_stores_email(self, mock_db_manager):
+        """Succès -> UPDATE exécuté avec l'email, retourne l'email"""
+        mock_conn, mock_cursor = self._mock_db(mock_db_manager)
+        config_manager = ConfigManager("dummy_url")
+
+        with patch("configuration.config_manager.GristClient") as mock_client_class:
+            mock_client_class.return_value.get_grist_user_email.return_value = (
+                "user@example.com"
+            )
+            result = config_manager.fetch_and_store_grist_user_email(
+                42, "https://grist.example.com", "test_key"
+            )
+
+        assert result == "user@example.com"
+        mock_cursor.execute.assert_called_once()
+        call_args = mock_cursor.execute.call_args[0]
+        assert "UPDATE otp_configurations" in call_args[0]
+        assert "grist_user_email" in call_args[0]
+        assert call_args[1] == ("user@example.com", 42)
+        mock_conn.commit.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    @patch("configuration.config_manager.DatabaseManager")
+    def test_email_none_no_write(self, mock_db_manager):
+        """get_grist_user_email -> None -> pas d'UPDATE, retourne None"""
+        mock_conn, mock_cursor = self._mock_db(mock_db_manager)
+        config_manager = ConfigManager("dummy_url")
+
+        with patch("configuration.config_manager.GristClient") as mock_client_class:
+            mock_client_class.return_value.get_grist_user_email.return_value = None
+            result = config_manager.fetch_and_store_grist_user_email(
+                42, "https://grist.example.com", "test_key"
+            )
+
+        assert result is None
+        mock_cursor.execute.assert_not_called()
+        mock_db_manager.get_connection.assert_not_called()
+
+    @patch("configuration.config_manager.DatabaseManager")
+    def test_db_exception_returns_none(self, mock_db_manager):
+        """Exception DB -> warning log, retourne None sans lever"""
+        mock_conn, mock_cursor = self._mock_db(mock_db_manager)
+        mock_cursor.execute.side_effect = Exception("db error")
+        config_manager = ConfigManager("dummy_url")
+
+        with patch("configuration.config_manager.GristClient") as mock_client_class:
+            mock_client_class.return_value.get_grist_user_email.return_value = (
+                "user@example.com"
+            )
+            result = config_manager.fetch_and_store_grist_user_email(
+                42, "https://grist.example.com", "test_key"
+            )
+
+        assert result is None
+        mock_conn.close.assert_called_once()
