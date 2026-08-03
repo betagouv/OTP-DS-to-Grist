@@ -16,6 +16,7 @@ class OtpConfiguration(Base):
     grist_api_key: Mapped[str | None] = mapped_column(String)
     grist_doc_id: Mapped[str | None] = mapped_column(String)
     grist_user_id: Mapped[str | None] = mapped_column(String)
+    grist_user_email: Mapped[str | None] = mapped_column(String)
     # Filter columns
     filter_date_start: Mapped[str | None] = mapped_column(String)
     filter_date_end: Mapped[str | None] = mapped_column(String)
