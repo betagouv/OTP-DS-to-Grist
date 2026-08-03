@@ -396,6 +396,7 @@ class ConfigManager:
                          filter_statuses,
                          filter_groups)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
                     """,
                         (
                             ds_api_token_encrypted,
@@ -410,6 +411,7 @@ class ConfigManager:
                             config["filter_groups"],
                         ),
                     )
+                    otp_config_id = cursor.fetchone()[0]
                     logger.info(
                         "Nouvelle configuration créée pour "
                         f"user_id={config['grist_user_id']}, "
@@ -417,6 +419,14 @@ class ConfigManager:
                     )
 
                 conn.commit()
+
+                if grist_api_key_encrypted:
+                    grist_api_key_decrypted = ConfigManager.decrypt_value(
+                        grist_api_key_encrypted
+                    )
+                    self.fetch_and_store_grist_user_email(
+                        otp_config_id, config["grist_base_url"], grist_api_key_decrypted
+                    )
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
             if conn:

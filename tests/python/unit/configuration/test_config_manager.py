@@ -193,9 +193,16 @@ class TestConfigManager:
             "existing_encrypted_key",
         ]
 
-        # Mock des méthodes de chiffrement
-        with patch.object(
-            ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+        with (
+            patch.object(
+                ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -215,6 +222,11 @@ class TestConfigManager:
             )
 
         assert result is True
+
+        # L'email est récupéré avec la clé déchiffrée
+        mock_fetch.assert_called_once_with(
+            1, "https://test.grist.com", "decrypted_encrypted_test_key"
+        )
 
         # Vérifier que SELECT (tokens) + UPDATE ont été appelés
         assert mock_cursor.execute.call_count == 2  # SELECT tokens + UPDATE
@@ -237,10 +249,18 @@ class TestConfigManager:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager.get_connection.return_value = mock_conn
+        mock_cursor.fetchone.return_value = (5,)
 
-        # Mock des méthodes de chiffrement
-        with patch.object(
-            ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+        with (
+            patch.object(
+                ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -260,10 +280,16 @@ class TestConfigManager:
 
         assert result is True
 
+        # L'email est récupéré avec l'id retourné par l'INSERT et la clé déchiffrée
+        mock_fetch.assert_called_once_with(
+            5, "https://test.grist.com", "decrypted_encrypted_test_key"
+        )
+
         # Vérifier que INSERT a été appelé (pas de SELECT COUNT)
         assert mock_cursor.execute.call_count == 1  # Juste INSERT
         insert_call = mock_cursor.execute.call_args_list[0]
         assert "INSERT INTO otp_configurations" in insert_call[0][0]
+        assert "RETURNING id" in insert_call[0][0]
         assert "filter_date_start" in insert_call[0][0]
 
     @patch("configuration.config_manager.DatabaseManager")
@@ -295,14 +321,18 @@ class TestConfigManager:
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager.get_connection.return_value = mock_conn
 
-        # Aucune config existante pour copier la clé
-        mock_cursor.fetchone.return_value = None
+        # Aucune config existante pour copier la clé (SELECT copie) puis id retourné par INSERT
+        mock_cursor.fetchone.side_effect = [None, (9,)]
 
-        # Mock des méthodes de chiffrement (ne chiffre que les valeurs non vides)
-        with patch.object(
-            ConfigManager,
-            "encrypt_value",
-            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        with (
+            patch.object(
+                ConfigManager,
+                "encrypt_value",
+                side_effect=lambda x: f"encrypted_{x}" if x else x,
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -321,6 +351,9 @@ class TestConfigManager:
             )
 
         assert result is True
+
+        # Pas de clé Grist effective → aucun appel de récupération d'email
+        mock_fetch.assert_not_called()
 
         # SELECT (copy query) + INSERT = 2 appels
         assert mock_cursor.execute.call_count == 2
@@ -347,13 +380,21 @@ class TestConfigManager:
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager.get_connection.return_value = mock_conn
 
-        # La SELECT de copie retourne une config existante avec clé chiffrée
-        mock_cursor.fetchone.return_value = ("existing_encrypted_grist_key",)
+        # SELECT de copie retourne une config existante (clé chiffrée) puis id retourné par INSERT
+        mock_cursor.fetchone.side_effect = [("existing_encrypted_grist_key",), (7,)]
 
-        with patch.object(
-            ConfigManager,
-            "encrypt_value",
-            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        with (
+            patch.object(
+                ConfigManager,
+                "encrypt_value",
+                side_effect=lambda x: f"encrypted_{x}" if x else x,
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -368,6 +409,11 @@ class TestConfigManager:
             )
 
         assert result is True
+
+        # L'email est récupéré avec l'id retourné par l'INSERT et la clé existante déchiffrée
+        mock_fetch.assert_called_once_with(
+            7, "https://test.grist.com", "decrypted_existing_encrypted_grist_key"
+        )
 
         # SELECT (copy) + INSERT = 2 appels
         assert mock_cursor.execute.call_count == 2
@@ -399,11 +445,18 @@ class TestConfigManager:
             "existing_encrypted_key",
         ]
 
-        # Mock des méthodes de chiffrement
-        with patch.object(
-            ConfigManager,
-            "encrypt_value",
-            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        with (
+            patch.object(
+                ConfigManager,
+                "encrypt_value",
+                side_effect=lambda x: f"encrypted_{x}" if x else x,
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -423,6 +476,11 @@ class TestConfigManager:
             )
 
         assert result is True
+
+        # L'email est récupéré avec la clé existante déchiffrée
+        mock_fetch.assert_called_once_with(
+            1, "https://test.grist.com", "decrypted_existing_encrypted_key"
+        )
 
         # Vérifier que UPDATE a été appelé avec les tokens existants
         update_call = mock_cursor.execute.call_args_list[1]
@@ -448,10 +506,18 @@ class TestConfigManager:
             "existing_encrypted_key",
         ]
 
-        with patch.object(
-            ConfigManager,
-            "encrypt_value",
-            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        with (
+            patch.object(
+                ConfigManager,
+                "encrypt_value",
+                side_effect=lambda x: f"encrypted_{x}" if x else x,
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -471,6 +537,11 @@ class TestConfigManager:
             )
 
         assert result is True
+
+        # L'email est récupéré avec la nouvelle clé déchiffrée
+        mock_fetch.assert_called_once_with(
+            1, "https://test.grist.com", "decrypted_encrypted_new_key"
+        )
 
         update_call = mock_cursor.execute.call_args_list[1]
         assert "UPDATE otp_configurations SET" in update_call[0][0]
@@ -495,10 +566,18 @@ class TestConfigManager:
             "existing_encrypted_key",
         ]
 
-        with patch.object(
-            ConfigManager,
-            "encrypt_value",
-            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        with (
+            patch.object(
+                ConfigManager,
+                "encrypt_value",
+                side_effect=lambda x: f"encrypted_{x}" if x else x,
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -518,6 +597,11 @@ class TestConfigManager:
             )
 
         assert result is True
+
+        # L'email est récupéré avec la clé existante déchiffrée
+        mock_fetch.assert_called_once_with(
+            1, "https://test.grist.com", "decrypted_existing_encrypted_key"
+        )
 
         update_call = mock_cursor.execute.call_args_list[1]
         assert "UPDATE otp_configurations SET" in update_call[0][0]
@@ -540,20 +624,24 @@ class TestConfigManager:
         # Mock : config n'existe pas (None)
         mock_cursor.fetchone.return_value = None
 
-        config_manager = ConfigManager("dummy_url")
-        result = config_manager.save_config(
-            {
-                "otp_config_id": 999,  # ID inexistant
-                "ds_api_token": "test_token",
-                "demarche_number": "12345",
-                "grist_base_url": "https://test.grist.com",
-                "grist_api_key": "test_key",
-                "grist_doc_id": "test_doc",
-                "grist_user_id": "test_user",
-            }
-        )
+        with patch.object(
+            ConfigManager, "fetch_and_store_grist_user_email"
+        ) as mock_fetch:
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "otp_config_id": 999,  # ID inexistant
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                }
+            )
 
         assert result is False
+        mock_fetch.assert_not_called()
 
 
 class TestConfigNormalization:
@@ -573,11 +661,20 @@ class TestConfigNormalization:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager.get_connection.return_value = mock_conn
+        mock_cursor.fetchone.return_value = (8,)
 
-        with patch.object(
-            ConfigManager,
-            "encrypt_value",
-            side_effect=lambda x: f"encrypted_{x}" if x else x,
+        with (
+            patch.object(
+                ConfigManager,
+                "encrypt_value",
+                side_effect=lambda x: f"encrypted_{x}" if x else x,
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
             result = config_manager.save_config(
@@ -596,6 +693,7 @@ class TestConfigNormalization:
             )
 
         assert result is True
+        mock_fetch.assert_called_once()
         insert_call = mock_cursor.execute.call_args_list[0]
 
         insert_columns = [
