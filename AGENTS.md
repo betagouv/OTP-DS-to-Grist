@@ -11,6 +11,11 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   - Ces étapes devraient être testables
   - Ces étapes ne doivent pas contenir régression
   - Ces étapes devraient être autonome et ne pas dépendre d'une prochaine étape dans la mesure du possible
+- Garder les plans concis : privilégier les décisions, l'architecture et les tests, plutôt que des
+  détails fragiles (numéros de lignes, tailles de fichiers, listes exhaustives par fichier) qui
+  deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
+- Éviter de dupliquer la logique : rechercher et cibler les points d'entrée communs
+  (ex: un chokepoint partagé par plusieurs chemins) avant d'ajouter des appels à plusieurs endroits.
 
 ## Architecture du projet
 
