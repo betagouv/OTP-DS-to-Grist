@@ -294,17 +294,19 @@ class ConfigManager:
 
                     # Gérer ds_api_token
                     ds_api_token = config.get("ds_api_token", "")
-                    if not ds_api_token:
-                        ds_api_token = row[0]  # Garder l'existant (déjà encrypté)
-                    else:
-                        ds_api_token = ConfigManager.encrypt_value(ds_api_token)
+                    ds_api_token_encrypted = (
+                        ConfigManager.encrypt_value(ds_api_token)
+                        if ds_api_token
+                        else row[0]  # existant déjà chiffré
+                    )
 
                     # Gérer grist_api_key
                     grist_api_key = config.get("grist_api_key", "")
-                    if not grist_api_key:
-                        grist_api_key = row[1]  # Garder l'existant (déjà encrypté)
-                    else:
-                        grist_api_key = ConfigManager.encrypt_value(grist_api_key)
+                    grist_api_key_encrypted = (
+                        ConfigManager.encrypt_value(grist_api_key)
+                        if grist_api_key
+                        else row[1]  # existant déjà chiffré
+                    )
 
                     # UPDATE par ID
                     cursor.execute(
@@ -323,10 +325,10 @@ class ConfigManager:
                         WHERE id = %s
                     """,
                         (
-                            ds_api_token,
+                            ds_api_token_encrypted,
                             config["demarche_number"],
                             config["grist_base_url"],
-                            grist_api_key,
+                            grist_api_key_encrypted,
                             config["grist_doc_id"],
                             config["grist_user_id"],
                             config["filter_date_start"],
@@ -352,9 +354,19 @@ class ConfigManager:
                             logger.error(f"Champ requis manquant: {field}")
                             return False
 
+                    # Gérer ds_api_token
+                    ds_api_token = config.get("ds_api_token", "")
+                    ds_api_token_encrypted = (
+                        ConfigManager.encrypt_value(ds_api_token)
+                        if ds_api_token
+                        else ""
+                    )
+
+                    # Gérer grist_api_key
+                    grist_api_key = config.get("grist_api_key", "")
                     grist_api_key_encrypted = (
-                        ConfigManager.encrypt_value(config["grist_api_key"])
-                        if config.get("grist_api_key")
+                        ConfigManager.encrypt_value(grist_api_key)
+                        if grist_api_key
                         else ""
                     )
 
@@ -386,7 +398,7 @@ class ConfigManager:
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                         (
-                            ConfigManager.encrypt_value(config["ds_api_token"]),
+                            ds_api_token_encrypted,
                             config["demarche_number"],
                             config["grist_base_url"],
                             grist_api_key_encrypted,
