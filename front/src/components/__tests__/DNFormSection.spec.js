@@ -450,6 +450,83 @@ describe('Save button', () => {
     expect(wrapper.vm.accordionTitleDN).toBe('Échec')
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
   })
+
+  it('disables save button again after a successful save (post-reload)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(false)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('re-enables save button after editing a field', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(false)
+
+    const tokenInputAfter = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInputAfter.setValue('nouveau-token')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('keeps the save button active after a failed save (existingConfig unchanged)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    wrapper.vm.$emit('save', 0)
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
 })
 
 describe('Delete button', () => {

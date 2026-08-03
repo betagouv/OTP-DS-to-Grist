@@ -33,6 +33,7 @@ const inputDNToken = ref('')
 const inputDNNumber = ref('')
 const dnErrorMessage = ref(null)
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
+const isDirty = ref(false)
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
@@ -77,6 +78,7 @@ const configValid = computed(() => props.gristError === '' && dnErrorMessage.val
 const debouncedValidate = debounce(validateDSConnection)
 
 const handleDNInputsChange = () => {
+  isDirty.value = true
   dnErrorMessage.value = null
   emit('error-update', null)
   debouncedValidate()
@@ -114,6 +116,7 @@ const resetConfig = () => {
 watch(() => props.existingConfig, (config) => {
   dnErrorMessage.value = null
   config ? applyExistingConfig(config) : resetConfig()
+  isDirty.value = false
 }, {immediate: true})
 </script>
 
@@ -182,7 +185,7 @@ watch(() => props.existingConfig, (config) => {
             label="Sauvegarder"
             data-test-id="submit-form-button"
             secondary
-            :disabled="!configValid || sectionEmpty"
+            :disabled="!configValid || sectionEmpty || !isDirty"
             @click="$emit('save', index)"
           />
           <DsfrButton
