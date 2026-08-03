@@ -29,30 +29,10 @@ from schema_utils import (
 )
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
-from utils.log_progress import LogProgress
+from utils.log import log, log_verbose, log_error, log_progress
 
-log_progress = LogProgress(ceiling=98)
-
-# Configuration du niveau de log
-LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
-
-
-def log(message, level=1):
-    """Fonction de log conditionnelle selon le niveau défini"""
-    if level <= LOG_LEVEL:
-        print(message)
-
-
-def log_verbose(message):
-    """Log uniquement en mode verbose"""
-    log(message, 2)
-
-
-def log_error(message):
-    """Log d'erreur (toujours affiché)"""
-    print(f"ERREUR: {message}")
 
 
 def print_api_timings():

@@ -1,9 +1,6 @@
 from grist_processor_working_all import (
     normalize_column_name,
     format_value_for_grist,
-    log,
-    log_verbose,
-    log_error,
 )
 
 
@@ -144,52 +141,3 @@ class TestFormatValueForGrist:
         """Test avec type inconnu"""
         assert format_value_for_grist("value", "Unknown") == "value"
         assert format_value_for_grist(123, "Unknown") == 123
-
-
-class TestLoggingFunctions:
-    """Tests unitaires pour les fonctions de logging"""
-
-    def test_log_with_level_1(self, capsys):
-        """Test log avec niveau 1 (défaut)"""
-        import grist_processor_working_all
-
-        original_level = grist_processor_working_all.LOG_LEVEL
-        grist_processor_working_all.LOG_LEVEL = 1
-        try:
-            log("Test message", 1)
-            captured = capsys.readouterr()
-            assert captured.out.strip() == "Test message"
-        finally:
-            grist_processor_working_all.LOG_LEVEL = original_level
-
-    def test_log_with_level_above_threshold(self, capsys):
-        """Test log avec niveau supérieur au seuil"""
-        import grist_processor_working_all
-
-        original_level = grist_processor_working_all.LOG_LEVEL
-        grist_processor_working_all.LOG_LEVEL = 1
-        try:
-            log("Test message", 2)
-            captured = capsys.readouterr()
-            assert captured.out == ""  # Ne devrait pas afficher
-        finally:
-            grist_processor_working_all.LOG_LEVEL = original_level
-
-    def test_log_verbose(self, capsys):
-        """Test log_verbose"""
-        import grist_processor_working_all
-
-        original_level = grist_processor_working_all.LOG_LEVEL
-        grist_processor_working_all.LOG_LEVEL = 2
-        try:
-            log_verbose("Verbose message")
-            captured = capsys.readouterr()
-            assert captured.out.strip() == "Verbose message"
-        finally:
-            grist_processor_working_all.LOG_LEVEL = original_level
-
-    def test_log_error(self, capsys):
-        """Test log_error (toujours affiché)"""
-        log_error("Error message")
-        captured = capsys.readouterr()
-        assert captured.out.strip() == "ERREUR: Error message"

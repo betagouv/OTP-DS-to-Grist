@@ -1,4 +1,4 @@
-from utils.log_progress import LogProgress, PROGRESS_START
+from utils.log import LogProgress, PROGRESS_START
 
 
 class TestLogProgressInit:

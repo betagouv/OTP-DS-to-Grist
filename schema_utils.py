@@ -441,7 +441,8 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
         tuple: (dict définitions des colonnes, set IDs problématiques)
     """
     # IMPORT LOCAL pour éviter la dépendance circulaire
-    from grist_processor_working_all import log, normalize_column_name
+    from grist_processor_working_all import normalize_column_name
+    from utils.log import log
 
     #  NOUVEAU : Logging optionnel
     if demarche_number:
@@ -947,7 +948,7 @@ def update_grist_tables_from_schema(
     Returns:
         dict: IDs des tables créées/mises à jour
     """
-    from grist_processor_working_all import log, log_error
+    from utils.log import log, log_error
 
     try:
         log(
