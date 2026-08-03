@@ -510,7 +510,7 @@ describe('Save with existing config (UPDATE)', () => {
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur de typage')
   })
 
-  it('re-injects null in serverConfigs after save when hadEmpty', async () => {
+  it('does not leave an empty section after save', async () => {
     wrapper.vm.serverConfigs = [null]
     await wrapper.vm.$nextTick()
 
@@ -535,7 +535,7 @@ describe('Save with existing config (UPDATE)', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.vm.serverConfigs.some(c => c === null)).toBe(true)
+    expect(wrapper.vm.serverConfigs.some(c => c === null)).toBe(false)
   })
 
   it('sets actionErrors on handleSave network error', async () => {
@@ -999,5 +999,75 @@ describe('sortConfigs', () => {
     const dnSections = wrapper.findAllComponents(DNFormSection)
     expect(dnSections[0].props('existingConfig').otp_config_id).toBe(3)
     expect(dnSections[1].props('existingConfig').otp_config_id).toBe(8)
+  })
+})
+
+describe('Accordion DN state', () => {
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+
+  const mountWithConfigs = async (configs) => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('opens the empty section even when there is already one config', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, null])
+    expect(wrapper.vm.activeDnAccordion).toBe(1)
+  })
+
+  it('closes all sections when none is empty', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, { otp_config_id: 2 }])
+    expect(wrapper.vm.activeDnAccordion).toBe(-1)
+  })
+
+  it('closes all sections after starting a sync', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+    wrapper.vm.activeDnAccordion = 0
+    await wrapper.vm.$nextTick()
+
+    wrapper.getComponent(DNFormSection).vm.$emit('sync', 0)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeDnAccordion).toBe(-1)
+  })
+
+  it('keeps the saved section open after a save', async () => {
+    const wrapper = await mountWithConfigs([null])
+    expect(wrapper.vm.activeDnAccordion).toBe(0)
+
+    globalThis.fetch.mockReset()
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeDnAccordion).toBe(0)
   })
 })

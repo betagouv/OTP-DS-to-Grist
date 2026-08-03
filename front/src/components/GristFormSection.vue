@@ -27,7 +27,7 @@ const baseUrl = ref('')
 const inputGristToken = ref('')
 
 const accordionTitleGrist = ref('Configurer Grist')
-const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
+const activeAccordion = ref(-1)
 
 const gristTokenErrorMessage = ref(null)
 const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
@@ -97,8 +97,19 @@ const resetConfig = () => {
   emit('error-update', null)
 }
 
+// Le backend ne renvoie jamais `null` pour existingConfig : sur une page sans
+// configuration, load_config (configuration/config_manager.py) renvoie un objet
+// config "vierge" avec otp_config_id = null. On traite donc comme "non configuré"
+// tout objet dont otp_config_id est falsy, ce qui ouvre l'accordéon pour guider
+// l'utilisateur (à la fois Grist ici et le premier volet DN dans OTPForm).
 watch(() => props.existingConfig, (config) => {
-  config ? applyExistingConfig(config) : resetConfig()
+  if (config?.otp_config_id) {
+    applyExistingConfig(config)
+    activeAccordion.value = -1
+    return
+  }
+  resetConfig()
+  activeAccordion.value = 0
 })
 
 defineExpose({

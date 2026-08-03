@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 
-import { DsfrButton } from '@gouvminint/vue-dsfr'
+import { DsfrButton, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
@@ -28,14 +28,11 @@ const actionErrors = ref([])
 
 const serverConfigs = ref([])
 const otpConfigId = ref(null)
+const activeDnAccordion = ref(-1)
 
 const canDelete = (config) => canDeleteConfig(config)
 
 const canSync = (config) => canSyncConfig(config, props.syncRunning)
-
-watch(serverConfigs, (val) => {
-  setDemarcheCount(val.length)
-}, { immediate: true })
 
 const loadConfig = async () => {
   try {
@@ -56,15 +53,30 @@ const configs = computed(() => {
 
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
+// Clé de remontage du DsfrAccordionsGroup : il indexe ses enfants par un
+// compteur interne monotone qui se désynchronise des index du v-for après
+// ajout/suppression/sauvegarde. Changer cette clé force le groupe à se
+// démonter/remonter et à réaligner son compteur sur les index.
+const accordionGroupKey = computed(() =>
+  configs.value.map(config => config?.otp_config_id ?? 'empty').join('|')
+)
+
+watch(serverConfigs, (val) => {
+  setDemarcheCount(val.length)
+}, { immediate: true })
+
+watch(configs, (sections) => {
+  const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
+  activeDnAccordion.value = emptyIndex
+}, { immediate: true })
+
 onMounted(loadConfig)
 
 const handleSave = async (index) => {
-  const hadEmpty = serverConfigs.value.includes(null)
-
   actionErrors.value[0] = null
 
   try {
-    const config = {
+    const payload = {
       ds_api_token: dnSectionRefs.value[index].getData().token,
       demarche_number: dnSectionRefs.value[index].getData().demarche_number,
       grist_base_url: gristSectionRef.value.getData().baseUrl,
@@ -74,13 +86,17 @@ const handleSave = async (index) => {
     }
 
     if (configs.value[index]?.otp_config_id)
-      config.otp_config_id = configs.value[index].otp_config_id
+      payload.otp_config_id = configs.value[index].otp_config_id
 
-    const result = await api.saveConfig(config)
+    const result = await api.saveConfig(payload)
 
     if (result.success) {
       await loadConfig()
-      if (hadEmpty) serverConfigs.value.push(null)
+      const savedId = result.otp_config_id
+      const newIndex = savedId
+        ? configs.value.findIndex(config => config?.otp_config_id === savedId)
+        : configs.value.length - 1
+      activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
       notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'
@@ -121,6 +137,7 @@ const handleSync = async (index) => {
   actionErrors.value[index] = null
   try {
     await api.startSync(otpConfigIdToSync)
+    activeDnAccordion.value = -1
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'
   }
@@ -169,20 +186,21 @@ const handleAddDemarche = async () => {
       </div>
     </div>
 
-    <DNFormSection 
-      :index="index"
-      @save="handleSave"
-      @delete="handleDelete"
-      @sync="handleSync"
-      :grist-error="gristError"
-      :can-delete="canDelete(config)"
-      :can-sync="canSync(config)"
-      :existing-config="config"
-      :error="actionErrors[index] || null"
-      @clear-error="actionErrors[index] = null"
-      v-for="(config, index) in configs"
-      :key="config?.otp_config_id || 'new'"
-      :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
-      class="fr-mt-1w"
-    />
+    <DsfrAccordionsGroup v-model="activeDnAccordion" :key="accordionGroupKey">
+      <DNFormSection 
+        :index="index"
+        @save="handleSave"
+        @delete="handleDelete"
+        @sync="handleSync"
+        :grist-error="gristError"
+        :can-delete="canDelete(config)"
+        :can-sync="canSync(config)"
+        :existing-config="config"
+        :error="actionErrors[index] || null"
+        @clear-error="actionErrors[index] = null"
+        v-for="(config, index) in configs"
+        :key="config?.otp_config_id || 'new'"
+        :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
+      />
+    </DsfrAccordionsGroup>
 </template>

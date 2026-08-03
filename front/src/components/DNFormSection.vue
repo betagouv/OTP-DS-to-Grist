@@ -3,7 +3,6 @@ import { ref, watch, computed } from 'vue'
 
 import {
   DsfrAccordion,
-  DsfrAccordionsGroup,
   DsfrButton,
   DsfrButtonGroup,
   DsfrInputGroup,
@@ -27,27 +26,16 @@ const props = defineProps({
 const HELP_LINKS = window.HELP_LINKS
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
 const ERROR_DN_TITLE = 'Échec'
+const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
 
-const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
-
-// TODO le mettre dans le parent
-const activeAccordion = ref(0) // Premier accordéon ouvert par défaut
 const accordionTitleDN = ref(DEFAULT_DN_TITLE)
-
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
 const dnErrorMessage = ref(null)
-const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
-const dnApiUrl = 'https://www.demarches-simplifiees.fr/api/v2/graphql'
+const isDirty = ref(false)
 
-const sectionEmpty = computed(() => {
-  const isUnsaved = props.existingConfig === null
-    || props.existingConfig?.otp_config_id === null
-  return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
-})
-
-const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
+const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
 const validateDSConnection = async () => {
   if (!inputDNNumber.value) return
@@ -55,7 +43,6 @@ const validateDSConnection = async () => {
 
   const body = {
     type: 'demarches',
-    api_url: dnApiUrl,
     demarche_number: inputDNNumber.value,
     ...(inputDNToken.value
       ? { api_token: inputDNToken.value }
@@ -68,7 +55,7 @@ const validateDSConnection = async () => {
     const result = await api.testConnection(body)
     dnErrorMessage.value = result.success ? '' : result.message
     accordionTitleDN.value = result.success
-      ? (result.title || DEFAULT_DN_TITLE)
+      ? formatTitle(inputDNNumber.value, result.title || DEFAULT_DN_TITLE)
       : ERROR_DN_TITLE
   } catch (e) {
     dnErrorMessage.value = 'Erreur lors du test de connexion'
@@ -78,9 +65,20 @@ const validateDSConnection = async () => {
   emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
 }
 
+const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
+
+const sectionEmpty = computed(() => {
+  const isUnsaved = props.existingConfig === null
+    || props.existingConfig?.otp_config_id === null
+  return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
+})
+
+const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
+
 const debouncedValidate = debounce(validateDSConnection)
 
 const handleDNInputsChange = () => {
+  isDirty.value = true
   dnErrorMessage.value = null
   emit('error-update', null)
   debouncedValidate()
@@ -118,6 +116,7 @@ const resetConfig = () => {
 watch(() => props.existingConfig, (config) => {
   dnErrorMessage.value = null
   config ? applyExistingConfig(config) : resetConfig()
+  isDirty.value = false
 }, {immediate: true})
 </script>
 
@@ -132,11 +131,13 @@ watch(() => props.existingConfig, (config) => {
       class="fr-mb-3w"
     />
 
-    <DsfrAccordionsGroup v-model="activeAccordion">
-      <DsfrAccordion
-        id="accordion-dn"
-        :title="accordionTitleDN"
-      >
+    <DsfrAccordion>
+      <template #title>
+        <span
+          class="otp-accordion-title"
+          :title="accordionTitleDN"
+        >{{ accordionTitleDN }}</span>
+      </template>
         <DsfrInputGroup
             :error-message="dnErrorMessage"
         >
@@ -184,7 +185,7 @@ watch(() => props.existingConfig, (config) => {
             label="Sauvegarder"
             data-test-id="submit-form-button"
             secondary
-            :disabled="!configValid || sectionEmpty"
+            :disabled="!configValid || sectionEmpty || !isDirty"
             @click="$emit('save', index)"
           />
           <DsfrButton
@@ -196,6 +197,16 @@ watch(() => props.existingConfig, (config) => {
           />
         </DsfrButtonGroup>
       </DsfrAccordion>
-    </DsfrAccordionsGroup>
   </div>
 </template>
+
+<style scoped>
+.otp-accordion-title {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+</style>

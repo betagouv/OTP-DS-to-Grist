@@ -20,6 +20,7 @@ beforeEach(() => {
 
 
 const globalComponents = { components: { DsfrInput, DsfrInputGroup } }
+const DEMARCHE_NUMBER = '67890'
 
 describe('DN form section', () => {
   it('shows error message when form validation fails', async () => {
@@ -47,7 +48,6 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: 'mauvais-numéro',
         api_token: 'mauvais-token',
       })
@@ -84,7 +84,6 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: 'bon-numéro',
         api_token: 'bon-token',
       })
@@ -100,10 +99,10 @@ describe('DN form section', () => {
 
     expect(wrapper.vm.inputDNNumber).toBe('')
 
-    await wrapper.setProps({ existingConfig: { demarche_number: '67890' } })
+    await wrapper.setProps({ existingConfig: { demarche_number: DEMARCHE_NUMBER } })
 
-    expect(wrapper.vm.inputDNNumber).toBe('67890')
-    expect(wrapper.vm.getData().demarche_number).toBe('67890')
+    expect(wrapper.vm.inputDNNumber).toBe(DEMARCHE_NUMBER)
+    expect(wrapper.vm.getData().demarche_number).toBe(DEMARCHE_NUMBER)
   })
 
   it('shows placeholder **** when has_ds_token is true', async () => {
@@ -124,7 +123,7 @@ describe('DN form section', () => {
       global: globalComponents
     })
 
-    await wrapper.setProps({ existingConfig: { demarche_number: '67890', has_ds_token: false } })
+    await wrapper.setProps({ existingConfig: { demarche_number: DEMARCHE_NUMBER, has_ds_token: false } })
 
     const passwordInput = wrapper.find('input[type="password"]')
     expect(passwordInput.attributes('placeholder')).toBe('Saisissez votre clé Démarche Numérique')
@@ -180,7 +179,6 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
         demarche_number: '12345',
         otp_config_id: 42
       })
@@ -246,7 +244,7 @@ describe('DN form section', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
@@ -258,14 +256,13 @@ describe('DN form section', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'demarches',
-        api_url: 'https://www.demarches-simplifiees.fr/api/v2/graphql',
-        demarche_number: '67890',
+        demarche_number: DEMARCHE_NUMBER,
         otp_config_id: 42
       })
     })
 
     expect(wrapper.vm.dnErrorMessage).toBe('')
-    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
+    expect(wrapper.vm.accordionTitleDN).toBe(`N°${DEMARCHE_NUMBER} — Ma démarche`)
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 
@@ -279,7 +276,7 @@ describe('DN form section', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
@@ -453,6 +450,83 @@ describe('Save button', () => {
     expect(wrapper.vm.accordionTitleDN).toBe('Échec')
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
   })
+
+  it('disables save button again after a successful save (post-reload)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(false)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('re-enables save button after editing a field', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(false)
+
+    const tokenInputAfter = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInputAfter.setValue('nouveau-token')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('keeps the save button active after a failed save (existingConfig unchanged)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('token')
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+    await numberInput.setValue('12345')
+    await flushPromises()
+
+    await wrapper.setProps({ gristError: '' })
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    wrapper.vm.$emit('save', 0)
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
 })
 
 describe('Delete button', () => {
@@ -620,14 +694,14 @@ describe('Accordion title', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
 
     await flushPromises()
 
-    expect(wrapper.vm.accordionTitleDN).toBe('Draaf-Srfd Occitanie Prévisions')
+    expect(wrapper.vm.accordionTitleDN).toBe(`N°${DEMARCHE_NUMBER} — Draaf-Srfd Occitanie Prévisions`)
   })
 
   it('shows "Échec" after failed validation on load', async () => {
@@ -640,7 +714,7 @@ describe('Accordion title', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
@@ -648,6 +722,48 @@ describe('Accordion title', () => {
     await flushPromises()
 
     expect(wrapper.vm.accordionTitleDN).toBe('Échec')
+  })
+
+  it('formats the title as N°{number} — {title}', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Mon Titre' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '12345', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    expect(wrapper.vm.accordionTitleDN).toBe('N°12345 — Mon Titre')
+  })
+
+  it('renders the title as a tooltip', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, title: 'Mon Titre' })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, demarche_number: '12345', has_ds_token: true }
+      },
+      global: globalComponents
+    })
+
+    await flushPromises()
+
+    const titleSpan = wrapper.find('.otp-accordion-title')
+    expect(titleSpan.attributes('title')).toBe('N°12345 — Mon Titre')
+    expect(titleSpan.text()).toBe('N°12345 — Mon Titre')
   })
 
   it('resets title to default when config is cleared', async () => {
@@ -660,13 +776,13 @@ describe('Accordion title', () => {
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
-        existingConfig: { otp_config_id: 42, demarche_number: '67890', has_ds_token: true }
+        existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
       },
       global: globalComponents
     })
 
     await flushPromises()
-    expect(wrapper.vm.accordionTitleDN).toBe('Ma démarche')
+    expect(wrapper.vm.accordionTitleDN).toBe(`N°${DEMARCHE_NUMBER} — Ma démarche`)
 
     await wrapper.setProps({ existingConfig: null })
     expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')

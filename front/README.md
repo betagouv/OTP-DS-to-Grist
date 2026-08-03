@@ -31,5 +31,5 @@ npm run build
 ### Lancer les tests
 
 ```sh
-npm run test:unit
+npm run test
 ```

@@ -194,18 +194,6 @@ describe('Grist form section', () => {
     expect(wrapper.vm.getData().baseUrl).toBe('https://new-url.com')
   })
 
-  it('shows placeholder **** when has_grist_key is true', async () => {
-    const wrapper = mount(GristFormSection, {
-      global: { components: { DsfrInput, DsfrInputGroup } }
-    })
-
-    await wrapper.setProps({ existingConfig: { has_grist_key: true } })
-
-    const input = wrapper.find('input[type="password"]')
-
-    expect(input.attributes('placeholder')).toMatch(/\*{3,}/)
-  })
-
   it('keeps default placeholder when has_grist_key is false', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
@@ -228,6 +216,71 @@ describe('Grist form section', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.gristFetchError).toBe('context error')
+  })
+
+  it('opens the accordion when existingConfig becomes empty', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeAccordion).toBe(-1)
+
+    await wrapper.setProps({ existingConfig: null })
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('input[type="password"]')
+    expect(wrapper.vm.activeAccordion).toBe(0)
+    expect(input.attributes('placeholder')).toBe('Saisissez votre clé grist')
+  })
+
+  it('closes the accordion when a saved config exists', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeAccordion).toBe(-1)
+  })
+
+  it('keeps the key masked for a saved config', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 1, has_grist_key: true }
+    })
+    await wrapper.vm.$nextTick()
+
+    const input = wrapper.find('input[type="password"]')
+    expect(input.attributes('placeholder')).toMatch(/\*{3,}/)
+    expect(wrapper.vm.activeAccordion).toBe(-1)
+  })
+
+  it('opens the accordion when the config is not saved', async () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: null }
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeAccordion).toBe(0)
   })
 
   it('sets gristFetchError when test-connection fetch fails', async () => {
