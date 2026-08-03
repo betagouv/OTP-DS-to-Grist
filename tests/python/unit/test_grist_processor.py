@@ -1,9 +1,12 @@
+from unittest.mock import patch, MagicMock
+
 from grist_processor_working_all import (
     normalize_column_name,
     format_value_for_grist,
     log,
     log_verbose,
-    log_error
+    log_error,
+    GristClient,
 )
 
 
@@ -33,15 +36,14 @@ class TestNormalizeColumnName:
 
     def test_normalize_column_name_multiple_spaces(self):
         """Test avec espaces multiples"""
-        assert normalize_column_name(
-            "Champ   avec   espaces"
-        ) == "champ_avec_espaces"
+        assert normalize_column_name("Champ   avec   espaces") == "champ_avec_espaces"
 
     def test_normalize_column_name_underscores(self):
         """Test avec underscores multiples"""
-        assert normalize_column_name(
-            "champ__avec__underscores"
-        ) == "champ_avec_underscores"
+        assert (
+            normalize_column_name("champ__avec__underscores")
+            == "champ_avec_underscores"
+        )
 
     def test_normalize_column_name_starts_with_number(self):
         """Test qui commence par un chiffre"""
@@ -74,22 +76,23 @@ class TestFormatValueForGrist:
     def test_format_value_datetime(self):
         """Test avec type DateTime"""
         # Test avec différents formats de date
-        assert format_value_for_grist(
-            "2023-12-25T10:30:00Z", "DateTime"
-        ) == "2023-12-25T10:30:00Z"
-        assert format_value_for_grist(
-            "2023-12-25T10:30:00.123456Z", "DateTime"
-        ) == "2023-12-25T10:30:00Z"
-        assert format_value_for_grist(
-            "2023-12-25 10:30:00", "DateTime"
-        ) == "2023-12-25T10:30:00Z"
-        assert format_value_for_grist(
-            "2023-12-25", "DateTime"
-        ) == "2023-12-25T00:00:00Z"
+        assert (
+            format_value_for_grist("2023-12-25T10:30:00Z", "DateTime")
+            == "2023-12-25T10:30:00Z"
+        )
+        assert (
+            format_value_for_grist("2023-12-25T10:30:00.123456Z", "DateTime")
+            == "2023-12-25T10:30:00Z"
+        )
+        assert (
+            format_value_for_grist("2023-12-25 10:30:00", "DateTime")
+            == "2023-12-25T10:30:00Z"
+        )
+        assert (
+            format_value_for_grist("2023-12-25", "DateTime") == "2023-12-25T00:00:00Z"
+        )
         # Test avec chaîne invalide
-        assert format_value_for_grist(
-            "invalid-date", "DateTime"
-        ) == "invalid-date"
+        assert format_value_for_grist("invalid-date", "DateTime") == "invalid-date"
 
     def test_format_value_text(self):
         """Test avec type Text"""
@@ -190,3 +193,100 @@ class TestLoggingFunctions:
         log_error("Error message")
         captured = capsys.readouterr()
         assert captured.out.strip() == "ERREUR: Error message"
+
+
+class TestExtractEmailFromScim:
+    """Tests unitaires pour GristClient._extract_email_from_scim"""
+
+    def setup_method(self):
+        self.client = GristClient("https://grist.example.com", "test_key")
+
+    def test_primary_email(self):
+        """Retourne l'email marqué primary"""
+        data = {
+            "emails": [
+                {"value": "second@example.com", "primary": False},
+                {"value": "primary@example.com", "primary": True},
+            ]
+        }
+        assert self.client._extract_email_from_scim(data) == "primary@example.com"
+
+    def test_no_primary_returns_first(self):
+        """Sans primary, retourne le premier email"""
+        data = {"emails": [{"value": "first@example.com"}]}
+        assert self.client._extract_email_from_scim(data) == "first@example.com"
+
+    def test_empty_emails(self):
+        """emails vide -> None"""
+        assert self.client._extract_email_from_scim({"emails": []}) is None
+
+    def test_missing_emails(self):
+        """emails absent -> None"""
+        assert self.client._extract_email_from_scim({}) is None
+
+    def test_user_name_ignored(self):
+        """userName seul (sans emails) est ignoré -> None"""
+        data = {"userName": "john.doe@example.com"}
+        assert self.client._extract_email_from_scim(data) is None
+
+
+class TestGetGristUserEmail:
+    """Tests unitaires pour GristClient.get_grist_user_email"""
+
+    def setup_method(self):
+        self.client = GristClient("https://grist.example.com", "test_key")
+
+    def test_success_primary_email(self):
+        """200 avec primary -> retourne l'email"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "emails": [
+                {"value": "primary@example.com", "primary": True},
+            ]
+        }
+        with patch(
+            "grist_processor_working_all.requests.get",
+            return_value=mock_response,
+        ):
+            assert self.client.get_grist_user_email() == "primary@example.com"
+
+    def test_success_no_primary(self):
+        """200 sans primary -> retourne le premier email"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"emails": [{"value": "first@example.com"}]}
+        with patch(
+            "grist_processor_working_all.requests.get",
+            return_value=mock_response,
+        ):
+            assert self.client.get_grist_user_email() == "first@example.com"
+
+    def test_http_error_returns_none(self):
+        """401 -> None"""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        with patch(
+            "grist_processor_working_all.requests.get",
+            return_value=mock_response,
+        ):
+            assert self.client.get_grist_user_email() is None
+
+    def test_timeout_returns_none(self):
+        """Timeout -> None"""
+        with patch(
+            "grist_processor_working_all.requests.get",
+            side_effect=Exception("timeout"),
+        ):
+            assert self.client.get_grist_user_email() is None
+
+    def test_success_no_emails(self):
+        """200 sans emails[] -> None"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"userName": "john.doe@example.com"}
+        with patch(
+            "grist_processor_working_all.requests.get",
+            return_value=mock_response,
+        ):
+            assert self.client.get_grist_user_email() is None

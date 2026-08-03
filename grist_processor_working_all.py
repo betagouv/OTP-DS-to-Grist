@@ -1030,6 +1030,36 @@ class GristClient:
     def set_doc_id(self, doc_id):
         self.doc_id = doc_id
 
+    def _extract_email_from_scim(self, data: dict) -> str | None:
+        """
+        Extrait l'email primaire d'une réponse SCIM /Me.
+        primary > premier email > None. userName est ignoré (peut être un pseudo).
+        """
+        emails = data.get("emails")
+
+        if not emails:
+            return None
+
+        primary = next((email for email in emails if email.get("primary")), None)
+
+        return (primary or emails[0]).get("value")
+
+    def get_grist_user_email(self):
+        """Email Grist de l'utilisateur courant via SCIM /Me. None si indisponible."""
+        try:
+            resp = requests.get(
+                f"{self.base_url}/scim/v2/Me", headers=self.headers, timeout=10
+            )
+            if resp.status_code != 200:
+                log_error(f"SCIM /Me HTTP {resp.status_code}")
+                return None
+
+            return self._extract_email_from_scim(resp.json())
+        except Exception as e:
+            log_error(f"SCIM /Me indisponible: {e}")
+
+            return None
+
     def table_exists(self, table_id):
         """
         Vérifie si une table existe dans le document Grist.
