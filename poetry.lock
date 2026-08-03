@@ -540,19 +540,19 @@ wmi = ["wmi (>=1.5.1)"]
 
 [[package]]
 name = "eventlet"
-version = "0.41.0"
+version = "0.41.1"
 description = "Highly concurrent networking library"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "eventlet-0.41.0-py3-none-any.whl", hash = "sha256:bc22396093cb4119ff7007776be6a5348a613ccd42eeb0f9519853a6efcbcabe"},
-    {file = "eventlet-0.41.0.tar.gz", hash = "sha256:35df85f0ccd3e73effb6fd9f1ceae46b500b966c7da1817289c323a307bd397b"},
+    {file = "eventlet-0.41.1-py3-none-any.whl", hash = "sha256:6f7bb5c2309d1c4527bf15fc2a5da0b829e68e495430b890993b47dfea258ae5"},
+    {file = "eventlet-0.41.1.tar.gz", hash = "sha256:e91010caa1880bb511de6ce2ed2186ef3493e0762a4d3ee93e97a0fcccdaaa28"},
 ]
 
 [package.dependencies]
 dnspython = ">=1.15.0"
-greenlet = ">=1.0"
+greenlet = "<3.4"
 
 [package.extras]
 dev = ["black", "build", "commitizen", "isort", "pip-tools", "pre-commit", "twine"]
@@ -1835,4 +1835,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "98e7a8e3defdcb1f1d185954d891a32ef65bac4077b1d33c2e04e51d4440177a"
+content-hash = "35a1f439fd7ab35b34fb5219ccc9527d08046144f6252ebf5cca39d85aec7ef4"
