@@ -6,7 +6,6 @@
   <div id="app"></div>
   {% if config.DEBUG %}
     <script type="module" src="http://localhost:5173/@vite/client"></script>
-    <script type="module" src="http://localhost:5173/index.html"></script>
   {% else %}
       <link href="{{ vite_asset().css }}" rel="stylesheet">
   {% endif %}
