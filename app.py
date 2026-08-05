@@ -903,8 +903,8 @@ def debug():
         config = (
             db.query(OtpConfiguration)
             .filter_by(
-                grist_user_id=os.getenv("GRIST_USER_ID", ""),
-                grist_doc_id=os.getenv("GRIST_DOC_ID", ""),
+                grist_user_id=request.args.get("grist_user_id", ""),
+                grist_doc_id=request.args.get("grist_doc_id", ""),
             )
             .first()
         )

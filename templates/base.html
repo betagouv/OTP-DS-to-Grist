@@ -449,6 +449,13 @@
       </div>
     </footer>
 
+    <script>
+      const debugLink = document.querySelector('a[href="/debug"]')
+      if (debugLink) getGristContext()
+        .then(ctx => { debugLink.href = '/debug' + ctx.params })
+        .catch(() => {})
+    </script>
+
     {% block scripts %}{% endblock %}
   </body>
 </html>
