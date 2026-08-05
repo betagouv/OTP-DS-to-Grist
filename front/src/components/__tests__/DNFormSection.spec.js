@@ -869,4 +869,32 @@ describe('Filters section integration', () => {
     expect(wrapper.vm.dnFiltersError).toBe('')
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
   })
+
+  it('includes pre-filled filter statuses in getData', () => {
+    const wrapper = mountWithValidConfig({
+      filter_statuses: 'en_construction,accepte'
+    })
+
+    expect(wrapper.vm.getData().filter_statuses).toBe('en_construction,accepte')
+  })
+
+  it('returns empty filter statuses in getData when config has none', () => {
+    const wrapper = mountWithValidConfig()
+
+    expect(wrapper.vm.getData().filter_statuses).toBe('')
+  })
+
+  it('enables the save button when a status is toggled', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper
+      .find('input[type="checkbox"][value="en_construction"]')
+      .setValue(true)
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
 })

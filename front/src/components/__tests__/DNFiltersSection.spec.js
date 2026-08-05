@@ -11,6 +11,9 @@ const mountSection = (existingConfig = null) =>
 const setDate = (wrapper, testId, value) =>
   wrapper.find(`[data-test-id="${testId}"]`).setValue(value)
 
+const toggleStatus = (wrapper, value) =>
+  wrapper.find(`input[type="checkbox"][value="${value}"]`).setValue(true)
+
 const DATE_DEBUT = 'filter-date-start'
 const DATE_FIN = 'filter-date-end'
 
@@ -19,7 +22,8 @@ describe('DNFiltersSection', () => {
     const wrapper = mountSection()
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '',
-      filter_date_end: ''
+      filter_date_end: '',
+      filter_statuses: ''
     })
   })
 
@@ -30,7 +34,8 @@ describe('DNFiltersSection', () => {
     })
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '2023-01-01',
-      filter_date_end: '2023-12-31'
+      filter_date_end: '2023-12-31',
+      filter_statuses: ''
     })
   })
 
@@ -42,7 +47,8 @@ describe('DNFiltersSection', () => {
     await wrapper.setProps({ existingConfig: null })
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '',
-      filter_date_end: ''
+      filter_date_end: '',
+      filter_statuses: ''
     })
   })
 
@@ -54,7 +60,8 @@ describe('DNFiltersSection', () => {
     expect(wrapper.emitted('change')).toHaveLength(2)
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '2023-05-01',
-      filter_date_end: '2023-05-15'
+      filter_date_end: '2023-05-15',
+      filter_statuses: ''
     })
   })
 
@@ -90,5 +97,50 @@ describe('DNFiltersSection', () => {
 
     await setDate(wrapper, DATE_FIN, '2024-01-01')
     expect(wrapper.emitted('error-update').at(-1)).toEqual([''])
+  })
+
+  it('returns empty statuses when no config is loaded', () => {
+    const wrapper = mountSection()
+    expect(wrapper.vm.getData().filter_statuses).toBe('')
+  })
+
+  it('pre-fills statuses from existingConfig', () => {
+    const wrapper = mountSection({
+      filter_statuses: 'en_construction,accepte'
+    })
+    expect(wrapper.vm.getData().filter_statuses).toBe('en_construction,accepte')
+  })
+
+  it('clears statuses when config becomes null', async () => {
+    const wrapper = mountSection({
+      filter_statuses: 'en_construction,refuse'
+    })
+    await wrapper.setProps({ existingConfig: null })
+    expect(wrapper.vm.getData().filter_statuses).toBe('')
+  })
+
+  it('does not emit change when loading a config', () => {
+    const wrapper = mountSection({
+      filter_statuses: 'en_construction'
+    })
+    expect(wrapper.emitted('change')).toBeUndefined()
+  })
+
+  it('emits change and reflects checked statuses', async () => {
+    const wrapper = mountSection()
+    await toggleStatus(wrapper, 'en_construction')
+    await toggleStatus(wrapper, 'accepte')
+
+    expect(wrapper.emitted('change')).toHaveLength(2)
+    expect(wrapper.vm.getData().filter_statuses).toBe('en_construction,accepte')
+  })
+
+  it('does not emit error-update when toggling statuses', async () => {
+    const wrapper = mountSection()
+    const errorCountBefore = wrapper.emitted('error-update').length
+
+    await toggleStatus(wrapper, 'sans_suite')
+
+    expect(wrapper.emitted('error-update').length).toBe(errorCountBefore)
   })
 })
