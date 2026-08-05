@@ -12,8 +12,6 @@ from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
-from sync.tasks.instructeurs import sync_instructeurs
-from sync.tasks.labels import sync_labels_for_demarche
 
 import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
@@ -27,6 +25,8 @@ from schema_utils import (
     get_demarche_schema_enhanced,
     update_grist_tables_from_schema,
 )
+from sync.tasks.instructeurs import sync_instructeurs
+from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from utils.log_progress import LogProgress
@@ -2133,6 +2133,8 @@ def process_demarche_for_grist_optimized(
 
         log(f"Dossiers organisés en {batch_count} lots de {batch_size} maximum")
 
+        descriptor_to_column_id = column_types.get("descriptor_to_column_id", {})
+
         # Fonction pour préparer un seul dossier (DÉFINIE AVANT LA BOUCLE)
         def prepare_single_dossier(
             dossier_num, dossier_data, column_types, problematic_descriptor_ids
@@ -2144,6 +2146,7 @@ def process_demarche_for_grist_optimized(
                     dossier_data,
                     exclude_repetition_champs=exclude_repetition,
                     problematic_ids=problematic_descriptor_ids,
+                    descriptor_to_column_id=descriptor_to_column_id,
                 )
 
                 # Préparer dossier_record
