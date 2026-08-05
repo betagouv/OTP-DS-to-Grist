@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 
 import DNFiltersSection from '../DNFiltersSection.vue'
+import OtpAlert from '../OtpAlert.vue'
+import { DsfrMultiselect } from '@gouvminint/vue-dsfr'
 
 const mountSection = (existingConfig = null) =>
   mount(DNFiltersSection, {
@@ -23,7 +25,8 @@ describe('DNFiltersSection', () => {
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '',
       filter_date_end: '',
-      filter_statuses: ''
+      filter_statuses: '',
+      filter_groups: ''
     })
   })
 
@@ -35,7 +38,8 @@ describe('DNFiltersSection', () => {
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '2023-01-01',
       filter_date_end: '2023-12-31',
-      filter_statuses: ''
+      filter_statuses: '',
+      filter_groups: ''
     })
   })
 
@@ -48,7 +52,8 @@ describe('DNFiltersSection', () => {
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '',
       filter_date_end: '',
-      filter_statuses: ''
+      filter_statuses: '',
+      filter_groups: ''
     })
   })
 
@@ -61,7 +66,8 @@ describe('DNFiltersSection', () => {
     expect(wrapper.vm.getData()).toEqual({
       filter_date_start: '2023-05-01',
       filter_date_end: '2023-05-15',
-      filter_statuses: ''
+      filter_statuses: '',
+      filter_groups: ''
     })
   })
 
@@ -142,5 +148,97 @@ describe('DNFiltersSection', () => {
     await toggleStatus(wrapper, 'sans_suite')
 
     expect(wrapper.emitted('error-update').length).toBe(errorCountBefore)
+  })
+})
+
+describe('DNFiltersSection — groupes instructeurs', () => {
+  const mountWithConfig = (existingConfig) =>
+    mount(DNFiltersSection, { props: { existingConfig } })
+
+  const mockGroupsResponse = (groups) => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(groups)
+    })
+  }
+
+  const hasGroupsSection = (wrapper) =>
+    wrapper.findAll('legend').some((l) => l.text() === 'Filtrer par groupe instructeur')
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  it('masks the groups section when there is no saved config', () => {
+    const wrapper = mountSection()
+    expect(hasGroupsSection(wrapper)).toBe(false)
+    expect(wrapper.vm.getData().filter_groups).toBe('')
+  })
+
+  it('shows the loading indicator while groups are loading', () => {
+    globalThis.fetch = vi.fn().mockReturnValue(new Promise(() => {}))
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+
+    expect(hasGroupsSection(wrapper)).toBe(true)
+    expect(wrapper.find('p').text()).toBe('...')
+  })
+
+  it('shows an error alert when groups loading fails', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    await flushPromises()
+
+    const alert = wrapper.findComponent(OtpAlert)
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('Erreur lors du chargement des groupes instructeurs')
+  })
+
+  it('masks the groups section when the groups list is empty', async () => {
+    mockGroupsResponse([])
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    await flushPromises()
+
+    expect(hasGroupsSection(wrapper)).toBe(false)
+  })
+
+  it('renders the group options once loaded', async () => {
+    mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    await flushPromises()
+
+    expect(wrapper.findComponent(DsfrMultiselect).props('options')).toEqual([
+      { number: 1, label: 'Groupe A' },
+      { number: 2, label: 'Groupe B' }
+    ])
+  })
+
+  it('emits change and returns selected groups in getData', async () => {
+    mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    await flushPromises()
+
+    await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1, 2])
+
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(wrapper.vm.getData().filter_groups).toBe('1,2')
+  })
+
+  it('pre-fills selected groups from existingConfig without emitting change', () => {
+    mockGroupsResponse([])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,3' })
+
+    expect(wrapper.vm.getData().filter_groups).toBe('1,3')
+    expect(wrapper.emitted('change')).toBeUndefined()
+  })
+
+  it('resets groups when config becomes null', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    await flushPromises()
+
+    await wrapper.setProps({ existingConfig: null })
+
+    expect(wrapper.vm.getData().filter_groups).toBe('')
+    expect(hasGroupsSection(wrapper)).toBe(false)
   })
 })

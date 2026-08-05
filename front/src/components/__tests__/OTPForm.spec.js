@@ -250,7 +250,8 @@ describe('Save button action', () => {
       demarche_number: '12345',
       filter_date_start: '2023-01-01',
       filter_date_end: '2023-12-31',
-      filter_statuses: 'en_construction,accepte'
+      filter_statuses: 'en_construction,accepte',
+      filter_groups: '1,3'
     })
     await wrapper.vm.$nextTick()
     wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
@@ -268,7 +269,8 @@ describe('Save button action', () => {
         grist_api_key: 'grist-token',
         filter_date_start: '2023-01-01',
         filter_date_end: '2023-12-31',
-        filter_statuses: 'en_construction,accepte'
+        filter_statuses: 'en_construction,accepte',
+        filter_groups: '1,3'
       })
     })
   })

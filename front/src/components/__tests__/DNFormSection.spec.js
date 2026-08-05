@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
+import { DsfrInput, DsfrInputGroup, DsfrMultiselect } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
 
 // Microtask pour que le v-model ait le temps de setter les refs avant validation
@@ -204,7 +204,10 @@ describe('DN form section', () => {
     await numberInput.setValue('12345')
     await flushPromises()
 
-    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body)
+    const testConnectionCall = mockFetch.mock.calls.find(
+      ([url]) => String(url).includes('/api/test-connection')
+    )
+    const callBody = JSON.parse(testConnectionCall[1].body)
     expect(callBody.api_token).toBe('explicit-token')
     expect(callBody.otp_config_id).toBeUndefined()
   })
@@ -791,9 +794,10 @@ describe('Accordion title', () => {
 
 describe('Filters section integration', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true })
+    globalThis.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
     })
   })
 
@@ -893,6 +897,37 @@ describe('Filters section integration', () => {
     await wrapper
       .find('input[type="checkbox"][value="en_construction"]')
       .setValue(true)
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('includes pre-filled filter groups in getData', () => {
+    const wrapper = mountWithValidConfig({
+      filter_groups: '1,3'
+    })
+
+    expect(wrapper.vm.getData().filter_groups).toBe('1,3')
+  })
+
+  it('returns empty filter groups in getData when config has none', () => {
+    const wrapper = mountWithValidConfig()
+
+    expect(wrapper.vm.getData().filter_groups).toBe('')
+  })
+
+  it('enables the save button when a group is selected', async () => {
+    globalThis.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([[1, 'Groupe A'], [2, 'Groupe B']]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1])
 
     expect(wrapper.vm.isDirty).toBe(true)
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()

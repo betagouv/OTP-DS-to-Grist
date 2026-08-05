@@ -83,3 +83,14 @@ const handleSyncFinished = (result) => {
     </div>
   </header>
 </template>
+
+<style>
+/* Le menu des DsfrMultiselect est positionné en absolu dans le contenu des
+   accordéons DSFR. Or .fr-collapse--expanded a overflow-y:auto qui le rogne.
+   On ne cible que le panneau d'accordéon (.fr-accordion > .fr-collapse), pas
+   les menus, et uniquement à l'état stable (hors .fr-collapsing) pour ne pas
+   dégrader l'animation d'ouverture/fermeture. */
+#app .fr-accordion > .fr-collapse--expanded:not(.fr-collapsing) {
+  overflow: visible;
+}
+</style>
