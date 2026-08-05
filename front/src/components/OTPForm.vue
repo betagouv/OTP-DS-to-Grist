@@ -76,13 +76,17 @@ const handleSave = async (index) => {
   actionErrors.value[0] = null
 
   try {
+    const dnData = dnSectionRefs.value[index].getData()
+    const gristData = gristSectionRef.value.getData()
     const payload = {
-      ds_api_token: dnSectionRefs.value[index].getData().token,
-      demarche_number: dnSectionRefs.value[index].getData().demarche_number,
-      grist_base_url: gristSectionRef.value.getData().baseUrl,
-      grist_doc_id: gristSectionRef.value.getData().docId,
-      grist_user_id: gristSectionRef.value.getData().userId,
-      grist_api_key: gristSectionRef.value.getData().token
+      ds_api_token: dnData.token,
+      demarche_number: dnData.demarche_number,
+      grist_base_url: gristData.baseUrl,
+      grist_doc_id: gristData.docId,
+      grist_user_id: gristData.userId,
+      grist_api_key: gristData.token,
+      filter_date_start: dnData.filter_date_start,
+      filter_date_end: dnData.filter_date_end
     }
 
     if (configs.value[index]?.otp_config_id)

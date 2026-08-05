@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
@@ -786,5 +786,87 @@ describe('Accordion title', () => {
 
     await wrapper.setProps({ existingConfig: null })
     expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')
+  })
+})
+
+describe('Filters section integration', () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+  })
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  const mountWithValidConfig = (existingConfig = {}) =>
+    mount(DNFormSection, {
+      props: {
+        index: 0,
+        gristError: '',
+        existingConfig: {
+          otp_config_id: 1,
+          demarche_number: DEMARCHE_NUMBER,
+          has_ds_token: true,
+          ...existingConfig
+        }
+      },
+      global: globalComponents
+    })
+
+  it('includes pre-filled filter dates in getData', () => {
+    const wrapper = mountWithValidConfig({
+      filter_date_start: '2023-01-01',
+      filter_date_end: '2023-12-31'
+    })
+
+    expect(wrapper.vm.getData().filter_date_start).toBe('2023-01-01')
+    expect(wrapper.vm.getData().filter_date_end).toBe('2023-12-31')
+  })
+
+  it('returns empty filter dates in getData when config has none', () => {
+    const wrapper = mountWithValidConfig()
+
+    expect(wrapper.vm.getData().filter_date_start).toBe('')
+    expect(wrapper.vm.getData().filter_date_end).toBe('')
+  })
+
+  it('enables the save button when a filter date is edited', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-01-01')
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('disables the save button when dates are inconsistent', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-12-31')
+    await wrapper.find('[data-test-id="filter-date-end"]').setValue('2023-01-01')
+
+    expect(wrapper.vm.dnFiltersError).not.toBe('')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('re-enables the save button once dates become consistent again', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-12-31')
+    await wrapper.find('[data-test-id="filter-date-end"]').setValue('2023-01-01')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.find('[data-test-id="filter-date-end"]').setValue('2024-01-01')
+
+    expect(wrapper.vm.dnFiltersError).toBe('')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
   })
 })
