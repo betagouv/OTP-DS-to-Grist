@@ -87,7 +87,8 @@ const handleSave = async (index) => {
       grist_api_key: gristData.token,
       filter_date_start: dnData.filter_date_start,
       filter_date_end: dnData.filter_date_end,
-      filter_statuses: dnData.filter_statuses
+      filter_statuses: dnData.filter_statuses,
+      filter_groups: dnData.filter_groups
     }
 
     if (configs.value[index]?.otp_config_id)
