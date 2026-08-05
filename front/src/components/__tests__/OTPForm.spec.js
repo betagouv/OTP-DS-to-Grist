@@ -247,7 +247,9 @@ describe('Save button action', () => {
     })
     wrapper.getComponent(DNFormSection).vm.getData = () => ({
       token: 'dn-token',
-      demarche_number: '12345'
+      demarche_number: '12345',
+      filter_date_start: '2023-01-01',
+      filter_date_end: '2023-12-31'
     })
     await wrapper.vm.$nextTick()
     wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
@@ -262,7 +264,9 @@ describe('Save button action', () => {
         grist_base_url: 'https://grist.example.com',
         grist_doc_id: 'doc-123',
         grist_user_id: '5',
-        grist_api_key: 'grist-token'
+        grist_api_key: 'grist-token',
+        filter_date_start: '2023-01-01',
+        filter_date_end: '2023-12-31'
       })
     })
   })
@@ -427,7 +431,10 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'grist-token'
     })
     wrapper.getComponent(DNFormSection).vm.getData = () => ({
-      token: 'dn-token', demarche_number: '12345'
+      token: 'dn-token',
+      demarche_number: '12345',
+      filter_date_start: '2023-06-01',
+      filter_date_end: '2023-06-30'
     })
     await wrapper.vm.$nextTick()
     wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
@@ -443,6 +450,8 @@ describe('Save with existing config (UPDATE)', () => {
         grist_doc_id: 'doc-123',
         grist_user_id: '5',
         grist_api_key: 'grist-token',
+        filter_date_start: '2023-06-01',
+        filter_date_end: '2023-06-30',
         otp_config_id: 1
       })
     })
