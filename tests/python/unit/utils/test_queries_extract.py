@@ -1,11 +1,5 @@
-import os
-import sys
-
-sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")
-)
-
 from queries_extract import dossier_to_flat_data
+from schema_utils import create_columns_from_schema
 
 
 def make_champ(label, typename, descriptor_id, value=None, checked=None, selected=None):
@@ -53,6 +47,90 @@ def make_dossier(champs, annotations=None):
         "nomMandataire": "",
         "deposeParUnTiers": False,
     }
+
+
+def make_schema_with_duplicate_labels():
+    """Fabrique un schéma DS minimal avec deux champs de même label."""
+    return {
+        "title": "Test démarche",
+        "activeRevision": {
+            "champDescriptors": [
+                {
+                    "__typename": "TextChampDescriptor",
+                    "id": "desc_001",
+                    "type": "text",
+                    "label": "Nom",
+                    "description": "",
+                    "required": False,
+                },
+                {
+                    "__typename": "TextChampDescriptor",
+                    "id": "desc_002",
+                    "type": "text",
+                    "label": "Nom",
+                    "description": "",
+                    "required": False,
+                },
+            ],
+            "annotationDescriptors": [],
+        },
+    }
+
+
+class TestCreateColumnsFromSchemaDescriptorMapping:
+    """Tests sur la construction du mapping descriptor_to_column_id."""
+
+    def test_duplicate_labels_produce_distinct_column_ids(self):
+        """Deux descripteurs de même label → colonnes distinctes dans le mapping."""
+        schema = make_schema_with_duplicate_labels()
+        column_types, _ = create_columns_from_schema(schema)
+
+        mapping = column_types.get("descriptor_to_column_id", {})
+        assert "desc_001" in mapping
+        assert "desc_002" in mapping
+        assert mapping["desc_001"] != mapping["desc_002"]
+
+    def test_mapping_used_correctly_in_flat_data(self):
+        """Le mapping produit par create_columns_from_schema est utilisé stablement."""
+        schema = make_schema_with_duplicate_labels()
+        column_types, _ = create_columns_from_schema(schema)
+        descriptor_to_column_id = column_types["descriptor_to_column_id"]
+
+        # Dossier A : desc_001 en premier
+        dossier_a = make_dossier(
+            [
+                make_champ("Nom", "TextChamp", "desc_001", value="Martin"),
+                make_champ("Nom", "TextChamp", "desc_002", value="Dupont"),
+            ]
+        )
+        flat_a = dossier_to_flat_data(
+            dossier_a,
+            exclude_repetition_champs=True,
+            descriptor_to_column_id=descriptor_to_column_id,
+        )
+        labels_a = {item["label"]: item["value"] for item in flat_a["champs"]}
+
+        # Dossier B : desc_002 en premier
+        dossier_b = make_dossier(
+            [
+                make_champ("Nom", "TextChamp", "desc_002", value="Dupont"),
+                make_champ("Nom", "TextChamp", "desc_001", value="Martin"),
+            ]
+        )
+        flat_b = dossier_to_flat_data(
+            dossier_b,
+            exclude_repetition_champs=True,
+            descriptor_to_column_id=descriptor_to_column_id,
+        )
+        labels_b = {item["label"]: item["value"] for item in flat_b["champs"]}
+
+        col_001 = descriptor_to_column_id["desc_001"]
+        col_002 = descriptor_to_column_id["desc_002"]
+
+        assert labels_a.get(col_001) == "Martin"
+        assert labels_b.get(col_001) == "Martin"
+        assert labels_a.get(col_002) == "Dupont"
+        assert labels_b.get(col_002) == "Dupont"
 
 
 class TestDossierToFlatDataDuplicateLabels:
@@ -158,8 +236,8 @@ class TestDossierToFlatDataDuplicateLabels:
         assert "Nom_1" not in labels
         assert "Prénom_1" not in labels
 
-    def test_annotation_duplicates(self):
-        """Les annotations en doublon doivent aussi être gérées stablement."""
+    def test_annotation_duplicates_fallback(self):
+        """Les annotations en doublon sont gérées par le fallback (sans mapping schéma)."""
         dossier = make_dossier(
             champs=[],
             annotations=[
@@ -171,3 +249,25 @@ class TestDossierToFlatDataDuplicateLabels:
         labels = [item["label"] for item in flat["annotations"]]
         assert "annotation_Avis" in labels
         assert "annotation_Avis_1" in labels
+
+    def test_annotation_duplicates_with_mapping(self):
+        """Les annotations en doublon sont stables via le mapping schéma."""
+        descriptor_to_column_id = {
+            "desc_010": "Avis",
+            "desc_011": "Avis_1",
+        }
+        dossier = make_dossier(
+            champs=[],
+            annotations=[
+                make_champ("Avis", "TextChamp", "desc_011", value="KO"),
+                make_champ("Avis", "TextChamp", "desc_010", value="OK"),
+            ],
+        )
+        flat = dossier_to_flat_data(
+            dossier,
+            exclude_repetition_champs=True,
+            descriptor_to_column_id=descriptor_to_column_id,
+        )
+        labels = {item["label"]: item["value"] for item in flat["annotations"]}
+        assert labels.get("annotation_Avis") == "OK"
+        assert labels.get("annotation_Avis_1") == "KO"

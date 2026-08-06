@@ -961,7 +961,14 @@ def dossier_to_flat_data(
         # Appliquer les suffixes pour les doublons
         for item in extracted:
             descriptor_id = item.get("descriptor_id")
-            if descriptor_to_column_id and descriptor_id in descriptor_to_column_id:
+            # N'utiliser le mapping que si un seul item correspond à ce descriptor_id
+            # (les types multi-items comme CommuneChamp ont des base_label déjà distincts)
+            if (
+                descriptor_to_column_id
+                and descriptor_id in descriptor_to_column_id
+                and sum(1 for i in extracted if i.get("descriptor_id") == descriptor_id)
+                == 1
+            ):
                 item["label"] = descriptor_to_column_id[descriptor_id]
             else:
                 base_label = item["base_label"]
