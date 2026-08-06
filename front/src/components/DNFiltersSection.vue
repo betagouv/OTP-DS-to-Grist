@@ -41,6 +41,32 @@ const dateError = computed(() => {
   return ''
 })
 
+const dateTags = computed(() => {
+  const tags = []
+  if (dateDebut.value) tags.push(`Date de début: ${formatDate(dateDebut.value)}`)
+  if (dateFin.value) tags.push(`Date de fin: ${formatDate(dateFin.value)}`)
+  return tags
+})
+
+const statusTags = computed(() => {
+  if (selectedStatuses.value.length === 0) return []
+  const labels = selectedStatuses.value.map(
+    (value) => STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value
+  )
+  return [`Statuts: ${labels.join(', ')}`]
+})
+
+const groupTags = computed(() => {
+  if (groups.value.length <= 1 || selectedGroups.value.length === 0) return []
+  const groupMap = new Map(groups.value.map((g) => [g.number, g.label]))
+  const labels = selectedGroups.value.map((n) => groupMap.get(n) ?? `Groupe #${n}`)
+  return [`Groupes: ${labels.join(', ')}`]
+})
+
+const hasActiveFilters = computed(() =>
+  dateTags.value.length > 0 || statusTags.value.length > 0 || groupTags.value.length > 0
+)
+
 const handleDateChange = () => {
   emit('change')
 }
@@ -192,4 +218,23 @@ defineExpose({
       />
     </div>
   </fieldset>
+
+  <div v-if="hasActiveFilters" class="fr-mt-3w">
+    <h5 class="fr-mb-1w">Filtres actifs</h5>
+    <ul v-if="dateTags.length" class="fr-tags-group">
+      <li v-for="tag in dateTags" :key="tag">
+        <span class="fr-tag fr-tag--high-blue-france">{{ tag }}</span>
+      </li>
+    </ul>
+    <ul v-if="statusTags.length" class="fr-tags-group fr-mt-1w">
+      <li v-for="tag in statusTags" :key="tag">
+        <span class="fr-tag fr-tag--high-blue-france">{{ tag }}</span>
+      </li>
+    </ul>
+    <ul v-if="groupTags.length" class="fr-tags-group fr-mt-1w">
+      <li v-for="tag in groupTags" :key="tag">
+        <span class="fr-tag fr-tag--high-blue-france">{{ tag }}</span>
+      </li>
+    </ul>
+  </div>
 </template>
