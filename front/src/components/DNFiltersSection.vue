@@ -31,7 +31,7 @@ const groupsError = ref('')
 const hasConfig = computed(() => !!props.existingConfig?.otp_config_id)
 
 const showGroupsSection = computed(() =>
-  hasConfig.value && (loadingGroups.value || groupsError.value || groups.value.length > 0)
+  hasConfig.value && (loadingGroups.value || groupsError.value || groups.value.length > 1)
 )
 
 const dateError = computed(() => {

@@ -201,6 +201,23 @@ describe('DNFiltersSection — groupes instructeurs', () => {
     expect(hasGroupsSection(wrapper)).toBe(false)
   })
 
+  it('masks the groups section when the demarche has a single default group', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    await flushPromises()
+
+    expect(hasGroupsSection(wrapper)).toBe(false)
+  })
+
+  it('keeps a valid saved group filter when the section is hidden (single group)', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    await flushPromises()
+
+    expect(hasGroupsSection(wrapper)).toBe(false)
+    expect(wrapper.vm.getData().filter_groups).toBe('1')
+  })
+
   it('renders the group options once loaded', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
     const wrapper = mountWithConfig({ otp_config_id: 1 })
