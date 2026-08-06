@@ -170,6 +170,9 @@ const handleAddDemarche = async () => {
 
     <h6 class="fr-mb-3w">1. Grist</h6>
 
+    <!-- Bloc Grist unique et partagé par toutes les sections DN :
+         on l'initialise volontairement avec la première configuration renvoyée
+         par le serveur (serverConfigs[0]), pas avec la liste triée `configs`. -->
     <GristFormSection
       @error-update="gristError = $event"
       :existing-config="serverConfigs[0] || null"
