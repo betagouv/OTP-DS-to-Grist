@@ -24,6 +24,16 @@ const setDate = (wrapper, testId, value) =>
 const toggleStatus = (wrapper, value) =>
   wrapper.find(`input[type="checkbox"][value="${value}"]`).setValue(true)
 
+const mountWithConfig = (existingConfig) =>
+  mount(DNFiltersSection, { props: { existingConfig } })
+
+const mockGroupsResponse = (groups) => {
+  globalThis.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve(groups)
+  })
+}
+
 const DATE_DEBUT = 'filter-date-start'
 const DATE_FIN = 'filter-date-end'
 
@@ -160,16 +170,6 @@ describe('DNFiltersSection', () => {
 })
 
 describe('DNFiltersSection — groupes instructeurs', () => {
-  const mountWithConfig = (existingConfig) =>
-    mount(DNFiltersSection, { props: { existingConfig } })
-
-  const mockGroupsResponse = (groups) => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(groups)
-    })
-  }
-
   const hasGroupsSection = (wrapper) =>
     wrapper.findAll('legend').some((l) => l.text() === 'Filtrer par groupe instructeur')
 
@@ -383,16 +383,6 @@ describe('DNFiltersSection — Filtres actifs', () => {
 })
 
 describe('DNFiltersSection — Réinitialiser', () => {
-  const mountWithConfig = (existingConfig) =>
-    mount(DNFiltersSection, { props: { existingConfig } })
-
-  const mockGroupsResponse = (groups) => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(groups)
-    })
-  }
-
   const resetButton = (wrapper) =>
     wrapper.find('[data-test-id="reset-filters-button"]')
 
