@@ -18,7 +18,7 @@ const props = defineProps({
 
 const emit = defineEmits(['config-loaded'])
 
-const { setDemarcheCount } = useDemarcheContext()
+const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
 const { notify } = useNotification()
 const gristError = ref(null)
 const dnSectionRefs = ref([])
@@ -27,7 +27,6 @@ const configError = ref(null)
 const actionErrors = ref([])
 
 const serverConfigs = ref([])
-const otpConfigId = ref(null)
 const activeDnAccordion = ref(-1)
 
 const canDelete = (config) => canDeleteConfig(config)
@@ -39,7 +38,6 @@ const loadConfig = async () => {
     const context = await getGristContext()
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
-    otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
     emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
   } catch (e) {
     configError.value = 'Erreur lors du chargement de la configuration'
@@ -73,16 +71,22 @@ watch(configs, (sections) => {
 onMounted(loadConfig)
 
 const handleSave = async (index) => {
-  actionErrors.value[0] = null
+  actionErrors.value[index] = null
 
   try {
+    const dnData = dnSectionRefs.value[index].getData()
+    const gristData = gristSectionRef.value.getData()
     const payload = {
-      ds_api_token: dnSectionRefs.value[index].getData().token,
-      demarche_number: dnSectionRefs.value[index].getData().demarche_number,
-      grist_base_url: gristSectionRef.value.getData().baseUrl,
-      grist_doc_id: gristSectionRef.value.getData().docId,
-      grist_user_id: gristSectionRef.value.getData().userId,
-      grist_api_key: gristSectionRef.value.getData().token
+      ds_api_token: dnData.token,
+      demarche_number: dnData.demarche_number,
+      grist_base_url: gristData.baseUrl,
+      grist_doc_id: gristData.docId,
+      grist_user_id: gristData.userId,
+      grist_api_key: gristData.token,
+      filter_date_start: dnData.filter_date_start,
+      filter_date_end: dnData.filter_date_end,
+      filter_statuses: dnData.filter_statuses,
+      filter_groups: dnData.filter_groups
     }
 
     if (configs.value[index]?.otp_config_id)
@@ -99,10 +103,10 @@ const handleSave = async (index) => {
       activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
       notify('Configuration sauvegardée', 'success')
     } else {
-      actionErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'
+      actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
   } catch (e) {
-    actionErrors.value[0] = 'Erreur lors de la sauvegarde'
+    actionErrors.value[index] = 'Erreur lors de la sauvegarde'
   }
 }
 
@@ -136,6 +140,7 @@ const handleSync = async (index) => {
   if (!otpConfigIdToSync) return
   actionErrors.value[index] = null
   try {
+    setDemarcheIndex(index + 1)
     await api.startSync(otpConfigIdToSync)
     activeDnAccordion.value = -1
   } catch (e) {
@@ -163,6 +168,9 @@ const handleAddDemarche = async () => {
 
     <h6 class="fr-mb-3w">1. Grist</h6>
 
+    <!-- Bloc Grist unique et partagé par toutes les sections DN :
+         on l'initialise volontairement avec la première configuration renvoyée
+         par le serveur (serverConfigs[0]), pas avec la liste triée `configs`. -->
     <GristFormSection
       @error-update="gristError = $event"
       :existing-config="serverConfigs[0] || null"

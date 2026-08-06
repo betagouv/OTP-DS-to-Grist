@@ -11,6 +11,7 @@ class InternalApi {
   async getConfig(params) {
     const response = await fetch(`${ROUTES.CONFIG}${params}`)
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
     return response.json()
   }
 
@@ -21,6 +22,7 @@ class InternalApi {
       body: JSON.stringify(config)
     })
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
     return response.json()
   }
 
@@ -29,6 +31,7 @@ class InternalApi {
       method: 'DELETE'
     })
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
     return response.json()
   }
 
@@ -39,6 +42,7 @@ class InternalApi {
       body: JSON.stringify({ otp_config_id: otpConfigId })
     })
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
     return response.json()
   }
 
@@ -49,19 +53,30 @@ class InternalApi {
       body: JSON.stringify(body)
     })
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
     return response.json()
   }
 
   async getSyncLogLatest(otpConfigId) {
     const response = await fetch(`${ROUTES.SYNC_LOG_LATEST}?otp_config_id=${otpConfigId}`)
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
     return response.json()
   }
 
   async getSyncLogLatestByDocId(docId) {
     const response = await fetch(`${ROUTES.SYNC_LOG_LATEST}?grist_doc_id=${docId}`)
     if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
     return response.json()
+  }
+
+  async getGroups(otpConfigId) {
+    const response = await fetch(`/api/groups?otp_config_id=${otpConfigId}`)
+    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+    const groups = await response.json()
+
+    return groups.map(([number, label]) => ({ number, label }))
   }
 }
 

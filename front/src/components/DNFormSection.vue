@@ -10,6 +10,7 @@ import {
 } from '@gouvminint/vue-dsfr'
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import DNFiltersSection from './DNFiltersSection.vue'
 import { api } from '../utils/InternalApi'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
@@ -34,6 +35,8 @@ const inputDNNumber = ref('')
 const dnErrorMessage = ref(null)
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const isDirty = ref(false)
+const dnFiltersError = ref('')
+const dnFiltersSectionRef = ref(null)
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
@@ -73,7 +76,9 @@ const sectionEmpty = computed(() => {
   return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
 })
 
-const configValid = computed(() => props.gristError === '' && dnErrorMessage.value === '')
+const configValid = computed(() =>
+  props.gristError === '' && dnErrorMessage.value === '' && dnFiltersError.value === ''
+)
 
 const debouncedValidate = debounce(validateDSConnection)
 
@@ -84,10 +89,15 @@ const handleDNInputsChange = () => {
   debouncedValidate()
 }
 
+const handleDNFiltersChange = () => {
+  isDirty.value = true
+}
+
 defineExpose({
   getData: () => ({
     token: inputDNToken.value,
     demarche_number: inputDNNumber.value,
+    ...(dnFiltersSectionRef.value?.getData() ?? {})
   })
 })
 
@@ -172,6 +182,13 @@ watch(() => props.existingConfig, (config) => {
             required
           />
         </DsfrInputGroup>
+
+        <DNFiltersSection
+          ref="dnFiltersSectionRef"
+          :existing-config="existingConfig"
+          @change="handleDNFiltersChange"
+          @error-update="dnFiltersError = $event"
+        />
 
         <DsfrButtonGroup inline-layout-when="always" size="large">
           <DsfrButton

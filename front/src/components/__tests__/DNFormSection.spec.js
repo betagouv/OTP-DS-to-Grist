@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
-import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
+import { DsfrInput, DsfrInputGroup, DsfrMultiselect } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
 
 // Microtask pour que le v-model ait le temps de setter les refs avant validation
@@ -11,11 +11,16 @@ vi.mock(
 )
 
 beforeEach(() => {
+  globalThis.formatDate = (dateString) => dateString.split('-').reverse().join('/')
   window.HELP_LINKS = {
     token_api: 'https://fake-url.example.com/token-api',
     grist_api_key: 'https://fake-url.example.com/grist-api-key',
     faq: 'https://fake-url.example.com/faq'
   }
+})
+
+afterEach(() => {
+  delete globalThis.formatDate
 })
 
 
@@ -204,7 +209,10 @@ describe('DN form section', () => {
     await numberInput.setValue('12345')
     await flushPromises()
 
-    const callBody = JSON.parse(mockFetch.mock.calls[0][1].body)
+    const testConnectionCall = mockFetch.mock.calls.find(
+      ([url]) => String(url).includes('/api/test-connection')
+    )
+    const callBody = JSON.parse(testConnectionCall[1].body)
     expect(callBody.api_token).toBe('explicit-token')
     expect(callBody.otp_config_id).toBeUndefined()
   })
@@ -786,5 +794,167 @@ describe('Accordion title', () => {
 
     await wrapper.setProps({ existingConfig: null })
     expect(wrapper.vm.accordionTitleDN).toBe('Configurer votre démarche')
+  })
+})
+
+describe('Filters section integration', () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+  })
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  const mountWithValidConfig = (existingConfig = {}) =>
+    mount(DNFormSection, {
+      props: {
+        index: 0,
+        gristError: '',
+        existingConfig: {
+          otp_config_id: 1,
+          demarche_number: DEMARCHE_NUMBER,
+          has_ds_token: true,
+          ...existingConfig
+        }
+      },
+      global: globalComponents
+    })
+
+  it('includes pre-filled filter dates in getData', () => {
+    const wrapper = mountWithValidConfig({
+      filter_date_start: '2023-01-01',
+      filter_date_end: '2023-12-31'
+    })
+
+    expect(wrapper.vm.getData().filter_date_start).toBe('2023-01-01')
+    expect(wrapper.vm.getData().filter_date_end).toBe('2023-12-31')
+  })
+
+  it('returns empty filter dates in getData when config has none', () => {
+    const wrapper = mountWithValidConfig()
+
+    expect(wrapper.vm.getData().filter_date_start).toBe('')
+    expect(wrapper.vm.getData().filter_date_end).toBe('')
+  })
+
+  it('enables the save button when a filter date is edited', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-01-01')
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('disables the save button when dates are inconsistent', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-12-31')
+    await wrapper.find('[data-test-id="filter-date-end"]').setValue('2023-01-01')
+
+    expect(wrapper.vm.dnFiltersError).not.toBe('')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('re-enables the save button once dates become consistent again', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-12-31')
+    await wrapper.find('[data-test-id="filter-date-end"]').setValue('2023-01-01')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.find('[data-test-id="filter-date-end"]').setValue('2024-01-01')
+
+    expect(wrapper.vm.dnFiltersError).toBe('')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('includes pre-filled filter statuses in getData', () => {
+    const wrapper = mountWithValidConfig({
+      filter_statuses: 'en_construction,accepte'
+    })
+
+    expect(wrapper.vm.getData().filter_statuses).toBe('en_construction,accepte')
+  })
+
+  it('returns empty filter statuses in getData when config has none', () => {
+    const wrapper = mountWithValidConfig()
+
+    expect(wrapper.vm.getData().filter_statuses).toBe('')
+  })
+
+  it('enables the save button when a status is toggled', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper
+      .find('input[type="checkbox"][value="en_construction"]')
+      .setValue(true)
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('includes pre-filled filter groups in getData', async () => {
+    globalThis.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([[1, 'Groupe A'], [3, 'Groupe C']]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+    const wrapper = mountWithValidConfig({
+      filter_groups: '1,3'
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.getData().filter_groups).toBe('1,3')
+  })
+
+  it('returns empty filter groups in getData when config has none', () => {
+    const wrapper = mountWithValidConfig()
+
+    expect(wrapper.vm.getData().filter_groups).toBe('')
+  })
+
+  it('enables the save button when a group is selected', async () => {
+    globalThis.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([[1, 'Groupe A'], [2, 'Groupe B']]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1])
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('keeps the save button active after resetting the filters', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-01-01')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.find('[data-test-id="reset-filters-button"]').trigger('click')
+
+    expect(wrapper.vm.getData().filter_date_start).toBe('')
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
   })
 })

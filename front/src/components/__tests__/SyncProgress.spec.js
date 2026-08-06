@@ -62,12 +62,13 @@ describe('SyncProgress', () => {
   })
 
   it('display démarches count from shared context', async () => {
-    const { setDemarcheCount } = useDemarcheContext()
+    const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
     setDemarcheCount(3)
+    setDemarcheIndex(2)
     triggerTaskUpdate({ status: 'running', progress: 50, message: 'En cours' })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('1/3 démarche(s) synchronisée(s)')
+    expect(wrapper.text()).toContain('2/3 démarche(s) synchronisée(s)')
   })
 
   it('display running message', async () => {

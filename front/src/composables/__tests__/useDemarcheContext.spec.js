@@ -3,8 +3,9 @@ import { useDemarcheContext } from '../useDemarcheContext'
 
 describe('useDemarcheContext', () => {
   beforeEach(() => {
-    const { setDemarcheCount } = useDemarcheContext()
+    const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
     setDemarcheCount(0)
+    setDemarcheIndex(1)
   })
 
   it('returns 0 totalDemarches by default', () => {
@@ -24,6 +25,13 @@ describe('useDemarcheContext', () => {
     setDemarcheCount(3)
 
     expect(totalDemarches.value).toBe(3)
+  })
+
+  it('updates demarcheIndex reactively via setDemarcheIndex', () => {
+    const { demarcheIndex, setDemarcheIndex } = useDemarcheContext()
+    setDemarcheIndex(2)
+
+    expect(demarcheIndex.value).toBe(2)
   })
 
   it('is shared as a singleton across multiple calls', () => {

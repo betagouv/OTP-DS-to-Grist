@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
+import { useDemarcheContext } from '../../composables/useDemarcheContext'
 
 describe('hasUnsavedSection computation', () => {
   const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
@@ -247,7 +248,11 @@ describe('Save button action', () => {
     })
     wrapper.getComponent(DNFormSection).vm.getData = () => ({
       token: 'dn-token',
-      demarche_number: '12345'
+      demarche_number: '12345',
+      filter_date_start: '2023-01-01',
+      filter_date_end: '2023-12-31',
+      filter_statuses: 'en_construction,accepte',
+      filter_groups: '1,3'
     })
     await wrapper.vm.$nextTick()
     wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
@@ -262,7 +267,11 @@ describe('Save button action', () => {
         grist_base_url: 'https://grist.example.com',
         grist_doc_id: 'doc-123',
         grist_user_id: '5',
-        grist_api_key: 'grist-token'
+        grist_api_key: 'grist-token',
+        filter_date_start: '2023-01-01',
+        filter_date_end: '2023-12-31',
+        filter_statuses: 'en_construction,accepte',
+        filter_groups: '1,3'
       })
     })
   })
@@ -427,7 +436,10 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'grist-token'
     })
     wrapper.getComponent(DNFormSection).vm.getData = () => ({
-      token: 'dn-token', demarche_number: '12345'
+      token: 'dn-token',
+      demarche_number: '12345',
+      filter_date_start: '2023-06-01',
+      filter_date_end: '2023-06-30'
     })
     await wrapper.vm.$nextTick()
     wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
@@ -443,6 +455,8 @@ describe('Save with existing config (UPDATE)', () => {
         grist_doc_id: 'doc-123',
         grist_user_id: '5',
         grist_api_key: 'grist-token',
+        filter_date_start: '2023-06-01',
+        filter_date_end: '2023-06-30',
         otp_config_id: 1
       })
     })
@@ -554,7 +568,7 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -660,6 +674,89 @@ describe('Multi-section save', () => {
     expect(body.ds_api_token).toBe('token-aaa')
     expect(body.demarche_number).toBe('11111')
     expect(body.otp_config_id).toBe(1)
+  })
+
+  it('clears only the error of the section being saved', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [
+        { otp_config_id: 1, demarche_number: '11111' },
+        { otp_config_id: 2, demarche_number: '22222' }
+      ] }) })
+    globalThis.fetch = mockFetch
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'dn-token-1', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'dn-token-2', demarche_number: '22222' })
+
+    wrapper.vm.actionErrors[0] = 'erreur section 0'
+    wrapper.vm.actionErrors[1] = 'erreur section 1'
+    await wrapper.vm.$nextTick()
+
+    dnSections[1].vm.$emit('save', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('erreur section 0')
+    expect(wrapper.vm.actionErrors[1]).toBeNull()
+  })
+
+  it('shows the save error on the failing section', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Erreur de typage' })
+    })
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'dn-token-1', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'dn-token-2', demarche_number: '22222' })
+
+    dnSections[1].vm.$emit('save', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[1]).toBe('Erreur de typage')
+    expect(wrapper.vm.actionErrors[0]).toBeUndefined()
+  })
+
+  it('shows the network error on the failing section', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockRejectedValue(new Error('network error'))
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'dn-token-1', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'dn-token-2', demarche_number: '22222' })
+
+    dnSections[1].vm.$emit('save', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[1]).toBe('Erreur lors de la sauvegarde')
+    expect(wrapper.vm.actionErrors[0]).toBeUndefined()
   })
 
 })
@@ -910,6 +1007,32 @@ describe('Sync action', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la synchronisation')
+  })
+
+  it('sets the demarcheIndex to the synced section position', async () => {
+    const { setDemarcheIndex, demarcheIndex } = useDemarcheContext()
+    setDemarcheIndex(1)
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 1, grist_base_url: 'https://example.com' },
+        { otp_config_id: 2, grist_base_url: 'https://example.com' }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+    dnSections[1].vm.$emit('sync', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(demarcheIndex.value).toBe(2)
   })
 })
 
