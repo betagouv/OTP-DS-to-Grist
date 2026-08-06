@@ -568,7 +568,7 @@ describe('Save with existing config (UPDATE)', () => {
       token: 'dn-token', demarche_number: '12345'
     })
     await wrapper.vm.$nextTick()
-    wrapper.getComponent(DNFormSection).vm.$emit('save')
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
@@ -707,6 +707,56 @@ describe('Multi-section save', () => {
 
     expect(wrapper.vm.actionErrors[0]).toBe('erreur section 0')
     expect(wrapper.vm.actionErrors[1]).toBeNull()
+  })
+
+  it('shows the save error on the failing section', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Erreur de typage' })
+    })
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'dn-token-1', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'dn-token-2', demarche_number: '22222' })
+
+    dnSections[1].vm.$emit('save', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[1]).toBe('Erreur de typage')
+    expect(wrapper.vm.actionErrors[0]).toBeUndefined()
+  })
+
+  it('shows the network error on the failing section', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockRejectedValue(new Error('network error'))
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'dn-token-1', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'dn-token-2', demarche_number: '22222' })
+
+    dnSections[1].vm.$emit('save', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[1]).toBe('Erreur lors de la sauvegarde')
+    expect(wrapper.vm.actionErrors[0]).toBeUndefined()
   })
 
 })

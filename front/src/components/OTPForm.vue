@@ -103,10 +103,10 @@ const handleSave = async (index) => {
       activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
       notify('Configuration sauvegardée', 'success')
     } else {
-      actionErrors.value[0] = result.message || 'Erreur lors de la sauvegarde'
+      actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
   } catch (e) {
-    actionErrors.value[0] = 'Erreur lors de la sauvegarde'
+    actionErrors.value[index] = 'Erreur lors de la sauvegarde'
   }
 }
 
