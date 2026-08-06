@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 
-import { DsfrInput, DsfrInputGroup, DsfrCheckboxSet, DsfrMultiselect } from '@gouvminint/vue-dsfr'
+import { DsfrInput, DsfrInputGroup, DsfrCheckboxSet, DsfrMultiselect, DsfrButton } from '@gouvminint/vue-dsfr'
 
 import OtpAlert from './OtpAlert.vue'
 import { api } from '../utils/InternalApi'
@@ -76,6 +76,14 @@ const handleStatusChange = () => {
 }
 
 const handleGroupsChange = () => {
+  emit('change')
+}
+
+const handleReset = () => {
+  dateDebut.value = ''
+  dateFin.value = ''
+  selectedStatuses.value = []
+  selectedGroups.value = []
   emit('change')
 }
 
@@ -236,5 +244,15 @@ defineExpose({
         <span class="fr-tag fr-tag--high-blue-france">{{ tag }}</span>
       </li>
     </ul>
+  </div>
+
+  <div class="fr-mt-3w">
+    <DsfrButton
+      label="Réinitialiser"
+      data-test-id="reset-filters-button"
+      secondary
+      :disabled="!hasActiveFilters"
+      @click="handleReset"
+    />
   </div>
 </template>

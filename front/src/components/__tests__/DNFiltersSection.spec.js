@@ -381,3 +381,84 @@ describe('DNFiltersSection — Filtres actifs', () => {
     expect(tag.element.tagName).toBe('SPAN')
   })
 })
+
+describe('DNFiltersSection — Réinitialiser', () => {
+  const mountWithConfig = (existingConfig) =>
+    mount(DNFiltersSection, { props: { existingConfig } })
+
+  const mockGroupsResponse = (groups) => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(groups)
+    })
+  }
+
+  const resetButton = (wrapper) =>
+    wrapper.find('[data-test-id="reset-filters-button"]')
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  it('is present and disabled when no filter is active', () => {
+    const wrapper = mountSection()
+    expect(resetButton(wrapper).exists()).toBe(true)
+    expect(resetButton(wrapper).attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled when a filter is active', async () => {
+    const wrapper = mountSection()
+    await setDate(wrapper, DATE_DEBUT, '2023-01-01')
+    expect(resetButton(wrapper).attributes('disabled')).toBeUndefined()
+  })
+
+  it('clears all filters, emits change and hides the active filters block', async () => {
+    const wrapper = mountSection({
+      filter_date_start: '2023-01-01',
+      filter_statuses: 'en_construction'
+    })
+    expect(resetButton(wrapper).attributes('disabled')).toBeUndefined()
+
+    await resetButton(wrapper).trigger('click')
+
+    expect(wrapper.vm.getData()).toEqual({
+      filter_date_start: '',
+      filter_date_end: '',
+      filter_statuses: '',
+      filter_groups: ''
+    })
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(wrapper.find('h5').exists()).toBe(false)
+    expect(resetButton(wrapper).attributes('disabled')).toBeDefined()
+  })
+
+  it('keeps the groups warning after a reset', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({
+      otp_config_id: 1,
+      filter_groups: '2',
+      filter_date_start: '2023-01-01'
+    })
+    await flushPromises()
+    expect(wrapper.findComponent(OtpAlert).props('type')).toBe('warning')
+    expect(resetButton(wrapper).attributes('disabled')).toBeUndefined()
+
+    await resetButton(wrapper).trigger('click')
+
+    expect(wrapper.findComponent(OtpAlert).props('type')).toBe('warning')
+    expect(wrapper.vm.getData().filter_date_start).toBe('')
+  })
+
+  it('clears the groups warning when the reset is saved (reload with empty filter)', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '2' })
+    await flushPromises()
+    expect(wrapper.findComponent(OtpAlert).props('type')).toBe('warning')
+
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, filter_groups: '' } })
+    await flushPromises()
+
+    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
+    expect(wrapper.vm.getData().filter_groups).toBe('')
+  })
+})
