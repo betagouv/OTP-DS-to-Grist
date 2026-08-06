@@ -73,7 +73,7 @@ watch(configs, (sections) => {
 onMounted(loadConfig)
 
 const handleSave = async (index) => {
-  actionErrors.value[0] = null
+  actionErrors.value[index] = null
 
   try {
     const dnData = dnSectionRefs.value[index].getData()
