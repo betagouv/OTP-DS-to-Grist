@@ -27,11 +27,12 @@ const groups = ref([])
 const selectedGroups = ref([])
 const loadingGroups = ref(false)
 const groupsError = ref('')
+const groupsWarning = ref('')
 
 const hasConfig = computed(() => !!props.existingConfig?.otp_config_id)
 
 const showGroupsSection = computed(() =>
-  hasConfig.value && (loadingGroups.value || groupsError.value || groups.value.length > 1)
+  hasConfig.value && (loadingGroups.value || groupsError.value || groupsWarning.value || groups.value.length > 1)
 )
 
 const dateError = computed(() => {
@@ -68,6 +69,7 @@ watch(() => props.existingConfig, async (config) => {
     groups.value = []
     selectedGroups.value = []
     groupsError.value = ''
+    groupsWarning.value = ''
     loadingGroups.value = false
 
     return
@@ -75,12 +77,23 @@ watch(() => props.existingConfig, async (config) => {
 
   selectedGroups.value = config.filter_groups ? config.filter_groups.split(',').map(Number) : []
   groupsError.value = ''
+  groupsWarning.value = ''
   loadingGroups.value = true
 
   try {
     groups.value = await api.getGroups(id)
+
+    const available = new Set(groups.value.map((g) => g.number))
+    const missing = selectedGroups.value.filter((n) => !available.has(n))
+
+    if (missing.length > 0) {
+      selectedGroups.value = selectedGroups.value.filter((n) => available.has(n))
+      groupsWarning.value = 'Certains groupes instructeurs sauvegardés ne sont plus proposés par la démarche. Ils ont été retirés du filtre. Vérifiez la sélection puis enregistrez vos modifications.'
+      emit('change')
+    }
   } catch {
     groupsError.value = 'Erreur lors du chargement des groupes instructeurs'
+    groupsWarning.value = ''
   } finally {
     loadingGroups.value = false
   }
@@ -161,7 +174,7 @@ defineExpose({
       />
       <p v-else-if="loadingGroups">...</p>
       <DsfrMultiselect
-        v-else
+        v-else-if="groups.length"
         v-model="selectedGroups"
         :options="groups"
         label="Groupes instructeurs"
@@ -170,6 +183,12 @@ defineExpose({
         label-key="label"
         search
         @update:model-value="handleGroupsChange"
+      />
+      <OtpAlert
+        v-if="groupsWarning"
+        type="warning"
+        :title="groupsWarning"
+        class="fr-mt-3w"
       />
     </div>
   </fieldset>
