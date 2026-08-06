@@ -27,7 +27,6 @@ const configError = ref(null)
 const actionErrors = ref([])
 
 const serverConfigs = ref([])
-const otpConfigId = ref(null)
 const activeDnAccordion = ref(-1)
 
 const canDelete = (config) => canDeleteConfig(config)
@@ -39,7 +38,6 @@ const loadConfig = async () => {
     const context = await getGristContext()
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
-    otpConfigId.value = serverConfigs.value[0]?.otp_config_id || null
     emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
   } catch (e) {
     configError.value = 'Erreur lors du chargement de la configuration'
