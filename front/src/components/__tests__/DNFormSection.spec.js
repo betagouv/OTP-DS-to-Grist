@@ -902,10 +902,16 @@ describe('Filters section integration', () => {
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('includes pre-filled filter groups in getData', () => {
+  it('includes pre-filled filter groups in getData', async () => {
+    globalThis.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([[1, 'Groupe A'], [3, 'Groupe C']]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
     const wrapper = mountWithValidConfig({
       filter_groups: '1,3'
     })
+    await flushPromises()
 
     expect(wrapper.vm.getData().filter_groups).toBe('1,3')
   })

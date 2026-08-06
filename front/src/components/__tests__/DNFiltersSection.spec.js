@@ -240,12 +240,66 @@ describe('DNFiltersSection — groupes instructeurs', () => {
     expect(wrapper.vm.getData().filter_groups).toBe('1,2')
   })
 
-  it('pre-fills selected groups from existingConfig without emitting change', () => {
+  it('clears removed groups and warns when none of the saved groups are available', async () => {
     mockGroupsResponse([])
     const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,3' })
+    await flushPromises()
 
-    expect(wrapper.vm.getData().filter_groups).toBe('1,3')
+    expect(wrapper.vm.getData().filter_groups).toBe('')
+    expect(wrapper.findComponent(OtpAlert).props('type')).toBe('warning')
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(hasGroupsSection(wrapper)).toBe(true)
+  })
+
+  it('keeps available groups, warns and emits change when some saved groups disappeared', async () => {
+    mockGroupsResponse([[1, 'Groupe A'], [3, 'Groupe C']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,2' })
+    await flushPromises()
+
+    expect(wrapper.vm.getData().filter_groups).toBe('1')
+    expect(wrapper.findComponent(OtpAlert).props('type')).toBe('warning')
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(hasGroupsSection(wrapper)).toBe(true)
+  })
+
+  it('clears the filter and warns when a single remaining group no longer matches the saved filter', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '2' })
+    await flushPromises()
+
+    expect(wrapper.vm.getData().filter_groups).toBe('')
+    expect(wrapper.findComponent(OtpAlert).props('type')).toBe('warning')
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(hasGroupsSection(wrapper)).toBe(true)
+  })
+
+  it('keeps the saved groups without warning when they all still exist', async () => {
+    mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,2' })
+    await flushPromises()
+
+    expect(wrapper.vm.getData().filter_groups).toBe('1,2')
+    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
     expect(wrapper.emitted('change')).toBeUndefined()
+  })
+
+  it('does not warn when there is no saved group filter', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    await flushPromises()
+
+    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
+    expect(hasGroupsSection(wrapper)).toBe(false)
+  })
+
+  it('keeps the saved groups and shows no warning when the groups load fails', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    await flushPromises()
+
+    expect(wrapper.vm.getData().filter_groups).toBe('1')
+    expect(wrapper.findComponent(OtpAlert).props('type')).toBe('error')
+    expect(wrapper.findComponent(OtpAlert).text()).toContain('Erreur lors du chargement des groupes instructeurs')
   })
 
   it('resets groups when config becomes null', async () => {
