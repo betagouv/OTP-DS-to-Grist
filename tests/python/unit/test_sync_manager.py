@@ -783,3 +783,37 @@ class TestSyncManager:
         assert sync_log.grist_user_id == "user_auto_error"
         assert sync_log.status == "error"
         assert sync_log.auto is True
+
+    @patch("sync.sync_manager.ConfigManager")
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_records_grist_user_email(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine, mock_cm_class
+    ):
+        """Test que la synchro enregistre l'email Grist via fetch_and_store_grist_user_email"""
+        mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 3
+        Dossiers en échec: 0
+        Total dossiers traités: 3
+        """)
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_base_url": "https://test.grist.com",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "grist_user_id": "user_email",
+            "otp_config_id": 5,
+        }
+
+        self.manager.run_synchronization_task(config, auto=True)
+
+        mock_cm_class.return_value.fetch_and_store_grist_user_email.assert_called_once_with(
+            5, "https://test.grist.com", "test_key"
+        )

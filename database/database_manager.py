@@ -50,6 +50,11 @@ class DatabaseManager:
                 ADD COLUMN IF NOT EXISTS grist_user_id TEXT DEFAULT ''
             """)
 
+            cursor.execute("""
+                ALTER TABLE otp_configurations
+                ADD COLUMN IF NOT EXISTS grist_user_email TEXT
+            """)
+
             # Add filter columns
             cursor.execute("""
                 ALTER TABLE otp_configurations

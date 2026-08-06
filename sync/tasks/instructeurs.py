@@ -191,7 +191,7 @@ def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=pr
 def main():
     from dotenv import load_dotenv
 
-    from grist_processor_working_all import GristClient
+    from grist.client import GristClient
 
     load_dotenv(override=True)
 

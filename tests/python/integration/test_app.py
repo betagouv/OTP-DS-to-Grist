@@ -50,6 +50,22 @@ class TestEndpoints:
         assert response.status_code == 200
         assert b"debug" in response.data
 
+    @patch("app.SessionLocal")
+    def test_debug_route_shows_grist_email(self, mock_session_local, client):
+        """Test que la page debug affiche l'email Grist enregistré pour la config courante"""
+        mock_config = MagicMock()
+        mock_config.grist_user_email = "collègue@example.com"
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter_by.return_value.first.return_value = (
+            mock_config
+        )
+        mock_session_local.return_value = mock_db
+
+        response = client.get("/debug")
+
+        assert response.status_code == 200
+        assert b"coll\xc3\xa8gue@example.com" in response.data
+
     @patch.object(sync_manager, "start_sync")
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_start_sync_success(self, mock_load, mock_start, client):

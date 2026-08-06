@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
 try:
-    from grist_processor_working_all import log, log_verbose, log_error
+    from utils.log import log, log_verbose, log_error
 except ImportError:
     # Définitions de secours en cas d'échec de l'import
     def log(message, level=1):

@@ -13,6 +13,7 @@ from sync.sync_result_parser import parse_output
 from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
 from database.models import SyncLog
+from configuration.config_manager import ConfigManager
 
 load_dotenv()
 
@@ -225,6 +226,16 @@ class SyncManager:
             db_session.add(sync_log)
             db_session.commit()
             db_session.close()
+
+            try:
+                ConfigManager(DATABASE_URL).fetch_and_store_grist_user_email(
+                    config.get("otp_config_id"),
+                    config.get("grist_base_url"),
+                    config.get("grist_api_key"),
+                )
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"Enregistrement de l'email Grist ignoré: {e}")
 
     def start_task(
         self, task_function: Callable[..., Any], *args: Any, **kwargs: Any

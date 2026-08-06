@@ -2,6 +2,7 @@ import os
 import logging
 from cryptography.fernet import Fernet
 from database.database_manager import DatabaseManager
+from grist.client import GristClient
 from utils.constants import DEMARCHES_API_URL
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,40 @@ class ConfigManager:
 
         return ConfigManager.normalize_config(raw)
 
+    def fetch_and_store_grist_user_email(
+        self, otp_config_id, base_url, api_key
+    ) -> str | None:
+        """
+        Lignes communes save/sync : récupère l'email Grist via le token et l'écrit en base.
+        Retourne l'email, ou None si indisponible (non-bloquant).
+        """
+        if not otp_config_id or not base_url or not api_key:
+            return None
+
+        email = GristClient(base_url, api_key).get_grist_user_email()
+
+        if not email:
+            return None
+
+        conn = DatabaseManager.get_connection(self.database_url)
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE otp_configurations SET grist_user_email = %s WHERE id = %s",
+                    (email, otp_config_id),
+                )
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Impossible de stocker l'email Grist: {e}")
+
+            return None
+        finally:
+            if conn:
+                conn.close()
+
+        return email
+
     def load_config(self, grist_user_id, grist_doc_id):
         """Charge la configuration depuis la base de données - retourne une liste"""
         conn = DatabaseManager.get_connection(self.database_url)
@@ -259,17 +294,19 @@ class ConfigManager:
 
                     # Gérer ds_api_token
                     ds_api_token = config.get("ds_api_token", "")
-                    if not ds_api_token:
-                        ds_api_token = row[0]  # Garder l'existant (déjà encrypté)
-                    else:
-                        ds_api_token = ConfigManager.encrypt_value(ds_api_token)
+                    ds_api_token_encrypted = (
+                        ConfigManager.encrypt_value(ds_api_token)
+                        if ds_api_token
+                        else row[0]  # existant déjà chiffré
+                    )
 
                     # Gérer grist_api_key
                     grist_api_key = config.get("grist_api_key", "")
-                    if not grist_api_key:
-                        grist_api_key = row[1]  # Garder l'existant (déjà encrypté)
-                    else:
-                        grist_api_key = ConfigManager.encrypt_value(grist_api_key)
+                    grist_api_key_encrypted = (
+                        ConfigManager.encrypt_value(grist_api_key)
+                        if grist_api_key
+                        else row[1]  # existant déjà chiffré
+                    )
 
                     # UPDATE par ID
                     cursor.execute(
@@ -288,10 +325,10 @@ class ConfigManager:
                         WHERE id = %s
                     """,
                         (
-                            ds_api_token,
+                            ds_api_token_encrypted,
                             config["demarche_number"],
                             config["grist_base_url"],
-                            grist_api_key,
+                            grist_api_key_encrypted,
                             config["grist_doc_id"],
                             config["grist_user_id"],
                             config["filter_date_start"],
@@ -317,9 +354,19 @@ class ConfigManager:
                             logger.error(f"Champ requis manquant: {field}")
                             return False
 
+                    # Gérer ds_api_token
+                    ds_api_token = config.get("ds_api_token", "")
+                    ds_api_token_encrypted = (
+                        ConfigManager.encrypt_value(ds_api_token)
+                        if ds_api_token
+                        else ""
+                    )
+
+                    # Gérer grist_api_key
+                    grist_api_key = config.get("grist_api_key", "")
                     grist_api_key_encrypted = (
-                        ConfigManager.encrypt_value(config["grist_api_key"])
-                        if config.get("grist_api_key")
+                        ConfigManager.encrypt_value(grist_api_key)
+                        if grist_api_key
                         else ""
                     )
 
@@ -349,9 +396,10 @@ class ConfigManager:
                          filter_statuses,
                          filter_groups)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
                     """,
                         (
-                            ConfigManager.encrypt_value(config["ds_api_token"]),
+                            ds_api_token_encrypted,
                             config["demarche_number"],
                             config["grist_base_url"],
                             grist_api_key_encrypted,
@@ -363,6 +411,7 @@ class ConfigManager:
                             config["filter_groups"],
                         ),
                     )
+                    otp_config_id = cursor.fetchone()[0]
                     logger.info(
                         "Nouvelle configuration créée pour "
                         f"user_id={config['grist_user_id']}, "
@@ -370,6 +419,14 @@ class ConfigManager:
                     )
 
                 conn.commit()
+
+                if grist_api_key_encrypted:
+                    grist_api_key_decrypted = ConfigManager.decrypt_value(
+                        grist_api_key_encrypted
+                    )
+                    self.fetch_and_store_grist_user_email(
+                        otp_config_id, config["grist_base_url"], grist_api_key_decrypted
+                    )
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
             if conn:

@@ -1,9 +1,6 @@
 from grist_processor_working_all import (
     normalize_column_name,
     format_value_for_grist,
-    log,
-    log_verbose,
-    log_error
 )
 
 
@@ -33,15 +30,14 @@ class TestNormalizeColumnName:
 
     def test_normalize_column_name_multiple_spaces(self):
         """Test avec espaces multiples"""
-        assert normalize_column_name(
-            "Champ   avec   espaces"
-        ) == "champ_avec_espaces"
+        assert normalize_column_name("Champ   avec   espaces") == "champ_avec_espaces"
 
     def test_normalize_column_name_underscores(self):
         """Test avec underscores multiples"""
-        assert normalize_column_name(
-            "champ__avec__underscores"
-        ) == "champ_avec_underscores"
+        assert (
+            normalize_column_name("champ__avec__underscores")
+            == "champ_avec_underscores"
+        )
 
     def test_normalize_column_name_starts_with_number(self):
         """Test qui commence par un chiffre"""
@@ -74,22 +70,23 @@ class TestFormatValueForGrist:
     def test_format_value_datetime(self):
         """Test avec type DateTime"""
         # Test avec différents formats de date
-        assert format_value_for_grist(
-            "2023-12-25T10:30:00Z", "DateTime"
-        ) == "2023-12-25T10:30:00Z"
-        assert format_value_for_grist(
-            "2023-12-25T10:30:00.123456Z", "DateTime"
-        ) == "2023-12-25T10:30:00Z"
-        assert format_value_for_grist(
-            "2023-12-25 10:30:00", "DateTime"
-        ) == "2023-12-25T10:30:00Z"
-        assert format_value_for_grist(
-            "2023-12-25", "DateTime"
-        ) == "2023-12-25T00:00:00Z"
+        assert (
+            format_value_for_grist("2023-12-25T10:30:00Z", "DateTime")
+            == "2023-12-25T10:30:00Z"
+        )
+        assert (
+            format_value_for_grist("2023-12-25T10:30:00.123456Z", "DateTime")
+            == "2023-12-25T10:30:00Z"
+        )
+        assert (
+            format_value_for_grist("2023-12-25 10:30:00", "DateTime")
+            == "2023-12-25T10:30:00Z"
+        )
+        assert (
+            format_value_for_grist("2023-12-25", "DateTime") == "2023-12-25T00:00:00Z"
+        )
         # Test avec chaîne invalide
-        assert format_value_for_grist(
-            "invalid-date", "DateTime"
-        ) == "invalid-date"
+        assert format_value_for_grist("invalid-date", "DateTime") == "invalid-date"
 
     def test_format_value_text(self):
         """Test avec type Text"""
@@ -144,49 +141,3 @@ class TestFormatValueForGrist:
         """Test avec type inconnu"""
         assert format_value_for_grist("value", "Unknown") == "value"
         assert format_value_for_grist(123, "Unknown") == 123
-
-
-class TestLoggingFunctions:
-    """Tests unitaires pour les fonctions de logging"""
-
-    def test_log_with_level_1(self, capsys):
-        """Test log avec niveau 1 (défaut)"""
-        import grist_processor_working_all
-        original_level = grist_processor_working_all.LOG_LEVEL
-        grist_processor_working_all.LOG_LEVEL = 1
-        try:
-            log("Test message", 1)
-            captured = capsys.readouterr()
-            assert captured.out.strip() == "Test message"
-        finally:
-            grist_processor_working_all.LOG_LEVEL = original_level
-
-    def test_log_with_level_above_threshold(self, capsys):
-        """Test log avec niveau supérieur au seuil"""
-        import grist_processor_working_all
-        original_level = grist_processor_working_all.LOG_LEVEL
-        grist_processor_working_all.LOG_LEVEL = 1
-        try:
-            log("Test message", 2)
-            captured = capsys.readouterr()
-            assert captured.out == ""  # Ne devrait pas afficher
-        finally:
-            grist_processor_working_all.LOG_LEVEL = original_level
-
-    def test_log_verbose(self, capsys):
-        """Test log_verbose"""
-        import grist_processor_working_all
-        original_level = grist_processor_working_all.LOG_LEVEL
-        grist_processor_working_all.LOG_LEVEL = 2
-        try:
-            log_verbose("Verbose message")
-            captured = capsys.readouterr()
-            assert captured.out.strip() == "Verbose message"
-        finally:
-            grist_processor_working_all.LOG_LEVEL = original_level
-
-    def test_log_error(self, capsys):
-        """Test log_error (toujours affiché)"""
-        log_error("Error message")
-        captured = capsys.readouterr()
-        assert captured.out.strip() == "ERREUR: Error message"

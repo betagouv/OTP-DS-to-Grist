@@ -17,6 +17,7 @@ class TestOtpConfiguration:
             grist_api_key="test_key",
             grist_doc_id="test_doc",
             grist_user_id="test_user",
+            grist_user_email="test@example.com",
             filter_date_start="2024-01-01",
             filter_date_end="2024-12-31",
             filter_statuses="en_construction,en_instruction",
@@ -29,6 +30,7 @@ class TestOtpConfiguration:
         assert config.grist_api_key == "test_key"
         assert config.grist_doc_id == "test_doc"
         assert config.grist_user_id == "test_user"
+        assert config.grist_user_email == "test@example.com"
         assert config.filter_date_start == "2024-01-01"
         assert config.filter_date_end == "2024-12-31"
         assert config.filter_statuses == "en_construction,en_instruction"
@@ -37,6 +39,12 @@ class TestOtpConfiguration:
     def test_otp_configuration_table_name(self):
         """Test que le nom de table est correct"""
         assert OtpConfiguration.__tablename__ == "otp_configurations"
+
+    def test_otp_configuration_grist_user_email_default_none(self):
+        """Test que grist_user_email est None par défaut"""
+        config = OtpConfiguration()
+
+        assert config.grist_user_email is None
 
     def test_otp_configuration_filter_fields_default_none(self):
         """Test que les champs de filtres sont None par défaut"""
