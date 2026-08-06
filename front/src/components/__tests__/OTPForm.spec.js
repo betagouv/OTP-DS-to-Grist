@@ -675,6 +675,39 @@ describe('Multi-section save', () => {
     expect(body.otp_config_id).toBe(1)
   })
 
+  it('clears only the error of the section being saved', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [
+        { otp_config_id: 1, demarche_number: '11111' },
+        { otp_config_id: 2, demarche_number: '22222' }
+      ] }) })
+    globalThis.fetch = mockFetch
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    dnSections[0].vm.$emit('error-update', '')
+    dnSections[1].vm.$emit('error-update', '')
+
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[0].vm.getData = () => ({ token: 'dn-token-1', demarche_number: '11111' })
+    dnSections[1].vm.getData = () => ({ token: 'dn-token-2', demarche_number: '22222' })
+
+    wrapper.vm.actionErrors[0] = 'erreur section 0'
+    wrapper.vm.actionErrors[1] = 'erreur section 1'
+    await wrapper.vm.$nextTick()
+
+    dnSections[1].vm.$emit('save', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('erreur section 0')
+    expect(wrapper.vm.actionErrors[1]).toBeNull()
+  })
+
 })
 
 describe('Delete action', () => {
