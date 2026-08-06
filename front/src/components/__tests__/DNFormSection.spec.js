@@ -943,4 +943,18 @@ describe('Filters section integration', () => {
     expect(wrapper.vm.isDirty).toBe(true)
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
   })
+
+  it('keeps the save button active after resetting the filters', async () => {
+    const wrapper = mountWithValidConfig()
+    await flushPromises()
+
+    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-01-01')
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.find('[data-test-id="reset-filters-button"]').trigger('click')
+
+    expect(wrapper.vm.getData().filter_date_start).toBe('')
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
 })
