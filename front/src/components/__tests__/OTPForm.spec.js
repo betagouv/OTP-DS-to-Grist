@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
+import { useDemarcheContext } from '../../composables/useDemarcheContext'
 
 describe('hasUnsavedSection computation', () => {
   const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
@@ -956,6 +957,32 @@ describe('Sync action', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la synchronisation')
+  })
+
+  it('sets the demarcheIndex to the synced section position', async () => {
+    const { setDemarcheIndex, demarcheIndex } = useDemarcheContext()
+    setDemarcheIndex(1)
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 1, grist_base_url: 'https://example.com' },
+        { otp_config_id: 2, grist_base_url: 'https://example.com' }
+      ] })
+    })
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+    dnSections[1].vm.$emit('sync', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(demarcheIndex.value).toBe(2)
   })
 })
 

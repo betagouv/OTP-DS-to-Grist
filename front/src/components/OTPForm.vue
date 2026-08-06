@@ -18,7 +18,7 @@ const props = defineProps({
 
 const emit = defineEmits(['config-loaded'])
 
-const { setDemarcheCount } = useDemarcheContext()
+const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
 const { notify } = useNotification()
 const gristError = ref(null)
 const dnSectionRefs = ref([])
@@ -142,6 +142,7 @@ const handleSync = async (index) => {
   if (!otpConfigIdToSync) return
   actionErrors.value[index] = null
   try {
+    setDemarcheIndex(index + 1)
     await api.startSync(otpConfigIdToSync)
     activeDnAccordion.value = -1
   } catch (e) {
