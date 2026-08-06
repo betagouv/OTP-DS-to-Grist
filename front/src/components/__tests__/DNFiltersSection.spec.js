@@ -1,9 +1,17 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
 import DNFiltersSection from '../DNFiltersSection.vue'
 import OtpAlert from '../OtpAlert.vue'
 import { DsfrMultiselect } from '@gouvminint/vue-dsfr'
+
+beforeEach(() => {
+  globalThis.formatDate = (dateString) => dateString.split('-').reverse().join('/')
+})
+
+afterEach(() => {
+  delete globalThis.formatDate
+})
 
 const mountSection = (existingConfig = null) =>
   mount(DNFiltersSection, {
@@ -311,5 +319,65 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
     expect(wrapper.vm.getData().filter_groups).toBe('')
     expect(hasGroupsSection(wrapper)).toBe(false)
+  })
+
+  it('shows a groups tag when groups are selected and the section is visible', async () => {
+    mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
+    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    await flushPromises()
+
+    await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1])
+
+    expect(wrapper.text()).toContain('Groupes: Groupe A')
+  })
+
+  it('shows no groups tag when the section is hidden (single group)', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Groupes:')
+  })
+})
+
+describe('DNFiltersSection — Filtres actifs', () => {
+  it('shows no active filters block when nothing is selected', () => {
+    const wrapper = mountSection()
+    expect(wrapper.find('h5').exists()).toBe(false)
+  })
+
+  it('shows date tags from existingConfig', () => {
+    const wrapper = mountSection({
+      filter_date_start: '2023-01-01',
+      filter_date_end: '2023-12-31'
+    })
+    expect(wrapper.text()).toContain('Date de début: 01/01/2023')
+    expect(wrapper.text()).toContain('Date de fin: 31/12/2023')
+  })
+
+  it('shows a status tag with labels', () => {
+    const wrapper = mountSection({
+      filter_statuses: 'en_construction,accepte'
+    })
+    expect(wrapper.text()).toContain('Statuts: En construction, Accepté')
+  })
+
+  it('hides a date tag when the date is cleared', async () => {
+    const wrapper = mountSection({
+      filter_date_start: '2023-01-01'
+    })
+    expect(wrapper.text()).toContain('Date de début: 01/01/2023')
+
+    await setDate(wrapper, DATE_DEBUT, '')
+
+    expect(wrapper.text()).not.toContain('Date de début:')
+  })
+
+  it('renders tags as non-interactive spans', () => {
+    const wrapper = mountSection({
+      filter_date_start: '2023-01-01'
+    })
+    const tag = wrapper.find('.fr-tag')
+    expect(tag.element.tagName).toBe('SPAN')
   })
 })

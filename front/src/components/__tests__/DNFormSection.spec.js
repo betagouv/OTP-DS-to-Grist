@@ -11,11 +11,16 @@ vi.mock(
 )
 
 beforeEach(() => {
+  globalThis.formatDate = (dateString) => dateString.split('-').reverse().join('/')
   window.HELP_LINKS = {
     token_api: 'https://fake-url.example.com/token-api',
     grist_api_key: 'https://fake-url.example.com/grist-api-key',
     faq: 'https://fake-url.example.com/faq'
   }
+})
+
+afterEach(() => {
+  delete globalThis.formatDate
 })
 
 
