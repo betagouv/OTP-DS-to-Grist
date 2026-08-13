@@ -246,7 +246,7 @@ defineExpose({
     </ul>
   </div>
 
-  <div class="fr-mt-3w">
+  <div class="fr-my-3w">
     <DsfrButton
       label="Réinitialiser"
       data-test-id="reset-filters-button"
