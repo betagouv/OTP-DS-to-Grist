@@ -256,3 +256,12 @@ defineExpose({
     />
   </div>
 </template>
+
+<style>
+.fr-multiselect__collapse__fieldset
+  > .fr-fieldset__element
+    > .fr-fieldset__element {
+  float: left;
+  width: 50%;
+}
+</style>
