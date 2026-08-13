@@ -667,7 +667,11 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
 
             # Ajouter le champ normalisé à la table des champs
             # MAIS PAS pour les PieceJustificativeChamp car déjà traités ci-dessus
-            if descriptor.get("__typename") != "PieceJustificativeChampDescriptor":
+            # NI pour les RepetitionChamp (données stockées dans leur table dédiée)
+            if descriptor.get("__typename") not in [
+                "PieceJustificativeChampDescriptor",
+                "RepetitionChampDescriptor",
+            ]:
                 normalized_label = normalize_column_name(champ_label)
                 column_type = determine_column_type(
                     champ_type, descriptor.get("__typename")
