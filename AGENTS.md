@@ -11,6 +11,11 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   - Ces étapes devraient être testables
   - Ces étapes ne doivent pas contenir régression
   - Ces étapes devraient être autonome et ne pas dépendre d'une prochaine étape dans la mesure du possible
+  - Avant un refactoring ou un déplacement de code, identifier les tests existants qui
+    alerteraient d'une régression ; si aucun n'existe, les écrire d'abord et vérifier qu'ils
+    passent sur le code actuel avant de le modifier
+  - Avancer les étapes une par une : l'utilisateur relit et vérifie le code à chaque étape
+    avant de commiter et de passer à la suivante
 - Garder les plans concis : privilégier les décisions, l'architecture et les tests, plutôt que des
   détails fragiles (numéros de lignes, tailles de fichiers, listes exhaustives par fichier) qui
   deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
