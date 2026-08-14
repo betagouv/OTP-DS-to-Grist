@@ -1,6 +1,9 @@
+from unittest.mock import MagicMock, patch
+
 from schema_utils import (
     get_problematic_descriptor_ids_from_schema,
     auto_clean_schema_descriptors,
+    update_grist_tables_from_schema,
 )
 
 
@@ -167,3 +170,78 @@ class TestSchemaUtils:
         }
         cleaned = auto_clean_schema_descriptors(schema)
         assert cleaned == schema
+
+
+class TestUpdateGristTablesFromSchema:
+    """Tests unitaires pour la fonction imbriquée add_missing_columns
+    via update_grist_tables_from_schema"""
+
+    def setup_method(self):
+        self.client = MagicMock()
+        self.client.base_url = "https://grist.example.com"
+        self.client.doc_id = "doc1"
+        self.client.headers = {}
+        self.client.list_tables = MagicMock(
+            return_value={"tables": [{"id": "Demarche_123_dossiers"}]}
+        )
+        self.client.create_table = MagicMock(
+            return_value={"tables": [{"id": "creee", "columns": []}]}
+        )
+
+    def _column_types(self):
+        return {
+            "dossier": [{"id": "nouveau_col", "type": "Text"}],
+            "champs": [{"id": "existant", "type": "Text"}],
+            "annotations": [{"id": "dossier_number", "type": "Int"}],
+        }
+
+    def _mock_get(self, status=200, columns=None):
+        response = MagicMock()
+        response.status_code = status
+        response.json.return_value = {"columns": columns or []}
+        return response
+
+    def test_adds_only_missing_columns(self):
+        """seules les colonnes manquantes de la table dossiers sont POSTées"""
+        get_response = self._mock_get(columns=[{"id": "existant", "type": "Text"}])
+        post_response = MagicMock()
+        post_response.status_code = 200
+        with (
+            patch("schema_utils.API_TOKEN", "fake-token"),
+            patch("schema_utils.requests.get", return_value=get_response),
+            patch("schema_utils.requests.post", return_value=post_response) as mock_post,
+        ):
+            result = update_grist_tables_from_schema(
+                self.client, 123, self._column_types()
+            )
+        assert result["dossiers"] == "Demarche_123_dossiers"
+        column_posts = [
+            c
+            for c in mock_post.call_args_list
+            if "columns" in c.kwargs.get("json", {})
+        ]
+        assert len(column_posts) == 1
+        payload = column_posts[0].kwargs["json"]
+        assert payload == {"columns": [{"id": "nouveau_col", "type": "Text"}]}
+        assert column_posts[0].args[0].endswith(
+            "/tables/Demarche_123_dossiers/columns"
+        )
+
+    def test_get_error_no_post(self):
+        """GET en échec -> aucun POST de colonnes"""
+        get_response = self._mock_get(status=500)
+        with (
+            patch("schema_utils.API_TOKEN", "fake-token"),
+            patch("schema_utils.requests.get", return_value=get_response),
+            patch("schema_utils.requests.post") as mock_post,
+        ):
+            result = update_grist_tables_from_schema(
+                self.client, 123, self._column_types()
+            )
+        assert result["dossiers"] == "Demarche_123_dossiers"
+        column_posts = [
+            c
+            for c in mock_post.call_args_list
+            if "columns" in c.kwargs.get("json", {})
+        ]
+        assert column_posts == []
