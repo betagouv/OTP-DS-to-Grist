@@ -78,6 +78,9 @@ Le lire en premier — sans exception. Il peut contenir :
 - Son utilité dans l'architecture
 - Les conventions spécifiques au dossier
 
+Ne pas lister les fichiers du dossier dans un README : cette liste devient vite
+obsolète et fragile. Décrire le rôle et les responsabilités, pas l'inventaire.
+
 ## Conventions
 
 Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
