@@ -721,6 +721,89 @@ class TestUpsertMultipleDossiersInGrist:
             )
         assert ok is False
 
+    def test_filters_unknown_fields_without_cache(self):
+        """sans cache -> les colonnes de l'API filtrent les champs inconnus"""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {
+            "columns": [{"id": "name"}, {"id": "dossier_number"}]
+        }
+        update_response = MagicMock()
+        update_response.status_code = 200
+        with (
+            patch(
+                "grist.client.requests.get",
+                return_value=columns_response,
+            ),
+            patch(
+                "grist.client.requests.patch",
+                return_value=update_response,
+            ) as mock_patch,
+            patch("grist.client.requests.post"),
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
+                existing_records={"1001": 5},
+            )
+        assert ok is True
+        fields = mock_patch.call_args.kwargs["json"]["records"][0]["fields"]
+        assert set(fields.keys()) == {"name", "dossier_number"}
+
+    def test_no_filtering_when_columns_fetch_fails(self):
+        """sans cache, erreur API colonnes -> aucun filtrage des champs"""
+        columns_response = MagicMock()
+        columns_response.status_code = 500
+        columns_response.text = "boom"
+        update_response = MagicMock()
+        update_response.status_code = 200
+        with (
+            patch(
+                "grist.client.requests.get",
+                return_value=columns_response,
+            ),
+            patch(
+                "grist.client.requests.patch",
+                return_value=update_response,
+            ) as mock_patch,
+            patch("grist.client.requests.post"),
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
+                existing_records={"1001": 5},
+            )
+        assert ok is True
+        fields = mock_patch.call_args.kwargs["json"]["records"][0]["fields"]
+        assert set(fields.keys()) == {"name", "dossier_number", "unknown_field"}
+
+    def test_uses_column_cache_when_provided(self):
+        """column_cache fourni -> filtrage via le cache, pas de GET colonnes"""
+        column_cache = MagicMock()
+        column_cache.get_columns.return_value = {"name", "dossier_number"}
+        update_response = MagicMock()
+        update_response.status_code = 200
+        with (
+            patch("grist.client.requests.get") as mock_get,
+            patch(
+                "grist.client.requests.patch",
+                return_value=update_response,
+            ) as mock_patch,
+            patch("grist.client.requests.post"),
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
+                existing_records={"1001": 5},
+                column_cache=column_cache,
+            )
+        assert ok is True
+        mock_get.assert_not_called()
+        column_cache.get_columns.assert_called_once_with("dossiers")
+        mock_patch.assert_called_once()
+        fields = mock_patch.call_args.kwargs["json"]["records"][0]["fields"]
+        assert set(fields.keys()) == {"name", "dossier_number"}
+
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""
         client = GristClient("https://grist.example.com", "test_key")
