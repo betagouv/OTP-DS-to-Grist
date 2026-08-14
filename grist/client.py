@@ -404,6 +404,23 @@ class GristClient:
 
         return columns
 
+    def add_columns(
+        self, table_id: str, columns: list[dict[str, Any]]
+    ) -> requests.Response:
+        """
+        Ajoute des colonnes à une table Grist existante.
+        Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
+        log_verbose(f"POST {url}")
+        payload = {"columns": columns}
+        response = requests.post(url, headers=self.headers, json=payload)
+
+        return response
+
     def create_or_clear_grist_tables(
         self, demarche_number: int | str, column_types: dict[str, Any]
     ) -> dict[str, str]:

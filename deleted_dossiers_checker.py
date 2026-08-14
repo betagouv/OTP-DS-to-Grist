@@ -35,11 +35,7 @@ def _ensure_deletion_columns(client, table_id, log, log_error):
     if not missing:
         return True
 
-    r = requests.post(
-        f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns",
-        headers=client.headers,
-        json={"columns": missing},
-    )
+    r = client.add_columns(table_id, missing)
     if r.status_code == 200:
         log(f"  Colonnes créées : {[c['id'] for c in missing]}")
         return True

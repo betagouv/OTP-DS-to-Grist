@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from grist_processor_working_all import (
     normalize_column_name,
@@ -201,69 +201,60 @@ class TestAddIdColumnsBasedOnAnnotations:
     def test_creates_only_missing_id_columns(self):
         """ne crée que les colonnes *_id manquantes"""
         self.client.get_columns.return_value = {"commentaire_id": "Text"}
-        post_response = self._mock_post()
+        self.client.add_columns.return_value = self._mock_post()
         annotations = [
             {"id": 1, "label": "Commentaire"},
             {"id": 2, "label": "annotation_Réponse"},
         ]
-        with patch(
-            "grist_processor_working_all.requests.post",
-            return_value=post_response,
-        ) as mock_post:
-            result = add_id_columns_based_on_annotations(
-                self.client, "annotations", annotations
-            )
+        result = add_id_columns_based_on_annotations(
+            self.client, "annotations", annotations
+        )
         assert result == ["reponse_id"]
-        payload = mock_post.call_args.kwargs["json"]
-        assert payload == {"columns": [{"id": "reponse_id", "type": "Text"}]}
+        self.client.add_columns.assert_called_once()
+        assert self.client.add_columns.call_args.args[0] == "annotations"
+        assert self.client.add_columns.call_args.args[1] == [
+            {"id": "reponse_id", "type": "Text"}
+        ]
 
     def test_posts_all_when_get_fails(self):
         """GET en échec -> aucun filtrage, POST de toutes les colonnes"""
         self.client.get_columns.return_value = {}
-        post_response = self._mock_post()
+        self.client.add_columns.return_value = self._mock_post()
         annotations = [{"id": 1, "label": "Commentaire"}]
-        with patch(
-            "grist_processor_working_all.requests.post",
-            return_value=post_response,
-        ) as mock_post:
-            result = add_id_columns_based_on_annotations(
-                self.client, "annotations", annotations
-            )
+        result = add_id_columns_based_on_annotations(
+            self.client, "annotations", annotations
+        )
         assert result == ["commentaire_id"]
-        payload = mock_post.call_args.kwargs["json"]
-        assert payload == {"columns": [{"id": "commentaire_id", "type": "Text"}]}
+        self.client.add_columns.assert_called_once()
+        assert self.client.add_columns.call_args.args[0] == "annotations"
+        assert self.client.add_columns.call_args.args[1] == [
+            {"id": "commentaire_id", "type": "Text"}
+        ]
 
     def test_skips_annotations_without_label_or_id(self):
         """annotation sans label ou sans id -> ignorée"""
         self.client.get_columns.return_value = {}
-        post_response = self._mock_post()
+        self.client.add_columns.return_value = self._mock_post()
         annotations = [
             {"id": 1, "label": "Commentaire"},
             {"label": "Sans id"},
             {"id": 2},
         ]
-        with patch(
-            "grist_processor_working_all.requests.post",
-            return_value=post_response,
-        ) as mock_post:
-            result = add_id_columns_based_on_annotations(
-                self.client, "annotations", annotations
-            )
+        result = add_id_columns_based_on_annotations(
+            self.client, "annotations", annotations
+        )
         assert result == ["commentaire_id"]
-        assert len(mock_post.call_args.kwargs["json"]["columns"]) == 1
+        assert len(self.client.add_columns.call_args.args[1]) == 1
 
     def test_no_post_when_all_columns_exist(self):
         """toutes les colonnes existent -> pas de POST, retour None"""
         self.client.get_columns.return_value = {"commentaire_id": "Text"}
         annotations = [{"id": 1, "label": "Commentaire"}]
-        with patch(
-            "grist_processor_working_all.requests.post"
-        ) as mock_post:
-            result = add_id_columns_based_on_annotations(
-                self.client, "annotations", annotations
-            )
+        result = add_id_columns_based_on_annotations(
+            self.client, "annotations", annotations
+        )
         assert result is None
-        mock_post.assert_not_called()
+        self.client.add_columns.assert_not_called()
 
     def test_no_annotations_no_http(self):
         """aucune annotation -> aucun appel HTTP"""
@@ -271,4 +262,5 @@ class TestAddIdColumnsBasedOnAnnotations:
             self.client, "annotations", []
         )
         assert result is None
+        self.client.add_columns.assert_not_called()
         self.client.get_columns.assert_not_called()

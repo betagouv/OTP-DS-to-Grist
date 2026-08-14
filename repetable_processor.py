@@ -74,14 +74,7 @@ def ensure_repetable_columns_exist(client, table_id, repetable_data):
                 log(f"    - {col_name} (type: {col_type})")
 
             # 5. Ajouter les colonnes manquantes
-            add_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-            add_payload = {"columns": columns_to_add}
-
-            add_response = requests.post(
-                add_url,
-                headers=client.headers,
-                json=add_payload
-            )
+            add_response = client.add_columns(table_id, columns_to_add)
 
             if add_response.status_code == 200:
                 log(f"  [CORRECTION] ✅ {len(missing_columns)} colonnes ajoutées avec succès")
@@ -199,12 +192,7 @@ def auto_fix_missing_columns_optimized(client, table_id, records_payload):
                 col_type = column_types.get(col_name, "Text")
                 columns_to_add.append({"id": col_name, "type": col_type})
 
-            add_payload = {"columns": columns_to_add}
-            add_response = requests.post(
-                f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns",
-                headers=client.headers,
-                json=add_payload,
-            )
+            add_response = client.add_columns(table_id, columns_to_add)
 
             if add_response.status_code != 200:
                 log_error(f"    [AUTO-FIX] ECHEC ajout colonnes: {add_response.text}")
@@ -888,9 +876,7 @@ def process_repetables_for_grist(
 
             if missing_columns:
                 log(f"  Ajout de {len(missing_columns)} colonnes manquantes...")
-                add_columns_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-                add_columns_payload = {"columns": missing_columns}
-                add_response = requests.post(add_columns_url, headers=client.headers, json=add_columns_payload)
+                add_response = client.add_columns(table_id, missing_columns)
 
                 if add_response.status_code != 200:
                     log_error(f"  Erreur lors de l'ajout des colonnes: {add_response.text}")

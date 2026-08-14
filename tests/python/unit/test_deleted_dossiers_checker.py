@@ -30,27 +30,23 @@ class TestEnsureDeletionColumns:
             DATE_COLUMN_ID: "DateTime",
             REASON_COLUMN_ID: "Text",
         }
-        with patch("deleted_dossiers_checker.requests.post") as mock_post:
-            result = _ensure_deletion_columns(
-                self.client, "dossiers", self.log, self.log_error
-            )
+        result = _ensure_deletion_columns(
+            self.client, "dossiers", self.log, self.log_error
+        )
         assert result is True
-        mock_post.assert_not_called()
+        self.client.add_columns.assert_not_called()
 
     def test_missing_columns_created(self):
         """colonnes absentes -> POST des 3 colonnes avec label et type"""
         self.client.get_columns.return_value = {}
-        post_response = self._mock_post()
-        with patch(
-            "deleted_dossiers_checker.requests.post",
-            return_value=post_response,
-        ) as mock_post:
-            result = _ensure_deletion_columns(
-                self.client, "dossiers", self.log, self.log_error
-            )
+        self.client.add_columns.return_value = self._mock_post()
+        result = _ensure_deletion_columns(
+            self.client, "dossiers", self.log, self.log_error
+        )
         assert result is True
-        payload = mock_post.call_args.kwargs["json"]
-        columns = payload["columns"]
+        self.client.add_columns.assert_called_once()
+        assert self.client.add_columns.call_args.args[0] == "dossiers"
+        columns = self.client.add_columns.call_args.args[1]
         assert {c["id"] for c in columns} == {
             COLUMN_ID,
             DATE_COLUMN_ID,
@@ -65,28 +61,20 @@ class TestEnsureDeletionColumns:
     def test_get_error_still_posts(self):
         """GET en échec -> POST quand même des 3 colonnes"""
         self.client.get_columns.return_value = {}
-        post_response = self._mock_post()
-        with patch(
-            "deleted_dossiers_checker.requests.post",
-            return_value=post_response,
-        ) as mock_post:
-            result = _ensure_deletion_columns(
-                self.client, "dossiers", self.log, self.log_error
-            )
+        self.client.add_columns.return_value = self._mock_post()
+        result = _ensure_deletion_columns(
+            self.client, "dossiers", self.log, self.log_error
+        )
         assert result is True
-        assert len(mock_post.call_args.kwargs["json"]["columns"]) == 3
+        assert len(self.client.add_columns.call_args.args[1]) == 3
 
     def test_post_error_returns_false(self):
         """POST en échec -> False"""
         self.client.get_columns.return_value = {}
-        post_response = self._mock_post(status=500)
-        with patch(
-            "deleted_dossiers_checker.requests.post",
-            return_value=post_response,
-        ):
-            result = _ensure_deletion_columns(
-                self.client, "dossiers", self.log, self.log_error
-            )
+        self.client.add_columns.return_value = self._mock_post(status=500)
+        result = _ensure_deletion_columns(
+            self.client, "dossiers", self.log, self.log_error
+        )
         assert result is False
 
 

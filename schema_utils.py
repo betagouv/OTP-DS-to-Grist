@@ -1023,12 +1023,7 @@ def update_grist_tables_from_schema(
                 log(
                     f"Ajout de {len(missing_columns)} colonnes manquantes à la table {table_id}"
                 )
-                add_payload = {"columns": missing_columns}
-                add_response = requests.post(
-                    f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns",
-                    headers=client.headers,
-                    json=add_payload,
-                )
+                add_response = client.add_columns(table_id, missing_columns)
 
                 if add_response.status_code == 200:
                     log("Colonnes ajoutées avec succès")

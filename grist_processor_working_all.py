@@ -731,9 +731,7 @@ def add_id_columns_based_on_annotations(client, table_id, annotations):
             ]
 
         if columns_to_add:
-            url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-            payload = {"columns": columns_to_add}
-            response = requests.post(url, headers=client.headers, json=payload)
+            response = client.add_columns(table_id, columns_to_add)
 
             if response.status_code != 200:
                 log_error(f"Erreur lors de l'ajout des colonnes d'ID: {response.text}")
