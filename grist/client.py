@@ -1,24 +1,27 @@
 import traceback
+from typing import Any
 
 import requests
 from utils.log import log, log_verbose, log_error, log_progress
 
 
 class GristClient:
-    def __init__(self, base_url, api_key, doc_id=None):
-        self.base_url = base_url.rstrip("/")  # Enlever le / final s'il y en a un
-        self.api_key = api_key
-        self.doc_id = doc_id
-        self.headers = {
+    def __init__(
+        self, base_url: str, api_key: str, doc_id: str | None = None
+    ) -> None:
+        self.base_url: str = base_url.rstrip("/")  # Enlever le / final s'il y en a un
+        self.api_key: str = api_key
+        self.doc_id: str | None = doc_id
+        self.headers: dict[str, str] = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
         log(f"Initialisation du client Grist avec l'URL de base: {self.base_url}")
 
-    def set_doc_id(self, doc_id):
+    def set_doc_id(self, doc_id: str | None) -> None:
         self.doc_id = doc_id
 
-    def _extract_email_from_scim(self, data: dict) -> str | None:
+    def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
         """
         Extrait l'email primaire d'une réponse SCIM /Me.
         primary > premier email > None. userName est ignoré (peut être un pseudo).
@@ -32,7 +35,7 @@ class GristClient:
 
         return (primary or emails[0]).get("value")
 
-    def get_grist_user_email(self):
+    def get_grist_user_email(self) -> str | None:
         """Email Grist de l'utilisateur courant via SCIM /Me. None si indisponible."""
         try:
             resp = requests.get(
@@ -48,7 +51,7 @@ class GristClient:
 
             return None
 
-    def table_exists(self, table_id):
+    def table_exists(self, table_id: str) -> dict[str, Any] | None:
         """
         Vérifie si une table existe dans le document Grist.
         """
@@ -82,7 +85,7 @@ class GristClient:
             log_error(f"Erreur lors de la recherche de la table {table_id}: {e}")
             return None
 
-    def get_existing_dossier_numbers(self, table_id):
+    def get_existing_dossier_numbers(self, table_id: str) -> dict[str, int]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
@@ -128,7 +131,7 @@ class GristClient:
         return dossier_dict
 
     # Fonction upsert par date
-    def get_existing_dossier_dates(self, table_id):
+    def get_existing_dossier_dates(self, table_id: str) -> dict[str, dict[str, Any]]:
         """
         Récupère les dates de modification stockées dans Grist pour la table dossiers.
         Retourne un dict {str(dossier_number): {
@@ -169,7 +172,9 @@ class GristClient:
         log(f"  Cache dates: {len(dates_dict)} dossiers chargés depuis {table_id}")
         return dates_dict
 
-    def get_sync_metadata(self, demarche_number):
+    def get_sync_metadata(
+        self, demarche_number: int | str
+    ) -> dict[str, Any] | None:
         """
         Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.
         Retourne un dict ou None si pas encore de sync enregistrée.
@@ -197,7 +202,12 @@ class GristClient:
 
         return None  # première sync
 
-    def save_sync_metadata(self, demarche_number, metadata, existing_grist_id=None):
+    def save_sync_metadata(
+        self,
+        demarche_number: int | str,
+        metadata: dict[str, Any],
+        existing_grist_id: int | None = None,
+    ) -> int | None:
         """
         Crée ou met à jour la ligne de métadonnées de sync pour une démarche.
 
@@ -236,7 +246,7 @@ class GristClient:
 
         return existing_grist_id
 
-    def upsert_dossier_in_grist(self, table_id, row_dict):
+    def upsert_dossier_in_grist(self, table_id: str, row_dict: dict[str, Any]) -> bool:
         """
         Insère ou met à jour un dossier dans une table Grist, en filtrant les champs problématiques.
         """
@@ -303,7 +313,7 @@ class GristClient:
             )
             return False
 
-    def list_documents(self):
+    def list_documents(self) -> dict[str, Any]:
         url = f"{self.base_url}/docs"
         log_verbose(f"GET {url}")
         response = requests.get(url, headers=self.headers)
@@ -314,7 +324,7 @@ class GristClient:
         data = response.json()
         return data
 
-    def get_document_info(self):
+    def get_document_info(self) -> dict[str, Any]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
         url = f"{self.base_url}/docs/{self.doc_id}"
@@ -327,7 +337,7 @@ class GristClient:
         data = response.json()
         return data
 
-    def list_tables(self):
+    def list_tables(self) -> dict[str, Any]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
@@ -341,7 +351,9 @@ class GristClient:
         data = response.json()
         return data
 
-    def create_table(self, table_id, columns):
+    def create_table(
+        self, table_id: str, columns: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
@@ -365,7 +377,36 @@ class GristClient:
         result = response.json()
         return result
 
-    def create_or_clear_grist_tables(self, demarche_number, column_types):
+    def get_columns(self, table_id: str) -> dict[str, str]:
+        """
+        Récupère les colonnes d'une table sous forme de dict {col_id: type}.
+        Retourne un dict vide en cas d'erreur.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
+        log_verbose(f"GET {url}")
+        response = requests.get(url, headers=self.headers)
+
+        if response.status_code != 200:
+            log_error(
+                f"Erreur lors de la récupération des colonnes: {response.status_code} - {response.text}"
+            )
+
+            return {}
+
+        columns = {}
+        for col in response.json().get("columns", []):
+            col_id = col.get("id")
+            if col_id:
+                columns[col_id] = col.get("type", "Text")
+
+        return columns
+
+    def create_or_clear_grist_tables(
+        self, demarche_number: int | str, column_types: dict[str, Any]
+    ) -> dict[str, str]:
         """
         Crée ou met à jour les tables Grist pour une démarche.
         """
@@ -457,8 +498,12 @@ class GristClient:
             raise
 
     def upsert_multiple_dossiers_in_grist(
-        self, table_id, dossiers_list, existing_records=None, column_cache=None
-    ):
+        self,
+        table_id: str,
+        dossiers_list: list[dict[str, Any]],
+        existing_records: dict[str, int] | None = None,
+        column_cache=None,
+    ) -> bool:
         """
         Insère ou met à jour plusieurs dossiers en une seule requête.
         Version corrigée avec gestion appropriée des succès/échecs et cache optionnel.
@@ -488,13 +533,7 @@ class GristClient:
             if column_cache:
                 existing_columns = column_cache.get_columns(table_id)
             else:
-                url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
-                response = requests.get(url, headers=self.headers)
-                if response.status_code == 200:
-                    columns_data = response.json()
-                    if "columns" in columns_data:
-                        for col in columns_data["columns"]:
-                            existing_columns.add(col.get("id"))
+                existing_columns = set(self.get_columns(table_id))
         except Exception as e:
             log_error(f"Erreur lors de la récupération des colonnes: {str(e)}")
 

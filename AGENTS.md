@@ -85,6 +85,9 @@ obsolète et fragile. Décrire le rôle et les responsabilités, pas l'inventair
 
 Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
 Conventions de nommage : standards Python (PEP 8) et JS.
+Typer les signatures des fonctions touchées lors d'une modification (approche incrémentale), en
+cohérence avec le style existant : types natifs (`dict[str, str]`, `set[str]`, ...) et unions
+`X | None`, sans type checker obligatoire.
 
 ## Tests
 

@@ -558,6 +558,77 @@ class TestCreateTable:
         assert payload["tables"][0]["id"] == "t"
 
 
+class TestGetColumns:
+    """Tests unitaires pour GristClient.get_columns"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_success_builds_types_dict(self):
+        """200 -> {id: type} avec type par défaut Text"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "columns": [
+                {"id": "name", "type": "Text"},
+                {"id": "nb", "type": "Int"},
+                {"id": "memo"},
+            ]
+        }
+        with patch(
+            "grist.client.requests.get",
+            return_value=mock_response,
+        ):
+            result = self.client.get_columns("dossiers")
+        assert result == {"name": "Text", "nb": "Int", "memo": "Text"}
+
+    def test_skips_columns_without_id(self):
+        """colonnes sans id -> ignorées"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "columns": [{"id": "name", "type": "Text"}, {"type": "Text"}, {}]
+        }
+        with patch(
+            "grist.client.requests.get",
+            return_value=mock_response,
+        ):
+            result = self.client.get_columns("dossiers")
+        assert result == {"name": "Text"}
+
+    def test_missing_columns_key_returns_empty(self):
+        """200 sans clé 'columns' -> {}"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {}
+        with patch(
+            "grist.client.requests.get",
+            return_value=mock_response,
+        ):
+            result = self.client.get_columns("dossiers")
+        assert result == {}
+
+    def test_non_200_returns_empty(self):
+        """non-200 -> {}"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        with patch(
+            "grist.client.requests.get",
+            return_value=mock_response,
+        ):
+            result = self.client.get_columns("dossiers")
+        assert result == {}
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.get_columns("dossiers")
+
+
 class TestCreateOrClearGristTables:
     """Tests unitaires pour GristClient.create_or_clear_grist_tables"""
 
