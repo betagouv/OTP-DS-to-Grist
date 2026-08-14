@@ -1,11 +1,14 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from repetable_processor import (
     ensure_repetable_columns_exist,
     auto_fix_missing_columns_optimized,
     process_repetables_for_grist,
     process_repetable_data_batch,
     process_repetables_batch,
+    get_existing_repetable_rows_improved_no_filter,
 )
 
 
@@ -222,6 +225,89 @@ class TestProcessRepetablesForGrist:
         assert "geo_id" in column_ids
         assert "geo_surface" in column_ids
         mock_post.assert_not_called()
+
+
+class TestGetExistingRepetableRowsImprovedNoFilter:
+    """Tests unitaires pour get_existing_repetable_rows_improved_no_filter"""
+
+    def setup_method(self):
+        self.client = MagicMock()
+        self.client.base_url = "https://grist.example.com"
+        self.client.doc_id = "doc1"
+        self.client.headers = {"Authorization": "Bearer test"}
+
+    def _mock_response(self, status=200, records=None):
+        response = MagicMock()
+        response.status_code = status
+        response.text = "err"
+        response.json.return_value = {"records": records or []}
+        return response
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError, pas d'appel HTTP"""
+        self.client.doc_id = None
+        with patch("repetable_processor.requests.get") as mock_get:
+            with pytest.raises(ValueError):
+                get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        mock_get.assert_not_called()
+
+    def test_http_error_returns_empty_dict(self):
+        """réponse non-200 -> {}"""
+        with patch(
+            "repetable_processor.requests.get",
+            return_value=self._mock_response(500),
+        ) as mock_get:
+            result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        assert result == {}
+        assert mock_get.call_args.args[0] == (
+            "https://grist.example.com/docs/doc1/tables/blocs/records"
+        )
+        assert mock_get.call_args.kwargs["headers"] == self.client.headers
+
+    def test_success_builds_composite_keys(self):
+        """200 -> dict des clés composites vers l'id de l'enregistrement"""
+        records = [
+            {
+                "id": 42,
+                "fields": {
+                    "dossier_number": "123",
+                    "block_label": "Maquettes",
+                    "block_row_id": "row_1",
+                    "block_row_index": 1,
+                },
+            }
+        ]
+        with patch(
+            "repetable_processor.requests.get",
+            return_value=self._mock_response(200, records),
+        ):
+            result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        assert result["123_Maquettes_row_1"] == 42
+        assert result["123_maquettes_row_1"] == 42
+        assert result["123_Maquettes_index_1"] == 42
+        assert result["row_1"] == 42
+
+    def test_success_builds_geo_keys(self):
+        """200 avec géométrie -> clés géo"""
+        records = [
+            {
+                "id": 7,
+                "fields": {
+                    "dossier_number": "123",
+                    "block_label": "Maquettes",
+                    "block_row_id": "row_1_geo1",
+                    "field_name": "carte",
+                    "geo_id": "g1",
+                },
+            }
+        ]
+        with patch(
+            "repetable_processor.requests.get",
+            return_value=self._mock_response(200, records),
+        ):
+            result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        assert result["123_Maquettes_row_1_geo1"] == 7
+        assert result["123_maquettes_carte_g1"] == 7
 
 
 class TestProcessRepetableDataBatchRecords:

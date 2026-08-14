@@ -404,6 +404,20 @@ class GristClient:
 
         return columns
 
+    def get_records(self, table_id: str) -> requests.Response:
+        """
+        Récupère les enregistrements d'une table Grist.
+        Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
+        log_verbose(f"GET {url}")
+        response = requests.get(url, headers=self.headers)
+
+        return response
+
     def add_columns(
         self, table_id: str, columns: list[dict[str, Any]]
     ) -> requests.Response:

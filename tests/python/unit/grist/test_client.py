@@ -629,6 +629,51 @@ class TestGetColumns:
             client.get_columns("dossiers")
 
 
+class TestGetRecords:
+    """Tests unitaires pour GristClient.get_records"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_success_gets_records(self):
+        """GET /records avec le bon URL et headers, renvoie la réponse brute"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        with patch(
+            "grist.client.requests.get",
+            return_value=mock_response,
+        ) as mock_get:
+            result = self.client.get_records("dossiers")
+        assert result is mock_response
+        mock_get.assert_called_once()
+        assert (
+            mock_get.call_args.args[0]
+            == "https://grist.example.com/docs/doc123/tables/dossiers/records"
+        )
+        assert mock_get.call_args.kwargs["headers"] == self.client.headers
+
+    def test_non_200_returns_response(self):
+        """non-200 -> aucune exception, la réponse est renvoyée"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        with patch(
+            "grist.client.requests.get",
+            return_value=mock_response,
+        ):
+            result = self.client.get_records("dossiers")
+        assert result is mock_response
+        assert result.status_code == 500
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.get_records("dossiers")
+
+
 class TestAddColumns:
     """Tests unitaires pour GristClient.add_columns"""
 
