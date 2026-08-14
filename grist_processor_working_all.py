@@ -163,21 +163,10 @@ def filter_record_to_existing_columns(client, table_id, record):
     """
     # Récupérer les colonnes existantes
     try:
-        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=client.headers)
+        existing_columns = client.get_columns(table_id)
 
-        if response.status_code != 200:
-            log_error(
-                f"Erreur lors de la récupération des colonnes: {response.status_code}"
-            )
+        if not existing_columns:
             return record  # Retourner l'enregistrement tel quel en cas d'erreur
-
-        columns_data = response.json()
-        existing_columns = set()
-
-        if "columns" in columns_data:
-            for col in columns_data["columns"]:
-                existing_columns.add(col.get("id"))
 
         log_verbose(
             f"Colonnes existantes dans la table {table_id}: {len(existing_columns)}"
@@ -733,17 +722,9 @@ def add_id_columns_based_on_annotations(client, table_id, annotations):
 
     if columns_to_add:
         # Vérifier les colonnes existantes pour éviter des doublons
-        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=client.headers)
+        existing_column_ids = client.get_columns(table_id)
 
-        if response.status_code == 200:
-            columns_data = response.json()
-            existing_column_ids = set()
-
-            if "columns" in columns_data:
-                for col in columns_data["columns"]:
-                    existing_column_ids.add(col.get("id"))
-
+        if existing_column_ids:
             # Filtrer pour n'ajouter que les colonnes manquantes
             columns_to_add = [
                 col for col in columns_to_add if col["id"] not in existing_column_ids

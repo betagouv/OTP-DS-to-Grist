@@ -18,13 +18,7 @@ REASON_COLUMN_ID = "raison_suppression"
 
 def _ensure_deletion_columns(client, table_id, log, log_error):
     """Crée les colonnes de suppression (Bool/DateTime/Text) si elles n'existent pas."""
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-    response = requests.get(url, headers=client.headers)
-    existing = (
-        {col["id"] for col in response.json().get("columns", [])}
-        if response.status_code == 200
-        else set()
-    )
+    existing = set(client.get_columns(table_id))
 
     needed = [
         {"id": COLUMN_ID, "fields": {"label": COLUMN_LABEL, "type": "Bool"}},
@@ -41,7 +35,11 @@ def _ensure_deletion_columns(client, table_id, log, log_error):
     if not missing:
         return True
 
-    r = requests.post(url, headers=client.headers, json={"columns": missing})
+    r = requests.post(
+        f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns",
+        headers=client.headers,
+        json={"columns": missing},
+    )
     if r.status_code == 200:
         log(f"  Colonnes créées : {[c['id'] for c in missing]}")
         return True

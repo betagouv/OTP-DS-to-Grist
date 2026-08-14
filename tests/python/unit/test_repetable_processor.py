@@ -13,12 +13,6 @@ class TestEnsureRepetableColumnsExist:
     def setup_method(self):
         self.client = MagicMock()
 
-    def _mock_get(self, status=200, columns=None):
-        response = MagicMock()
-        response.status_code = status
-        response.json.return_value = {"columns": columns or []}
-        return response
-
     def _mock_post(self, status=200):
         response = MagicMock()
         response.status_code = status
@@ -27,21 +21,14 @@ class TestEnsureRepetableColumnsExist:
 
     def test_empty_data_no_http(self):
         """aucune donnée -> True sans appel HTTP"""
-        with patch("repetable_processor.requests.get") as mock_get:
-            result = ensure_repetable_columns_exist(self.client, "blocs", [])
+        result = ensure_repetable_columns_exist(self.client, "blocs", [])
         assert result is True
-        mock_get.assert_not_called()
+        self.client.get_columns.assert_not_called()
 
     def test_all_columns_present_no_post(self):
         """colonnes nécessaires présentes -> True, pas de POST"""
-        get_response = self._mock_get(columns=[{"id": "age"}])
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch("repetable_processor.requests.post") as mock_post,
-        ):
+        self.client.get_columns.return_value = {"age": "Int"}
+        with patch("repetable_processor.requests.post") as mock_post:
             result = ensure_repetable_columns_exist(
                 self.client, "blocs", [{"age": 5}]
             )
@@ -50,18 +37,12 @@ class TestEnsureRepetableColumnsExist:
 
     def test_missing_columns_created_with_inferred_type(self):
         """colonnes manquantes -> POST avec type inféré"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {"autre_col": "Text"}
         post_response = self._mock_post()
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "repetable_processor.requests.post",
+            return_value=post_response,
+        ) as mock_post:
             result = ensure_repetable_columns_exist(
                 self.client, "blocs", [{"age": 5}]
             )
@@ -71,14 +52,8 @@ class TestEnsureRepetableColumnsExist:
 
     def test_get_error_returns_false(self):
         """GET en échec -> False, pas de POST"""
-        get_response = self._mock_get(status=500)
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch("repetable_processor.requests.post") as mock_post,
-        ):
+        self.client.get_columns.return_value = {}
+        with patch("repetable_processor.requests.post") as mock_post:
             result = ensure_repetable_columns_exist(
                 self.client, "blocs", [{"age": 5}]
             )
@@ -87,17 +62,11 @@ class TestEnsureRepetableColumnsExist:
 
     def test_post_error_returns_false(self):
         """POST en échec -> False"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {"autre_col": "Text"}
         post_response = self._mock_post(status=500)
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=post_response,
-            ),
+        with patch(
+            "repetable_processor.requests.post",
+            return_value=post_response,
         ):
             result = ensure_repetable_columns_exist(
                 self.client, "blocs", [{"age": 5}]
@@ -111,12 +80,6 @@ class TestAutoFixMissingColumnsOptimized:
     def setup_method(self):
         self.client = MagicMock()
 
-    def _mock_get(self, status=200, columns=None):
-        response = MagicMock()
-        response.status_code = status
-        response.json.return_value = {"columns": columns or []}
-        return response
-
     def _mock_post(self, status=200):
         response = MagicMock()
         response.status_code = status
@@ -125,14 +88,8 @@ class TestAutoFixMissingColumnsOptimized:
 
     def test_get_error_returns_false_none(self):
         """GET en échec -> (False, None), pas de POST"""
-        get_response = self._mock_get(status=500)
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch("repetable_processor.requests.post") as mock_post,
-        ):
+        self.client.get_columns.return_value = {}
+        with patch("repetable_processor.requests.post") as mock_post:
             success, response = auto_fix_missing_columns_optimized(
                 self.client, "dossiers", {"records": []}
             )
@@ -141,20 +98,14 @@ class TestAutoFixMissingColumnsOptimized:
 
     def test_adds_missing_columns_then_records(self):
         """colonnes manquantes -> POST colonnes puis POST records"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {"deja_la": "Text"}
         columns_post_response = self._mock_post()
         records_post_response = self._mock_post(status=201)
         payload = {"records": [{"fields": {"nom": "x", "age": 5}}]}
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                side_effect=[columns_post_response, records_post_response],
-            ) as mock_post,
-        ):
+        with patch(
+            "repetable_processor.requests.post",
+            side_effect=[columns_post_response, records_post_response],
+        ) as mock_post:
             success, response = auto_fix_missing_columns_optimized(
                 self.client, "dossiers", payload
             )
@@ -168,19 +119,13 @@ class TestAutoFixMissingColumnsOptimized:
 
     def test_no_missing_columns_only_records(self):
         """aucune colonne manquante -> pas de POST colonnes"""
-        get_response = self._mock_get(columns=[{"id": "nom"}, {"id": "age"}])
+        self.client.get_columns.return_value = {"nom": "Text", "age": "Int"}
         records_post_response = self._mock_post(status=201)
         payload = {"records": [{"fields": {"nom": "x", "age": 5}}]}
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=records_post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "repetable_processor.requests.post",
+            return_value=records_post_response,
+        ) as mock_post:
             success, response = auto_fix_missing_columns_optimized(
                 self.client, "dossiers", payload
             )
@@ -190,19 +135,13 @@ class TestAutoFixMissingColumnsOptimized:
 
     def test_records_post_error_returns_false(self):
         """POST records en échec -> (False, response)"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {"deja_la": "Text"}
         columns_post_response = self._mock_post()
         records_post_response = self._mock_post(status=400)
         payload = {"records": [{"fields": {"nom": "x"}}]}
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                side_effect=[columns_post_response, records_post_response],
-            ),
+        with patch(
+            "repetable_processor.requests.post",
+            side_effect=[columns_post_response, records_post_response],
         ):
             success, response = auto_fix_missing_columns_optimized(
                 self.client, "dossiers", payload
@@ -211,18 +150,12 @@ class TestAutoFixMissingColumnsOptimized:
 
     def test_columns_post_error_no_records(self):
         """POST colonnes en échec -> (False, response), pas de POST records"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {"deja_la": "Text"}
         columns_post_response = self._mock_post(status=400)
-        with (
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=columns_post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "repetable_processor.requests.post",
+            return_value=columns_post_response,
+        ) as mock_post:
             success, response = auto_fix_missing_columns_optimized(
                 self.client, "dossiers", {"records": [{"fields": {"nom": "x"}}]}
             )
@@ -238,30 +171,19 @@ class TestProcessRepetablesForGrist:
         self.client.base_url = "https://grist.example.com"
         self.client.doc_id = "doc1"
 
-    def _mock_get(self, status=200, columns=None):
-        response = MagicMock()
-        response.status_code = status
-        response.json.return_value = {"columns": columns or []}
-        response.text = "boom"
-        return response
-
     def _mock_post(self, status=200):
         response = MagicMock()
         response.status_code = status
         response.text = "err"
         return response
 
-    def _call(self, get_response):
+    def _call(self):
         dossier_data = {"number": 123, "champs": []}
         column_types = [{"id": "champ_1", "type": "Text"}, {"id": "champ_2", "type": "Text"}]
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
-            ),
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
             ),
             patch("repetable_processor.requests.post") as mock_post,
         ):
@@ -272,13 +194,14 @@ class TestProcessRepetablesForGrist:
 
     def test_get_error_no_post_columns(self):
         """GET en échec -> aucune colonne ajoutée, aucun POST, pas de données insérées"""
-        result, mock_post = self._call(self._mock_get(status=500))
+        self.client.get_columns.return_value = {}
+        result, mock_post = self._call()
         assert result == (0, 0)
         mock_post.assert_not_called()
 
     def test_missing_columns_posted_with_geo(self):
         """colonnes manquantes -> POST avec les colonnes manquantes et les colonnes géo"""
-        get_response = self._mock_get(columns=[{"id": "champ_1"}])
+        self.client.get_columns.return_value = {"champ_1": "Text"}
         post_response = self._mock_post()
         dossier_data = {"number": 123, "champs": []}
         column_types = [{"id": "champ_1", "type": "Text"}, {"id": "champ_2", "type": "Text"}]
@@ -286,10 +209,6 @@ class TestProcessRepetablesForGrist:
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
-            ),
-            patch(
-                "repetable_processor.requests.get",
-                return_value=get_response,
             ),
             patch(
                 "repetable_processor.requests.post",

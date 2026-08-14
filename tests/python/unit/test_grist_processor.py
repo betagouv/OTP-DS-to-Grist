@@ -153,54 +153,36 @@ class TestFilterRecordToExistingColumns:
     def setup_method(self):
         self.client = MagicMock()
 
-    def _mock_get(self, status=200, columns=None):
-        response = MagicMock()
-        response.status_code = status
-        response.json.return_value = {"columns": columns or []}
-        return response
-
     def test_filters_unknown_columns(self):
         """ne garde que les colonnes existantes"""
-        response = self._mock_get(columns=[{"id": "name"}, {"id": "email"}])
-        with patch(
-            "grist_processor_working_all.requests.get", return_value=response
-        ):
-            result = filter_record_to_existing_columns(
-                self.client, "dossiers", {"name": "x", "toto": 1}
-            )
+        self.client.get_columns.return_value = {"name": "Text", "email": "Text"}
+        result = filter_record_to_existing_columns(
+            self.client, "dossiers", {"name": "x", "toto": 1}
+        )
         assert result == {"name": "x"}
 
     def test_keeps_dossier_number_even_if_absent(self):
         """dossier_number est toujours conservé même s'il n'existe pas dans la table"""
-        response = self._mock_get(columns=[{"id": "name"}])
-        with patch(
-            "grist_processor_working_all.requests.get", return_value=response
-        ):
-            result = filter_record_to_existing_columns(
-                self.client, "dossiers", {"name": "x", "dossier_number": 5}
-            )
+        self.client.get_columns.return_value = {"name": "Text"}
+        result = filter_record_to_existing_columns(
+            self.client, "dossiers", {"name": "x", "dossier_number": 5}
+        )
         assert result == {"name": "x", "dossier_number": 5}
 
     def test_returns_record_unchanged_on_http_error(self):
         """erreur HTTP -> enregistrement inchangé"""
-        response = self._mock_get(status=500)
-        with patch(
-            "grist_processor_working_all.requests.get", return_value=response
-        ):
-            result = filter_record_to_existing_columns(
-                self.client, "dossiers", {"name": "x", "toto": 1}
-            )
+        self.client.get_columns.return_value = {}
+        result = filter_record_to_existing_columns(
+            self.client, "dossiers", {"name": "x", "toto": 1}
+        )
         assert result == {"name": "x", "toto": 1}
 
     def test_returns_record_unchanged_on_exception(self):
         """exception -> enregistrement inchangé"""
-        with patch(
-            "grist_processor_working_all.requests.get",
-            side_effect=Exception("boom"),
-        ):
-            result = filter_record_to_existing_columns(
-                self.client, "dossiers", {"name": "x"}
-            )
+        self.client.get_columns.side_effect = Exception("boom")
+        result = filter_record_to_existing_columns(
+            self.client, "dossiers", {"name": "x"}
+        )
         assert result == {"name": "x"}
 
 
@@ -210,12 +192,6 @@ class TestAddIdColumnsBasedOnAnnotations:
     def setup_method(self):
         self.client = MagicMock()
 
-    def _mock_get(self, status=200, columns=None):
-        response = MagicMock()
-        response.status_code = status
-        response.json.return_value = {"columns": columns or []}
-        return response
-
     def _mock_post(self, status=200):
         response = MagicMock()
         response.status_code = status
@@ -224,22 +200,16 @@ class TestAddIdColumnsBasedOnAnnotations:
 
     def test_creates_only_missing_id_columns(self):
         """ne crée que les colonnes *_id manquantes"""
-        get_response = self._mock_get(columns=[{"id": "commentaire_id"}])
+        self.client.get_columns.return_value = {"commentaire_id": "Text"}
         post_response = self._mock_post()
         annotations = [
             {"id": 1, "label": "Commentaire"},
             {"id": 2, "label": "annotation_Réponse"},
         ]
-        with (
-            patch(
-                "grist_processor_working_all.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist_processor_working_all.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "grist_processor_working_all.requests.post",
+            return_value=post_response,
+        ) as mock_post:
             result = add_id_columns_based_on_annotations(
                 self.client, "annotations", annotations
             )
@@ -249,19 +219,13 @@ class TestAddIdColumnsBasedOnAnnotations:
 
     def test_posts_all_when_get_fails(self):
         """GET en échec -> aucun filtrage, POST de toutes les colonnes"""
-        get_response = self._mock_get(status=500)
+        self.client.get_columns.return_value = {}
         post_response = self._mock_post()
         annotations = [{"id": 1, "label": "Commentaire"}]
-        with (
-            patch(
-                "grist_processor_working_all.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist_processor_working_all.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "grist_processor_working_all.requests.post",
+            return_value=post_response,
+        ) as mock_post:
             result = add_id_columns_based_on_annotations(
                 self.client, "annotations", annotations
             )
@@ -271,23 +235,17 @@ class TestAddIdColumnsBasedOnAnnotations:
 
     def test_skips_annotations_without_label_or_id(self):
         """annotation sans label ou sans id -> ignorée"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {}
         post_response = self._mock_post()
         annotations = [
             {"id": 1, "label": "Commentaire"},
             {"label": "Sans id"},
             {"id": 2},
         ]
-        with (
-            patch(
-                "grist_processor_working_all.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist_processor_working_all.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "grist_processor_working_all.requests.post",
+            return_value=post_response,
+        ) as mock_post:
             result = add_id_columns_based_on_annotations(
                 self.client, "annotations", annotations
             )
@@ -296,17 +254,11 @@ class TestAddIdColumnsBasedOnAnnotations:
 
     def test_no_post_when_all_columns_exist(self):
         """toutes les colonnes existent -> pas de POST, retour None"""
-        get_response = self._mock_get(columns=[{"id": "commentaire_id"}])
+        self.client.get_columns.return_value = {"commentaire_id": "Text"}
         annotations = [{"id": 1, "label": "Commentaire"}]
-        with (
-            patch(
-                "grist_processor_working_all.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist_processor_working_all.requests.post"
-            ) as mock_post,
-        ):
+        with patch(
+            "grist_processor_working_all.requests.post"
+        ) as mock_post:
             result = add_id_columns_based_on_annotations(
                 self.client, "annotations", annotations
             )
@@ -315,11 +267,8 @@ class TestAddIdColumnsBasedOnAnnotations:
 
     def test_no_annotations_no_http(self):
         """aucune annotation -> aucun appel HTTP"""
-        with patch(
-            "grist_processor_working_all.requests.get"
-        ) as mock_get:
-            result = add_id_columns_based_on_annotations(
-                self.client, "annotations", []
-            )
+        result = add_id_columns_based_on_annotations(
+            self.client, "annotations", []
+        )
         assert result is None
-        mock_get.assert_not_called()
+        self.client.get_columns.assert_not_called()

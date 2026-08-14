@@ -1004,21 +1004,13 @@ def update_grist_tables_from_schema(
                 return
 
             # Récupérer les colonnes existantes
-            url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-            response = requests.get(url, headers=client.headers)
+            existing_columns = client.get_columns(table_id)
 
-            if response.status_code != 200:
+            if not existing_columns:
                 log_error(
-                    f"Erreur lors de la récupération des colonnes: {response.status_code}"
+                    f"Erreur lors de la récupération des colonnes pour la table {table_id}"
                 )
                 return
-
-            columns_data = response.json()
-            existing_columns = set()
-
-            if "columns" in columns_data:
-                for col in columns_data["columns"]:
-                    existing_columns.add(col.get("id"))
 
             # Trouver les colonnes manquantes
             missing_columns = []
@@ -1033,7 +1025,9 @@ def update_grist_tables_from_schema(
                 )
                 add_payload = {"columns": missing_columns}
                 add_response = requests.post(
-                    url, headers=client.headers, json=add_payload
+                    f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns",
+                    headers=client.headers,
+                    json=add_payload,
                 )
 
                 if add_response.status_code == 200:

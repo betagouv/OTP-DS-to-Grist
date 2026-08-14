@@ -45,15 +45,11 @@ def ensure_repetable_columns_exist(client, table_id, repetable_data):
     try:
 
         # 1. Récupérer les colonnes existantes
-        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=client.headers)
+        existing_columns = set(client.get_columns(table_id))
 
-        if response.status_code != 200:
-            log_error(f"Erreur lors de la récupération des colonnes: {response.status_code}")
+        if not existing_columns:
+            log_error("Erreur lors de la récupération des colonnes")
             return False
-
-        columns_data = response.json()
-        existing_columns = {col["id"] for col in columns_data.get("columns", [])}
 
         # 2. Identifier toutes les colonnes nécessaires à partir des données
         required_columns = set()
@@ -155,16 +151,11 @@ def auto_fix_missing_columns_optimized(client, table_id, records_payload):
     """
     try:
         # 1. Récupérer les colonnes existantes
-        columns_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        columns_response = requests.get(columns_url, headers=client.headers)
+        existing_columns = set(client.get_columns(table_id))
 
-        if columns_response.status_code != 200:
+        if not existing_columns:
             log_error(f"    [AUTO-FIX] Impossible de recuperer les colonnes existantes")
             return False, None
-
-        existing_columns = {
-            col["id"] for col in columns_response.json().get("columns", [])
-        }
 
         # 2. Analyser toutes les colonnes nécessaires dans le payload
         required_columns = set()
@@ -209,7 +200,11 @@ def auto_fix_missing_columns_optimized(client, table_id, records_payload):
                 columns_to_add.append({"id": col_name, "type": col_type})
 
             add_payload = {"columns": columns_to_add}
-            add_response = requests.post(columns_url, headers=client.headers, json=add_payload)
+            add_response = requests.post(
+                f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns",
+                headers=client.headers,
+                json=add_payload,
+            )
 
             if add_response.status_code != 200:
                 log_error(f"    [AUTO-FIX] ECHEC ajout colonnes: {add_response.text}")
@@ -853,17 +848,9 @@ def process_repetables_for_grist(
     # Vérifier quelles colonnes existent réellement dans Grist
     try:
         # Récupérer les colonnes actuelles de la table
-        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=client.headers)
+        actual_columns = set(client.get_columns(table_id))
 
-        if response.status_code == 200:
-            columns_data = response.json()
-            actual_columns = set()
-
-            if "columns" in columns_data:
-                for col in columns_data["columns"]:
-                    actual_columns.add(col.get("id"))
-
+        if actual_columns:
             log_verbose(f"  Colonnes existantes dans Grist: {len(actual_columns)} colonnes")
 
             # Filtrer les colonnes qui n'existent pas
@@ -911,7 +898,7 @@ def process_repetables_for_grist(
                     log(f"  Colonnes ajoutées avec succès")
                     valid_columns = set(repetable_columns.keys())
         else:
-            log_error(f"  Erreur lors de la récupération des colonnes: {response.text}")
+            log_error("  Erreur lors de la récupération des colonnes")
             valid_columns = set(repetable_columns.keys())
     except Exception as e:
         log_error(f"  Erreur lors de la vérification des colonnes: {str(e)}")

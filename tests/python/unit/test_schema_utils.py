@@ -195,20 +195,13 @@ class TestUpdateGristTablesFromSchema:
             "annotations": [{"id": "dossier_number", "type": "Int"}],
         }
 
-    def _mock_get(self, status=200, columns=None):
-        response = MagicMock()
-        response.status_code = status
-        response.json.return_value = {"columns": columns or []}
-        return response
-
     def test_adds_only_missing_columns(self):
         """seules les colonnes manquantes de la table dossiers sont POSTées"""
-        get_response = self._mock_get(columns=[{"id": "existant", "type": "Text"}])
+        self.client.get_columns.return_value = {"existant": "Text"}
         post_response = MagicMock()
         post_response.status_code = 200
         with (
             patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.get", return_value=get_response),
             patch("schema_utils.requests.post", return_value=post_response) as mock_post,
         ):
             result = update_grist_tables_from_schema(
@@ -229,10 +222,9 @@ class TestUpdateGristTablesFromSchema:
 
     def test_get_error_no_post(self):
         """GET en échec -> aucun POST de colonnes"""
-        get_response = self._mock_get(status=500)
+        self.client.get_columns.return_value = {}
         with (
             patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.get", return_value=get_response),
             patch("schema_utils.requests.post") as mock_post,
         ):
             result = update_grist_tables_from_schema(

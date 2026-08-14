@@ -17,12 +17,6 @@ class TestEnsureDeletionColumns:
         self.log = MagicMock()
         self.log_error = MagicMock()
 
-    def _mock_get(self, status=200, columns=None):
-        response = MagicMock()
-        response.status_code = status
-        response.json.return_value = {"columns": columns or []}
-        return response
-
     def _mock_post(self, status=200):
         response = MagicMock()
         response.status_code = status
@@ -31,16 +25,12 @@ class TestEnsureDeletionColumns:
 
     def test_all_columns_present_no_post(self):
         """les 3 colonnes existent -> True, pas de POST"""
-        get_response = self._mock_get(
-            columns=[{"id": COLUMN_ID}, {"id": DATE_COLUMN_ID}, {"id": REASON_COLUMN_ID}]
-        )
-        with (
-            patch(
-                "deleted_dossiers_checker.requests.get",
-                return_value=get_response,
-            ),
-            patch("deleted_dossiers_checker.requests.post") as mock_post,
-        ):
+        self.client.get_columns.return_value = {
+            COLUMN_ID: "Bool",
+            DATE_COLUMN_ID: "DateTime",
+            REASON_COLUMN_ID: "Text",
+        }
+        with patch("deleted_dossiers_checker.requests.post") as mock_post:
             result = _ensure_deletion_columns(
                 self.client, "dossiers", self.log, self.log_error
             )
@@ -49,18 +39,12 @@ class TestEnsureDeletionColumns:
 
     def test_missing_columns_created(self):
         """colonnes absentes -> POST des 3 colonnes avec label et type"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {}
         post_response = self._mock_post()
-        with (
-            patch(
-                "deleted_dossiers_checker.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "deleted_dossiers_checker.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "deleted_dossiers_checker.requests.post",
+            return_value=post_response,
+        ) as mock_post:
             result = _ensure_deletion_columns(
                 self.client, "dossiers", self.log, self.log_error
             )
@@ -80,18 +64,12 @@ class TestEnsureDeletionColumns:
 
     def test_get_error_still_posts(self):
         """GET en échec -> POST quand même des 3 colonnes"""
-        get_response = self._mock_get(status=500)
+        self.client.get_columns.return_value = {}
         post_response = self._mock_post()
-        with (
-            patch(
-                "deleted_dossiers_checker.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "deleted_dossiers_checker.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-        ):
+        with patch(
+            "deleted_dossiers_checker.requests.post",
+            return_value=post_response,
+        ) as mock_post:
             result = _ensure_deletion_columns(
                 self.client, "dossiers", self.log, self.log_error
             )
@@ -100,17 +78,11 @@ class TestEnsureDeletionColumns:
 
     def test_post_error_returns_false(self):
         """POST en échec -> False"""
-        get_response = self._mock_get()
+        self.client.get_columns.return_value = {}
         post_response = self._mock_post(status=500)
-        with (
-            patch(
-                "deleted_dossiers_checker.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "deleted_dossiers_checker.requests.post",
-                return_value=post_response,
-            ),
+        with patch(
+            "deleted_dossiers_checker.requests.post",
+            return_value=post_response,
         ):
             result = _ensure_deletion_columns(
                 self.client, "dossiers", self.log, self.log_error
