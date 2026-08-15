@@ -8,6 +8,7 @@ import time
 import traceback
 import unicodedata
 from datetime import datetime, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import requests
@@ -804,10 +805,54 @@ def run_demarche_level_tasks(
         try:
             current_table_ids = set()
             _flatten_table_ids(table_ids, current_table_ids)
-            hider = IdColumnHider(client.base_url, client.api_key, client.doc_id)
+            hider = IdColumnHider(client)
             hider.hide_id_columns(table_ids=current_table_ids)
         except Exception as e:
             log_error(f"Erreur lors du masquage des colonnes _id: {e}")
+
+
+def upsert_avis_records(
+    client: GristClient, table_id: str, all_avis_records: list[dict[str, Any]]
+) -> tuple[int, int]:
+    """
+    Insère ou met à jour des avis dans une table Grist, par upsert sur avis_id.
+
+    Args:
+        client: Instance de GristClient
+        table_id: ID de la table Grist des avis
+        all_avis_records: Liste des dicts d'avis à écrire
+
+    Returns:
+        tuple[int, int]: (nb créés, nb mis à jour)
+    """
+    log(f"  Upsert de {len(all_avis_records)} avis...")
+
+    # Récupérer existants pour upsert par avis_id
+    existing_avis = {}
+    response = client.get_records(table_id)
+    if response.status_code == 200:
+        for record in response.json().get("records", []):
+            avis_id = record.get("fields", {}).get("avis_id")
+            if avis_id:
+                existing_avis[avis_id] = record.get("id")
+
+    to_create = []
+    to_update = []
+    for avis in all_avis_records:
+        avis_id = avis.get("avis_id")
+        if avis_id in existing_avis:
+            to_update.append({"id": existing_avis[avis_id], "fields": avis})
+        else:
+            to_create.append(avis)
+
+    if to_create:
+        client.post_records(table_id, [{"fields": r} for r in to_create])
+        log(f"   {len(to_create)} avis créé(s)")
+    if to_update:
+        client.patch_records(table_id, to_update)
+        log(f"   {len(to_update)} avis mis à jour")
+
+    return len(to_create), len(to_update)
 
 
 # Fonction optimisée pour le traitement d'une démarche pour Grist (Possibilité d'augmenter ou de diminuer batch_size et max_workers)
@@ -1705,39 +1750,7 @@ def process_demarche_for_grist_optimized(
                     table_ids["avis"] = result["tables"][0].get("id")
                     log(f"  Table avis créée: {table_ids['avis']}")
 
-                log(f"  Upsert de {len(all_avis_records)} avis...")
-                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_ids['avis']}/records"
-
-                # Récupérer existants pour upsert par avis_id
-                existing_avis = {}
-                response = requests.get(url, headers=client.headers)
-                if response.status_code == 200:
-                    for record in response.json().get("records", []):
-                        avis_id = record.get("fields", {}).get("avis_id")
-                        if avis_id:
-                            existing_avis[avis_id] = record.get("id")
-
-                to_create = []
-                to_update = []
-                for avis in all_avis_records:
-                    avis_id = avis.get("avis_id")
-                    if avis_id in existing_avis:
-                        to_update.append({"id": existing_avis[avis_id], "fields": avis})
-                    else:
-                        to_create.append(avis)
-
-                if to_create:
-                    requests.post(
-                        url,
-                        headers=client.headers,
-                        json={"records": [{"fields": r} for r in to_create]},
-                    )
-                    log(f"   {len(to_create)} avis créé(s)")
-                if to_update:
-                    requests.patch(
-                        url, headers=client.headers, json={"records": to_update}
-                    )
-                    log(f"   {len(to_update)} avis mis à jour")
+                upsert_avis_records(client, table_ids["avis"], all_avis_records)
 
             if all_avis_records:
                 log(f"[TIMING] Après avis: {time.time() - batch_start:.1f}s")
