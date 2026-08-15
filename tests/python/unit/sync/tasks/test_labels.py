@@ -176,37 +176,39 @@ class TestFetchExistingLabels:
 class TestPatchRecords:
     """Tests unitaires pour la fonction _patch_records"""
 
-    @patch("sync.tasks.labels.requests.patch")
-    def test_patch_records_empty(self, mock_patch):
+    def test_patch_records_empty(self):
         """Test qu'aucune requête n'est envoyée sans enregistrement"""
-        updated = _patch_records(
-            create_mock_client(), "Table_1", [], MagicMock(), MagicMock()
-        )
+        client = create_mock_client()
+
+        updated = _patch_records(client, "Table_1", [], MagicMock(), MagicMock())
 
         assert updated == 0
-        mock_patch.assert_not_called()
+        client.patch_records.assert_not_called()
 
-    @patch("sync.tasks.labels.requests.patch")
-    def test_patch_records_splits_into_batches(self, mock_patch):
-        """Test que les enregistrements sont découpés en lots"""
-        mock_patch.return_value = create_mock_response()
+    def test_patch_records_splits_into_batches(self):
+        """Test que les enregistrements sont découpés en lots aux bonnes bornes"""
+        client = create_mock_client()
+        client.patch_records.return_value = create_mock_response()
         records = [{"id": i, "fields": {}} for i in range(BATCH_SIZE + 1)]
 
-        updated = _patch_records(
-            create_mock_client(), "Table_1", records, MagicMock(), MagicMock()
-        )
+        updated = _patch_records(client, "Table_1", records, MagicMock(), MagicMock())
 
         assert updated == BATCH_SIZE + 1
-        assert mock_patch.call_count == 2
+        assert client.patch_records.call_count == 2
+        assert client.patch_records.call_args_list[0].args[0] == "Table_1"
+        assert client.patch_records.call_args_list[0].args[1] == records[:BATCH_SIZE]
+        assert client.patch_records.call_args_list[1].args[1] == records[BATCH_SIZE:]
 
-    @patch("sync.tasks.labels.requests.patch")
-    def test_patch_records_logs_error_on_failure(self, mock_patch):
+    def test_patch_records_logs_error_on_failure(self):
         """Test qu'un lot en échec est logué et non compté"""
-        mock_patch.return_value = create_mock_response(status_code=400, text="error")
+        client = create_mock_client()
+        client.patch_records.return_value = create_mock_response(
+            status_code=400, text="error"
+        )
         log_error = MagicMock()
 
         updated = _patch_records(
-            create_mock_client(),
+            client,
             "Table_1",
             [{"id": 1, "fields": {}}],
             MagicMock(),
@@ -233,8 +235,7 @@ class TestSyncLabelsForDemarche:
         assert result == {"checked": 0, "updated": 0, "missing_in_grist": 0}
 
     @patch("sync.tasks.labels.get_demarche_dossiers_labels_only")
-    @patch("sync.tasks.labels.requests.patch")
-    def test_sync_labels_updates_changed_only(self, mock_patch, mock_dn):
+    def test_sync_labels_updates_changed_only(self, mock_dn):
         """Test que seuls les dossiers dont les labels ont changé sont patchés"""
         client = create_mock_client_with_records(
             create_mock_response(
@@ -261,7 +262,7 @@ class TestSyncLabelsForDemarche:
                 }
             )
         )
-        mock_patch.return_value = create_mock_response()
+        client.patch_records.return_value = create_mock_response()
         mock_dn.return_value = [
             {
                 "number": 111,
@@ -281,13 +282,13 @@ class TestSyncLabelsForDemarche:
         assert result["updated"] == 1
         assert result["missing_in_grist"] == 0
 
-        sent_records = mock_patch.call_args.kwargs["json"]["records"]
+        assert client.patch_records.call_args.args[0] == "Table_1"
+        sent_records = client.patch_records.call_args.args[1]
         assert len(sent_records) == 1
         assert sent_records[0]["id"] == 11
 
     @patch("sync.tasks.labels.get_demarche_dossiers_labels_only")
-    @patch("sync.tasks.labels.requests.patch")
-    def test_sync_labels_counts_missing_in_grist(self, mock_patch, mock_dn):
+    def test_sync_labels_counts_missing_in_grist(self, mock_dn):
         """Test qu'un dossier absent de Grist est compté et non patché"""
         client = create_mock_client_with_records(
             create_mock_response(
@@ -317,7 +318,7 @@ class TestSyncLabelsForDemarche:
         assert result["checked"] == 2
         assert result["updated"] == 0
         assert result["missing_in_grist"] == 1
-        mock_patch.assert_not_called()
+        client.patch_records.assert_not_called()
 
     @patch("sync.tasks.labels.get_demarche_dossiers_labels_only")
     def test_sync_labels_propagates_read_error(self, mock_dn):

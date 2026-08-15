@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from deleted_dossiers_checker import (
     COLUMN_ID,
@@ -94,69 +94,58 @@ class TestMarkDeletedInGrist:
 
     def test_patches_matching_records(self):
         """PATCH des records correspondants avec date et raison"""
-        patch_response = self._mock_patch()
+        self.client.patch_records.return_value = self._mock_patch()
         grist_dict = {"123": 45}
         deleted_dossiers = [
             {"number": 123, "dateSupression": "2024-01-01", "reason": "supprimé"}
         ]
-        with patch(
-            "deleted_dossiers_checker.requests.patch",
-            return_value=patch_response,
-        ) as mock_patch:
-            result = _mark_deleted_in_grist(
-                self.client,
-                "dossiers",
-                grist_dict,
-                deleted_dossiers,
-                self.log,
-                self.log_error,
-            )
+        result = _mark_deleted_in_grist(
+            self.client,
+            "dossiers",
+            grist_dict,
+            deleted_dossiers,
+            self.log,
+            self.log_error,
+        )
         assert result == 1
-        payload = mock_patch.call_args.kwargs["json"]
-        assert payload == {
-            "records": [
-                {
-                    "id": 45,
-                    "fields": {
-                        COLUMN_ID: True,
-                        DATE_COLUMN_ID: "2024-01-01",
-                        REASON_COLUMN_ID: "supprimé",
-                    },
-                }
-            ]
-        }
+        assert self.client.patch_records.call_args.args[0] == "dossiers"
+        assert self.client.patch_records.call_args.args[1] == [
+            {
+                "id": 45,
+                "fields": {
+                    COLUMN_ID: True,
+                    DATE_COLUMN_ID: "2024-01-01",
+                    REASON_COLUMN_ID: "supprimé",
+                },
+            }
+        ]
 
     def test_skips_unknown_numbers(self):
         """numéro inconnu dans grist_dict -> 0, pas de PATCH"""
         grist_dict = {}
         deleted_dossiers = [{"number": 123}]
-        with patch("deleted_dossiers_checker.requests.patch") as mock_patch:
-            result = _mark_deleted_in_grist(
-                self.client,
-                "dossiers",
-                grist_dict,
-                deleted_dossiers,
-                self.log,
-                self.log_error,
-            )
+        result = _mark_deleted_in_grist(
+            self.client,
+            "dossiers",
+            grist_dict,
+            deleted_dossiers,
+            self.log,
+            self.log_error,
+        )
         assert result == 0
-        mock_patch.assert_not_called()
+        self.client.patch_records.assert_not_called()
 
     def test_patch_error_returns_zero(self):
         """PATCH en échec -> 0"""
-        patch_response = self._mock_patch(status=500)
+        self.client.patch_records.return_value = self._mock_patch(status=500)
         grist_dict = {"123": 45}
         deleted_dossiers = [{"number": 123}]
-        with patch(
-            "deleted_dossiers_checker.requests.patch",
-            return_value=patch_response,
-        ):
-            result = _mark_deleted_in_grist(
-                self.client,
-                "dossiers",
-                grist_dict,
-                deleted_dossiers,
-                self.log,
-                self.log_error,
-            )
+        result = _mark_deleted_in_grist(
+            self.client,
+            "dossiers",
+            grist_dict,
+            deleted_dossiers,
+            self.log,
+            self.log_error,
+        )
         assert result == 0

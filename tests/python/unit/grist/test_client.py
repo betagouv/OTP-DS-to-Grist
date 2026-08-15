@@ -830,6 +830,52 @@ class TestPatchRecords:
             client.patch_records("t", [{"id": 42, "fields": {}}])
 
 
+class TestDeleteRecords:
+    """Tests unitaires pour GristClient.delete_records"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_posts_raw_ids_without_envelope(self):
+        """POST /records/delete avec la liste brute des ids, renvoie la réponse brute"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        with patch(
+            "grist.client.requests.post",
+            return_value=mock_response,
+        ) as mock_post:
+            result = self.client.delete_records("t", [1, 2])
+        assert result is mock_response
+        mock_post.assert_called_once()
+        assert (
+            mock_post.call_args.args[0]
+            == "https://grist.example.com/docs/doc123/tables/t/records/delete"
+        )
+        assert mock_post.call_args.kwargs["headers"] == self.client.headers
+        assert mock_post.call_args.kwargs["json"] == [1, 2]
+
+    def test_non_200_returns_response(self):
+        """non-200 -> aucune exception, la réponse est renvoyée"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        with patch(
+            "grist.client.requests.post",
+            return_value=mock_response,
+        ):
+            result = self.client.delete_records("t", [1])
+        assert result is mock_response
+        assert result.status_code == 500
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.delete_records("t", [1])
+
+
 class TestCreateOrClearGristTables:
     """Tests unitaires pour GristClient.create_or_clear_grist_tables"""
 

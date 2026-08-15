@@ -200,15 +200,15 @@ class TestFetchExistingRecords:
 class TestApplyRecordsDiff:
     """Tests unitaires pour la fonction _apply_records_diff"""
 
-    @patch("sync.tasks.instructeurs.requests.post")
-    @patch("sync.tasks.instructeurs.requests.patch")
-    def test_apply_records_diff_counts_operations(self, mock_patch, mock_post):
-        """Test que le nombre d'opérations appliquées est correct"""
-        mock_post.return_value = create_mock_response()
-        mock_patch.return_value = create_mock_response()
+    def test_apply_records_diff_counts_operations(self):
+        """Test que le nombre d'opérations appliquées est correct et vérifie les payloads"""
+        client = create_mock_client()
+        client.delete_records.return_value = create_mock_response()
+        client.patch_records.return_value = create_mock_response()
+        client.post_records.return_value = create_mock_response()
 
         count = _apply_records_diff(
-            create_mock_client(),
+            client,
             "Table_1",
             to_delete=[1, 2],
             to_update=[{"id": 3, "fields": {}}],
@@ -218,17 +218,28 @@ class TestApplyRecordsDiff:
         )
 
         assert count == 4
+        client.delete_records.assert_called_once()
+        assert client.delete_records.call_args.args[0] == "Table_1"
+        assert client.delete_records.call_args.args[1] == [1, 2]
+        client.patch_records.assert_called_once()
+        assert client.patch_records.call_args.args[0] == "Table_1"
+        assert client.patch_records.call_args.args[1] == [{"id": 3, "fields": {}}]
+        client.post_records.assert_called_once()
+        assert client.post_records.call_args.args[0] == "Table_1"
+        assert client.post_records.call_args.args[1] == [
+            {"fields": make_instructeur()}
+        ]
 
-    @patch("sync.tasks.instructeurs.requests.post")
-    def test_apply_records_diff_logs_error_on_failure(self, mock_post):
+    def test_apply_records_diff_logs_error_on_failure(self):
         """Test qu'un échec Grist est logué et non compté"""
-        mock_post.return_value = create_mock_response(
+        client = create_mock_client()
+        client.post_records.return_value = create_mock_response(
             status_code=400, text="Bad Request"
         )
         log_error = MagicMock()
 
         count = _apply_records_diff(
-            create_mock_client(),
+            client,
             "Table_1",
             to_delete=[],
             to_update=[],
@@ -242,8 +253,10 @@ class TestApplyRecordsDiff:
 
     def test_apply_records_diff_no_operation(self):
         """Test qu'aucune requête n'est envoyée sans changement"""
+        client = create_mock_client()
+
         count = _apply_records_diff(
-            create_mock_client(),
+            client,
             "Table_1",
             to_delete=[],
             to_update=[],
@@ -253,6 +266,9 @@ class TestApplyRecordsDiff:
         )
 
         assert count == 0
+        client.delete_records.assert_not_called()
+        client.patch_records.assert_not_called()
+        client.post_records.assert_not_called()
 
 
 class TestSyncInstructeurs:
@@ -269,15 +285,14 @@ class TestSyncInstructeurs:
 
         assert result == {"total": 0, "created": 0, "updated": 0, "deleted": 0}
 
-    @patch("sync.tasks.instructeurs.requests.post")
     @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
-    def test_sync_instructeurs_creates_new(self, mock_extract, mock_post):
+    def test_sync_instructeurs_creates_new(self, mock_extract):
         """Test qu'un instructeur absent de Grist est créé"""
         mock_extract.return_value = [make_instructeur()]
-        mock_post.return_value = create_mock_response()
         client = create_mock_client_with_records(
             create_mock_response(json_data={"records": []})
         )
+        client.post_records.return_value = create_mock_response()
 
         result = sync_instructeurs(
             client, "Table_1", 12345, MagicMock(), MagicMock()

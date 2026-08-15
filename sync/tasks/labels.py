@@ -16,8 +16,6 @@ import os
 import sys
 import time
 
-import requests
-
 from queries_graphql import get_demarche_dossiers_labels_only
 
 BATCH_SIZE = 500
@@ -82,12 +80,11 @@ def _fetch_existing_labels(client, table_id):
 
 def _patch_records(client, table_id, records, log, log_error):
     """PATCH les enregistrements par lots. Retourne le nombre de lignes mises à jour."""
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
     updated = 0
 
     for i in range(0, len(records), BATCH_SIZE):
         batch = records[i : i + BATCH_SIZE]
-        response = requests.patch(url, headers=client.headers, json={"records": batch})
+        response = client.patch_records(table_id, batch)
         if response.status_code in [200, 201]:
             updated += len(batch)
         else:

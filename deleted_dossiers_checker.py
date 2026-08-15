@@ -6,8 +6,6 @@ par absence) et met à jour les colonnes dossiers_supprimes_DN, date_suppression
 et raison_suppression dans Grist.
 """
 
-import requests
-
 from queries_graphql import get_deleted_dossiers
 
 COLUMN_ID = "dossiers_supprimes_DN"
@@ -67,8 +65,7 @@ def _mark_deleted_in_grist(
     if not records:
         return 0
 
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-    response = requests.patch(url, headers=client.headers, json={"records": records})
+    response = client.patch_records(table_id, records)
 
     if response.status_code == 200:
         log(f"  {len(records)} dossiers marqués '{COLUMN_LABEL}' dans Grist.")
