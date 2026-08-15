@@ -110,7 +110,9 @@ class IdColumnHider:
         return nb_ok, nb_skip
 
     def _fetch(self, table_id: str) -> list[dict[str, Any]]:
-        return self.client.get_records(table_id).json()["records"]
+        response = self.client.get_records(table_id)
+        response.raise_for_status()
+        return response.json()["records"]
 
     def _hide_field(self, field_id: int) -> None:
         self.client.delete_records(

@@ -1,5 +1,8 @@
 from unittest.mock import MagicMock, call
 
+import pytest
+import requests
+
 from hide_id_columns import IdColumnHider
 
 
@@ -117,3 +120,13 @@ class TestIdColumnHider:
         assert (nb_ok, nb_skip) == (0, 0)
         assert self.client.get_records.call_count == 4
         self.client.delete_records.assert_not_called()
+
+    def test_fetch_raises_on_http_error(self):
+        """_fetch lève une HTTPError explicite si Grist renvoie un non-200"""
+        resp = requests.Response()
+        resp.status_code = 500
+        resp._content = b'{"message": "boom"}'
+        self.client.get_records.return_value = resp
+
+        with pytest.raises(requests.HTTPError):
+            self.hider._fetch("_grist_Tables")
