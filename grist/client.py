@@ -89,11 +89,9 @@ class GristClient:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
-        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
-        log_verbose(f"Récupération des enregistrements existants depuis {url}")
         log_progress.log("Récupération des enregistrements existants")
 
-        response = requests.get(url, headers=self.headers)
+        response = self.get_records(table_id)
         if response.status_code != 200:
             log_error(
                 f"Erreur lors de la récupération des enregistrements existants: {response.status_code} - {response.text}"
@@ -144,8 +142,7 @@ class GristClient:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
-        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
-        response = requests.get(url, headers=self.headers)
+        response = self.get_records(table_id)
 
         if response.status_code != 200:
             log_error(f"Erreur get_existing_dossier_dates: {response.status_code}")
@@ -278,8 +275,6 @@ class GristClient:
         existing_records = self.get_existing_dossier_numbers(table_id)
         log_verbose(f"Dossiers existants trouvés: {len(existing_records)}")
 
-        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
-
         # S'assurer que le dictionnaire est formaté correctement pour l'API Grist
         # Grist attend des champs sous la forme {"fields": {...}}
         formatted_row = {"fields": row_dict} if "fields" not in row_dict else row_dict
@@ -293,17 +288,15 @@ class GristClient:
             log_verbose(
                 f"Dossier {dossier_number_str} trouvé avec ID {record_id}, mise à jour..."
             )
-            update_payload = {
-                "records": [{"id": record_id, "fields": formatted_row["fields"]}]
-            }
-            response = requests.patch(url, headers=self.headers, json=update_payload)
+            response = self.patch_records(
+                table_id, [{"id": record_id, "fields": formatted_row["fields"]}]
+            )
         else:
             # Création d'un nouvel enregistrement
             log_verbose(
                 f"Dossier {dossier_number_str} non trouvé, création d'un nouvel enregistrement..."
             )
-            create_payload = {"records": [formatted_row]}
-            response = requests.post(url, headers=self.headers, json=create_payload)
+            response = self.post_records(table_id, [formatted_row])
 
         if response.status_code in [200, 201]:
             return True
@@ -673,11 +666,7 @@ class GristClient:
                 )
 
             # Mise à jour par lot pour toutes les tables
-            update_url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
-            update_payload = {"records": normalized_updates}
-            update_response = requests.patch(
-                update_url, headers=self.headers, json=update_payload
-            )
+            update_response = self.patch_records(table_id, normalized_updates)
 
             if update_response.status_code in [200, 201]:
                 log(
@@ -693,9 +682,8 @@ class GristClient:
                 log("Tentative de mise à jour individuelle...")
                 update_success = 0
                 for individual_record in normalized_updates:
-                    individual_payload = {"records": [individual_record]}
-                    individual_response = requests.patch(
-                        update_url, headers=self.headers, json=individual_payload
+                    individual_response = self.patch_records(
+                        table_id, [individual_record]
                     )
 
                     if individual_response.status_code in [200, 201]:
@@ -723,11 +711,7 @@ class GristClient:
                     normalized_fields[key] = record["fields"].get(key, None)
                 normalized_creations.append({"fields": normalized_fields})
 
-            create_url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
-            create_payload = {"records": normalized_creations}
-            create_response = requests.post(
-                create_url, headers=self.headers, json=create_payload
-            )
+            create_response = self.post_records(table_id, normalized_creations)
             log_progress.log("Écriture dans Grist")
 
             if create_response.status_code in [200, 201]:
