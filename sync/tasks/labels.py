@@ -57,8 +57,7 @@ def _fetch_existing_labels(client, table_id):
     Returns:
         dict: {str(dossier_number): {"grist_id": int, "label_names": str, "labels_json": str}}
     """
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-    response = requests.get(url, headers=client.headers)
+    response = client.get_records(table_id)
 
     if response.status_code != 200:
         raise RuntimeError(

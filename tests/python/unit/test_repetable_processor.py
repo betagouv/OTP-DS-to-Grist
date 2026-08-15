@@ -253,16 +253,10 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
 
     def test_http_error_returns_empty_dict(self):
         """réponse non-200 -> {}"""
-        with patch(
-            "repetable_processor.requests.get",
-            return_value=self._mock_response(500),
-        ) as mock_get:
-            result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        self.client.get_records.return_value = self._mock_response(500)
+        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
         assert result == {}
-        assert mock_get.call_args.args[0] == (
-            "https://grist.example.com/docs/doc1/tables/blocs/records"
-        )
-        assert mock_get.call_args.kwargs["headers"] == self.client.headers
+        self.client.get_records.assert_called_once_with("blocs")
 
     def test_success_builds_composite_keys(self):
         """200 -> dict des clés composites vers l'id de l'enregistrement"""
@@ -277,11 +271,8 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
                 },
             }
         ]
-        with patch(
-            "repetable_processor.requests.get",
-            return_value=self._mock_response(200, records),
-        ):
-            result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        self.client.get_records.return_value = self._mock_response(200, records)
+        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
         assert result["123_Maquettes_row_1"] == 42
         assert result["123_maquettes_row_1"] == 42
         assert result["123_Maquettes_index_1"] == 42
@@ -301,11 +292,8 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
                 },
             }
         ]
-        with patch(
-            "repetable_processor.requests.get",
-            return_value=self._mock_response(200, records),
-        ):
-            result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        self.client.get_records.return_value = self._mock_response(200, records)
+        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
         assert result["123_Maquettes_row_1_geo1"] == 7
         assert result["123_maquettes_carte_g1"] == 7
 

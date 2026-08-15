@@ -710,10 +710,9 @@ def get_existing_repetable_rows_improved_no_filter(
         raise ValueError("Document ID is required")
 
     # Récupérer tous les enregistrements sans filtre
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
     log_verbose(f"Récupération de tous les enregistrements de la table {table_id}")
 
-    response = requests.get(url, headers=client.headers)
+    response = client.get_records(table_id)
 
     if response.status_code != 200:
         log_error(f"Erreur lors de la récupération des enregistrements: {response.status_code} - {response.text}")

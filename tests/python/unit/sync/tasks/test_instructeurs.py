@@ -41,6 +41,13 @@ def create_mock_response(status_code=200, json_data=None, text=""):
     return response
 
 
+def create_mock_client_with_records(response):
+    """Crée un mock de GristClient dont get_records renvoie response"""
+    client = create_mock_client()
+    client.get_records.return_value = response
+    return client
+
+
 def make_instructeur(instructeur_id="i1", groupe_id="g1", email="a@test.fr"):
     """Crée un enregistrement instructeur tel que produit par l'API DN"""
     return {
@@ -165,30 +172,29 @@ class TestDiffRecords:
 class TestFetchExistingRecords:
     """Tests unitaires pour la fonction _fetch_existing_records"""
 
-    @patch("sync.tasks.instructeurs.requests.get")
-    def test_fetch_existing_records_nominal(self, mock_get):
+    def test_fetch_existing_records_nominal(self):
         """Test de lecture réussie de la table Grist"""
-        mock_get.return_value = create_mock_response(
-            json_data={"records": [{"id": 1, "fields": {}}]}
+        client = create_mock_client_with_records(
+            create_mock_response(json_data={"records": [{"id": 1, "fields": {}}]})
         )
 
-        records = _fetch_existing_records(create_mock_client(), "Table_1")
+        records = _fetch_existing_records(client, "Table_1")
 
         assert len(records) == 1
+        client.get_records.assert_called_once_with("Table_1")
 
-    @patch("sync.tasks.instructeurs.requests.get")
-    def test_fetch_existing_records_raises_on_error(self, mock_get):
+    def test_fetch_existing_records_raises_on_error(self):
         """Test qu'un échec de lecture lève une exception.
 
         Retourner une liste vide ferait passer tous les instructeurs en
         création et créerait des doublons dans la table.
         """
-        mock_get.return_value = create_mock_response(
-            status_code=500, text="Internal Server Error"
+        client = create_mock_client_with_records(
+            create_mock_response(status_code=500, text="Internal Server Error")
         )
 
         with pytest.raises(RuntimeError):
-            _fetch_existing_records(create_mock_client(), "Table_1")
+            _fetch_existing_records(client, "Table_1")
 
 
 class TestApplyRecordsDiff:
@@ -264,16 +270,17 @@ class TestSyncInstructeurs:
         assert result == {"total": 0, "created": 0, "updated": 0, "deleted": 0}
 
     @patch("sync.tasks.instructeurs.requests.post")
-    @patch("sync.tasks.instructeurs.requests.get")
     @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
-    def test_sync_instructeurs_creates_new(self, mock_extract, mock_get, mock_post):
+    def test_sync_instructeurs_creates_new(self, mock_extract, mock_post):
         """Test qu'un instructeur absent de Grist est créé"""
         mock_extract.return_value = [make_instructeur()]
-        mock_get.return_value = create_mock_response(json_data={"records": []})
         mock_post.return_value = create_mock_response()
+        client = create_mock_client_with_records(
+            create_mock_response(json_data={"records": []})
+        )
 
         result = sync_instructeurs(
-            create_mock_client(), "Table_1", 12345, MagicMock(), MagicMock()
+            client, "Table_1", 12345, MagicMock(), MagicMock()
         )
 
         assert result["total"] == 1
@@ -281,31 +288,31 @@ class TestSyncInstructeurs:
         assert result["updated"] == 0
         assert result["deleted"] == 0
 
-    @patch("sync.tasks.instructeurs.requests.get")
     @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
-    def test_sync_instructeurs_no_change(self, mock_extract, mock_get):
+    def test_sync_instructeurs_no_change(self, mock_extract):
         """Test qu'un état identique ne génère aucune opération"""
         mock_extract.return_value = [make_instructeur()]
-        mock_get.return_value = create_mock_response(
-            json_data={"records": [{"id": 10, "fields": make_instructeur()}]}
+        client = create_mock_client_with_records(
+            create_mock_response(json_data={"records": [{"id": 10, "fields": make_instructeur()}]})
         )
 
         result = sync_instructeurs(
-            create_mock_client(), "Table_1", 12345, MagicMock(), MagicMock()
+            client, "Table_1", 12345, MagicMock(), MagicMock()
         )
 
         assert result["created"] == 0
         assert result["updated"] == 0
         assert result["deleted"] == 0
 
-    @patch("sync.tasks.instructeurs.requests.get")
     @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
-    def test_sync_instructeurs_propagates_read_error(self, mock_extract, mock_get):
+    def test_sync_instructeurs_propagates_read_error(self, mock_extract):
         """Test qu'une erreur de lecture Grist remonte à l'appelant"""
         mock_extract.return_value = [make_instructeur()]
-        mock_get.return_value = create_mock_response(status_code=500, text="error")
+        client = create_mock_client_with_records(
+            create_mock_response(status_code=500, text="error")
+        )
 
         with pytest.raises(RuntimeError):
             sync_instructeurs(
-                create_mock_client(), "Table_1", 12345, MagicMock(), MagicMock()
+                client, "Table_1", 12345, MagicMock(), MagicMock()
             )

@@ -43,8 +43,7 @@ def _fetch_existing_records(client, table_id):
             lecture avec une table vide provoquerait la recréation de tous les
             instructeurs, donc des doublons.
     """
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-    response = requests.get(url, headers=client.headers)
+    response = client.get_records(table_id)
 
     if response.status_code != 200:
         raise RuntimeError(
