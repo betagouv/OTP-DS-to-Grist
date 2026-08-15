@@ -435,6 +435,38 @@ class GristClient:
 
         return response
 
+    def post_records(
+        self, table_id: str, records: list[dict[str, Any]]
+    ) -> requests.Response:
+        """
+        Crée des enregistrements dans une table Grist.
+        Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
+        log_verbose(f"POST {url}")
+        response = requests.post(url, headers=self.headers, json={"records": records})
+
+        return response
+
+    def patch_records(
+        self, table_id: str, records: list[dict[str, Any]]
+    ) -> requests.Response:
+        """
+        Met à jour des enregistrements dans une table Grist.
+        Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
+        log_verbose(f"PATCH {url}")
+        response = requests.patch(url, headers=self.headers, json={"records": records})
+
+        return response
+
     def create_or_clear_grist_tables(
         self, demarche_number: int | str, column_types: dict[str, Any]
     ) -> dict[str, str]:

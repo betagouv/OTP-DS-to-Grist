@@ -98,14 +98,11 @@ class TestAutoFixMissingColumnsOptimized:
         self.client.get_columns.return_value = {"deja_la": "Text"}
         self.client.add_columns.return_value = self._mock_post()
         records_post_response = self._mock_post(status=201)
+        self.client.post_records.return_value = records_post_response
         payload = {"records": [{"fields": {"nom": "x", "age": 5}}]}
-        with patch(
-            "repetable_processor.requests.post",
-            return_value=records_post_response,
-        ) as mock_post:
-            success, response = auto_fix_missing_columns_optimized(
-                self.client, "dossiers", payload
-            )
+        success, response = auto_fix_missing_columns_optimized(
+            self.client, "dossiers", payload
+        )
         assert success is True
         assert response is records_post_response
         self.client.add_columns.assert_called_once()
@@ -113,39 +110,31 @@ class TestAutoFixMissingColumnsOptimized:
         columns = self.client.add_columns.call_args.args[1]
         types_by_id = {c["id"]: c["type"] for c in columns}
         assert types_by_id == {"nom": "Text", "age": "Int"}
-        assert mock_post.call_count == 1
-        assert mock_post.call_args.kwargs["json"] == payload
+        self.client.post_records.assert_called_once_with("dossiers", payload["records"])
 
     def test_no_missing_columns_only_records(self):
         """aucune colonne manquante -> pas de POST colonnes"""
         self.client.get_columns.return_value = {"nom": "Text", "age": "Int"}
         records_post_response = self._mock_post(status=201)
+        self.client.post_records.return_value = records_post_response
         payload = {"records": [{"fields": {"nom": "x", "age": 5}}]}
-        with patch(
-            "repetable_processor.requests.post",
-            return_value=records_post_response,
-        ) as mock_post:
-            success, response = auto_fix_missing_columns_optimized(
-                self.client, "dossiers", payload
-            )
+        success, response = auto_fix_missing_columns_optimized(
+            self.client, "dossiers", payload
+        )
         assert (success, response) == (True, records_post_response)
         self.client.add_columns.assert_not_called()
-        assert mock_post.call_count == 1
-        assert "columns" not in mock_post.call_args.kwargs["json"]
+        self.client.post_records.assert_called_once_with("dossiers", payload["records"])
 
     def test_records_post_error_returns_false(self):
         """POST records en échec -> (False, response)"""
         self.client.get_columns.return_value = {"deja_la": "Text"}
         self.client.add_columns.return_value = self._mock_post()
         records_post_response = self._mock_post(status=400)
+        self.client.post_records.return_value = records_post_response
         payload = {"records": [{"fields": {"nom": "x"}}]}
-        with patch(
-            "repetable_processor.requests.post",
-            return_value=records_post_response,
-        ):
-            success, response = auto_fix_missing_columns_optimized(
-                self.client, "dossiers", payload
-            )
+        success, response = auto_fix_missing_columns_optimized(
+            self.client, "dossiers", payload
+        )
         assert (success, response) == (False, records_post_response)
         self.client.add_columns.assert_called_once()
 
@@ -154,13 +143,12 @@ class TestAutoFixMissingColumnsOptimized:
         self.client.get_columns.return_value = {"deja_la": "Text"}
         columns_post_response = self._mock_post(status=400)
         self.client.add_columns.return_value = columns_post_response
-        with patch("repetable_processor.requests.post") as mock_post:
-            success, response = auto_fix_missing_columns_optimized(
-                self.client, "dossiers", {"records": [{"fields": {"nom": "x"}}]}
-            )
+        success, response = auto_fix_missing_columns_optimized(
+            self.client, "dossiers", {"records": [{"fields": {"nom": "x"}}]}
+        )
         assert (success, response) == (False, columns_post_response)
         self.client.add_columns.assert_called_once()
-        mock_post.assert_not_called()
+        self.client.post_records.assert_not_called()
 
 
 class TestProcessRepetablesForGrist:
@@ -185,12 +173,11 @@ class TestProcessRepetablesForGrist:
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
             ),
-            patch("repetable_processor.requests.post") as mock_post,
         ):
             result = process_repetables_for_grist(
                 self.client, dossier_data, "blocs", column_types
             )
-        return result, mock_post
+        return result, self.client.post_records
 
     def test_get_error_no_post_columns(self):
         """GET en échec -> aucune colonne ajoutée, aucun POST, pas de données insérées"""
@@ -204,18 +191,7 @@ class TestProcessRepetablesForGrist:
         """colonnes manquantes -> POST avec les colonnes manquantes et les colonnes géo"""
         self.client.get_columns.return_value = {"champ_1": "Text"}
         self.client.add_columns.return_value = self._mock_post()
-        dossier_data = {"number": 123, "champs": []}
-        column_types = [{"id": "champ_1", "type": "Text"}, {"id": "champ_2", "type": "Text"}]
-        with (
-            patch(
-                "repetable_processor.get_existing_repetable_rows_improved_no_filter",
-                return_value={},
-            ),
-            patch("repetable_processor.requests.post") as mock_post,
-        ):
-            result = process_repetables_for_grist(
-                self.client, dossier_data, "blocs", column_types
-            )
+        result, mock_post = self._call()
         assert result == (0, 0)
         self.client.add_columns.assert_called_once()
         assert self.client.add_columns.call_args.args[0] == "blocs"
@@ -246,10 +222,10 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError, pas d'appel HTTP"""
         self.client.doc_id = None
-        with patch("repetable_processor.requests.get") as mock_get:
-            with pytest.raises(ValueError):
-                get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
-        mock_get.assert_not_called()
+        self.client.get_records.return_value = self._mock_response(200)
+        with pytest.raises(ValueError):
+            get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        self.client.get_records.assert_not_called()
 
     def test_http_error_returns_empty_dict(self):
         """réponse non-200 -> {}"""
@@ -348,67 +324,54 @@ class TestProcessRepetableDataBatchRecords:
     def test_create_new_record_when_no_existing_row(self):
         """aucune ligne existante -> POST records avec les champs de la ligne"""
         column_types = [{"id": "nom", "type": "Text"}]
+        self.client.post_records.return_value = self._mock_response(201)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
             ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(201),
-            ) as mock_post,
-            patch("repetable_processor.requests.patch") as mock_patch,
         ):
             success, errors = process_repetable_data_batch(
                 self.client, self._dossier([self._simple_row()]), "blocs", column_types
             )
         assert (success, errors) == (1, 0)
-        mock_post.assert_called_once()
-        assert mock_post.call_args.args[0] == (
-            "https://grist.example.com/docs/doc1/tables/blocs/records"
-        )
-        assert mock_post.call_args.kwargs["headers"] == self.client.headers
-        assert mock_post.call_args.kwargs["json"] == {
-            "records": [{"fields": self._expected_record()}]
-        }
-        mock_patch.assert_not_called()
+        self.client.post_records.assert_called_once()
+        assert self.client.post_records.call_args.args[0] == "blocs"
+        assert self.client.post_records.call_args.args[1] == [
+            {"fields": self._expected_record()}
+        ]
+        self.client.patch_records.assert_not_called()
 
     def test_update_existing_record_when_found(self):
         """ligne existante -> PATCH records avec l'id trouvé"""
         column_types = [{"id": "nom", "type": "Text"}]
         existing_rows = {"123_maquettes_row_1": 42}
+        self.client.patch_records.return_value = self._mock_response(200)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value=existing_rows,
             ),
-            patch(
-                "repetable_processor.requests.patch",
-                return_value=self._mock_response(200),
-            ) as mock_patch,
-            patch("repetable_processor.requests.post") as mock_post,
         ):
             success, errors = process_repetable_data_batch(
                 self.client, self._dossier([self._simple_row()]), "blocs", column_types
             )
         assert (success, errors) == (1, 0)
-        mock_patch.assert_called_once()
-        assert mock_patch.call_args.kwargs["json"] == {
-            "records": [{"id": 42, "fields": self._expected_record()}]
-        }
-        mock_post.assert_not_called()
+        self.client.patch_records.assert_called_once()
+        assert self.client.patch_records.call_args.args[0] == "blocs"
+        assert self.client.patch_records.call_args.args[1] == [
+            {"id": 42, "fields": self._expected_record()}
+        ]
+        self.client.post_records.assert_not_called()
 
     def test_create_error_increments_error_count(self):
         """POST en échec -> compteur d'erreurs incrémenté"""
         column_types = [{"id": "nom", "type": "Text"}]
+        self.client.post_records.return_value = self._mock_response(500)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(500),
             ),
         ):
             success, errors = process_repetable_data_batch(
@@ -440,22 +403,20 @@ class TestProcessRepetableDataBatchRecords:
             {"id": "geo_id", "type": "Text"},
             {"id": "geo_surface", "type": "Text"},
         ]
+        self.client.post_records.return_value = self._mock_response(201)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
             ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(201),
-            ) as mock_post,
         ):
             success, errors = process_repetable_data_batch(
                 self.client, self._dossier([geo_row]), "blocs", column_types
             )
         assert (success, errors) == (1, 0)
-        mock_post.assert_called_once()
-        fields = mock_post.call_args.kwargs["json"]["records"][0]["fields"]
+        self.client.post_records.assert_called_once()
+        records = self.client.post_records.call_args.args[1]
+        fields = records[0]["fields"]
         assert fields["block_row_id"] == "row_1_geo1"
         assert fields["carte"] == "zone A"
         assert fields["geo_id"] == "g1"
@@ -517,87 +478,77 @@ class TestProcessRepetablesBatchRecords:
 
     def test_create_batch_records(self):
         """aucune ligne existante -> POST lot avec les enregistrements à créer"""
+        self.client.post_records.return_value = self._mock_response(201)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
             ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(201),
-            ) as mock_post,
-            patch("repetable_processor.requests.patch") as mock_patch,
         ):
             success, errors = process_repetables_batch(
                 self.client, [self._dossier()], self._table_ids(), self._column_types()
             )
         assert (success, errors) == (1, 0)
-        mock_post.assert_called_once()
-        assert mock_post.call_args.args[0] == (
-            "https://grist.example.com/docs/doc1/tables/Demarche_123_maquettes/records"
-        )
-        assert mock_post.call_args.kwargs["headers"] == self.client.headers
-        assert mock_post.call_args.kwargs["json"] == {
-            "records": [{"fields": self._expected_record()}]
-        }
-        mock_patch.assert_not_called()
+        self.client.post_records.assert_called_once()
+        assert self.client.post_records.call_args.args[0] == "Demarche_123_maquettes"
+        assert self.client.post_records.call_args.args[1] == [
+            {"fields": self._expected_record()}
+        ]
+        self.client.patch_records.assert_not_called()
 
     def test_update_batch_records(self):
         """ligne existante -> PATCH lot avec les ids trouvés"""
         existing_rows = {"123_maquettes_row_1": 42}
+        self.client.patch_records.return_value = self._mock_response(200)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value=existing_rows,
             ),
-            patch(
-                "repetable_processor.requests.patch",
-                return_value=self._mock_response(200),
-            ) as mock_patch,
-            patch("repetable_processor.requests.post") as mock_post,
         ):
             success, errors = process_repetables_batch(
                 self.client, [self._dossier()], self._table_ids(), self._column_types()
             )
         assert (success, errors) == (1, 0)
-        mock_patch.assert_called_once()
-        assert mock_patch.call_args.kwargs["json"] == {
-            "records": [{"id": 42, "fields": self._expected_record()}]
-        }
-        mock_post.assert_not_called()
+        self.client.patch_records.assert_called_once()
+        assert self.client.patch_records.call_args.args[0] == "Demarche_123_maquettes"
+        assert self.client.patch_records.call_args.args[1] == [
+            {"id": 42, "fields": self._expected_record()}
+        ]
+        self.client.post_records.assert_not_called()
 
     def test_update_batch_error_falls_back_to_individual(self):
         """PATCH lot en échec -> repli sur des PATCH individuels"""
         existing_rows = {"123_maquettes_row_1": 42}
+        self.client.patch_records.side_effect = [
+            self._mock_response(400),
+            self._mock_response(200),
+        ]
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value=existing_rows,
             ),
-            patch(
-                "repetable_processor.requests.patch",
-                side_effect=[self._mock_response(400), self._mock_response(200)],
-            ) as mock_patch,
         ):
             success, errors = process_repetables_batch(
                 self.client, [self._dossier()], self._table_ids(), self._column_types()
             )
         assert (success, errors) == (1, 0)
-        assert mock_patch.call_count == 2
-        assert mock_patch.call_args_list[1].kwargs["json"] == {
-            "records": [{"id": 42, "fields": self._expected_record()}]
-        }
+        assert self.client.patch_records.call_count == 2
+        assert self.client.patch_records.call_args_list[1].args[0] == (
+            "Demarche_123_maquettes"
+        )
+        assert self.client.patch_records.call_args_list[1].args[1] == [
+            {"id": 42, "fields": self._expected_record()}
+        ]
 
     def test_create_error_increments_error_count(self):
         """POST lot en échec -> compteur d'erreurs incrémenté"""
+        self.client.post_records.return_value = self._mock_response(500)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(500),
             ),
         ):
             success, errors = process_repetables_batch(
@@ -607,15 +558,14 @@ class TestProcessRepetablesBatchRecords:
 
     def test_create_auto_fix_on_invalid_column(self):
         """erreur 'Invalid column' -> auto-fix des colonnes manquantes"""
+        self.client.post_records.return_value = self._mock_response(
+            400, text="Invalid column"
+        )
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
             ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(400, text="Invalid column"),
-            ) as mock_post,
             patch(
                 "repetable_processor.auto_fix_missing_columns_optimized",
                 return_value=(True, None),
@@ -627,9 +577,9 @@ class TestProcessRepetablesBatchRecords:
         assert (success, errors) == (1, 0)
         mock_auto_fix.assert_called_once()
         assert mock_auto_fix.call_args.args[1] == "Demarche_123_maquettes"
-        assert mock_post.call_args.kwargs["json"] == {
-            "records": [{"fields": self._expected_record()}]
-        }
+        assert self.client.post_records.call_args.args[1] == [
+            {"fields": self._expected_record()}
+        ]
 
 
 class TestProcessRepetablesForGristRecords:
@@ -686,69 +636,58 @@ class TestProcessRepetablesForGristRecords:
         """aucune ligne existante -> POST records et mémorisation de l'id créé"""
         column_types = [{"id": "nom", "type": "Text"}]
         existing_rows = {}
+        self.client.post_records.return_value = self._mock_response(
+            201, {"records": [{"id": 99}]}
+        )
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value=existing_rows,
             ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(201, {"records": [{"id": 99}]}),
-            ) as mock_post,
-            patch("repetable_processor.requests.patch") as mock_patch,
         ):
             success, errors = process_repetables_for_grist(
                 self.client, self._dossier([self._simple_row()]), "blocs", column_types
             )
         assert (success, errors) == (1, 0)
-        mock_post.assert_called_once()
-        assert mock_post.call_args.args[0] == (
-            "https://grist.example.com/docs/doc1/tables/blocs/records"
-        )
-        assert mock_post.call_args.kwargs["headers"] == self.client.headers
-        assert mock_post.call_args.kwargs["json"] == {
-            "records": [{"fields": self._expected_record()}]
-        }
+        self.client.post_records.assert_called_once()
+        assert self.client.post_records.call_args.args[0] == "blocs"
+        assert self.client.post_records.call_args.args[1] == [
+            {"fields": self._expected_record()}
+        ]
         assert existing_rows["123_maquettes_row_1"] == 99
         assert existing_rows["row_1"] == 99
-        mock_patch.assert_not_called()
+        self.client.patch_records.assert_not_called()
 
     def test_update_existing_record_when_found(self):
         """ligne existante -> PATCH records avec l'id trouvé"""
         column_types = [{"id": "nom", "type": "Text"}]
         existing_rows = {"123_maquettes_row_1": 42}
+        self.client.patch_records.return_value = self._mock_response(200)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value=existing_rows,
             ),
-            patch(
-                "repetable_processor.requests.patch",
-                return_value=self._mock_response(200),
-            ) as mock_patch,
-            patch("repetable_processor.requests.post") as mock_post,
         ):
             success, errors = process_repetables_for_grist(
                 self.client, self._dossier([self._simple_row()]), "blocs", column_types
             )
         assert (success, errors) == (1, 0)
-        mock_patch.assert_called_once()
-        assert mock_patch.call_args.kwargs["json"] == {
-            "records": [{"id": 42, "fields": self._expected_record()}]
-        }
-        mock_post.assert_not_called()
+        self.client.patch_records.assert_called_once()
+        assert self.client.patch_records.call_args.args[0] == "blocs"
+        assert self.client.patch_records.call_args.args[1] == [
+            {"id": 42, "fields": self._expected_record()}
+        ]
+        self.client.post_records.assert_not_called()
 
     def test_create_error_increments_error_count(self):
         """POST en échec -> compteur d'erreurs incrémenté"""
         column_types = [{"id": "nom", "type": "Text"}]
+        self.client.post_records.return_value = self._mock_response(500)
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
-            ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(500),
             ),
         ):
             success, errors = process_repetables_for_grist(
@@ -780,22 +719,22 @@ class TestProcessRepetablesForGristRecords:
             {"id": "geo_id", "type": "Text"},
             {"id": "geo_surface", "type": "Text"},
         ]
+        self.client.post_records.return_value = self._mock_response(
+            201, {"records": [{"id": 7}]}
+        )
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
                 return_value={},
             ),
-            patch(
-                "repetable_processor.requests.post",
-                return_value=self._mock_response(201, {"records": [{"id": 7}]}),
-            ) as mock_post,
         ):
             success, errors = process_repetables_for_grist(
                 self.client, self._dossier([geo_row]), "blocs", column_types
             )
         assert (success, errors) == (1, 0)
-        mock_post.assert_called_once()
-        fields = mock_post.call_args.kwargs["json"]["records"][0]["fields"]
+        self.client.post_records.assert_called_once()
+        records = self.client.post_records.call_args.args[1]
+        fields = records[0]["fields"]
         assert fields["block_row_id"] == "row_1_geo1"
         assert fields["carte"] == "zone A"
         assert fields["geo_id"] == "g1"

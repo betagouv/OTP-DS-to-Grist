@@ -736,6 +736,100 @@ class TestAddColumns:
             client.add_columns("t", [{"id": "col1", "type": "Text"}])
 
 
+class TestPostRecords:
+    """Tests unitaires pour GristClient.post_records"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_success_posts_records(self):
+        """POST /records avec le bon payload, renvoie la réponse brute"""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        records = [{"fields": {"nom": "x"}}, {"fields": {"nom": "y"}}]
+        with patch(
+            "grist.client.requests.post",
+            return_value=mock_response,
+        ) as mock_post:
+            result = self.client.post_records("t", records)
+        assert result is mock_response
+        mock_post.assert_called_once()
+        assert (
+            mock_post.call_args.args[0]
+            == "https://grist.example.com/docs/doc123/tables/t/records"
+        )
+        assert mock_post.call_args.kwargs["headers"] == self.client.headers
+        assert mock_post.call_args.kwargs["json"] == {"records": records}
+
+    def test_non_200_returns_response(self):
+        """non-200 -> aucune exception, la réponse est renvoyée"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        with patch(
+            "grist.client.requests.post",
+            return_value=mock_response,
+        ):
+            result = self.client.post_records("t", [{"fields": {"nom": "x"}}])
+        assert result is mock_response
+        assert result.status_code == 500
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.post_records("t", [{"fields": {"nom": "x"}}])
+
+
+class TestPatchRecords:
+    """Tests unitaires pour GristClient.patch_records"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_success_patches_records(self):
+        """PATCH /records avec le bon payload, renvoie la réponse brute"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        records = [{"id": 42, "fields": {"nom": "x"}}]
+        with patch(
+            "grist.client.requests.patch",
+            return_value=mock_response,
+        ) as mock_patch:
+            result = self.client.patch_records("t", records)
+        assert result is mock_response
+        mock_patch.assert_called_once()
+        assert (
+            mock_patch.call_args.args[0]
+            == "https://grist.example.com/docs/doc123/tables/t/records"
+        )
+        assert mock_patch.call_args.kwargs["headers"] == self.client.headers
+        assert mock_patch.call_args.kwargs["json"] == {"records": records}
+
+    def test_non_200_returns_response(self):
+        """non-200 -> aucune exception, la réponse est renvoyée"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        with patch(
+            "grist.client.requests.patch",
+            return_value=mock_response,
+        ):
+            result = self.client.patch_records("t", [{"id": 42, "fields": {}}])
+        assert result is mock_response
+        assert result.status_code == 500
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.patch_records("t", [{"id": 42, "fields": {}}])
+
+
 class TestCreateOrClearGristTables:
     """Tests unitaires pour GristClient.create_or_clear_grist_tables"""
 
