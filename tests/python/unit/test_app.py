@@ -1,13 +1,13 @@
 """
-Tests unitaires pour app.py — fonction vite_asset
+Tests unitaires pour app.py — fonctions pures (vite_asset, get_available_groups)
 """
 
 import json
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 import pytest
-from app import vite_asset, app
+from app import vite_asset, get_available_groups, app
 
 
 class TestViteAsset:
@@ -87,5 +87,77 @@ class TestViteAsset:
                 "read_text",
                 return_value=json.dumps(manifest)
             ):
-                with pytest.raises(KeyError):
-                    vite_asset("src/nonexistent.js")
+                    with pytest.raises(KeyError):
+                        vite_asset("src/nonexistent.js")
+
+
+class TestGetAvailableGroups:
+    """Tests pour get_available_groups"""
+
+    def test_missing_api_token_returns_empty(self):
+        """Token manquant → retourne []"""
+        assert get_available_groups(None, "123") == []
+        assert get_available_groups("", "123") == []
+
+    def test_missing_demarche_number_returns_empty(self):
+        """Numéro de démarche manquant → retourne []"""
+        assert get_available_groups("token", None) == []
+        assert get_available_groups("token", "") == []
+
+    @patch("app.requests.post")
+    def test_success_returns_groups(self, mock_post):
+        """Appel réussi → retourne liste de tuples (number, label)"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "demarche": {
+                    "groupeInstructeurs": [
+                        {"number": 1, "label": "Groupe A"},
+                        {"number": 2, "label": "Groupe B"},
+                    ]
+                }
+            }
+        }
+        mock_post.return_value = mock_response
+
+        result = get_available_groups("token123", "456")
+
+        assert result == [(1, "Groupe A"), (2, "Groupe B")]
+        mock_post.assert_called_once()
+
+    @patch("app.requests.post")
+    def test_api_error_status_returns_empty(self, mock_post):
+        """Statut HTTP != 200 → retourne []"""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_post.return_value = mock_response
+
+        assert get_available_groups("token", "123") == []
+
+    @patch("app.requests.post")
+    def test_graphql_errors_returns_empty(self, mock_post):
+        """Erreurs GraphQL dans la réponse → retourne []"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"errors": [{"message": "Unauthorized"}]}
+        mock_post.return_value = mock_response
+
+        assert get_available_groups("token", "123") == []
+
+    @patch("app.requests.post")
+    def test_empty_demarche_returns_empty(self, mock_post):
+        """Démarche sans groupe instructeur → retourne []"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {"demarche": {"groupeInstructeurs": []}}
+        }
+        mock_post.return_value = mock_response
+
+        assert get_available_groups("token", "123") == []
+
+    @patch("app.requests.post", side_effect=Exception("Network error"))
+    def test_exception_returns_empty(self, mock_post):
+        """Exception quelconque → retourne []"""
+        assert get_available_groups("token", "123") == []
