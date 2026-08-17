@@ -17,7 +17,7 @@ import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient
 from hide_id_columns import IdColumnHider
-from queries import get_dossier
+from dn.queries import get_dossier
 from queries_extract import dossier_to_flat_data
 from dn.queries import get_demarche_dossiers_filtered
 from queries_util import get_timings

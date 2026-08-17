@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dn.queries import get_available_groups
+from dn.queries import get_available_groups, get_dossier
 
 
 def _mock_session(mock_response):
@@ -216,6 +216,93 @@ class TestGetDemarcheDossiersFiltered:
         # Deuxième appel doit avoir le cursor
         second_call_vars = session.post.call_args_list[1][1]["json"]["variables"]
         assert second_call_vars["afterCursor"] == "cursor-2"
+
+
+# ============================================================
+# get_dossier
+# ============================================================
+
+
+class TestGetDossier:
+    """Tests pour get_dossier"""
+
+    @patch("dn.queries.API_TOKEN", "")
+    def test_no_token_raises(self):
+        """Pas de token → ValueError"""
+        with pytest.raises(ValueError, match="token"):
+            get_dossier(123)
+
+    @patch("dn.queries.get_session_with_retries")
+    @patch("dn.queries.API_TOKEN", "test-token")
+    def test_filters_out_header_and_explication_champs(self, mock_session_factory):
+        """Filtre les HeaderSectionChamp et ExplicationChamp"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "dossier": {
+                    "number": 1,
+                    "champs": [
+                        {"__typename": "TextChamp", "label": "Nom"},
+                        {"__typename": "HeaderSectionChamp", "label": "Titre"},
+                        {"__typename": "ExplicationChamp", "label": "Info"},
+                    ],
+                    "annotations": [
+                        {"__typename": "TextChamp", "label": "Note"},
+                        {"__typename": "ExplicationChamp", "label": "Note info"},
+                    ],
+                }
+            }
+        }
+        mock_session_factory.return_value = _mock_session(mock_response)
+
+        result = get_dossier(123)
+
+        assert len(result["champs"]) == 1
+        assert result["champs"][0]["__typename"] == "TextChamp"
+        assert len(result["annotations"]) == 1
+
+    @patch("dn.queries.get_session_with_retries")
+    @patch("dn.queries.API_TOKEN", "test-token")
+    def test_permission_errors_ignored(self, mock_session_factory):
+        """Erreurs de permission → ignorées, données retournées"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {"dossier": {"number": 1}},
+            "errors": [{"message": "hidden due to permissions on field"}],
+        }
+        mock_session_factory.return_value = _mock_session(mock_response)
+
+        result = get_dossier(123)
+        assert result["number"] == 1
+
+    @patch("dn.queries.get_session_with_retries")
+    @patch("dn.queries.API_TOKEN", "test-token")
+    def test_non_permission_errors_raise(self, mock_session_factory):
+        """Erreurs non-permission → Exception"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": None,
+            "errors": [{"message": "Could not fetch dossier"}],
+        }
+        mock_session_factory.return_value = _mock_session(mock_response)
+
+        with pytest.raises(Exception, match="GraphQL errors"):
+            get_dossier(123)
+
+    @patch("dn.queries.get_session_with_retries")
+    @patch("dn.queries.API_TOKEN", "test-token")
+    def test_no_data_returns_empty(self, mock_session_factory):
+        """Pas de dossier retourné → dict vide"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {"dossier": None}}
+        mock_session_factory.return_value = _mock_session(mock_response)
+
+        result = get_dossier(123)
+        assert result == {}
 
 
 # ============================================================
