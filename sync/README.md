@@ -1,6 +1,6 @@
 # Synchronisation
 
-Rassemble les fonctionnalités de synchronisation.
+Rassemble les fonctionnalités de synchronisation, incluant la planification.
 
 ## tasks/
 
