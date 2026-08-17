@@ -10,7 +10,6 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, url_for
 from sqlalchemy import create_engine
@@ -20,6 +19,7 @@ from werkzeug.serving import WSGIRequestHandler
 from configuration.config_manager import ConfigManager
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
+from queries_graphql import get_available_groups
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
 from utils.api_validator import (
@@ -76,56 +76,6 @@ if not scheduler.running:
     reload_scheduler_jobs(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
     atexit.register(lambda: scheduler.shutdown(wait=True))
-
-
-def get_available_groups(api_token, demarche_number):
-    """Récupère les groupes instructeurs disponibles"""
-    if not all([api_token, demarche_number]):
-        return []
-
-    try:
-        query = """
-        query getDemarche($demarcheNumber: Int!) {
-            demarche(number: $demarcheNumber) {
-                groupeInstructeurs {
-                    id
-                    number
-                    label
-                }
-            }
-        }
-        """
-
-        variables = {"demarcheNumber": int(demarche_number)}
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(
-            DEMARCHES_API_URL,
-            json={"query": query, "variables": variables},
-            headers=headers,
-            timeout=10,
-        )
-
-        if response.status_code != 200:
-            return []
-
-        result = response.json()
-        if "errors" in result:
-            return []
-
-        groupes = (
-            result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
-        )
-        return [(groupe.get("number"), groupe.get("label")) for groupe in groupes]
-
-    except Exception as e:
-        logger.error(
-            f"Erreur lors de la récupération des groupes instructeurs: {str(e)}"
-        )
-        return []
 
 
 # Routes Flask

@@ -104,8 +104,8 @@ class TestGetAvailableGroups:
         assert get_available_groups("token", None) == []
         assert get_available_groups("token", "") == []
 
-    @patch("app.requests.post")
-    def test_success_returns_groups(self, mock_post):
+    @patch("queries_graphql.get_session_with_retries")
+    def test_success_returns_groups(self, mock_session_factory):
         """Appel réussi → retourne liste de tuples (number, label)"""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -119,45 +119,53 @@ class TestGetAvailableGroups:
                 }
             }
         }
-        mock_post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_response
+        mock_session_factory.return_value = mock_session
 
         result = get_available_groups("token123", "456")
 
         assert result == [(1, "Groupe A"), (2, "Groupe B")]
-        mock_post.assert_called_once()
+        mock_session.post.assert_called_once()
 
-    @patch("app.requests.post")
-    def test_api_error_status_returns_empty(self, mock_post):
+    @patch("queries_graphql.get_session_with_retries")
+    def test_api_error_status_returns_empty(self, mock_session_factory):
         """Statut HTTP != 200 → retourne []"""
         mock_response = MagicMock()
         mock_response.status_code = 401
-        mock_post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_response
+        mock_session_factory.return_value = mock_session
 
         assert get_available_groups("token", "123") == []
 
-    @patch("app.requests.post")
-    def test_graphql_errors_returns_empty(self, mock_post):
+    @patch("queries_graphql.get_session_with_retries")
+    def test_graphql_errors_returns_empty(self, mock_session_factory):
         """Erreurs GraphQL dans la réponse → retourne []"""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"errors": [{"message": "Unauthorized"}]}
-        mock_post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_response
+        mock_session_factory.return_value = mock_session
 
         assert get_available_groups("token", "123") == []
 
-    @patch("app.requests.post")
-    def test_empty_demarche_returns_empty(self, mock_post):
+    @patch("queries_graphql.get_session_with_retries")
+    def test_empty_demarche_returns_empty(self, mock_session_factory):
         """Démarche sans groupe instructeur → retourne []"""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "data": {"demarche": {"groupeInstructeurs": []}}
         }
-        mock_post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_response
+        mock_session_factory.return_value = mock_session
 
         assert get_available_groups("token", "123") == []
 
-    @patch("app.requests.post", side_effect=Exception("Network error"))
-    def test_exception_returns_empty(self, mock_post):
+    @patch("queries_graphql.get_session_with_retries", side_effect=Exception("Network error"))
+    def test_exception_returns_empty(self, mock_session_factory):
         """Exception quelconque → retourne []"""
         assert get_available_groups("token", "123") == []
