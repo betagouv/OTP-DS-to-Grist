@@ -77,6 +77,7 @@ l'utilisateur si un risque de conflit est identifié avec les fichiers concerné
 
 Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
 Conventions de nommage : standards Python (PEP 8) et JS.
+Préférer `git mv` à `mv` pour renommer/déplacer des fichiers suivis (préserve l'historique git).
 
 ## Tests
 
