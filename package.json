@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.11.6",
-    "eslint": "^10.8.0",
+    "eslint": "^10.8.1",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1"
   }
