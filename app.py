@@ -19,7 +19,7 @@ from werkzeug.serving import WSGIRequestHandler
 from configuration.config_manager import ConfigManager
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
-from queries_graphql import get_available_groups
+from dn.queries import get_available_groups
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
 from utils.api_validator import (
@@ -807,7 +807,7 @@ def debug():
         "grist_processor_working_all.py",
         "queries.py",
         "queries_extract.py",
-        "queries_graphql.py",
+        "dn/queries.py",
         "queries_util.py",
         "repetable_processor.py",
     ]

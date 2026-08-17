@@ -3,7 +3,7 @@ import json
 import traceback
 from pprint import pprint
 from dotenv import load_dotenv
-from queries_graphql import (
+from dn.queries import (
     get_dossier,
     get_demarche,
     get_demarche_dossiers,

@@ -104,7 +104,7 @@ class TestGetAvailableGroups:
         assert get_available_groups("token", None) == []
         assert get_available_groups("token", "") == []
 
-    @patch("queries_graphql.get_session_with_retries")
+    @patch("dn.queries.get_session_with_retries")
     def test_success_returns_groups(self, mock_session_factory):
         """Appel réussi → retourne liste de tuples (number, label)"""
         mock_response = MagicMock()
@@ -128,7 +128,7 @@ class TestGetAvailableGroups:
         assert result == [(1, "Groupe A"), (2, "Groupe B")]
         mock_session.post.assert_called_once()
 
-    @patch("queries_graphql.get_session_with_retries")
+    @patch("dn.queries.get_session_with_retries")
     def test_api_error_status_returns_empty(self, mock_session_factory):
         """Statut HTTP != 200 → retourne []"""
         mock_response = MagicMock()
@@ -139,7 +139,7 @@ class TestGetAvailableGroups:
 
         assert get_available_groups("token", "123") == []
 
-    @patch("queries_graphql.get_session_with_retries")
+    @patch("dn.queries.get_session_with_retries")
     def test_graphql_errors_returns_empty(self, mock_session_factory):
         """Erreurs GraphQL dans la réponse → retourne []"""
         mock_response = MagicMock()
@@ -151,7 +151,7 @@ class TestGetAvailableGroups:
 
         assert get_available_groups("token", "123") == []
 
-    @patch("queries_graphql.get_session_with_retries")
+    @patch("dn.queries.get_session_with_retries")
     def test_empty_demarche_returns_empty(self, mock_session_factory):
         """Démarche sans groupe instructeur → retourne []"""
         mock_response = MagicMock()
@@ -165,7 +165,7 @@ class TestGetAvailableGroups:
 
         assert get_available_groups("token", "123") == []
 
-    @patch("queries_graphql.get_session_with_retries", side_effect=Exception("Network error"))
+    @patch("dn.queries.get_session_with_retries", side_effect=Exception("Network error"))
     def test_exception_returns_empty(self, mock_session_factory):
         """Exception quelconque → retourne []"""
         assert get_available_groups("token", "123") == []
