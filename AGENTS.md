@@ -70,6 +70,9 @@ Le lire en premier — sans exception. Il peut contenir :
 - Son utilité dans l'architecture
 - Les conventions spécifiques au dossier
 
+Vérifier les pull requests ouvertes sur le dépôt (`gh pr list --state open`) et prévenir
+l'utilisateur si un risque de conflit est identifié avec les fichiers concernés par l'intervention.
+
 ## Conventions
 
 Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
