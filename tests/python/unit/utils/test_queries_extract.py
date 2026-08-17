@@ -1,5 +1,19 @@
-from queries_extract import dossier_to_flat_data
+from queries_extract import decode_base64_id, dossier_to_flat_data
 from schema_utils import create_columns_from_schema
+
+
+def test_decode_base64_id_valid():
+    encoded = "Q2hhbXAtMTIz"
+    assert decode_base64_id(encoded) == "123"
+
+
+def test_decode_base64_id_invalid():
+    assert decode_base64_id("invalid") == "invalid"
+
+
+def test_decode_base64_id_graphql():
+    encoded = "Q2hhbXA6MTIz"
+    assert decode_base64_id(encoded) == "123"
 
 
 def make_champ(label, typename, descriptor_id, value=None, checked=None, selected=None):

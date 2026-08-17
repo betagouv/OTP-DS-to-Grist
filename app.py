@@ -808,7 +808,7 @@ def debug():
         "queries.py",
         "queries_extract.py",
         "dn/queries.py",
-        "queries_util.py",
+        "utils/timing.py",
         "repetable_processor.py",
     ]
 

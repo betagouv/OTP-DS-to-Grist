@@ -20,7 +20,7 @@ from hide_id_columns import IdColumnHider
 from dn.queries import get_dossier
 from queries_extract import dossier_to_flat_data
 from dn.queries import get_demarche_dossiers_filtered
-from queries_util import get_timings
+from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
     get_demarche_schema,
