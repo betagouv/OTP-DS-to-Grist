@@ -14,7 +14,7 @@ from pprint import pprint
 from dotenv import load_dotenv
 
 from dn.queries import get_dossier, get_demarche
-from queries_extract import dossier_to_flat_data
+from dn.extract import dossier_to_flat_data
 from utils.api_validator import test_demarches_api
 
 

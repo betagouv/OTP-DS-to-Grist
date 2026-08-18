@@ -18,7 +18,7 @@ from sync.deleted_dossiers_sync import check_deleted_dossiers
 from grist.client import GristClient
 from grist.id_column_hider import IdColumnHider
 from dn.queries import get_dossier
-from queries_extract import dossier_to_flat_data
+from dn.extract import dossier_to_flat_data
 from dn.queries import get_demarche_dossiers_filtered
 from utils.timing import get_timings
 from schema_utils import (
@@ -1946,7 +1946,7 @@ def process_demarche_for_grist_optimized(
             for dossier_data in batch_dossiers_dict.values():
                 avis = dossier_data.get("avis", [])
                 if avis:
-                    from queries_extract import extract_avis_from_dossier
+                    from dn.extract import extract_avis_from_dossier
 
                     all_avis_records.extend(extract_avis_from_dossier(dossier_data))
 

@@ -1,4 +1,4 @@
-from queries_extract import decode_base64_id, dossier_to_flat_data
+from dn.extract import decode_base64_id, dossier_to_flat_data
 from schema_utils import create_columns_from_schema
 
 

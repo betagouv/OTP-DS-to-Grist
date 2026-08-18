@@ -19,7 +19,7 @@ import time
 
 import requests
 
-from queries_extract import extract_instructeurs_from_demarche
+from dn.extract import extract_instructeurs_from_demarche
 
 # Champs comparés pour décider si un enregistrement existant doit être mis à jour
 COMPARED_FIELDS = [
