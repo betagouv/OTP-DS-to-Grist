@@ -16,6 +16,10 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from utils.constants import DEMARCHES_API_URL
+from dn.schema import (
+    get_problematic_descriptor_ids_from_schema,
+    auto_clean_schema_descriptors,
+)
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -272,53 +276,6 @@ def get_demarche_schema(demarche_number):
         )
 
     return demarche
-
-
-def get_problematic_descriptor_ids_from_schema(demarche_schema):
-    """
-    Extrait les IDs des descripteurs problématiques (HeaderSection, Explication)
-    directement depuis le schéma de la démarche.
-
-     CORRIGÉ : "piece_justificative" retiré de la liste
-
-    FONCTION EXISTANTE - GARDÉE POUR COMPATIBILITÉ
-
-    Args:
-        demarche_schema: Schéma de la démarche récupéré via get_demarche_schema
-
-    Returns:
-        set: Ensemble des IDs problématiques à filtrer
-    """
-    problematic_ids = set()
-
-    # Fonction récursive pour explorer les descripteurs
-    def explore_descriptors(descriptors):
-        for descriptor in descriptors:
-            #  CORRECTION : "piece_justificative" RETIRÉ
-            if descriptor.get("__typename") in [
-                "HeaderSectionChampDescriptor",
-                "ExplicationChampDescriptor",
-            ] or descriptor.get("type") in ["header_section", "explication"]:
-                problematic_ids.add(descriptor.get("id"))
-
-            # Explorer les descripteurs dans les blocs répétables
-            if (
-                descriptor.get("__typename") == "RepetitionChampDescriptor"
-                and "champDescriptors" in descriptor
-            ):
-                explore_descriptors(descriptor["champDescriptors"])
-
-    # Explorer les descripteurs de champs et d'annotations
-    if demarche_schema.get("activeRevision"):
-        if "champDescriptors" in demarche_schema["activeRevision"]:
-            explore_descriptors(demarche_schema["activeRevision"]["champDescriptors"])
-
-        if "annotationDescriptors" in demarche_schema["activeRevision"]:
-            explore_descriptors(
-                demarche_schema["activeRevision"]["annotationDescriptors"]
-            )
-
-    return problematic_ids
 
 
 def create_columns_from_schema(demarche_schema, demarche_number=None):
@@ -1230,63 +1187,6 @@ def get_demarche_schema_robust(demarche_number: int) -> Dict[str, Any]:
 
     except Exception as e:
         raise Exception(f"Erreur lors de la récupération du schéma: {e}")
-
-
-def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Nettoie automatiquement les descripteurs en filtrant les champs problématiques.
-    """
-
-    def filter_descriptors(descriptors: List[Dict], context: str = "") -> List[Dict]:
-        filtered = []
-        problematic_count = 0
-
-        for descriptor in descriptors:
-            typename = descriptor.get("__typename", "")
-            descriptor_type = descriptor.get("type", "")
-
-            # Filtrer les types problématiques (SANS piece_justificative)
-            if typename in [
-                "HeaderSectionChampDescriptor",
-                "ExplicationChampDescriptor",
-            ] or descriptor_type in ["header_section", "explication"]:
-                problematic_count += 1
-                continue
-
-            # Traitement spécial pour les blocs répétables
-            if (
-                typename == "RepetitionChampDescriptor"
-                and "champDescriptors" in descriptor
-            ):
-                filtered_sub_descriptors = filter_descriptors(
-                    descriptor["champDescriptors"], f"{context}_repetable"
-                )
-                descriptor["champDescriptors"] = filtered_sub_descriptors
-
-            filtered.append(descriptor)
-
-        if problematic_count > 0:
-            print(f"{problematic_count} champs problématiques filtrés ({context})")
-
-        return filtered
-
-    # Nettoyer la démarche
-    cleaned_demarche = demarche.copy()
-    active_revision = cleaned_demarche["activeRevision"]
-
-    # Filtrer les descripteurs de champs
-    if "champDescriptors" in active_revision:
-        active_revision["champDescriptors"] = filter_descriptors(
-            active_revision["champDescriptors"], "champs"
-        )
-
-    # Filtrer les descripteurs d'annotations
-    if "annotationDescriptors" in active_revision:
-        active_revision["annotationDescriptors"] = filter_descriptors(
-            active_revision["annotationDescriptors"], "annotations"
-        )
-
-    return cleaned_demarche
 
 
 def get_demarche_schema_enhanced(demarche_number: int, prefer_robust: bool = True):
