@@ -1954,7 +1954,7 @@ def process_demarche_for_grist_optimized(
                 # Créer la table à la volée si elle n'existe pas encore
                 if not table_ids.get("avis"):
                     log("  Création lazy de la table avis...")
-                    from schema_utils import create_avis_columns
+                    from grist.schema import create_avis_columns
 
                     avis_table_id = f"Demarche_{demarche_number}_avis"
                     result = client.create_table(avis_table_id, create_avis_columns())
