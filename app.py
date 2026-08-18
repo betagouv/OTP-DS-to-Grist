@@ -39,6 +39,20 @@ from utils.socketio import socketio
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
+# Fichiers requis au démarrage
+REQUIRED_FILES = [
+    "app.py",
+    "grist_processor_working_all.py",
+    "queries_extract.py",
+    "repetable_processor.py",
+    "schema_utils.py",
+    "deleted_dossiers_checker.py",
+    "dn/queries.py",
+    "dn/__init__.py",
+    "utils/timing.py",
+    "utils/constants.py",
+]
+
 # Chargement des variables d'environnement
 load_dotenv()
 
@@ -802,40 +816,8 @@ def execution():
 @app.route("/debug")
 def debug():
     """Page de débogage"""
-    # Vérifier la présence des fichiers requis
-    required_files = [
-        "grist_processor_working_all.py",
-        "queries.py",
-        "queries_extract.py",
-        "dn/queries.py",
-        "utils/timing.py",
-        "repetable_processor.py",
-    ]
-
-    file_status = {}
-    for file in required_files:
-        file_path = os.path.join(script_dir, file)
-        file_status[file] = os.path.exists(file_path)
-
-    # Lister tous les fichiers du répertoire
-    try:
-        all_files = sorted(os.listdir(script_dir))
-    except Exception as e:
-        all_files = [f"Erreur: {str(e)}"]
 
     # Variables d'environnement (masquées pour la sécurité)
-    env_vars = {
-        "DEMARCHES_API_TOKEN": "***"
-        if os.getenv("DEMARCHES_API_TOKEN")
-        else "Non défini",
-        "DEMARCHES_API_URL": f"Constante: {DEMARCHES_API_URL}",
-        "DEMARCHE_NUMBER": os.getenv("DEMARCHE_NUMBER", "Non défini"),
-        "GRIST_BASE_URL": os.getenv("GRIST_BASE_URL", "Non défini"),
-        "GRIST_API_KEY": "***" if os.getenv("GRIST_API_KEY") else "Non défini",
-        "GRIST_DOC_ID": os.getenv("GRIST_DOC_ID", "Non défini"),
-        "GRIST_USER_ID": os.getenv("GRIST_USER_ID", "Non défini"),
-    }
-
     filter_vars = {
         "DATE_DEPOT_DEBUT": os.getenv("DATE_DEPOT_DEBUT", "Non défini"),
         "DATE_DEPOT_FIN": os.getenv("DATE_DEPOT_FIN", "Non défini"),
@@ -867,11 +849,7 @@ def debug():
 
     return render_template(
         "debug.html",
-        file_status=file_status,
-        all_files=all_files,
-        env_vars=env_vars,
         filter_vars=filter_vars,
-        script_dir=script_dir,
         current_email=current_email,
     )
 

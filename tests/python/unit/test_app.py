@@ -3,11 +3,14 @@ Tests unitaires pour app.py — fonctions pures (vite_asset)
 """
 
 import json
+import os
 from unittest.mock import patch
 from pathlib import Path
 
 import pytest
-from app import vite_asset, app
+from app import vite_asset, app, REQUIRED_FILES
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
 class TestViteAsset:
@@ -91,4 +94,6 @@ class TestViteAsset:
                         vite_asset("src/nonexistent.js")
 
 
-
+def test_required_files_exist():
+    for f in REQUIRED_FILES:
+        assert os.path.exists(os.path.join(PROJECT_ROOT, f)), f"Missing: {f}"
