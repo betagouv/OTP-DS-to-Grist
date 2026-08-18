@@ -253,6 +253,46 @@ class TestHideIdColumns:
         assert skip == 0
         mock_del.assert_not_called()
 
+    def test_logs_when_columns_hidden(self):
+        hider = _make_hider()
+        tables, columns, sections, fields = self._setup_mocks()
+        hide_resp = MagicMock()
+        hide_resp.status_code = 200
+
+        with (
+            patch(
+                "grist.id_column_hider.requests.get",
+                side_effect=[tables, columns, sections, fields],
+            ),
+            patch("grist.id_column_hider.requests.delete", return_value=hide_resp),
+            patch("grist.id_column_hider.log") as mock_log,
+        ):
+            hider.hide_id_columns()
+
+        mock_log.assert_any_call(
+            "[OK] 2 colonne(s) cachée(s) sur : Demarche_123_champs, Demarche_123_dossiers"
+        )
+
+    def test_logs_when_columns_skipped(self):
+        hider = _make_hider()
+        tables_resp = _mock_records([{"id": 1, "fields": {"tableId": "t1"}}])
+        columns_resp = _mock_records(
+            [{"id": 10, "fields": {"colId": "x_id", "parentId": 1}}]
+        )
+        sections_resp = _mock_records([])
+        fields_resp = _mock_records([])
+
+        with (
+            patch(
+                "grist.id_column_hider.requests.get",
+                side_effect=[tables_resp, columns_resp, sections_resp, fields_resp],
+            ),
+            patch("grist.id_column_hider.log") as mock_log,
+        ):
+            hider.hide_id_columns()
+
+        mock_log.assert_any_call("[SKIP] 1 colonne(s) sur : t1")
+
 
 class TestMain:
     """Tests pour la fonction main()"""
@@ -281,3 +321,39 @@ class TestMain:
             ),
         ):
             assert main() == 0
+
+    def test_main_logs_error_on_incomplete_config(self):
+        with (
+            patch("grist.id_column_hider.os.getenv", return_value=None),
+            patch("grist.id_column_hider.log_error") as mock_log_error,
+        ):
+            main()
+
+        mock_log_error.assert_called_once()
+        assert "incomplète" in mock_log_error.call_args.args[0]
+
+    def test_main_logs_completion(self):
+        env = {
+            "GRIST_BASE_URL": "https://grist.example.com",
+            "GRIST_API_KEY": "key",
+            "GRIST_DOC_ID": "doc1",
+        }
+        empty = _mock_records([])
+
+        with (
+            patch(
+                "grist.id_column_hider.os.getenv",
+                side_effect=lambda k: env.get(k),
+            ),
+            patch("grist.id_column_hider.load_dotenv"),
+            patch(
+                "grist.id_column_hider.requests.get",
+                side_effect=[empty, empty, empty, empty],
+            ),
+            patch("grist.id_column_hider.log") as mock_log,
+        ):
+            main()
+
+        mock_log.assert_any_call(
+            "\nTerminé : 0 colonne(s) cachée(s), 0 ignorée(s)"
+        )

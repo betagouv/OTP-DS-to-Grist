@@ -16,14 +16,7 @@ import sys
 import requests
 from dotenv import load_dotenv
 
-
-def log(message, level=1, log_level=1):
-    if level <= log_level:
-        print(message)
-
-
-def log_error(message):
-    print(f"ERREUR: {message}")
+from utils.log import log, log_error
 
 
 class IdColumnHider:
