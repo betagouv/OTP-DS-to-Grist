@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from hide_id_columns import IdColumnHider, main
+from grist.id_column_hider import IdColumnHider, main
 
 
 def _make_hider(base_url="https://grist.example.com", api_key="key", doc_id="doc1"):
@@ -41,7 +41,7 @@ class TestHideField:
         hider = _make_hider()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        with patch("hide_id_columns.requests.delete", return_value=mock_resp):
+        with patch("grist.id_column_hider.requests.delete", return_value=mock_resp):
             hider._hide_field(42)
 
     def test_fallback_to_apply_on_404(self):
@@ -51,9 +51,9 @@ class TestHideField:
         apply_resp = MagicMock()
         apply_resp.status_code = 200
         with (
-            patch("hide_id_columns.requests.delete", return_value=del_resp),
+            patch("grist.id_column_hider.requests.delete", return_value=del_resp),
             patch(
-                "hide_id_columns.requests.post", return_value=apply_resp
+                "grist.id_column_hider.requests.post", return_value=apply_resp
             ) as mock_post,
         ):
             hider._hide_field(42)
@@ -68,9 +68,9 @@ class TestHideField:
         apply_resp = MagicMock()
         apply_resp.status_code = 200
         with (
-            patch("hide_id_columns.requests.delete", return_value=del_resp),
+            patch("grist.id_column_hider.requests.delete", return_value=del_resp),
             patch(
-                "hide_id_columns.requests.post", return_value=apply_resp
+                "grist.id_column_hider.requests.post", return_value=apply_resp
             ) as mock_post,
         ):
             hider._hide_field(42)
@@ -118,11 +118,11 @@ class TestHideIdColumns:
 
         with (
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[tables, columns, sections, fields],
             ),
             patch(
-                "hide_id_columns.requests.delete", return_value=hide_resp
+                "grist.id_column_hider.requests.delete", return_value=hide_resp
             ) as mock_del,
         ):
             ok, skip = hider.hide_id_columns()
@@ -137,10 +137,10 @@ class TestHideIdColumns:
 
         with (
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[tables, columns, sections, fields],
             ),
-            patch("hide_id_columns.requests.delete") as mock_del,
+            patch("grist.id_column_hider.requests.delete") as mock_del,
         ):
             ok, skip = hider.hide_id_columns(suffix="_xyz")
 
@@ -155,11 +155,11 @@ class TestHideIdColumns:
 
         with (
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[tables, columns, sections, fields],
             ),
             patch(
-                "hide_id_columns.requests.delete", return_value=hide_resp
+                "grist.id_column_hider.requests.delete", return_value=hide_resp
             ) as mock_del,
         ):
             ok, skip = hider.hide_id_columns(table_ids={"Demarche_123_champs"})
@@ -178,10 +178,10 @@ class TestHideIdColumns:
 
         with (
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[tables_resp, columns_resp, sections_resp, fields_resp],
             ),
-            patch("hide_id_columns.requests.delete") as mock_del,
+            patch("grist.id_column_hider.requests.delete") as mock_del,
         ):
             ok, skip = hider.hide_id_columns()
 
@@ -204,10 +204,10 @@ class TestHideIdColumns:
 
         with (
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[tables_resp, columns_resp, sections_resp, fields_resp],
             ),
-            patch("hide_id_columns.requests.delete") as mock_del,
+            patch("grist.id_column_hider.requests.delete") as mock_del,
         ):
             ok, skip = hider.hide_id_columns()
 
@@ -223,11 +223,11 @@ class TestHideIdColumns:
 
         with (
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[tables, columns, sections, fields],
             ),
             patch(
-                "hide_id_columns.requests.delete", return_value=hide_resp
+                "grist.id_column_hider.requests.delete", return_value=hide_resp
             ),
         ):
             result = hider.hide_id_columns()
@@ -242,10 +242,10 @@ class TestHideIdColumns:
 
         with (
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[empty, empty, empty, empty],
             ),
-            patch("hide_id_columns.requests.delete") as mock_del,
+            patch("grist.id_column_hider.requests.delete") as mock_del,
         ):
             ok, skip = hider.hide_id_columns()
 
@@ -258,7 +258,7 @@ class TestMain:
     """Tests pour la fonction main()"""
 
     def test_incomplete_config_returns_1(self):
-        with patch("hide_id_columns.os.getenv", return_value=None):
+        with patch("grist.id_column_hider.os.getenv", return_value=None):
             assert main() == 1
 
     def test_complete_config_returns_0(self):
@@ -271,12 +271,12 @@ class TestMain:
 
         with (
             patch(
-                "hide_id_columns.os.getenv",
+                "grist.id_column_hider.os.getenv",
                 side_effect=lambda k: env.get(k),
             ),
-            patch("hide_id_columns.load_dotenv"),
+            patch("grist.id_column_hider.load_dotenv"),
             patch(
-                "hide_id_columns.requests.get",
+                "grist.id_column_hider.requests.get",
                 side_effect=[empty, empty, empty, empty],
             ),
         ):

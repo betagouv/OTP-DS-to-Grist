@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 import sync.repetable_processor as rp
 from sync.deleted_dossiers_sync import check_deleted_dossiers
 from grist.client import GristClient
-from hide_id_columns import IdColumnHider
+from grist.id_column_hider import IdColumnHider
 from dn.queries import get_dossier
 from queries_extract import dossier_to_flat_data
 from dn.queries import get_demarche_dossiers_filtered

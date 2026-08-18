@@ -8,7 +8,6 @@ services:
       - ./queries_extract.py:/app/queries_extract.py
       - ./schema_utils.py:/app/schema_utils.py
       - ./grist_processor_working_all.py:/app/grist_processor_working_all.py
-      - ./hide_id_columns.py:/app/hide_id_columns.py
       - ./dn:/app/dn
       - ./utils:/app/utils
       - ./grist:/app/grist

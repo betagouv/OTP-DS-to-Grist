@@ -39,20 +39,6 @@ from utils.socketio import socketio
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Fichiers requis au démarrage
-REQUIRED_FILES = [
-    "app.py",
-    "grist_processor_working_all.py",
-    "queries_extract.py",
-    "sync/repetable_processor.py",
-    "schema_utils.py",
-    "sync/deleted_dossiers_sync.py",
-    "dn/queries.py",
-    "dn/__init__.py",
-    "utils/timing.py",
-    "utils/constants.py",
-]
-
 # Chargement des variables d'environnement
 load_dotenv()
 
