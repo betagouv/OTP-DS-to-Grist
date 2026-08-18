@@ -13,8 +13,8 @@ from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
 
-import repetable_processor as rp
-from deleted_dossiers_checker import check_deleted_dossiers
+import sync.repetable_processor as rp
+from sync.deleted_dossiers_sync import check_deleted_dossiers
 from grist.client import GristClient
 from hide_id_columns import IdColumnHider
 from dn.queries import get_dossier
@@ -1915,7 +1915,7 @@ def process_demarche_for_grist_optimized(
                         block_table_id = table_ids["repetable_blocks"][normalized_block]
 
                         try:
-                            from repetable_processor import process_repetables_batch
+                            from sync.repetable_processor import process_repetables_batch
 
                             # Préparer les données pour le batch
                             success_count, error_count = process_repetables_batch(
