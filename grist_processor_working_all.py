@@ -23,9 +23,11 @@ from dn.queries import get_demarche_dossiers_filtered
 from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
+    update_grist_tables_from_schema,
+)
+from dn.schema import (
     get_demarche_schema,
     get_demarche_schema_enhanced,
-    update_grist_tables_from_schema,
 )
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche

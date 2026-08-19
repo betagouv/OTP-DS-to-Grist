@@ -1,5 +1,5 @@
 """
-Tests unitaires pour les fonctions de récupération de schéma dans schema_utils.py:
+Tests unitaires pour les fonctions de récupération de schéma dans dn/schema.py:
 - get_demarche_schema
 - get_demarche_schema_robust
 - get_demarche_schema_enhanced
@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from schema_utils import (
+from dn.schema import (
     get_demarche_schema,
     get_demarche_schema_enhanced,
     get_demarche_schema_robust,
@@ -57,13 +57,13 @@ def _mock_response(json_data=None, status_code=200, raise_for_status=None):
 class TestGetDemarcheSchema:
     """Tests pour get_demarche_schema"""
 
-    @patch("schema_utils.API_TOKEN", "")
+    @patch("dn.schema.API_TOKEN", "")
     def test_no_token_raises(self):
         with pytest.raises(ValueError, match="token"):
             get_demarche_schema(42)
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_success(self, mock_post):
         mock_post.return_value = _mock_response(
             json_data=_make_demarche_response()
@@ -76,8 +76,8 @@ class TestGetDemarcheSchema:
         assert "activeRevision" in result
         mock_post.assert_called_once()
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_success_converts_demarche_number_to_int(self, mock_post):
         mock_post.return_value = _mock_response(
             json_data=_make_demarche_response()
@@ -88,8 +88,8 @@ class TestGetDemarcheSchema:
         call_kwargs = mock_post.call_args
         assert call_kwargs[1]["json"]["variables"]["demarcheNumber"] == 42
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_http_error(self, mock_post):
         mock_post.return_value = _mock_response(
             raise_for_status=Exception("HTTP 403")
@@ -98,8 +98,8 @@ class TestGetDemarcheSchema:
         with pytest.raises(Exception, match="HTTP 403"):
             get_demarche_schema(42)
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_graphql_errors_raised(self, mock_post):
         mock_post.return_value = _mock_response(
             json_data={"errors": [{"message": "Démarche introuvable"}]}
@@ -108,8 +108,8 @@ class TestGetDemarcheSchema:
         with pytest.raises(Exception, match="Démarche introuvable"):
             get_demarche_schema(42)
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_permission_errors_filtered(self, mock_post):
         """Les erreurs de permissions sont silencieusement ignorées."""
         mock_post.return_value = _mock_response(
@@ -125,8 +125,8 @@ class TestGetDemarcheSchema:
         with pytest.raises(Exception, match="some other error"):
             get_demarche_schema(42)
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_permission_errors_only_still_raises_if_no_data(self, mock_post):
         """Si toutes les erreurs sont des permissions et pas de data → erreur."""
         mock_post.return_value = _mock_response(
@@ -139,16 +139,16 @@ class TestGetDemarcheSchema:
         with pytest.raises(Exception, match="Aucune donnée de démarche"):
             get_demarche_schema(42)
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_no_data_raises(self, mock_post):
         mock_post.return_value = _mock_response(json_data={"data": None})
 
         with pytest.raises(Exception, match="Aucune donnée de démarche"):
             get_demarche_schema(42)
 
-    @patch("schema_utils.requests.post")
-    @patch("schema_utils.API_TOKEN", "test-token")
+    @patch("dn.schema.requests.post")
+    @patch("dn.schema.API_TOKEN", "test-token")
     def test_no_active_revision_raises(self, mock_post):
         mock_post.return_value = _mock_response(
             json_data={
@@ -175,9 +175,9 @@ class TestGetDemarcheSchema:
 class TestGetDemarcheSchemaRobust:
     """Tests pour get_demarche_schema_robust"""
 
-    @patch("schema_utils.auto_clean_schema_descriptors")
-    @patch("schema_utils.get_problematic_descriptor_ids_from_schema")
-    @patch("schema_utils.get_demarche_schema")
+    @patch("dn.schema.auto_clean_schema_descriptors")
+    @patch("dn.schema.get_problematic_descriptor_ids_from_schema")
+    @patch("dn.schema.get_demarche_schema")
     def test_success(self, mock_base, mock_ids, mock_clean):
         demarche = {
             "id": "d-1",
@@ -204,7 +204,7 @@ class TestGetDemarcheSchemaRobust:
         assert result["metadata"]["problematic_ids"] == set()
         mock_clean.assert_called_once()
 
-    @patch("schema_utils.get_demarche_schema")
+    @patch("dn.schema.get_demarche_schema")
     def test_no_active_revision_raises(self, mock_base):
         mock_base.return_value = {
             "id": "d-1",
@@ -215,16 +215,16 @@ class TestGetDemarcheSchemaRobust:
         with pytest.raises(Exception, match="Aucune révision active"):
             get_demarche_schema_robust(42)
 
-    @patch("schema_utils.get_demarche_schema")
+    @patch("dn.schema.get_demarche_schema")
     def test_base_failure_wraps_exception(self, mock_base):
         mock_base.side_effect = Exception("API down")
 
         with pytest.raises(Exception, match="Erreur lors de la récupération"):
             get_demarche_schema_robust(42)
 
-    @patch("schema_utils.auto_clean_schema_descriptors")
-    @patch("schema_utils.get_problematic_descriptor_ids_from_schema")
-    @patch("schema_utils.get_demarche_schema")
+    @patch("dn.schema.auto_clean_schema_descriptors")
+    @patch("dn.schema.get_problematic_descriptor_ids_from_schema")
+    @patch("dn.schema.get_demarche_schema")
     def test_problematic_ids_stored_in_metadata(self, mock_base, mock_ids, mock_clean):
         demarche = {
             "id": "d-1",
@@ -252,7 +252,7 @@ class TestGetDemarcheSchemaRobust:
 class TestGetDemarcheSchemaEnhanced:
     """Tests pour get_demarche_schema_enhanced"""
 
-    @patch("schema_utils.get_demarche_schema_robust")
+    @patch("dn.schema.get_demarche_schema_robust")
     def test_prefer_robust_success(self, mock_robust):
         expected = {"number": 42, "metadata": {}}
         mock_robust.return_value = expected
@@ -262,8 +262,8 @@ class TestGetDemarcheSchemaEnhanced:
         assert result == expected
         mock_robust.assert_called_once_with(42)
 
-    @patch("schema_utils.get_demarche_schema")
-    @patch("schema_utils.get_demarche_schema_robust")
+    @patch("dn.schema.get_demarche_schema")
+    @patch("dn.schema.get_demarche_schema_robust")
     def test_prefer_robust_fallback_on_error(self, mock_robust, mock_classic):
         mock_robust.side_effect = Exception("Robust failed")
         expected = {"number": 42}
@@ -274,7 +274,7 @@ class TestGetDemarcheSchemaEnhanced:
         assert result == expected
         mock_classic.assert_called_once_with(42)
 
-    @patch("schema_utils.get_demarche_schema")
+    @patch("dn.schema.get_demarche_schema")
     def test_prefer_classic(self, mock_classic):
         expected = {"number": 42}
         mock_classic.return_value = expected
