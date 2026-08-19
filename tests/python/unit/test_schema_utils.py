@@ -333,7 +333,7 @@ class TestCreateColumnsFromSchema:
         schema = _make_schema(champ_descriptors=[
             _make_descriptor("TextChampDescriptor", "Nom", desc_id="d1"),
         ])
-        with patch("utils.log.log") as mock_log:
+        with patch("dn.schema.log") as mock_log:
             create_columns_from_schema(schema, demarche_number=42)
         mock_log.assert_any_call("Création des colonnes pour la démarche 42")
 
@@ -341,7 +341,7 @@ class TestCreateColumnsFromSchema:
         schema = _make_schema(champ_descriptors=[
             _make_descriptor("TextChampDescriptor", "Nom", desc_id="d1"),
         ])
-        with patch("utils.log.log") as mock_log:
+        with patch("dn.schema.log") as mock_log:
             create_columns_from_schema(schema)
         for call_args in mock_log.call_args_list:
             assert "Création des colonnes" not in call_args.args[0]
