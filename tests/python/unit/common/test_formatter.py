@@ -56,6 +56,9 @@ class TestLabelToColumnId:
         """Vérifie que label_to_column_id NE supprime PAS les numéros en début (col_ préfixé)."""
         assert label_to_column_id("1. Nom du champ") == "col_1_nom_du_champ"
         assert label_to_column_id("2) Prénom") == "col_2_prenom"
+        assert label_to_column_id("3) Documents") == "col_3_documents"
+        assert label_to_column_id("12. Adresse complète") == "col_12_adresse_complete"
+        assert label_to_column_id("1er étage") == "col_1er_etage"
 
     def test_returns_string(self):
         assert isinstance(label_to_column_id("test"), str)

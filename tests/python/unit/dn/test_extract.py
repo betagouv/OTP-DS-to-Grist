@@ -1,4 +1,6 @@
-from dn.extract import decode_base64_id, dossier_to_flat_data
+import pytest
+
+from dn.extract import decode_base64_id, dossier_to_flat_data, extract_repetable_blocks
 from schema_utils import create_columns_from_schema
 
 
@@ -285,3 +287,115 @@ class TestDossierToFlatDataDuplicateLabels:
         labels = {item["label"]: item["value"] for item in flat["annotations"]}
         assert labels.get("annotation_Avis") == "OK"
         assert labels.get("annotation_Avis_1") == "KO"
+
+
+class TestNumberedLabelCoherence:
+    """
+    Vérifie la cohérence des IDs de colonnes entre la création de schéma
+    et l'extraction de données, notamment pour les labels numérotés.
+
+    Le bug : normalize_column_name (dans grist_processor_working_all) strip
+    les numéros en début ("1. Nom" → "nom"), alors que label_to_column_id
+    (utilisé par create_columns_from_schema) les préserve ("1. Nom" → "col_1_nom").
+
+    Après 6a.6, tous les appelants utiliseront label_to_column_id → cohérence.
+    """
+
+    def _make_numbered_schema(self):
+        """Schéma avec labels numérotés typiques DS."""
+        return {
+            "title": "Démarche test",
+            "activeRevision": {
+                "champDescriptors": [
+                    {
+                        "__typename": "TextChampDescriptor",
+                        "id": "desc_1",
+                        "type": "text",
+                        "label": "1. Nom du champ",
+                        "description": "",
+                        "required": False,
+                    },
+                    {
+                        "__typename": "TextChampDescriptor",
+                        "id": "desc_2",
+                        "type": "text",
+                        "label": "2) Prénom",
+                        "description": "",
+                        "required": False,
+                    },
+                ],
+                "annotationDescriptors": [],
+            },
+        }
+
+    def test_schema_creates_prefixed_column_ids(self):
+        """create_columns_from_schema préserve les numéros → col_ préfixé."""
+        schema = self._make_numbered_schema()
+        column_types, _ = create_columns_from_schema(schema)
+
+        champ_ids = {c["id"] for c in column_types["champs"]}
+        assert "col_1_nom_du_champ" in champ_ids
+        assert "col_2_prenom" in champ_ids
+
+    def test_flat_data_uses_descriptor_mapping(self):
+        """dossier_to_flat_data utilise descriptor_to_column_id → cohérent avec le schéma."""
+        schema = self._make_numbered_schema()
+        column_types, _ = create_columns_from_schema(schema)
+        descriptor_to_column_id = column_types["descriptor_to_column_id"]
+
+        dossier = make_dossier(
+            [
+                make_champ("1. Nom du champ", "TextChamp", "desc_1", value="Martin"),
+                make_champ("2) Prénom", "TextChamp", "desc_2", value="Jean"),
+            ]
+        )
+        flat = dossier_to_flat_data(
+            dossier,
+            exclude_repetition_champs=True,
+            descriptor_to_column_id=descriptor_to_column_id,
+        )
+
+        labels = {item["label"]: item["value"] for item in flat["champs"]}
+        assert labels.get("col_1_nom_du_champ") == "Martin"
+        assert labels.get("col_2_prenom") == "Jean"
+
+    @pytest.mark.xfail(
+        reason="6a.6 nécessaire : dossier_to_flat_data (sans descriptor_to_column_id) utilise normalize_column_name qui strip les numéros"
+    )
+    def test_fallback_normalization_incohérent_avec_schema(self):
+        """Le fallback de dossier_to_flat_data produit des labels incohérents avec le schéma.
+
+        Sans descriptor_to_column_id, dossier_to_flat_data utilise
+        normalize_column_name (qui strip "1. Nom" → "nom") pour la
+        détection de doublons, puis utilise le base_label brut comme clé.
+
+        Le schéma crée la colonne "col_1_nom_du_champ" (via label_to_column_id)
+        mais le flat_data produit le label "1. Nom du champ" (base_label brut).
+
+        Après 6a.6, normalize_column_name sera remplacé par label_to_column_id
+        partout, et le fallback produira des labels cohérents avec le schéma.
+        """
+        schema = self._make_numbered_schema()
+        column_types, _ = create_columns_from_schema(schema)
+        champ_ids = {c["id"] for c in column_types["champs"]}
+
+        dossier = make_dossier(
+            [
+                make_champ("1. Nom du champ", "TextChamp", "desc_1", value="Martin"),
+                make_champ("2) Prénom", "TextChamp", "desc_2", value="Jean"),
+            ]
+        )
+
+        # Sans descriptor_to_column_id → fallback qui utilise normalize_column_name
+        flat = dossier_to_flat_data(dossier, exclude_repetition_champs=True)
+
+        flat_labels = {item["label"] for item in flat["champs"]}
+
+        # Le schéma crée col_1_nom_du_champ
+        assert "col_1_nom_du_champ" in champ_ids
+        # Après 6a.6, le fallback devrait aussi produire col_1_nom_du_champ
+        # Avant 6a.6, le flat_data produit le label brut → incohérence avec le schéma
+        assert "col_1_nom_du_champ" in flat_labels, (
+            f"Le schéma crée la colonne 'col_1_nom_du_champ' mais le fallback "
+            f"de dossier_to_flat_data produit {flat_labels} — attendu 'col_1_nom_du_champ'"
+        )
