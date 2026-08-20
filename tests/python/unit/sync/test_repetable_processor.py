@@ -1,51 +1,55 @@
 """
-Tests unitaires pour sync/repetable_processor.py : normalize_column_name
+Tests unitaires pour sync/repetable_processor.py
 
-Cette copie de normalize_column_name NE stripe PAS les numéros en début.
-Elle est identique à label_to_column_id (common/formatter.py).
+Avant 6a.6, sync/repetable_processor.py avait sa propre copie de
+label_to_column_id (sans stripping des numéros). Cette copie est
+identique à label_to_column_id de common/formatter.py.
+
+Ce fichier teste le comportement de label_to_column_id tel qu'utilisé
+dans sync/repetable_processor (sans stripping des numéros).
 """
 
-from sync.repetable_processor import normalize_column_name
+from common.formatter import label_to_column_id
 
 
 class TestNormalizeColumnName:
-    """Tests pour normalize_column_name de sync/repetable_processor."""
+    """Tests pour label_to_column_id de sync/repetable_processor."""
 
     def test_basic(self):
-        assert normalize_column_name("Nom du champ") == "nom_du_champ"
-        assert normalize_column_name("Prénom") == "prenom"
-        assert normalize_column_name("Email@domain.com") == "email_domain_com"
+        assert label_to_column_id("Nom du champ") == "nom_du_champ"
+        assert label_to_column_id("Prénom") == "prenom"
+        assert label_to_column_id("Email@domain.com") == "email_domain_com"
 
     def test_empty_and_whitespace(self):
-        assert normalize_column_name("") == "column"
-        assert normalize_column_name("   ") == "col_"
+        assert label_to_column_id("") == "column"
+        assert label_to_column_id("   ") == "col_"
 
     def test_accents(self):
-        assert normalize_column_name("Téléphone") == "telephone"
-        assert normalize_column_name("Adresse naïve") == "adresse_naive"
+        assert label_to_column_id("Téléphone") == "telephone"
+        assert label_to_column_id("Adresse naïve") == "adresse_naive"
 
     def test_apostrophes(self):
-        assert normalize_column_name("l'enseignant") == "l_enseignant"
+        assert label_to_column_id("l'enseignant") == "l_enseignant"
 
     def test_special_characters(self):
-        assert normalize_column_name("Champ#1!") == "champ_1"
-        assert normalize_column_name("Test-Field_123") == "test_field_123"
+        assert label_to_column_id("Champ#1!") == "champ_1"
+        assert label_to_column_id("Test-Field_123") == "test_field_123"
 
     def test_starts_with_number(self):
-        assert normalize_column_name("123champ") == "col_123champ"
+        assert label_to_column_id("123champ") == "col_123champ"
 
     def test_no_strip_numbered_label(self):
         """Pas de stripping des numéros en début — comportement de cette copie."""
-        assert normalize_column_name("1. Nom du champ") == "col_1_nom_du_champ"
-        assert normalize_column_name("2) Prénom") == "col_2_prenom"
-        assert normalize_column_name("3. Documents") == "col_3_documents"
+        assert label_to_column_id("1. Nom du champ") == "col_1_nom_du_champ"
+        assert label_to_column_id("2) Prénom") == "col_2_prenom"
+        assert label_to_column_id("3. Documents") == "col_3_documents"
 
     def test_max_length(self):
         long_name = "a" * 60
-        result = normalize_column_name(long_name, max_length=50)
+        result = label_to_column_id(long_name, max_length=50)
         assert len(result) <= 50
 
     def test_underscores(self):
-        assert normalize_column_name("champ__avec__underscores") == "champ_avec_underscores"
-        assert normalize_column_name("_underscore") == "underscore"
-        assert normalize_column_name("___multiple___") == "multiple"
+        assert label_to_column_id("champ__avec__underscores") == "champ_avec_underscores"
+        assert label_to_column_id("_underscore") == "underscore"
+        assert label_to_column_id("___multiple___") == "multiple"

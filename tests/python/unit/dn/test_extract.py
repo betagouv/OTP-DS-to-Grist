@@ -294,11 +294,9 @@ class TestNumberedLabelCoherence:
     Vérifie la cohérence des IDs de colonnes entre la création de schéma
     et l'extraction de données, notamment pour les labels numérotés.
 
-    Le bug : normalize_column_name (dans grist_processor_working_all) strip
-    les numéros en début ("1. Nom" → "nom"), alors que label_to_column_id
-    (utilisé par create_columns_from_schema) les préserve ("1. Nom" → "col_1_nom").
-
-    Après 6a.6, tous les appelants utiliseront label_to_column_id → cohérence.
+    Le schéma utilise label_to_column_id (sans stripping des numéros),
+    tandis que le fallback de dossier_to_flat_data produit le label brut.
+    La cohérence est assurée via descriptor_to_column_id.
     """
 
     def _make_numbered_schema(self):
@@ -360,20 +358,17 @@ class TestNumberedLabelCoherence:
         assert labels.get("col_2_prenom") == "Jean"
 
     @pytest.mark.xfail(
-        reason="6a.6 nécessaire : dossier_to_flat_data (sans descriptor_to_column_id) utilise normalize_column_name qui strip les numéros"
+        reason="Fallback produit le label brut (base_label), pas l'ID normalisé — problème de conception séparé de 6a.6"
     )
     def test_fallback_normalization_incohérent_avec_schema(self):
         """Le fallback de dossier_to_flat_data produit des labels incohérents avec le schéma.
 
         Sans descriptor_to_column_id, dossier_to_flat_data utilise
-        normalize_column_name (qui strip "1. Nom" → "nom") pour la
-        détection de doublons, puis utilise le base_label brut comme clé.
+        ds_label_to_column_id pour la détection de doublons, mais utilise
+        le base_label brut comme clé de label.
 
         Le schéma crée la colonne "col_1_nom_du_champ" (via label_to_column_id)
         mais le flat_data produit le label "1. Nom du champ" (base_label brut).
-
-        Après 6a.6, normalize_column_name sera remplacé par label_to_column_id
-        partout, et le fallback produira des labels cohérents avec le schéma.
         """
         schema = self._make_numbered_schema()
         column_types, _ = create_columns_from_schema(schema)
@@ -386,15 +381,14 @@ class TestNumberedLabelCoherence:
             ]
         )
 
-        # Sans descriptor_to_column_id → fallback qui utilise normalize_column_name
+        # Sans descriptor_to_column_id → fallback qui utilise le label brut
         flat = dossier_to_flat_data(dossier, exclude_repetition_champs=True)
 
         flat_labels = {item["label"] for item in flat["champs"]}
 
         # Le schéma crée col_1_nom_du_champ
         assert "col_1_nom_du_champ" in champ_ids
-        # Après 6a.6, le fallback devrait aussi produire col_1_nom_du_champ
-        # Avant 6a.6, le flat_data produit le label brut → incohérence avec le schéma
+        # Le fallback produit le label brut "1. Nom du champ" au lieu de "col_1_nom_du_champ"
         assert "col_1_nom_du_champ" in flat_labels, (
             f"Le schéma crée la colonne 'col_1_nom_du_champ' mais le fallback "
             f"de dossier_to_flat_data produit {flat_labels} — attendu 'col_1_nom_du_champ'"
