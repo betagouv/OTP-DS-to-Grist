@@ -54,3 +54,25 @@ def label_to_column_id(name, max_length=150):
         name = f"{name[:max_length - 7]}_{hash_part}"
 
     return name
+
+
+def ds_label_to_column_id(name, max_length=150):
+    """
+    Transforme un label DS numéroté en ID de colonne Grist valide.
+
+    Supprime les numéros en début de chaîne (ex: "1. Nom", "2) Prénom")
+    avant d'appliquer la normalisation standard.
+
+    À utiliser pour tout label provenant de l'API Démarches Simplifiées.
+
+    Args:
+        name: Le nom original du champ DS
+        max_length: Longueur maximale autorisée (défaut: 150)
+
+    Returns:
+        str: ID de colonne normalisé pour Grist
+    """
+    # Supprimer les numéros en début type "1. ", "2. ", "3) ", etc.
+    if name:
+        name = re.sub(r"^[\d]+[\.\)]\s*", "", name)
+    return label_to_column_id(name, max_length)
