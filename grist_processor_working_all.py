@@ -1,35 +1,33 @@
 import concurrent.futures
-import hashlib
 import json as json_module
 import os
-import re
 import sys
 import time
 import traceback
-import unicodedata
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
 
-import repetable_processor as rp
-from deleted_dossiers_checker import check_deleted_dossiers
+import sync.repetable_processor as rp
+from sync.deleted_dossiers_sync import check_deleted_dossiers
 from grist.client import GristClient
-from hide_id_columns import IdColumnHider
-from queries import get_dossier
-from queries_extract import dossier_to_flat_data
-from queries_graphql import get_demarche_dossiers_filtered
-from queries_util import get_timings
-from schema_utils import (
+from grist.id_column_hider import IdColumnHider
+from dn.queries import get_dossier
+from dn.extract import dossier_to_flat_data
+from dn.queries import get_demarche_dossiers_filtered
+from utils.timing import get_timings
+from dn.schema import (
     create_columns_from_schema,
     get_demarche_schema,
     get_demarche_schema_enhanced,
-    update_grist_tables_from_schema,
 )
+from grist.schema import update_grist_tables_from_schema
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
-from utils.api_validator import verify_api_connections
+from common.formatter import ds_label_to_column_id
+from common.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from utils.log import log, log_verbose, log_error, log_progress
 
@@ -89,60 +87,6 @@ def log_schema_improvements(schema, demarche_number):
         log("Filtrage automatique des champs problématiques activé")
         log("Gestion robuste des erreurs activée")
         log("Métadonnées enrichies disponibles")
-
-
-# Fonction pour supprimer les accents d'une chaîne de caractères
-def normalize_column_name(name, max_length=150):
-    """
-    Normalise un nom de colonne pour Grist en garantissant des identifiants valides.
-    Supprime les espaces en début, fin et les espaces consécutifs.
-
-    Args:
-        name: Le nom original de la colonne
-        max_length: Longueur maximale autorisée (défaut: 50)
-
-    Returns:
-        str: Nom de colonne normalisé pour Grist
-    """
-    if not name:
-        return "column"
-
-    # Supprimer les espaces en début et fin, et remplacer les espaces consécutifs par un seul espace
-    name = name.strip()
-    name = re.sub(r"\s+", " ", name)
-
-    name = name.replace("'", "_")
-    name = name.replace("'", "_")  # Apostrophe typographique
-    name = name.replace("`", "_")  # Accent grave utilisé comme apostrophe
-
-    # ✅ NOUVEAU : Supprimer les numéros de début type "1. ", "2. ", etc.
-    name = re.sub(r"^[\d]+[\.\)]\s*", "", name)
-
-    # Supprimer les accents
-    name = unicodedata.normalize("NFKD", name)
-    name = "".join([c for c in name if not unicodedata.combining(c)])
-
-    # Convertir en minuscules et remplacer les caractères non alphanumériques par des underscores
-    name = name.lower()
-    name = re.sub(r"[^a-z0-9_]", "_", name)
-
-    # Éliminer les underscores multiples consécutifs
-    name = re.sub(r"_+", "_", name)
-
-    # Éliminer les underscores en début et fin
-    name = name.strip("_")
-
-    # S'assurer que le nom commence par une lettre
-    if not name or not name[0].isalpha():
-        name = "col_" + (name or "")
-
-    # Tronquer si nécessaire à max_length caractères
-    if len(name) > max_length:
-        # Générer un hash pour garantir l'unicité
-        hash_part = hashlib.md5(name.encode()).hexdigest()[:6]
-        name = f"{name[: max_length - 7]}_{hash_part}"
-
-    return name
 
 
 # 1. D'abord, ajoutez la fonction filter_record_to_existing_columns après les autres fonctions utilitaires
@@ -311,7 +255,7 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
             if problematic_ids and champ.get("id") in problematic_ids:
                 continue
 
-            champ_label = normalize_column_name(champ["label"])
+            champ_label = ds_label_to_column_id(champ["label"])
 
             if champ_label not in unique_champ_columns:
                 column_type = determine_column_type(champ.get("value"))
@@ -334,11 +278,11 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
             # Enlever le préfixe "annotation_" pour le nom de colonne dans la table des annotations
             original_label = annotation["label"]
             if original_label.startswith("annotation_"):
-                annotation_label = normalize_column_name(
+                annotation_label = ds_label_to_column_id(
                     original_label[11:]
                 )  # enlever "annotation_"
             else:
-                annotation_label = normalize_column_name(original_label)
+                annotation_label = ds_label_to_column_id(original_label)
 
             if annotation_label not in unique_annotation_columns:
                 column_type = determine_column_type(annotation.get("value"))
@@ -702,7 +646,7 @@ class ColumnCache:
         column_mapping = {}
 
         for col_name in missing_columns:
-            normalized_col_name = normalize_column_name(col_name)
+            normalized_col_name = ds_label_to_column_id(col_name)
             column_mapping[col_name] = normalized_col_name
 
             if normalized_col_name not in existing_columns:
@@ -872,7 +816,7 @@ def add_missing_columns_to_table(client, table_id, missing_columns, column_types
 
         for col_name in missing_columns:
             # Normaliser le nom de colonne
-            normalized_col_name = normalize_column_name(col_name)
+            normalized_col_name = ds_label_to_column_id(col_name)
             column_mapping[col_name] = normalized_col_name
 
             # Déterminer le type de colonne (Text par défaut)
@@ -959,9 +903,9 @@ def add_id_columns_based_on_annotations(client, table_id, annotations):
 
         original_label = annotation["label"]
         if original_label.startswith("annotation_"):
-            normalized_label = normalize_column_name(original_label[11:])
+            normalized_label = ds_label_to_column_id(original_label[11:])
         else:
-            normalized_label = normalize_column_name(original_label)
+            normalized_label = ds_label_to_column_id(original_label)
 
         id_column = f"{normalized_label}_id"
         columns_to_add.append({"id": id_column, "type": "Text"})
@@ -1189,7 +1133,6 @@ def process_demarche_for_grist_optimized(
                     client,
                     demarche_number,
                     column_types if schema_method_successful else None,
-                    problematic_descriptor_ids,
                 )
 
                 # Convertir le format de retour pour compatibilité
@@ -1243,7 +1186,7 @@ def process_demarche_for_grist_optimized(
 
                 # Utiliser l'ancienne méthode pour récupérer des échantillons
                 try:
-                    from queries_graphql import get_demarche_dossiers
+                    from dn.queries import get_demarche_dossiers
 
                     all_dossiers_brief = get_demarche_dossiers(demarche_number)
                     sample_size = min(3, len(all_dossiers_brief))
@@ -1390,7 +1333,7 @@ def process_demarche_for_grist_optimized(
                 log(f"Filtre par groupes instructeurs: {', '.join(groupes_filter)}")
 
             # Récupérer tous les dossiers puis filtrer côté client
-            from queries_graphql import get_demarche_dossiers
+            from dn.queries import get_demarche_dossiers
 
             log("Récupération de tous les dossiers avec pagination...")
             if updated_since_cursor:
@@ -1568,7 +1511,7 @@ def process_demarche_for_grist_optimized(
                 for champ in flat_data["champs"]:
                     if champ.get("type") in ["HeaderSectionChamp", "ExplicationChamp"]:
                         continue
-                    normalized_label = normalize_column_name(champ["label"])
+                    normalized_label = ds_label_to_column_id(champ["label"])
                     value = champ.get("value", "")
                     if champ["type"] in [
                         "CarteChamp",
@@ -1608,9 +1551,9 @@ def process_demarche_for_grist_optimized(
 
                     original_label = annotation["label"]
                     if original_label.startswith("annotation_"):
-                        normalized_label = normalize_column_name(original_label[11:])
+                        normalized_label = ds_label_to_column_id(original_label[11:])
                     else:
-                        normalized_label = normalize_column_name(original_label)
+                        normalized_label = ds_label_to_column_id(original_label)
 
                     value = annotation.get("value", "")
                     if annotation["type"] in [
@@ -1909,13 +1852,13 @@ def process_demarche_for_grist_optimized(
 
                 # Traiter chaque bloc
                 for block_label, rows in rows_by_block.items():
-                    normalized_block = normalize_column_name(block_label)
+                    normalized_block = ds_label_to_column_id(block_label)
 
                     if normalized_block in table_ids.get("repetable_blocks", {}):
                         block_table_id = table_ids["repetable_blocks"][normalized_block]
 
                         try:
-                            from repetable_processor import process_repetables_batch
+                            from sync.repetable_processor import process_repetables_batch
 
                             # Préparer les données pour le batch
                             success_count, error_count = process_repetables_batch(
@@ -1946,7 +1889,7 @@ def process_demarche_for_grist_optimized(
             for dossier_data in batch_dossiers_dict.values():
                 avis = dossier_data.get("avis", [])
                 if avis:
-                    from queries_extract import extract_avis_from_dossier
+                    from dn.extract import extract_avis_from_dossier
 
                     all_avis_records.extend(extract_avis_from_dossier(dossier_data))
 
@@ -1954,7 +1897,7 @@ def process_demarche_for_grist_optimized(
                 # Créer la table à la volée si elle n'existe pas encore
                 if not table_ids.get("avis"):
                     log("  Création lazy de la table avis...")
-                    from schema_utils import create_avis_columns
+                    from grist.schema import create_avis_columns
 
                     avis_table_id = f"Demarche_{demarche_number}_avis"
                     result = client.create_table(avis_table_id, create_avis_columns())

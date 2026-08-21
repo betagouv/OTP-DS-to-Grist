@@ -4,13 +4,13 @@ des blocs répétables dans les formulaires Démarches Simplifiées.
 Ce module extrait, transforme et stocke les données des blocs répétables dans Grist.
 """
 import traceback
-import unicodedata
-import hashlib
 import re
 import json
 import requests
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
+
+from common.formatter import label_to_column_id
 
 try:
     from utils.log import log, log_verbose, log_error
@@ -262,10 +262,10 @@ def should_skip_field(field, problematic_ids=None):
 
 def should_skip_field_unified(field, problematic_ids=None):
     """
-    Version unifiée du filtrage qui respecte exactement la logique de schema_utils.
+    Version unifiée du filtrage qui garantit la cohérence.
     Cette fonction remplace should_skip_field pour garantir la cohérence.
     """
-    # Filtrage par typename (même logique que schema_utils)
+    # Filtrage par typename
     if field.get("__typename") in [
         "HeaderSectionChampDescriptor",
         "ExplicationChampDescriptor",
@@ -274,7 +274,7 @@ def should_skip_field_unified(field, problematic_ids=None):
     ]:
         return True
 
-    # Filtrage par type (même logique que schema_utils)
+    # Filtrage par type
     if field.get("type") in [
         "header_section",
         "explication",
@@ -282,7 +282,7 @@ def should_skip_field_unified(field, problematic_ids=None):
     ]:
         return True
 
-    # Filtrage par ID problématique (transmission depuis schema_utils)
+    # Filtrage par ID problématique
     if problematic_ids and field.get("champDescriptorId") in problematic_ids:
         return True
 
@@ -315,57 +315,6 @@ def normalize_key(key_string):
     return normalized
 
 
-def normalize_column_name(name, max_length=150):
-    """
-    Normalise un nom de colonne pour Grist en garantissant des identifiants valides.
-    Gère correctement les apostrophes et autres caractères spéciaux.
-
-    Args:
-        name: Le nom original de la colonne
-        max_length: Longueur maximale autorisée (défaut: 150)
-
-    Returns:
-        str: Nom de colonne normalisé pour Grist
-    """
-    if not name:
-        return "column"
-
-    # Supprimer les espaces en début et fin, et remplacer les espaces consécutifs par un seul espace
-
-    name = name.strip()
-    name = re.sub(r'\s+', ' ', name)
-
-    # ÉTAPE CRITIQUE: Remplacer les apostrophes par des underscores AVANT de supprimer les accents
-    # Cela évite que "l'enseignant" devienne "lenseignant" au lieu de "l_enseignant"
-    name = name.replace("'", "_")
-    name = name.replace("'", "_")  # Apostrophe typographique
-    name = name.replace("`", "_")  # Accent grave utilisé comme apostrophe
-
-    # Supprimer les accents
-    name = unicodedata.normalize('NFKD', name)
-    name = ''.join([c for c in name if not unicodedata.combining(c)])
-
-    # Convertir en minuscules et remplacer les caractères non alphanumériques par des underscores
-    name = name.lower()
-    name = re.sub(r'[^a-z0-9_]', '_', name)
-
-    # Éliminer les underscores multiples consécutifs
-    name = re.sub(r'_+', '_', name)
-
-    # Éliminer les underscores en début et fin
-    name = name.strip('_')
-
-    # S'assurer que le nom commence par une lettre
-    if not name or not name[0].isalpha():
-        name = "col_" + (name or "")
-
-    # Tronquer si nécessaire à max_length caractères
-    if len(name) > max_length:
-        # Générer un hash pour garantir l'unicité
-        hash_part = hashlib.md5(name.encode()).hexdigest()[:6]
-        name = f"{name[:max_length-7]}_{hash_part}"
-
-    return name
 
 
 def format_value_for_grist(value, value_type):
@@ -949,7 +898,7 @@ def process_repetables_for_grist(
                                     continue
 
                                 field_label = field["label"]
-                                normalized_label = normalize_column_name(field_label)
+                                normalized_label = label_to_column_id(field_label)
 
                                 try:
                                     # Extraire la valeur du champ selon son type
@@ -1206,7 +1155,7 @@ def process_repetable_data_batch(
                                 continue
 
                             field_label = field["label"]
-                            normalized_label = normalize_column_name(field_label)
+                            normalized_label = label_to_column_id(field_label)
 
                             # Extraire la valeur
                             value, json_value = extract_field_value(field)
@@ -1376,7 +1325,7 @@ def process_repetables_batch(
                 # Détecter si c'est une annotation en vérifiant si le champ vient de la liste annotations
                 is_annotation = champ in dossier_data.get("annotations", [])
                 block_label = f"annotation_{champ['label']}" if is_annotation else champ["label"]
-                normalized_block = normalize_column_name(block_label)
+                normalized_block = label_to_column_id(block_label)
 
                 # Vérifier que ce bloc a une table
                 if normalized_block not in table_ids_dict:
@@ -1408,7 +1357,7 @@ def process_repetables_batch(
                                     continue
 
                                 field_label = field["label"]
-                                normalized_label = normalize_column_name(field_label)
+                                normalized_label = label_to_column_id(field_label)
 
                                 # Extraire la valeur
                                 value, json_value = extract_field_value(field)
@@ -1654,7 +1603,7 @@ def detect_repetable_columns_in_dossier(dossier_data):
                                 continue
 
                             field_label = field["label"]
-                            normalized_label = normalize_column_name(field_label)
+                            normalized_label = label_to_column_id(field_label)
 
                             # Déterminer le type de colonne
                             column_type = "Text"  # Type par défaut

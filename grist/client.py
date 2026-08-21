@@ -365,6 +365,31 @@ class GristClient:
         result = response.json()
         return result
 
+    def get_table_columns(self, table_id):
+        """Récupère la liste des colonnes d'une table Grist."""
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
+        response = requests.get(url, headers=self.headers)
+        if response.status_code != 200:
+            log_error(
+                f"Erreur get_table_columns({table_id}): {response.status_code}"
+            )
+            return []
+        return response.json().get("columns", [])
+
+    def add_columns(self, table_id, columns):
+        """Ajoute des colonnes manquantes à une table existante."""
+        if not columns:
+            return
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
+        payload = {"columns": columns}
+        response = requests.post(url, headers=self.headers, json=payload)
+        if response.status_code in (200, 201):
+            log(f"Ajout de {len(columns)} colonnes à la table {table_id}")
+        else:
+            log_error(
+                f"Erreur add_columns({table_id}): {response.status_code}"
+            )
+
     def create_or_clear_grist_tables(self, demarche_number, column_types):
         """
         Crée ou met à jour les tables Grist pour une démarche.

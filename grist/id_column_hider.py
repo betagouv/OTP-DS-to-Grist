@@ -7,7 +7,7 @@ Utilise les mêmes variables d'environnement que le reste du projet OTP :
 GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID (chargées via .env).
 
 Usage :
-    python hide_id_columns.py
+    python -m grist.id_column_hider
 """
 
 import os
@@ -16,26 +16,15 @@ import sys
 import requests
 from dotenv import load_dotenv
 
-
-def log(message, level=1, log_level=1):
-    if level <= log_level:
-        print(message)
+from grist.client import GristClient
+from utils.log import log, log_error
 
 
-def log_error(message):
-    print(f"ERREUR: {message}")
-
-
-class IdColumnHider:
+class IdColumnHider(GristClient):
     def __init__(self, base_url, api_key, doc_id):
-        base_url = base_url.rstrip("/")
+        super().__init__(base_url, api_key, doc_id)
         # GRIST_BASE_URL peut ou non inclure déjà le suffixe /api selon la source
-        self.base_url = base_url[:-4] if base_url.endswith("/api") else base_url
-        self.doc_id = doc_id
-        self.headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        self.base_url = self.base_url[:-4] if self.base_url.endswith("/api") else self.base_url
 
     def _api_url(self, path):
         return f"{self.base_url}/api/docs/{self.doc_id}/{path}"

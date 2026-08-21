@@ -7,7 +7,7 @@ import requests
 from typing import Literal, TypedDict
 import logging
 
-from .constants import DEMARCHES_API_URL
+from utils.constants import DEMARCHES_API_URL
 
 logger = logging.getLogger(__name__)
 

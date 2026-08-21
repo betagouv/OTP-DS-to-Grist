@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 import requests
 
+from common.formatter import ds_label_to_column_id
 from utils.constants import DEMARCHES_API_URL
 from utils.formatter import unwrap_json_list
 
@@ -677,7 +678,6 @@ def extract_repetable_blocks(
     Returns:
         Liste de dictionnaires représentant chaque ligne de bloc répétable
     """
-    from grist_processor_working_all import normalize_column_name
 
     repetable_rows = []
 
@@ -718,7 +718,7 @@ def extract_repetable_blocks(
                     # Ajouter chaque valeur de champ à la ligne avec gestion des doublons
                     for champ_value in champ_values:
                         base_label = champ_value["base_label"]
-                        normalized = normalize_column_name(base_label)
+                        normalized = ds_label_to_column_id(base_label)
 
                         # Gérer les doublons
                         if normalized in row_label_counters:
@@ -872,8 +872,6 @@ def dossier_to_flat_data(
         Dictionnaire avec les données du dossier en format plat
     """
 
-    from grist_processor_working_all import normalize_column_name
-
     # Informations de base du dossier
     flat_data = {
         "dossier_id": dossier_data["id"],
@@ -972,7 +970,11 @@ def dossier_to_flat_data(
                 item["label"] = descriptor_to_column_id[descriptor_id]
             else:
                 base_label = item["base_label"]
-                normalized = normalize_column_name(base_label)
+                normalized = ds_label_to_column_id(base_label)
+                # BUG CONNU : base_label brut ("1. Nom du champ") est utilisé comme
+                # clé, pas l'ID normalisé ("col_1_nom_du_champ"). Le schéma et le
+                # flat_data produisent des IDs différents pour les labels numérotés.
+                # Voir xfail dans tests/.../test_extract.py::TestNumberedLabelCoherence
                 if normalized not in label_counters:
                     label_counters[normalized] = {}
                 descriptor_map = label_counters[normalized]
@@ -1012,7 +1014,7 @@ def dossier_to_flat_data(
                 label_for_normalization = base_label
                 if label_for_normalization.startswith("annotation_"):
                     label_for_normalization = label_for_normalization[11:]
-                normalized = normalize_column_name(label_for_normalization)
+                normalized = ds_label_to_column_id(label_for_normalization)
                 if normalized not in annotation_label_counters:
                     annotation_label_counters[normalized] = {}
                 descriptor_map = annotation_label_counters[normalized]

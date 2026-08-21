@@ -1,5 +1,5 @@
 """
-Tests unitaires pour app.py — fonction vite_asset
+Tests unitaires pour app.py — fonctions pures (vite_asset)
 """
 
 import json
@@ -87,5 +87,5 @@ class TestViteAsset:
                 "read_text",
                 return_value=json.dumps(manifest)
             ):
-                with pytest.raises(KeyError):
-                    vite_asset("src/nonexistent.js")
+                    with pytest.raises(KeyError):
+                        vite_asset("src/nonexistent.js")

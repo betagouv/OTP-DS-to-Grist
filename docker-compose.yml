@@ -5,15 +5,12 @@ services:
       - "5000:5000"
     volumes:
       - ./app.py:/app/app.py
-      - ./constants.py:/app/constants.py
-      - ./queries.py:/app/queries.py
-      - ./queries_extract.py:/app/queries_extract.py
-      - ./queries_graphql.py:/app/queries_graphql.py
-      - ./queries_util.py:/app/queries_util.py
-      - ./schema_utils.py:/app/schema_utils.py
-      - ./repetable_processor.py:/app/repetable_processor.py
       - ./grist_processor_working_all.py:/app/grist_processor_working_all.py
-      - ./sync_task_manager.py:/app/sync_task_manager.py
+      - ./dn:/app/dn
+      - ./common:/app/common
+      - ./utils:/app/utils
+      - ./grist:/app/grist
+      - ./sync:/app/sync
       - ./configuration:/app/configuration
       - ./database:/app/database
       - ./templates:/app/templates

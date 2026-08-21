@@ -10,7 +10,6 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, url_for
 from sqlalchemy import create_engine
@@ -20,9 +19,10 @@ from werkzeug.serving import WSGIRequestHandler
 from configuration.config_manager import ConfigManager
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
+from dn.queries import get_available_groups
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
-from utils.api_validator import (
+from common.api_validator import (
     test_demarches_api,
     test_grist_api,
     verify_api_connections,
@@ -76,56 +76,6 @@ if not scheduler.running:
     reload_scheduler_jobs(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
     atexit.register(lambda: scheduler.shutdown(wait=True))
-
-
-def get_available_groups(api_token, demarche_number):
-    """Récupère les groupes instructeurs disponibles"""
-    if not all([api_token, demarche_number]):
-        return []
-
-    try:
-        query = """
-        query getDemarche($demarcheNumber: Int!) {
-            demarche(number: $demarcheNumber) {
-                groupeInstructeurs {
-                    id
-                    number
-                    label
-                }
-            }
-        }
-        """
-
-        variables = {"demarcheNumber": int(demarche_number)}
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(
-            DEMARCHES_API_URL,
-            json={"query": query, "variables": variables},
-            headers=headers,
-            timeout=10,
-        )
-
-        if response.status_code != 200:
-            return []
-
-        result = response.json()
-        if "errors" in result:
-            return []
-
-        groupes = (
-            result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
-        )
-        return [(groupe.get("number"), groupe.get("label")) for groupe in groupes]
-
-    except Exception as e:
-        logger.error(
-            f"Erreur lors de la récupération des groupes instructeurs: {str(e)}"
-        )
-        return []
 
 
 # Routes Flask
@@ -852,40 +802,8 @@ def execution():
 @app.route("/debug")
 def debug():
     """Page de débogage"""
-    # Vérifier la présence des fichiers requis
-    required_files = [
-        "grist_processor_working_all.py",
-        "queries.py",
-        "queries_extract.py",
-        "queries_graphql.py",
-        "queries_util.py",
-        "repetable_processor.py",
-    ]
-
-    file_status = {}
-    for file in required_files:
-        file_path = os.path.join(script_dir, file)
-        file_status[file] = os.path.exists(file_path)
-
-    # Lister tous les fichiers du répertoire
-    try:
-        all_files = sorted(os.listdir(script_dir))
-    except Exception as e:
-        all_files = [f"Erreur: {str(e)}"]
 
     # Variables d'environnement (masquées pour la sécurité)
-    env_vars = {
-        "DEMARCHES_API_TOKEN": "***"
-        if os.getenv("DEMARCHES_API_TOKEN")
-        else "Non défini",
-        "DEMARCHES_API_URL": f"Constante: {DEMARCHES_API_URL}",
-        "DEMARCHE_NUMBER": os.getenv("DEMARCHE_NUMBER", "Non défini"),
-        "GRIST_BASE_URL": os.getenv("GRIST_BASE_URL", "Non défini"),
-        "GRIST_API_KEY": "***" if os.getenv("GRIST_API_KEY") else "Non défini",
-        "GRIST_DOC_ID": os.getenv("GRIST_DOC_ID", "Non défini"),
-        "GRIST_USER_ID": os.getenv("GRIST_USER_ID", "Non défini"),
-    }
-
     filter_vars = {
         "DATE_DEPOT_DEBUT": os.getenv("DATE_DEPOT_DEBUT", "Non défini"),
         "DATE_DEPOT_FIN": os.getenv("DATE_DEPOT_FIN", "Non défini"),
@@ -917,11 +835,7 @@ def debug():
 
     return render_template(
         "debug.html",
-        file_status=file_status,
-        all_files=all_files,
-        env_vars=env_vars,
         filter_vars=filter_vars,
-        script_dir=script_dir,
         current_email=current_email,
     )
 
