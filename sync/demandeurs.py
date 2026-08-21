@@ -1,32 +1,24 @@
 """
-Module d'utilitaires pour récupérer et traiter le schéma complet d'une démarche
-à partir de l'API Démarches Simplifiées, pour la création correcte de tables Grist.
+Détection du type de demandeur et création des colonnes Grist associées.
 
-VERSION AMÉLIORÉE - Compatible avec le code existant
-Ajoute des fonctions optimisées tout en gardant les fonctions existantes
-CORRECTION : Gestion des doublons de noms de colonnes
-NOUVEAU : Tables séparées par bloc répétable
-CORRECTION : Format "fields" pour les colonnes dynamiques
+Détermine si la démarche concerne une PersonnePhysique ou une PersonneMorale
+en interrogeant l'API Démarches Simplifiées, puis retourne les colonnes
+Grist correspondantes pour la table demandeurs.
 """
 
-# Importer les configurations nécessaires
 import os
 from typing import Optional
 
 import requests
 
-from utils.constants import DEMARCHES_API_URL
 from grist.schema import (
     create_demandeurs_pp_columns,
     create_demandeurs_pm_columns,
 )
+from utils.constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
-
-# ========================================
-# DÉTECTION DU TYPE DE DEMANDEUR
-# ========================================
 
 
 def detect_demandeur_type(demarche_number: int) -> Optional[str]:
@@ -43,7 +35,6 @@ def detect_demandeur_type(demarche_number: int) -> Optional[str]:
     if not API_TOKEN:
         raise ValueError("Le token d'API n'est pas configuré")
 
-    # Requête pour récupérer juste le premier dossier
     query = """
     query getFirstDossier($demarcheNumber: Int!) {
         demarche(number: $demarcheNumber) {
@@ -81,7 +72,7 @@ def detect_demandeur_type(demarche_number: int) -> Optional[str]:
 
         if "errors" in result:
             print(
-                f"⚠️  Erreur lors de la détection du type de demandeur pour la démarche {demarche_number}"
+                f"Erreur lors de la détection du type de demandeur pour la démarche {demarche_number}"
             )
             return None
 
@@ -101,30 +92,23 @@ def detect_demandeur_type(demarche_number: int) -> Optional[str]:
                 "PersonneMorale",
                 "PersonneMoraleIncomplete",
             ]:
-                # PersonneMoraleIncomplete est traité comme PersonneMorale
                 if demandeur_type == "PersonneMoraleIncomplete":
                     return "PersonneMorale"
                 return demandeur_type
 
-        # Aucun dossier trouvé
         print(
-            f"ℹ️  Aucun dossier trouvé pour la démarche {demarche_number}, type par défaut: PersonneMorale"
+            f"Aucun dossier trouvé pour la démarche {demarche_number}, type par défaut: PersonneMorale"
         )
-        return "PersonneMorale"  # Par défaut si aucun dossier
+        return "PersonneMorale"
 
     except Exception as e:
-        print(f"❌ Erreur lors de la détection du type: {e}")
-        return "PersonneMorale"  # Par défaut en cas d'erreur
-
-
-# ========================================
-# CRÉATION DES COLONNES DEMANDEURS
-# ========================================
+        print(f"Erreur lors de la détection du type: {e}")
+        return "PersonneMorale"
 
 
 def create_demandeurs_columns(demarche_number: int):
     """
-    Crée les colonnes pour la table demandeurs selon le type détecté
+    Crée les colonnes pour la table demandeurs selon le type détecté.
 
     Args:
         demarche_number: Numéro de la démarche
@@ -138,6 +122,5 @@ def create_demandeurs_columns(demarche_number: int):
 
     if demandeur_type == "PersonnePhysique":
         return create_demandeurs_pp_columns(), demandeur_type
-    # PersonneMorale ou None (défaut)
-    return create_demandeurs_pm_columns(), demandeur_type
 
+    return create_demandeurs_pm_columns(), demandeur_type

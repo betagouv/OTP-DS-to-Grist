@@ -262,7 +262,7 @@ def update_grist_tables_from_schema(client, demarche_number, column_types):
         log("Création/mise à jour de la table demandeurs...")
         demandeurs_table_id = f"Demarche_{demarche_number}_demandeurs"
 
-        from schema_utils import create_demandeurs_columns
+        from sync.demandeurs import create_demandeurs_columns
 
         demandeurs_columns, demandeur_type = create_demandeurs_columns(demarche_number)
         log(f"Type de demandeur: {demandeur_type} - {len(demandeurs_columns)} colonnes")

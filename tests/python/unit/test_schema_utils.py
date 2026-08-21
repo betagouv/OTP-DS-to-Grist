@@ -376,7 +376,7 @@ def _make_client(existing_tables=None):
 class TestUpdateGristTablesFromSchema:
     """Tests pour update_grist_tables_from_schema (grist/schema.py, re-exported)."""
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_creates_all_tables_when_none_exist(self, mock_demandeurs):
         """Crée toutes les tables quand aucune n'existe."""
         mock_demandeurs.return_value = (
@@ -395,7 +395,7 @@ class TestUpdateGristTablesFromSchema:
         create_calls_str = str(client.create_table.call_args_list)
         assert "Demarche_42_dossiers" in create_calls_str
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_adds_missing_columns_to_existing_table(self, mock_demandeurs):
         """Ajoute les colonnes manquantes quand la table existe déjà."""
         mock_demandeurs.return_value = (
@@ -421,7 +421,7 @@ class TestUpdateGristTablesFromSchema:
         assert len(create_calls) == 0
         client.add_columns.assert_called()
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_annotations_not_created_when_empty(self, mock_demandeurs):
         """Ne crée pas la table annotations si elle n'a que dossier_number."""
         mock_demandeurs.return_value = (
@@ -438,7 +438,7 @@ class TestUpdateGristTablesFromSchema:
         for c in client.create_table.call_args_list:
             assert "annotations" not in str(c)
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_avis_table_not_created_when_missing(self, mock_demandeurs):
         """Ne crée pas la table avis si elle n'existe pas déjà."""
         mock_demandeurs.return_value = (
@@ -454,7 +454,7 @@ class TestUpdateGristTablesFromSchema:
         for c in client.create_table.call_args_list:
             assert "avis" not in str(c)
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_repetable_blocks_create_tables(self, mock_demandeurs):
         """Crée les tables pour chaque bloc répétable."""
         mock_demandeurs.return_value = (
@@ -477,7 +477,7 @@ class TestUpdateGristTablesFromSchema:
         assert "repetable_blocks" in result
         assert "block1" in result["repetable_blocks"]
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_sync_metadata_created(self, mock_demandeurs):
         """La table Sync_metadata est toujours créée."""
         mock_demandeurs.return_value = (
@@ -496,7 +496,7 @@ class TestUpdateGristTablesFromSchema:
         ]
         assert len(create_calls) >= 1
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_dict_format_list_tables(self, mock_demandeurs):
         """Gère le format {'tables': [...]} retourné par list_tables."""
         mock_demandeurs.return_value = (
@@ -519,7 +519,7 @@ class TestUpdateGristTablesFromSchema:
         ]
         assert len(create_calls) == 0
 
-    @patch("schema_utils.create_demandeurs_columns")
+    @patch("sync.demandeurs.create_demandeurs_columns")
     def test_returns_correct_keys(self, mock_demandeurs):
         """Le résultat contient toutes les clés attendues."""
         mock_demandeurs.return_value = (
