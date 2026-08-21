@@ -18,14 +18,12 @@ from dn.queries import get_dossier
 from dn.extract import dossier_to_flat_data
 from dn.queries import get_demarche_dossiers_filtered
 from utils.timing import get_timings
-from schema_utils import (
-    create_columns_from_schema,
-    update_grist_tables_from_schema,
-)
 from dn.schema import (
+    create_columns_from_schema,
     get_demarche_schema,
     get_demarche_schema_enhanced,
 )
+from grist.schema import update_grist_tables_from_schema
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from common.formatter import ds_label_to_column_id
@@ -1135,7 +1133,6 @@ def process_demarche_for_grist_optimized(
                     client,
                     demarche_number,
                     column_types if schema_method_successful else None,
-                    problematic_descriptor_ids,
                 )
 
                 # Convertir le format de retour pour compatibilité

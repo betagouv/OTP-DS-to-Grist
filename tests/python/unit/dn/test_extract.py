@@ -1,7 +1,7 @@
 import pytest
 
 from dn.extract import decode_base64_id, dossier_to_flat_data, extract_repetable_blocks
-from schema_utils import create_columns_from_schema
+from dn.schema import create_columns_from_schema
 
 
 def test_decode_base64_id_valid():
