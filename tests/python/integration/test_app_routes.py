@@ -383,8 +383,8 @@ class TestEndpoints:
         assert data["success"] is False
         assert "Configuration Grist incomplète" in data["message"]
 
-    @patch("utils.api_validator.test_demarches_api")
-    @patch("utils.api_validator.test_grist_api")
+    @patch("common.api_validator.test_demarches_api")
+    @patch("common.api_validator.test_grist_api")
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_test_connection_no_params_success(
         self, mock_load, mock_grist, mock_demarches, client
@@ -418,8 +418,8 @@ class TestEndpoints:
         assert data["results"][1]["type"] == "grist"
         assert data["results"][1]["success"] is True
 
-    @patch("utils.api_validator.test_demarches_api")
-    @patch("utils.api_validator.test_grist_api")
+    @patch("common.api_validator.test_demarches_api")
+    @patch("common.api_validator.test_grist_api")
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_test_connection_no_params_partial_failure(
         self, mock_load, mock_grist, mock_demarches, client

@@ -22,7 +22,7 @@ from database.models import OtpConfiguration, SyncLog, UserSchedule
 from dn.queries import get_available_groups
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
-from utils.api_validator import (
+from common.api_validator import (
     test_demarches_api,
     test_grist_api,
     verify_api_connections,

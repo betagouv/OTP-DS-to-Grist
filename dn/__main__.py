@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from dn.queries import get_dossier, get_demarche
 from dn.extract import dossier_to_flat_data
-from utils.api_validator import test_demarches_api
+from common.api_validator import test_demarches_api
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ from dn.schema import (
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from common.formatter import ds_label_to_column_id
-from utils.api_validator import verify_api_connections
+from common.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
 from utils.log import log, log_verbose, log_error, log_progress
 
