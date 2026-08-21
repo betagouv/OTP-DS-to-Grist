@@ -531,7 +531,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     return result, problematic_ids
 
 
-def get_problematic_descriptor_ids_from_schema(demarche_schema):
+def get_problematic_descriptor_ids_from_schema(demarche_schema: dict) -> set:
     """
     Extrait les IDs des descripteurs problématiques (HeaderSection, Explication)
     directement depuis le schéma de la démarche.
@@ -627,7 +627,7 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
 # ========================================
 
 
-def get_demarche_schema(demarche_number):
+def get_demarche_schema(demarche_number: int) -> dict:
     """
     Récupère le schéma complet d'une démarche,
     avec tous ses descripteurs de champs,

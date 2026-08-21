@@ -6,7 +6,7 @@ import re
 import unicodedata
 
 
-def label_to_column_id(name, max_length=150):
+def label_to_column_id(name: str, max_length: int = 150) -> str:
     """
     Transforme un label libre en ID de colonne Grist valide.
 
@@ -56,7 +56,7 @@ def label_to_column_id(name, max_length=150):
     return name
 
 
-def ds_label_to_column_id(name, max_length=150):
+def ds_label_to_column_id(name: str, max_length: int = 150) -> str:
     """
     Transforme un label DS numéroté en ID de colonne Grist valide.
 

@@ -106,7 +106,7 @@ def detect_demandeur_type(demarche_number: int) -> Optional[str]:
         return "PersonneMorale"
 
 
-def create_demandeurs_columns(demarche_number: int):
+def create_demandeurs_columns(demarche_number: int) -> tuple[list[dict[str, str]], Optional[str]]:
     """
     Crée les colonnes pour la table demandeurs selon le type détecté.
 

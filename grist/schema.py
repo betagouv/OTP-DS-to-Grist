@@ -2,9 +2,12 @@
 Définitions de colonnes Grist pour les tables secondaires
 (demandeurs, instructeurs, avis).
 """
+from typing import Any
+
+from grist.client import GristClient
 
 
-def create_demandeurs_pp_columns():
+def create_demandeurs_pp_columns() -> list[dict[str, str]]:
     """
     Crée les colonnes pour la table demandeurs (PersonnePhysique)
 
@@ -26,7 +29,7 @@ def create_demandeurs_pp_columns():
     ]
 
 
-def create_demandeurs_pm_columns():
+def create_demandeurs_pm_columns() -> list[dict[str, str]]:
     """
     Crée les colonnes pour la table demandeurs (PersonneMorale)
     avec tous les champs enrichis SIRENE
@@ -79,7 +82,7 @@ def create_demandeurs_pm_columns():
     ]
 
 
-def create_instructeurs_columns():
+def create_instructeurs_columns() -> list[dict[str, str]]:
     """
     Crée les colonnes pour la table instructeurs (niveau démarche)
     1 ligne = 1 instructeur dans 1 groupe
@@ -98,7 +101,7 @@ def create_instructeurs_columns():
     ]
 
 
-def create_avis_columns():
+def create_avis_columns() -> list[dict[str, str]]:
     return [
         {"id": "dossier_number", "type": "Int"},
         {"id": "avis_id", "type": "Text"},
@@ -111,7 +114,9 @@ def create_avis_columns():
     ]
 
 
-def update_grist_tables_from_schema(client, demarche_number, column_types):
+def update_grist_tables_from_schema(
+    client: GristClient, demarche_number: int, column_types: dict[str, Any]
+) -> dict[str, Any]:
     """
     Met à jour les tables Grist existantes en fonction du schéma actuel de la démarche,
     en ajoutant les nouvelles colonnes sans supprimer les données existantes.
