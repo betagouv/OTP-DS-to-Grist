@@ -5,9 +5,9 @@ services:
       - "5000:5000"
     volumes:
       - ./app.py:/app/app.py
-      - ./schema_utils.py:/app/schema_utils.py
       - ./grist_processor_working_all.py:/app/grist_processor_working_all.py
       - ./dn:/app/dn
+      - ./common:/app/common
       - ./utils:/app/utils
       - ./grist:/app/grist
       - ./sync:/app/sync

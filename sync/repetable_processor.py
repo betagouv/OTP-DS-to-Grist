@@ -262,10 +262,10 @@ def should_skip_field(field, problematic_ids=None):
 
 def should_skip_field_unified(field, problematic_ids=None):
     """
-    Version unifiée du filtrage qui respecte exactement la logique de schema_utils.
+    Version unifiée du filtrage qui garantit la cohérence.
     Cette fonction remplace should_skip_field pour garantir la cohérence.
     """
-    # Filtrage par typename (même logique que schema_utils)
+    # Filtrage par typename
     if field.get("__typename") in [
         "HeaderSectionChampDescriptor",
         "ExplicationChampDescriptor",
@@ -274,7 +274,7 @@ def should_skip_field_unified(field, problematic_ids=None):
     ]:
         return True
 
-    # Filtrage par type (même logique que schema_utils)
+    # Filtrage par type
     if field.get("type") in [
         "header_section",
         "explication",
@@ -282,7 +282,7 @@ def should_skip_field_unified(field, problematic_ids=None):
     ]:
         return True
 
-    # Filtrage par ID problématique (transmission depuis schema_utils)
+    # Filtrage par ID problématique
     if problematic_ids and field.get("champDescriptorId") in problematic_ids:
         return True
 
