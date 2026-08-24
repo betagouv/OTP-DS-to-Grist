@@ -6,6 +6,10 @@ import vue from '@vitejs/plugin-vue'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    __BUNDLED_DEV__: 'false',
+    __SERVER_FORWARD_CONSOLE__: 'false'
+  },
   css: {
     lightningcss: {
       errorRecovery: true

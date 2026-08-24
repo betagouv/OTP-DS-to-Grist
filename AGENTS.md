@@ -16,6 +16,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
 - Éviter de dupliquer la logique : rechercher et cibler les points d'entrée communs
   (ex: un chokepoint partagé par plusieurs chemins) avant d'ajouter des appels à plusieurs endroits.
+- Ne jamais committer ni push : préparer les commits (stage) mais laisser l'utilisateur les créer et les valider après relecture
 
 ## Architecture du projet
 
@@ -40,11 +41,13 @@ Le projet contient deux frontends coexistants :
 ### Contexte d'évolution
 
 L'application gère initialement une synchronisation unique (une démarche DS vers un document Grist).
-L'évolution en cours consiste à supporter la **gestion multi-configurations** (plusieurs paires
-DS ↔ Grist) par utilisateur. Le backend supporte déjà le multi-config (`otp_configurations`,
-`ConfigManager`), mais le front-end est encore en phase de migration : le legacy (templates/)
-reste single-config, le nouveau front (`front/`) vise le multi-config et est en cours de
-développement. Toute intervention doit considérer cette trajectoire.
+L'évolution en cours consiste à supporter la **gestion multi-configurations** : plusieurs
+configurations Démarches numériques (une par démarche) pour un utilisateur, qui partagent
+toujours les **mêmes informations Grist** (un seul document Grist, une même clé API). Le
+backend supporte déjà le multi-config (`otp_configurations`, `ConfigManager`) ; le front-end est
+encore en phase de migration : le legacy (templates/) reste single-config, le nouveau front
+(`front/`) vise le multi-config et est en cours de développement. Toute intervention doit
+considérer cette trajectoire.
 
 ## Contexte du projet
 

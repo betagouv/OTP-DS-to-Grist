@@ -11,5 +11,9 @@ export const useDemarcheContext = () => {
     _demarchesCount.value = count
   }
 
-  return { totalDemarches, demarcheIndex, setDemarcheCount }
+  const setDemarcheIndex = (index) => {
+    _demarcheIndex.value = index
+  }
+
+  return { totalDemarches, demarcheIndex, setDemarcheCount, setDemarcheIndex }
 }
