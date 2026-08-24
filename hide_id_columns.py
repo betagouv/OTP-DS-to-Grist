@@ -12,9 +12,11 @@ Usage :
 
 import os
 import sys
+from typing import Any
 
-import requests
 from dotenv import load_dotenv
+
+from grist.client import GristClient
 
 
 def log(message, level=1, log_level=1):
@@ -27,39 +29,12 @@ def log_error(message):
 
 
 class IdColumnHider:
-    def __init__(self, base_url, api_key, doc_id):
-        base_url = base_url.rstrip("/")
-        # GRIST_BASE_URL peut ou non inclure déjà le suffixe /api selon la source
-        self.base_url = base_url[:-4] if base_url.endswith("/api") else base_url
-        self.doc_id = doc_id
-        self.headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+    def __init__(self, client: GristClient) -> None:
+        self.client = client
 
-    def _api_url(self, path):
-        return f"{self.base_url}/api/docs/{self.doc_id}/{path}"
-
-    def _fetch(self, path):
-        resp = requests.get(self._api_url(path), headers=self.headers)
-        resp.raise_for_status()
-        return resp.json()["records"]
-
-    def _hide_field(self, field_id):
-        resp = requests.delete(
-            self._api_url("tables/_grist_Views_section_field/records"),
-            headers=self.headers,
-            json={"records": [{"id": field_id}]},
-        )
-        if resp.status_code in (404, 405):
-            resp = requests.post(
-                self._api_url("apply"),
-                headers=self.headers,
-                json=[["RemoveRecord", "_grist_Views_section_field", field_id]],
-            )
-        resp.raise_for_status()
-
-    def hide_id_columns(self, suffix="_id", table_ids=None):
+    def hide_id_columns(
+        self, suffix: str = "_id", table_ids: set[str] | None = None
+    ) -> tuple[int, int]:
         """
         Cache dans la première section de chaque table toutes les colonnes
         dont le colId se termine par `suffix`. Retourne (nb_ok, nb_skip).
@@ -68,12 +43,11 @@ class IdColumnHider:
         à traiter. Si None, traite tout le document.
         """
         tables = {
-            r["id"]: r["fields"]["tableId"]
-            for r in self._fetch("tables/_grist_Tables/records")
+            r["id"]: r["fields"]["tableId"] for r in self._fetch("_grist_Tables")
         }
-        columns = self._fetch("tables/_grist_Tables_column/records")
-        sections = self._fetch("tables/_grist_Views_section/records")
-        fields = self._fetch("tables/_grist_Views_section_field/records")
+        columns = self._fetch("_grist_Tables_column")
+        sections = self._fetch("_grist_Views_section")
+        fields = self._fetch("_grist_Views_section_field")
 
         # Index : tableRef -> première section
         first_section = {}
@@ -124,15 +98,29 @@ class IdColumnHider:
 
         if hidden:
             hidden_tables = sorted({h.split(".")[0] for h in hidden})
-            log(f"[OK] {len(hidden)} colonne(s) cachée(s) sur : {', '.join(hidden_tables)}")
+            log(
+                f"[OK] {len(hidden)} colonne(s) cachée(s) sur : {', '.join(hidden_tables)}"
+            )
         if skipped:
             skipped_tables = sorted({s.split(".")[0] for s in skipped})
-            log(f"[SKIP] {len(skipped)} colonne(s) sur : {', '.join(skipped_tables)}")
+            log(
+                f"[SKIP] {len(skipped)} colonne(s) sur : {', '.join(skipped_tables)}"
+            )
 
         return nb_ok, nb_skip
 
+    def _fetch(self, table_id: str) -> list[dict[str, Any]]:
+        response = self.client.get_records(table_id)
+        response.raise_for_status()
+        return response.json()["records"]
 
-def main():
+    def _hide_field(self, field_id: int) -> None:
+        self.client.delete_records(
+            "_grist_Views_section_field", [field_id]
+        ).raise_for_status()
+
+
+def main() -> int:
     load_dotenv(override=True)
 
     grist_base_url = os.getenv("GRIST_BASE_URL")
@@ -141,10 +129,13 @@ def main():
 
     if not all([grist_base_url, grist_api_key, grist_doc_id]):
         log_error("Configuration Grist incomplète dans le fichier .env")
-        log("Assurez-vous d'avoir défini GRIST_BASE_URL, GRIST_API_KEY et GRIST_DOC_ID")
+        log(
+            "Assurez-vous d'avoir défini GRIST_BASE_URL, GRIST_API_KEY et GRIST_DOC_ID"
+        )
         return 1
 
-    hider = IdColumnHider(grist_base_url, grist_api_key, grist_doc_id)
+    client = GristClient(grist_base_url, grist_api_key, grist_doc_id)
+    hider = IdColumnHider(client)
     nb_ok, nb_skip = hider.hide_id_columns()
 
     log(f"\nTerminé : {nb_ok} colonne(s) cachée(s), {nb_skip} ignorée(s)")

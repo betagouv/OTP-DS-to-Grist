@@ -11,6 +11,11 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   - Ces étapes devraient être testables
   - Ces étapes ne doivent pas contenir régression
   - Ces étapes devraient être autonome et ne pas dépendre d'une prochaine étape dans la mesure du possible
+  - Avant un refactoring ou un déplacement de code, identifier les tests existants qui
+    alerteraient d'une régression ; si aucun n'existe, les écrire d'abord et vérifier qu'ils
+    passent sur le code actuel avant de le modifier
+  - Avancer les étapes une par une : l'utilisateur relit et vérifie le code à chaque étape
+    avant de commiter et de passer à la suivante
 - Garder les plans concis : privilégier les décisions, l'architecture et les tests, plutôt que des
   détails fragiles (numéros de lignes, tailles de fichiers, listes exhaustives par fichier) qui
   deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
@@ -73,10 +78,16 @@ Le lire en premier — sans exception. Il peut contenir :
 - Son utilité dans l'architecture
 - Les conventions spécifiques au dossier
 
+Ne pas lister les fichiers du dossier dans un README : cette liste devient vite
+obsolète et fragile. Décrire le rôle et les responsabilités, pas l'inventaire.
+
 ## Conventions
 
 Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
 Conventions de nommage : standards Python (PEP 8) et JS.
+Typer les signatures des fonctions touchées lors d'une modification (approche incrémentale), en
+cohérence avec le style existant : types natifs (`dict[str, str]`, `set[str]`, ...) et unions
+`X | None`, sans type checker obligatoire.
 
 ## Tests
 

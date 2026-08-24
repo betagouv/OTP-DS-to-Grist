@@ -17,8 +17,6 @@ import os
 import sys
 import time
 
-import requests
-
 from queries_extract import extract_instructeurs_from_demarche
 
 # Champs comparés pour décider si un enregistrement existant doit être mis à jour
@@ -43,8 +41,7 @@ def _fetch_existing_records(client, table_id):
             lecture avec une table vide provoquerait la recréation de tous les
             instructeurs, donc des doublons.
     """
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-    response = requests.get(url, headers=client.headers)
+    response = client.get_records(table_id)
 
     if response.status_code != 200:
         raise RuntimeError(
@@ -96,13 +93,10 @@ def _apply_records_diff(
     client, table_id, to_delete, to_update, to_create, log, log_error
 ):
     """Applique les suppressions, mises à jour et créations dans Grist."""
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
     operations_count = 0
 
     if to_delete:
-        response = requests.post(
-            f"{url}/delete", headers=client.headers, json=to_delete
-        )
+        response = client.delete_records(table_id, to_delete)
         if response.status_code in [200, 201]:
             log(f"  🗑️  {len(to_delete)} instructeur(s) supprimé(s)")
             operations_count += len(to_delete)
@@ -110,9 +104,7 @@ def _apply_records_diff(
             log_error(f"  Erreur suppression instructeurs: {response.text}")
 
     if to_update:
-        response = requests.patch(
-            url, headers=client.headers, json={"records": to_update}
-        )
+        response = client.patch_records(table_id, to_update)
         if response.status_code in [200, 201]:
             log(f"  {len(to_update)} instructeur(s) mis à jour")
             operations_count += len(to_update)
@@ -120,8 +112,9 @@ def _apply_records_diff(
             log_error(f"  Erreur mise à jour instructeurs: {response.text}")
 
     if to_create:
-        payload = {"records": [{"fields": r} for r in to_create]}
-        response = requests.post(url, headers=client.headers, json=payload)
+        response = client.post_records(
+            table_id, [{"fields": r} for r in to_create]
+        )
         if response.status_code in [200, 201]:
             log(f"  {len(to_create)} instructeur(s) créé(s)")
             operations_count += len(to_create)

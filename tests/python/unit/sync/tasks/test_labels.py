@@ -40,6 +40,13 @@ def create_mock_response(status_code=200, json_data=None, text=""):
     return response
 
 
+def create_mock_client_with_records(response):
+    """Crée un mock de GristClient dont get_records renvoie response"""
+    client = create_mock_client()
+    client.get_records.return_value = response
+    return client
+
+
 class TestBuildLabelFields:
     """Tests unitaires pour la fonction _build_label_fields"""
 
@@ -98,105 +105,110 @@ class TestBuildLabelFields:
 class TestFetchExistingLabels:
     """Tests unitaires pour la fonction _fetch_existing_labels"""
 
-    @patch("sync.tasks.labels.requests.get")
-    def test_fetch_existing_labels_nominal(self, mock_get):
+    def test_fetch_existing_labels_nominal(self):
         """Test d'indexation des dossiers par numéro"""
-        mock_get.return_value = create_mock_response(
-            json_data={
-                "records": [
-                    {
-                        "id": 10,
-                        "fields": {
-                            "dossier_number": 123,
-                            "label_names": "Urgent",
-                            "labels_json": "[]",
-                        },
-                    }
-                ]
-            }
+        client = create_mock_client_with_records(
+            create_mock_response(
+                json_data={
+                    "records": [
+                        {
+                            "id": 10,
+                            "fields": {
+                                "dossier_number": 123,
+                                "label_names": "Urgent",
+                                "labels_json": "[]",
+                            },
+                        }
+                    ]
+                }
+            )
         )
 
-        result = _fetch_existing_labels(create_mock_client(), "Table_1")
+        result = _fetch_existing_labels(client, "Table_1")
 
         assert "123" in result
         assert result["123"]["grist_id"] == 10
         assert result["123"]["label_names"] == "Urgent"
+        client.get_records.assert_called_once_with("Table_1")
 
-    @patch("sync.tasks.labels.requests.get")
-    def test_fetch_existing_labels_ignores_records_without_number(self, mock_get):
+    def test_fetch_existing_labels_ignores_records_without_number(self):
         """Test que les lignes sans numéro de dossier sont ignorées"""
-        mock_get.return_value = create_mock_response(
-            json_data={"records": [{"id": 10, "fields": {}}]}
+        client = create_mock_client_with_records(
+            create_mock_response(json_data={"records": [{"id": 10, "fields": {}}]})
         )
 
-        assert _fetch_existing_labels(create_mock_client(), "Table_1") == {}
+        assert _fetch_existing_labels(client, "Table_1") == {}
 
-    @patch("sync.tasks.labels.requests.get")
-    def test_fetch_existing_labels_normalizes_none(self, mock_get):
+    def test_fetch_existing_labels_normalizes_none(self):
         """Test que des colonnes vides sont normalisées en chaînes"""
-        mock_get.return_value = create_mock_response(
-            json_data={
-                "records": [
-                    {
-                        "id": 10,
-                        "fields": {
-                            "dossier_number": 123,
-                            "label_names": None,
-                            "labels_json": None,
-                        },
-                    }
-                ]
-            }
+        client = create_mock_client_with_records(
+            create_mock_response(
+                json_data={
+                    "records": [
+                        {
+                            "id": 10,
+                            "fields": {
+                                "dossier_number": 123,
+                                "label_names": None,
+                                "labels_json": None,
+                            },
+                        }
+                    ]
+                }
+            )
         )
 
-        result = _fetch_existing_labels(create_mock_client(), "Table_1")
+        result = _fetch_existing_labels(client, "Table_1")
 
         assert result["123"]["label_names"] == ""
         assert result["123"]["labels_json"] == ""
 
-    @patch("sync.tasks.labels.requests.get")
-    def test_fetch_existing_labels_raises_on_error(self, mock_get):
+    def test_fetch_existing_labels_raises_on_error(self):
         """Test qu'un échec de lecture lève une exception"""
-        mock_get.return_value = create_mock_response(status_code=500, text="error")
+        client = create_mock_client_with_records(
+            create_mock_response(status_code=500, text="error")
+        )
 
         with pytest.raises(RuntimeError):
-            _fetch_existing_labels(create_mock_client(), "Table_1")
+            _fetch_existing_labels(client, "Table_1")
 
 
 class TestPatchRecords:
     """Tests unitaires pour la fonction _patch_records"""
 
-    @patch("sync.tasks.labels.requests.patch")
-    def test_patch_records_empty(self, mock_patch):
+    def test_patch_records_empty(self):
         """Test qu'aucune requête n'est envoyée sans enregistrement"""
-        updated = _patch_records(
-            create_mock_client(), "Table_1", [], MagicMock(), MagicMock()
-        )
+        client = create_mock_client()
+
+        updated = _patch_records(client, "Table_1", [], MagicMock(), MagicMock())
 
         assert updated == 0
-        mock_patch.assert_not_called()
+        client.patch_records.assert_not_called()
 
-    @patch("sync.tasks.labels.requests.patch")
-    def test_patch_records_splits_into_batches(self, mock_patch):
-        """Test que les enregistrements sont découpés en lots"""
-        mock_patch.return_value = create_mock_response()
+    def test_patch_records_splits_into_batches(self):
+        """Test que les enregistrements sont découpés en lots aux bonnes bornes"""
+        client = create_mock_client()
+        client.patch_records.return_value = create_mock_response()
         records = [{"id": i, "fields": {}} for i in range(BATCH_SIZE + 1)]
 
-        updated = _patch_records(
-            create_mock_client(), "Table_1", records, MagicMock(), MagicMock()
-        )
+        updated = _patch_records(client, "Table_1", records, MagicMock(), MagicMock())
 
         assert updated == BATCH_SIZE + 1
-        assert mock_patch.call_count == 2
+        assert client.patch_records.call_count == 2
+        assert client.patch_records.call_args_list[0].args[0] == "Table_1"
+        assert client.patch_records.call_args_list[0].args[1] == records[:BATCH_SIZE]
+        assert client.patch_records.call_args_list[1].args[1] == records[BATCH_SIZE:]
 
-    @patch("sync.tasks.labels.requests.patch")
-    def test_patch_records_logs_error_on_failure(self, mock_patch):
+    def test_patch_records_logs_error_on_failure(self):
         """Test qu'un lot en échec est logué et non compté"""
-        mock_patch.return_value = create_mock_response(status_code=400, text="error")
+        client = create_mock_client()
+        client.patch_records.return_value = create_mock_response(
+            status_code=400, text="error"
+        )
         log_error = MagicMock()
 
         updated = _patch_records(
-            create_mock_client(),
+            client,
             "Table_1",
             [{"id": 1, "fields": {}}],
             MagicMock(),
@@ -210,46 +222,47 @@ class TestPatchRecords:
 class TestSyncLabelsForDemarche:
     """Tests unitaires pour la fonction sync_labels_for_demarche"""
 
-    @patch("sync.tasks.labels.requests.get")
-    def test_sync_labels_empty_grist(self, mock_get):
+    def test_sync_labels_empty_grist(self):
         """Test qu'une table vide retourne un résultat à zéro sans appel DN"""
-        mock_get.return_value = create_mock_response(json_data={"records": []})
+        client = create_mock_client_with_records(
+            create_mock_response(json_data={"records": []})
+        )
 
         result = sync_labels_for_demarche(
-            create_mock_client(), "Table_1", 12345, MagicMock(), MagicMock()
+            client, "Table_1", 12345, MagicMock(), MagicMock()
         )
 
         assert result == {"checked": 0, "updated": 0, "missing_in_grist": 0}
 
     @patch("sync.tasks.labels.get_demarche_dossiers_labels_only")
-    @patch("sync.tasks.labels.requests.patch")
-    @patch("sync.tasks.labels.requests.get")
-    def test_sync_labels_updates_changed_only(self, mock_get, mock_patch, mock_dn):
+    def test_sync_labels_updates_changed_only(self, mock_dn):
         """Test que seuls les dossiers dont les labels ont changé sont patchés"""
-        mock_get.return_value = create_mock_response(
-            json_data={
-                "records": [
-                    {
-                        "id": 10,
-                        "fields": {
-                            "dossier_number": 111,
-                            "label_names": "Urgent",
-                            "labels_json": '[{"id": "l1", "name": "Urgent", '
-                            '"color": "red"}]',
+        client = create_mock_client_with_records(
+            create_mock_response(
+                json_data={
+                    "records": [
+                        {
+                            "id": 10,
+                            "fields": {
+                                "dossier_number": 111,
+                                "label_names": "Urgent",
+                                "labels_json": '[{"id": "l1", "name": "Urgent", '
+                                '"color": "red"}]',
+                            },
                         },
-                    },
-                    {
-                        "id": 11,
-                        "fields": {
-                            "dossier_number": 222,
-                            "label_names": "",
-                            "labels_json": "",
+                        {
+                            "id": 11,
+                            "fields": {
+                                "dossier_number": 222,
+                                "label_names": "",
+                                "labels_json": "",
+                            },
                         },
-                    },
-                ]
-            }
+                    ]
+                }
+            )
         )
-        mock_patch.return_value = create_mock_response()
+        client.patch_records.return_value = create_mock_response()
         mock_dn.return_value = [
             {
                 "number": 111,
@@ -262,35 +275,36 @@ class TestSyncLabelsForDemarche:
         ]
 
         result = sync_labels_for_demarche(
-            create_mock_client(), "Table_1", 12345, MagicMock(), MagicMock()
+            client, "Table_1", 12345, MagicMock(), MagicMock()
         )
 
         assert result["checked"] == 2
         assert result["updated"] == 1
         assert result["missing_in_grist"] == 0
 
-        sent_records = mock_patch.call_args.kwargs["json"]["records"]
+        assert client.patch_records.call_args.args[0] == "Table_1"
+        sent_records = client.patch_records.call_args.args[1]
         assert len(sent_records) == 1
         assert sent_records[0]["id"] == 11
 
     @patch("sync.tasks.labels.get_demarche_dossiers_labels_only")
-    @patch("sync.tasks.labels.requests.patch")
-    @patch("sync.tasks.labels.requests.get")
-    def test_sync_labels_counts_missing_in_grist(self, mock_get, mock_patch, mock_dn):
+    def test_sync_labels_counts_missing_in_grist(self, mock_dn):
         """Test qu'un dossier absent de Grist est compté et non patché"""
-        mock_get.return_value = create_mock_response(
-            json_data={
-                "records": [
-                    {
-                        "id": 10,
-                        "fields": {
-                            "dossier_number": 111,
-                            "label_names": "",
-                            "labels_json": "",
-                        },
-                    }
-                ]
-            }
+        client = create_mock_client_with_records(
+            create_mock_response(
+                json_data={
+                    "records": [
+                        {
+                            "id": 10,
+                            "fields": {
+                                "dossier_number": 111,
+                                "label_names": "",
+                                "labels_json": "",
+                            },
+                        }
+                    ]
+                }
+            )
         )
         mock_dn.return_value = [
             {"number": 111, "labels": []},
@@ -298,23 +312,24 @@ class TestSyncLabelsForDemarche:
         ]
 
         result = sync_labels_for_demarche(
-            create_mock_client(), "Table_1", 12345, MagicMock(), MagicMock()
+            client, "Table_1", 12345, MagicMock(), MagicMock()
         )
 
         assert result["checked"] == 2
         assert result["updated"] == 0
         assert result["missing_in_grist"] == 1
-        mock_patch.assert_not_called()
+        client.patch_records.assert_not_called()
 
     @patch("sync.tasks.labels.get_demarche_dossiers_labels_only")
-    @patch("sync.tasks.labels.requests.get")
-    def test_sync_labels_propagates_read_error(self, mock_get, mock_dn):
+    def test_sync_labels_propagates_read_error(self, mock_dn):
         """Test qu'une erreur de lecture Grist remonte à l'appelant"""
-        mock_get.return_value = create_mock_response(status_code=500, text="error")
+        client = create_mock_client_with_records(
+            create_mock_response(status_code=500, text="error")
+        )
 
         with pytest.raises(RuntimeError):
             sync_labels_for_demarche(
-                create_mock_client(), "Table_1", 12345, MagicMock(), MagicMock()
+                client, "Table_1", 12345, MagicMock(), MagicMock()
             )
 
         mock_dn.assert_not_called()

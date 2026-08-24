@@ -8,7 +8,6 @@ import unicodedata
 import hashlib
 import re
 import json
-import requests
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
@@ -45,15 +44,11 @@ def ensure_repetable_columns_exist(client, table_id, repetable_data):
     try:
 
         # 1. Récupérer les colonnes existantes
-        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=client.headers)
+        existing_columns = set(client.get_columns(table_id))
 
-        if response.status_code != 200:
-            log_error(f"Erreur lors de la récupération des colonnes: {response.status_code}")
+        if not existing_columns:
+            log_error("Erreur lors de la récupération des colonnes")
             return False
-
-        columns_data = response.json()
-        existing_columns = {col["id"] for col in columns_data.get("columns", [])}
 
         # 2. Identifier toutes les colonnes nécessaires à partir des données
         required_columns = set()
@@ -78,14 +73,7 @@ def ensure_repetable_columns_exist(client, table_id, repetable_data):
                 log(f"    - {col_name} (type: {col_type})")
 
             # 5. Ajouter les colonnes manquantes
-            add_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-            add_payload = {"columns": columns_to_add}
-
-            add_response = requests.post(
-                add_url,
-                headers=client.headers,
-                json=add_payload
-            )
+            add_response = client.add_columns(table_id, columns_to_add)
 
             if add_response.status_code == 200:
                 log(f"  [CORRECTION] ✅ {len(missing_columns)} colonnes ajoutées avec succès")
@@ -155,16 +143,11 @@ def auto_fix_missing_columns_optimized(client, table_id, records_payload):
     """
     try:
         # 1. Récupérer les colonnes existantes
-        columns_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        columns_response = requests.get(columns_url, headers=client.headers)
+        existing_columns = set(client.get_columns(table_id))
 
-        if columns_response.status_code != 200:
+        if not existing_columns:
             log_error(f"    [AUTO-FIX] Impossible de recuperer les colonnes existantes")
             return False, None
-
-        existing_columns = {
-            col["id"] for col in columns_response.json().get("columns", [])
-        }
 
         # 2. Analyser toutes les colonnes nécessaires dans le payload
         required_columns = set()
@@ -208,8 +191,7 @@ def auto_fix_missing_columns_optimized(client, table_id, records_payload):
                 col_type = column_types.get(col_name, "Text")
                 columns_to_add.append({"id": col_name, "type": col_type})
 
-            add_payload = {"columns": columns_to_add}
-            add_response = requests.post(columns_url, headers=client.headers, json=add_payload)
+            add_response = client.add_columns(table_id, columns_to_add)
 
             if add_response.status_code != 200:
                 log_error(f"    [AUTO-FIX] ECHEC ajout colonnes: {add_response.text}")
@@ -218,8 +200,7 @@ def auto_fix_missing_columns_optimized(client, table_id, records_payload):
             log(f"    [AUTO-FIX] SUCCES: {len(missing_columns)} colonnes ajoutees")
 
         # 5. Tenter l'insertion des données
-        records_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-        response = requests.post(records_url, headers=client.headers, json=records_payload)
+        response = client.post_records(table_id, records_payload["records"])
 
         if response.status_code in [200, 201]:
             log(f"    [AUTO-FIX] SUCCES: Donnees inserees")
@@ -727,10 +708,9 @@ def get_existing_repetable_rows_improved_no_filter(
         raise ValueError("Document ID is required")
 
     # Récupérer tous les enregistrements sans filtre
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
     log_verbose(f"Récupération de tous les enregistrements de la table {table_id}")
 
-    response = requests.get(url, headers=client.headers)
+    response = client.get_records(table_id)
 
     if response.status_code != 200:
         log_error(f"Erreur lors de la récupération des enregistrements: {response.status_code} - {response.text}")
@@ -853,17 +833,9 @@ def process_repetables_for_grist(
     # Vérifier quelles colonnes existent réellement dans Grist
     try:
         # Récupérer les colonnes actuelles de la table
-        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-        response = requests.get(url, headers=client.headers)
+        actual_columns = set(client.get_columns(table_id))
 
-        if response.status_code == 200:
-            columns_data = response.json()
-            actual_columns = set()
-
-            if "columns" in columns_data:
-                for col in columns_data["columns"]:
-                    actual_columns.add(col.get("id"))
-
+        if actual_columns:
             log_verbose(f"  Colonnes existantes dans Grist: {len(actual_columns)} colonnes")
 
             # Filtrer les colonnes qui n'existent pas
@@ -901,9 +873,7 @@ def process_repetables_for_grist(
 
             if missing_columns:
                 log(f"  Ajout de {len(missing_columns)} colonnes manquantes...")
-                add_columns_url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-                add_columns_payload = {"columns": missing_columns}
-                add_response = requests.post(add_columns_url, headers=client.headers, json=add_columns_payload)
+                add_response = client.add_columns(table_id, missing_columns)
 
                 if add_response.status_code != 200:
                     log_error(f"  Erreur lors de l'ajout des colonnes: {add_response.text}")
@@ -911,7 +881,7 @@ def process_repetables_for_grist(
                     log(f"  Colonnes ajoutées avec succès")
                     valid_columns = set(repetable_columns.keys())
         else:
-            log_error(f"  Erreur lors de la récupération des colonnes: {response.text}")
+            log_error("  Erreur lors de la récupération des colonnes")
             valid_columns = set(repetable_columns.keys())
     except Exception as e:
         log_error(f"  Erreur lors de la vérification des colonnes: {str(e)}")
@@ -1027,9 +997,7 @@ def process_repetables_for_grist(
                                 # Si on a trouvé un enregistrement existant, le mettre à jour
                                 if found_id:
                                     log_verbose(f"    Mise à jour de la ligne existante (ID: {found_id})")
-                                    update_payload = {"records": [{"id": found_id, "fields": geo_record}]}
-                                    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-                                    response = requests.patch(url, headers=client.headers, json=update_payload)
+                                    response = client.patch_records(table_id, [{"id": found_id, "fields": geo_record}])
 
                                     if response.status_code in [200, 201]:
                                         repetable_success += 1
@@ -1040,9 +1008,7 @@ def process_repetables_for_grist(
                                 else:
                                     # Création d'un nouvel enregistrement
                                     log_verbose(f"    Création d'une nouvelle ligne (aucune correspondance trouvée)")
-                                    create_payload = {"records": [{"fields": geo_record}]}
-                                    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-                                    response = requests.post(url, headers=client.headers, json=create_payload)
+                                    response = client.post_records(table_id, [{"fields": geo_record}])
 
                                     if response.status_code in [200, 201]:
                                         repetable_success += 1
@@ -1087,9 +1053,7 @@ def process_repetables_for_grist(
                             # Si on a trouvé un enregistrement existant, le mettre à jour
                             if found_id:
                                 log_verbose(f"    Mise à jour de la ligne existante (ID: {found_id})")
-                                update_payload = {"records": [{"id": found_id, "fields": record}]}
-                                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-                                response = requests.patch(url, headers=client.headers, json=update_payload)
+                                response = client.patch_records(table_id, [{"id": found_id, "fields": record}])
 
                                 if response.status_code in [200, 201]:
                                     repetable_success += 1
@@ -1100,9 +1064,7 @@ def process_repetables_for_grist(
                             else:
                                 # Création d'un nouvel enregistrement
                                 log_verbose(f"    Création d'une nouvelle ligne (aucune correspondance trouvée)")
-                                create_payload = {"records": [{"fields": record}]}
-                                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-                                response = requests.post(url, headers=client.headers, json=create_payload)
+                                response = client.post_records(table_id, [{"fields": record}])
 
                                 if response.status_code in [200, 201]:
                                     repetable_success += 1
@@ -1279,16 +1241,12 @@ def process_repetable_data_batch(
                                 break
 
                         # Upsert
-                        url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-
                         if found_id:
                             # Mise à jour
-                            payload = {"records": [{"id": found_id, "fields": record}]}
-                            response = requests.patch(url, headers=client.headers, json=payload)
+                            response = client.patch_records(table_id, [{"id": found_id, "fields": record}])
                         else:
                             # Création
-                            payload = {"records": [{"fields": record}]}
-                            response = requests.post(url, headers=client.headers, json=payload)
+                            response = client.post_records(table_id, [{"fields": record}])
 
                         if response.status_code in [200, 201]:
                             success_count += 1
@@ -1534,13 +1492,7 @@ def process_repetables_batch(
             for i in range(0, len(normalized_updates), batch_size):
                 batch = normalized_updates[i:i+batch_size]
 
-                update_payload = {"records": batch}
-                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-                response = requests.patch(
-                    url,
-                    headers=client.headers,
-                    json=update_payload
-                )
+                response = client.patch_records(table_id, batch)
 
                 if response.status_code in [200, 201]:
                     total_success += len(batch)
@@ -1548,12 +1500,7 @@ def process_repetables_batch(
                     log_error(f"Erreur MAJ lot: {response.status_code}")
                     # Fallback individuel
                     for individual in batch:
-                        individual_payload = {"records": [individual]}
-                        individual_response = requests.patch(
-                            url,
-                            headers=client.headers,
-                            json=individual_payload
-                        )
+                        individual_response = client.patch_records(table_id, [individual])
 
                         if individual_response.status_code in [200, 201]:
                             total_success += 1
@@ -1566,12 +1513,7 @@ def process_repetables_batch(
                 batch = data["to_create"][i:i+batch_size]
 
                 create_payload = {"records": batch}
-                url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-                response = requests.post(
-                    url,
-                    headers=client.headers,
-                    json=create_payload
-                )
+                response = client.post_records(table_id, batch)
 
                 if response.status_code in [200, 201]:
                     total_success += len(batch)

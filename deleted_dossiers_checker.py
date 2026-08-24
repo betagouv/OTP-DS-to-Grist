@@ -6,8 +6,6 @@ par absence) et met à jour les colonnes dossiers_supprimes_DN, date_suppression
 et raison_suppression dans Grist.
 """
 
-import requests
-
 from queries_graphql import get_deleted_dossiers
 
 COLUMN_ID = "dossiers_supprimes_DN"
@@ -18,13 +16,7 @@ REASON_COLUMN_ID = "raison_suppression"
 
 def _ensure_deletion_columns(client, table_id, log, log_error):
     """Crée les colonnes de suppression (Bool/DateTime/Text) si elles n'existent pas."""
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/columns"
-    response = requests.get(url, headers=client.headers)
-    existing = (
-        {col["id"] for col in response.json().get("columns", [])}
-        if response.status_code == 200
-        else set()
-    )
+    existing = set(client.get_columns(table_id))
 
     needed = [
         {"id": COLUMN_ID, "fields": {"label": COLUMN_LABEL, "type": "Bool"}},
@@ -41,7 +33,7 @@ def _ensure_deletion_columns(client, table_id, log, log_error):
     if not missing:
         return True
 
-    r = requests.post(url, headers=client.headers, json={"columns": missing})
+    r = client.add_columns(table_id, missing)
     if r.status_code == 200:
         log(f"  Colonnes créées : {[c['id'] for c in missing]}")
         return True
@@ -73,8 +65,7 @@ def _mark_deleted_in_grist(
     if not records:
         return 0
 
-    url = f"{client.base_url}/docs/{client.doc_id}/tables/{table_id}/records"
-    response = requests.patch(url, headers=client.headers, json={"records": records})
+    response = client.patch_records(table_id, records)
 
     if response.status_code == 200:
         log(f"  {len(records)} dossiers marqués '{COLUMN_LABEL}' dans Grist.")
