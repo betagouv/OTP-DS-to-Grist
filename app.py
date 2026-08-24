@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from werkzeug.serving import WSGIRequestHandler
 
 from configuration.config_manager import ConfigManager
 from database.database_manager import DatabaseManager
@@ -972,14 +971,6 @@ def handle_connect():
 def handle_disconnect():
     """Gestion de la déconnexion WebSocket"""
     logger.info("Client déconnecté")
-
-
-# Custom request handler pour des logs moins verbeux
-class QuietWSGIRequestHandler(WSGIRequestHandler):
-    def log_request(self, code="-", size="-"):
-        # Ne logguer que les erreurs
-        if str(code).startswith("4") or str(code).startswith("5"):
-            super().log_request(code, size)
 
 
 if __name__ == "__main__":
