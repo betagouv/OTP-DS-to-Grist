@@ -859,6 +859,49 @@ def upsert_avis_records(
 # Cette fonction est conçue pour être plus rapide et plus efficace, en utilisant le traitement par lots et le traitement parallèle.
 # Fonction optimisée complète et corrigée
 # Remplace la fonction process_demarche_for_grist_optimized dans ton fichier
+def build_filters_key(api_filters) -> str:
+    """Construit une clé canonique JSON déterministe des filtres actifs.
+
+    Utilisée pour détecter un changement de filtres entre deux synchronisations :
+    si la clé stockée dans `Sync_metadata.filters_hash` diffère de la clé actuelle,
+    une synchro complète est forcée (le delta `updatedSince` ne couvrirait sinon
+    pas les dossiers nouvellement éligibles/exclus par les nouveaux filtres).
+
+    La clé est volontairement lisible (JSON) et non un hash opaque pour faciliter
+    l'inspection des filtres stockés.
+
+    NB : la clé est non-versionnée ET ne couvre que `api_filters` (chemin optimisé).
+    L'ajout futur d'un champ de filtre dans cette fonction modifiera donc la clé et
+    déclenchera une synchro complète ponctuelle pour tous les utilisateurs existants
+    (comportement attendu et sûr). Le chemin legacy (variables d'environnement
+    DATE_DEPOT_DEBUT / STATUTS_DOSSIERS / ...) n'est PAS couvert par cette clé :
+    à vérifier/nettoyer si ce chemin se révèle être du code mort.
+    """
+    filters = {
+        "date_debut": (api_filters or {}).get("date_debut"),
+        "date_fin": (api_filters or {}).get("date_fin"),
+        "statuts": _normalize_list((api_filters or {}).get("statuts")),
+        "groupes_instructeurs": _normalize_list(
+            (api_filters or {}).get("groupes_instructeurs")
+        ),
+    }
+    return json_module.dumps(filters, sort_keys=True, ensure_ascii=False)
+
+
+def _normalize_list(value) -> list:
+    """Normalise une liste de filtres pour garantir le déterminisme (tri, None -> [])."""
+    if not value:
+        return []
+    try:
+        return sorted(str(v) for v in value)
+    except TypeError:
+        return [str(value)]
+
+
+# Fonction optimisée pour le traitement d'une démarche pour Grist (Possibilité d'augmenter ou de diminuer batch_size et max_workers)
+# Cette fonction est conçue pour être plus rapide et plus efficace, en utilisant le traitement par lots et le traitement parallèle.
+# Fonction optimisée complète et corrigée
+# Remplace la fonction process_demarche_for_grist_optimized dans ton fichier
 def process_demarche_for_grist_optimized(
     client,
     demarche_number,
@@ -1071,6 +1114,18 @@ def process_demarche_for_grist_optimized(
         force_full_sync = (
             sync_meta.get("force_full_sync", False) if sync_meta else False
         )
+        current_filters_key = build_filters_key(api_filters)
+
+        # Détecter un changement de filtres entre deux synchronisations : le delta
+        # `updatedSince` ne verrait alors que les dossiers modifiés et ignorerait
+        # les dossiers nouvellement éligibles/exclus par les nouveaux critères.
+        # `filters_hash` est `None` la première fois (créé par le déploiement précédent)
+        # → déclenche une synchro complète ponctuelle, puis retour au delta normal.
+        if sync_meta is not None and sync_meta.get("filters_hash") != current_filters_key:
+            log(
+                "Changement de filtres détecté (filters_hash différent) → sync complète forcée"
+            )
+            force_full_sync = True
         updated_since_cursor = (
             None
             if force_full_sync
@@ -1264,6 +1319,7 @@ def process_demarche_for_grist_optimized(
                         "last_sync_status": "success",
                         "last_sync_duration": round(elapsed_time, 1),
                         "force_full_sync": False,
+                        "filters_hash": current_filters_key,
                     },
                 )
             except Exception as e:
@@ -1783,6 +1839,7 @@ def process_demarche_for_grist_optimized(
                     "last_sync_status": "success" if total_errors == 0 else "partial",
                     "last_sync_duration": round(elapsed_time, 1),
                     "force_full_sync": False,
+                    "filters_hash": current_filters_key,
                 },
                 existing_grist_id=sync_meta_grist_id,
             )

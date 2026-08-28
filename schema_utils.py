@@ -1203,6 +1203,7 @@ def update_grist_tables_from_schema(
                 "type": "Bool",
                 "fields": {"type": "Bool", "isFormula": False, "formula": ""},
             },
+            {"id": "filters_hash", "type": "Text"},
         ]
 
         # Recharger la liste des tables pour les inclure celles créées pendant cette exécution
@@ -1233,6 +1234,7 @@ def update_grist_tables_from_schema(
                 "type": "Bool",
                 "fields": {"type": "Bool", "isFormula": False, "formula": ""},
             },
+            {"id": "filters_hash", "type": "Text"},
         ]
 
         # Recharger la liste des tables pour les inclure celles créées pendant cette exécution

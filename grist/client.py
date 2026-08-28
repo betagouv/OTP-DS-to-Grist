@@ -195,6 +195,7 @@ class GristClient:
                     "last_sync_status": fields.get("last_sync_status"),
                     "last_sync_duration": fields.get("last_sync_duration"),
                     "force_full_sync": fields.get("force_full_sync", False),
+                    "filters_hash": fields.get("filters_hash"),
                 }
 
         return None  # première sync
