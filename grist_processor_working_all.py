@@ -33,6 +33,7 @@ from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
+from utils.formatter import build_filters_key
 from utils.log import log, log_verbose, log_error, log_progress
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -855,53 +856,6 @@ def upsert_avis_records(
     return len(to_create), len(to_update)
 
 
-# Fonction optimisée pour le traitement d'une démarche pour Grist (Possibilité d'augmenter ou de diminuer batch_size et max_workers)
-# Cette fonction est conçue pour être plus rapide et plus efficace, en utilisant le traitement par lots et le traitement parallèle.
-# Fonction optimisée complète et corrigée
-# Remplace la fonction process_demarche_for_grist_optimized dans ton fichier
-def build_filters_key(api_filters) -> str:
-    """Construit une clé canonique JSON déterministe des filtres actifs.
-
-    Utilisée pour détecter un changement de filtres entre deux synchronisations :
-    si la clé stockée dans `Sync_metadata.filters_hash` diffère de la clé actuelle,
-    une synchro complète est forcée (le delta `updatedSince` ne couvrirait sinon
-    pas les dossiers nouvellement éligibles/exclus par les nouveaux filtres).
-
-    La clé est volontairement lisible (JSON) et non un hash opaque pour faciliter
-    l'inspection des filtres stockés.
-
-    NB : la clé est non-versionnée ET ne couvre que `api_filters` (chemin optimisé).
-    L'ajout futur d'un champ de filtre dans cette fonction modifiera donc la clé et
-    déclenchera une synchro complète ponctuelle pour tous les utilisateurs existants
-    (comportement attendu et sûr). Le chemin legacy (variables d'environnement
-    DATE_DEPOT_DEBUT / STATUTS_DOSSIERS / ...) n'est PAS couvert par cette clé :
-    à vérifier/nettoyer si ce chemin se révèle être du code mort.
-    """
-    filters = {
-        "date_debut": (api_filters or {}).get("date_debut"),
-        "date_fin": (api_filters or {}).get("date_fin"),
-        "statuts": _normalize_list((api_filters or {}).get("statuts")),
-        "groupes_instructeurs": _normalize_list(
-            (api_filters or {}).get("groupes_instructeurs")
-        ),
-    }
-    return json_module.dumps(filters, sort_keys=True, ensure_ascii=False)
-
-
-def _normalize_list(value) -> list:
-    """Normalise une liste de filtres pour garantir le déterminisme (tri, None -> [])."""
-    if not value:
-        return []
-    try:
-        return sorted(str(v) for v in value)
-    except TypeError:
-        return [str(value)]
-
-
-# Fonction optimisée pour le traitement d'une démarche pour Grist (Possibilité d'augmenter ou de diminuer batch_size et max_workers)
-# Cette fonction est conçue pour être plus rapide et plus efficace, en utilisant le traitement par lots et le traitement parallèle.
-# Fonction optimisée complète et corrigée
-# Remplace la fonction process_demarche_for_grist_optimized dans ton fichier
 def process_demarche_for_grist_optimized(
     client,
     demarche_number,
