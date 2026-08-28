@@ -33,7 +33,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 ### Exécution
 
 - Lancer les tests associés après chaque modification
-- Ne jamais committer, ni push, ni effectuer de `git add` (stage). Laisser les fichiers modifiés tels quels ; l'utilisateur relit, puis prépare et valide lui-même les commits.
+- Ne jamais committer, pousser ni stager : laisser l'utilisateur préparer, créer et valider ses propres commits après relecture
 
 ## Architecture du projet
 
