@@ -36,11 +36,18 @@ def build_response(payload, status=200):
 
 
 class FakeGristServer:
-    """Mini serveur Grist en mémoire : tables + colonnes, trace de tous les appels."""
+    """Mini serveur Grist en mémoire : tables + colonnes, trace de tous les appels.
 
-    def __init__(self):
+    `initial_records` permet de pré-remplir une table (ex: Sync_metadata) avec
+    des enregistrements retournés lors du premier GET records de cette table.
+    Format : {table_id: [{champ: valeur, ...}, ...]}
+    """
+
+    def __init__(self, initial_records=None):
         self.tables = {}
         self.calls = []
+        self._initial_records = initial_records or {}
+        self._records_sent = set()
         self._add_initial_tables()
 
     def _add_initial_tables(self):
@@ -99,6 +106,17 @@ class FakeGristServer:
             )
 
         if method == "GET" and parts[4] == "records":
+            if parts[3] in self._initial_records and parts[3] not in self._records_sent:
+                self._records_sent.add(parts[3])
+                records = self._initial_records[parts[3]]
+                return build_response(
+                    {
+                        "records": [
+                            {"id": i + 1, "fields": r}
+                            for i, r in enumerate(records)
+                        ]
+                    }
+                )
             return build_response({"records": []})
 
         if method == "POST" and len(parts) == 4:
@@ -353,3 +371,89 @@ class TestSyncPipelineGrist:
                 and call["path"] == f"/docs/{DOC_ID}/tables/{table}/records"
                 for call in server.calls
             )
+
+    def test_filter_change_forces_full_sync(self):
+        """Quand les filtres changent entre deux syncs, le cursor
+        `updated_since` doit être ignoré (sync complète) pour ne pas manquer
+        les dossiers correspondant aux nouveaux critères.
+
+        Scénario : la 1ère sync a tourné avec des filtres A (cursor positionné
+        + hash stocké). On relance avec des filtres B différents. Le delta
+        utilisant `updated_since` ne verrait que les dossiers modifiés et
+        ignorerait les dossiers nouvellement éligibles aux filtres B.
+
+        Régression : sans détection du changement de filtres, l'appel à
+        `get_demarche_dossiers_filtered` reçoit encore `updated_since`, donc
+        le test échoue.
+        """
+        server = FakeGristServer(
+            initial_records={
+                "Sync_metadata": [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": "2024-06-01T00:00:00Z",
+                        "deleted_since_cursor": "2024-06-01T00:00:00Z",
+                        "filters_hash": "hash_anciens_filtres",
+                        "force_full_sync": False,
+                    }
+                ]
+            }
+        )
+        client = GristClient(BASE_URL, "api-key", DOC_ID)
+
+        with ExitStack() as stack:
+            for method in ("get", "post", "patch"):
+                stack.enter_context(
+                    patch.object(
+                        grist_client_module.requests,
+                        method,
+                        side_effect=lambda *args, method=method, **kwargs: server.handle(
+                            method, args[0], kwargs.get("json")
+                        ),
+                    )
+                )
+            stack.enter_context(
+                patch.object(gpa, "get_optimized_schema", return_value=make_schema())
+            )
+            mock_fetch = stack.enter_context(
+                patch.object(
+                    gpa,
+                    "get_demarche_dossiers_filtered",
+                    return_value=[make_dossier_brief(1)],
+                )
+            )
+            stack.enter_context(
+                patch.object(gpa, "get_dossier", side_effect=make_dossier)
+            )
+            stack.enter_context(
+                patch.object(schema_utils, "detect_demandeur_type", return_value=None)
+            )
+            stack.enter_context(patch.object(gpa, "sync_instructeurs"))
+            stack.enter_context(patch.object(gpa, "sync_labels_for_demarche"))
+            stack.enter_context(
+                patch.object(
+                    gpa,
+                    "check_deleted_dossiers",
+                    return_value={"newly_marked": 0},
+                )
+            )
+
+            result = gpa.process_demarche_for_grist_optimized(
+                client,
+                DEMARCHE_NUMBER,
+                parallel=False,
+                batch_size=100,
+                # Filtres DIFFÉRENTS de ceux stockés dans Sync_metadata
+                api_filters={"statuts": ["en_instruction"]},
+            )
+
+        assert result is True
+
+        # Le changement de filtres doit forcer une sync complète : le cursor
+        # updated_since est ignoré lors de l'appel à la couche DN.
+        call_kwargs = mock_fetch.call_args.kwargs
+        assert call_kwargs.get("updated_since") is None, (
+            "Les filtres ont changé mais le cursor updated_since a été utilisé "
+            "→ les dossiers correspondant aux nouveaux filtres seraient ignorés"
+        )
+
