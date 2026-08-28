@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 
 def unwrap_json_list(raw: str) -> str:
@@ -22,7 +23,7 @@ def unwrap_json_list(raw: str) -> str:
     return raw
 
 
-def build_filters_key(api_filters) -> str:
+def build_filters_key(api_filters: dict[str, Any] | None) -> str:
     """Construit une clé canonique JSON déterministe des filtres actifs.
 
     Utilisée pour détecter un changement de filtres entre deux synchronisations :
@@ -51,7 +52,7 @@ def build_filters_key(api_filters) -> str:
     return json.dumps(filters, sort_keys=True, ensure_ascii=False)
 
 
-def _normalize_list(value) -> list:
+def _normalize_list(value: Any) -> list[str]:
     """Normalise une liste de filtres pour garantir le déterminisme (tri, None -> [])."""
     if not value:
         return []
