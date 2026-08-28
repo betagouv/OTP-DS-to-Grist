@@ -30,9 +30,11 @@ from utils.constants import (
     CHANGELOG_PATH,
     DEMARCHES_API_URL,
     GITHUB_CHANGELOG_BASE_URL,
-    DATABASE_URL
+    DATABASE_URL,
+    HELP_LINK_FAQ,
+    HELP_LINK_GRIST_API_KEY,
+    HELP_LINK_DN_TOKEN_API
 )
-from utils.help_links import HELP_LINKS
 from utils.socketio import socketio
 
 # Déterminer le répertoire du script
@@ -871,7 +873,13 @@ def debug():
 
 @app.context_processor
 def inject_help_links():
-    return {"help_links": HELP_LINKS}
+    return {
+        "help_links": {
+            "faq": HELP_LINK_FAQ,
+            "token_api": HELP_LINK_DN_TOKEN_API,
+            "grist_api_key": HELP_LINK_GRIST_API_KEY,
+        }
+    }
 
 
 @app.route("/wip")
