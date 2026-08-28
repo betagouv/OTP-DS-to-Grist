@@ -33,6 +33,7 @@ from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
+from utils.formatter import build_filters_key
 from utils.log import log, log_verbose, log_error, log_progress
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -855,10 +856,6 @@ def upsert_avis_records(
     return len(to_create), len(to_update)
 
 
-# Fonction optimisée pour le traitement d'une démarche pour Grist (Possibilité d'augmenter ou de diminuer batch_size et max_workers)
-# Cette fonction est conçue pour être plus rapide et plus efficace, en utilisant le traitement par lots et le traitement parallèle.
-# Fonction optimisée complète et corrigée
-# Remplace la fonction process_demarche_for_grist_optimized dans ton fichier
 def process_demarche_for_grist_optimized(
     client,
     demarche_number,
@@ -1071,6 +1068,18 @@ def process_demarche_for_grist_optimized(
         force_full_sync = (
             sync_meta.get("force_full_sync", False) if sync_meta else False
         )
+        current_filters_key = build_filters_key(api_filters)
+
+        # Détecter un changement de filtres entre deux synchronisations : le delta
+        # `updatedSince` ne verrait alors que les dossiers modifiés et ignorerait
+        # les dossiers nouvellement éligibles/exclus par les nouveaux critères.
+        # `filters_hash` est `None` la première fois (créé par le déploiement précédent)
+        # → déclenche une synchro complète ponctuelle, puis retour au delta normal.
+        if sync_meta is not None and sync_meta.get("filters_hash") != current_filters_key:
+            log(
+                "Changement de filtres détecté (filters_hash différent) → sync complète forcée"
+            )
+            force_full_sync = True
         updated_since_cursor = (
             None
             if force_full_sync
@@ -1264,6 +1273,7 @@ def process_demarche_for_grist_optimized(
                         "last_sync_status": "success",
                         "last_sync_duration": round(elapsed_time, 1),
                         "force_full_sync": False,
+                        "filters_hash": current_filters_key,
                     },
                 )
             except Exception as e:
@@ -1783,6 +1793,7 @@ def process_demarche_for_grist_optimized(
                     "last_sync_status": "success" if total_errors == 0 else "partial",
                     "last_sync_duration": round(elapsed_time, 1),
                     "force_full_sync": False,
+                    "filters_hash": current_filters_key,
                 },
                 existing_grist_id=sync_meta_grist_id,
             )

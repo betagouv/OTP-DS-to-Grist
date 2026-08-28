@@ -217,6 +217,7 @@ class TestGetSyncMetadata:
                         "demarche_number": "123",
                         "last_sync_at": "2024-01-01",
                         "force_full_sync": True,
+                        "filters_hash": "json_key",
                     },
                 },
             ]
@@ -229,6 +230,7 @@ class TestGetSyncMetadata:
         assert result["grist_id"] == 1
         assert result["last_sync_at"] == "2024-01-01"
         assert result["force_full_sync"] is True
+        assert result["filters_hash"] == "json_key"
 
     def test_returns_none_if_no_match(self):
         """200 sans démarche correspondante -> None"""
