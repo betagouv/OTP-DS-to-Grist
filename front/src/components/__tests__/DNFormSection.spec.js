@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
 import { DsfrInput, DsfrInputGroup, DsfrMultiselect } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
@@ -956,5 +957,155 @@ describe('Filters section integration', () => {
     expect(wrapper.vm.getData().filter_date_start).toBe('')
     expect(wrapper.vm.isDirty).toBe(true)
     expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+  })
+})
+
+describe('Auto-sync toggle', () => {
+  const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
+    globalThis.fetch = vi.fn((url, opts) => {
+      if (String(url).includes('/api/schedule'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+  }
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  it('is disabled when no existingConfig', async () => {
+    mockFetchForSchedule()
+    const wrapper = mount(DNFormSection, {
+      props: { index: 0 },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    expect(checkbox.attributes('disabled')).toBeDefined()
+  })
+
+  it('is disabled when existingConfig has no has_grist_key', async () => {
+    mockFetchForSchedule()
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: false, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    expect(checkbox.attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled when existingConfig has has_grist_key', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    expect(checkbox.attributes('disabled')).toBeUndefined()
+  })
+
+  it('loads schedule state when existingConfig is provided', async () => {
+    mockFetchForSchedule({ success: true, enabled: true })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const scheduleCall = globalThis.fetch.mock.calls.find(
+      ([url]) => String(url).includes('/api/schedule')
+    )
+    expect(scheduleCall).toBeTruthy()
+    expect(scheduleCall[0]).toBe('/api/schedule?otp_config_id=42')
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    expect(checkbox.element.checked).toBe(true)
+  })
+
+  it('calls enableSchedule API when checkbox is checked', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    await checkbox.setChecked(true)
+
+    const enableCall = globalThis.fetch.mock.calls.find(
+      ([url, opts]) => String(url) === '/api/schedule' && opts?.method === 'POST'
+    )
+    expect(enableCall).toBeTruthy()
+    expect(JSON.parse(enableCall[1].body)).toEqual({ otp_config_id: 42 })
+  })
+
+  it('calls disableSchedule API when checkbox is unchecked', async () => {
+    mockFetchForSchedule({ success: true, enabled: true })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    expect(checkbox.element.checked).toBe(true)
+
+    await checkbox.setChecked(false)
+
+    const disableCall = globalThis.fetch.mock.calls.find(
+      ([url, opts]) => String(url) === '/api/schedule' && opts?.method === 'DELETE'
+    )
+    expect(disableCall).toBeTruthy()
+    expect(JSON.parse(disableCall[1].body)).toEqual({ otp_config_id: 42 })
+  })
+
+  it('resets checkbox when toggle API call fails', async () => {
+    globalThis.fetch = vi.fn((url, opts) => {
+      if (String(url).includes('/api/schedule') && !opts)
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: false }) })
+      if (String(url).includes('/api/schedule'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: false, message: 'Erreur' }) })
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+
+    await checkbox.setChecked(true)
+    await flushPromises()
+
+    expect(wrapper.vm.scheduleEnabled).toBe(false)
   })
 })

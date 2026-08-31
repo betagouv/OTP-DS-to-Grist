@@ -12,6 +12,7 @@ import {
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import DNFiltersSection from './DNFiltersSection.vue'
 import { api } from '../utils/InternalApi'
+import { useAutoSync } from '../composables/useAutoSync'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
 
@@ -37,6 +38,7 @@ const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const isDirty = ref(false)
 const dnFiltersError = ref('')
 const dnFiltersSectionRef = ref(null)
+const { scheduleEnabled, scheduleLoading, fetchSchedule, toggleSchedule } = useAutoSync()
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
@@ -93,6 +95,15 @@ const handleDNFiltersChange = () => {
   isDirty.value = true
 }
 
+const handleAutoSyncToggle = async (event) => {
+  const enabled = event.target.checked
+  await toggleSchedule(
+    props.existingConfig.otp_config_id,
+    enabled,
+    !!props.existingConfig.has_grist_key
+  )
+}
+
 defineExpose({
   getData: () => ({
     token: inputDNToken.value,
@@ -127,6 +138,11 @@ watch(() => props.existingConfig, (config) => {
   dnErrorMessage.value = null
   config ? applyExistingConfig(config) : resetConfig()
   isDirty.value = false
+  if (config?.otp_config_id) {
+    fetchSchedule(config.otp_config_id)
+  } else {
+    scheduleEnabled.value = false
+  }
 }, {immediate: true})
 </script>
 
@@ -190,6 +206,32 @@ watch(() => props.existingConfig, (config) => {
           @error-update="dnFiltersError = $event"
         />
 
+        <div class="fr-mt-4w">
+          <fieldset class="fr-fieldset" :aria-labelledby="`auto-sync-legend-${index}`">
+            <legend class="fr-fieldset__legend" :id="`auto-sync-legend-${index}`">
+              Synchronisation automatique
+            </legend>
+
+            <div class="fr-fieldset__content">
+              <div class="fr-checkbox-group">
+                <input
+                  type="checkbox"
+                  :id="`auto_sync_enabled-${index}`"
+                  :name="`auto_sync_enabled-${index}`"
+                  :checked="scheduleEnabled"
+                  :disabled="!existingConfig || !existingConfig.has_grist_key || scheduleLoading"
+                  @change="handleAutoSyncToggle"
+                  data-test-id="auto-sync-toggle"
+                >
+
+                <label class="fr-label" :for="`auto_sync_enabled-${index}`">
+                  Activer la synchronisation automatique
+                </label>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+
         <DsfrButtonGroup inline-layout-when="always" size="large">
           <DsfrButton
             label="Lancer la synchronisation"
@@ -198,6 +240,7 @@ watch(() => props.existingConfig, (config) => {
             :disabled="!canSync || sectionEmpty"
             @click="$emit('sync', index)"
           />
+
           <DsfrButton
             label="Sauvegarder"
             data-test-id="submit-form-button"
@@ -205,6 +248,7 @@ watch(() => props.existingConfig, (config) => {
             :disabled="!configValid || sectionEmpty || !isDirty"
             @click="$emit('save', index)"
           />
+
           <DsfrButton
             label="Supprimer"
             data-test-id="delete-config-button"
