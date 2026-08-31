@@ -1109,3 +1109,109 @@ describe('Auto-sync toggle', () => {
     expect(wrapper.vm.scheduleEnabled).toBe(false)
   })
 })
+
+describe('Auto-sync badge in accordion title', () => {
+  const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
+    globalThis.fetch = vi.fn((url, opts) => {
+      if (String(url).includes('/api/schedule'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+  }
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  it('is absent when no saved config', async () => {
+    mockFetchForSchedule()
+    const wrapper = mount(DNFormSection, {
+      props: { index: 0 },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const badge = wrapper.find('.fr-badge')
+    expect(badge.exists()).toBe(false)
+  })
+
+  it('shows "Manuelle" when config is saved with schedule disabled', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const badge = wrapper.find('.fr-badge')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('Manuelle')
+  })
+
+  it('shows "Automatique" when config is saved with schedule enabled', async () => {
+    mockFetchForSchedule({ success: true, enabled: true })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const badge = wrapper.find('.fr-badge')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('Automatique')
+  })
+
+  it('shows "Manuelle" when config has no grist key (schedule inactive)', async () => {
+    mockFetchForSchedule()
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: false, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const badge = wrapper.find('.fr-badge')
+    expect(badge.text()).toBe('Manuelle')
+  })
+
+  it('updates from "Automatique" to "Manuelle" after disabling the schedule', async () => {
+    let scheduleEnabledState = true
+    globalThis.fetch = vi.fn((url, opts) => {
+      if (String(url).includes('/api/schedule') && !opts)
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: scheduleEnabledState }) })
+      if (String(url).includes('/api/schedule') && opts?.method === 'DELETE')
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+      if (String(url).includes('/api/schedule'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: true }) })
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    await checkbox.setChecked(false)
+    await flushPromises()
+
+    expect(wrapper.find('.fr-badge').text()).toBe('Manuelle')
+  })
+})
