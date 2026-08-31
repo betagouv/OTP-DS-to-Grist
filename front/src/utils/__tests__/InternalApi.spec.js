@@ -233,4 +233,27 @@ describe('InternalApi', () => {
       await expect(api.disableSchedule(1)).rejects.toThrow('Erreur HTTP 404')
     })
   })
+
+  describe('getGroups', () => {
+    it('calls GET /api/groups with otp_config_id and maps groups', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([[1, 'Groupe A'], [3, 'Groupe C']])
+      })
+
+      const result = await api.getGroups(7)
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/groups?otp_config_id=7')
+      expect(result).toEqual([
+        { number: 1, label: 'Groupe A' },
+        { number: 3, label: 'Groupe C' }
+      ])
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
+
+      await expect(api.getGroups(1)).rejects.toThrow('Erreur HTTP 500')
+    })
+  })
 })

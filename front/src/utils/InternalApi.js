@@ -1,5 +1,6 @@
 const ROUTES = {
   CONFIG: '/api/config',
+  GROUPS: '/api/groups',
   SCHEDULE: '/api/schedule',
   START_SYNC: '/api/start-sync',
   SYNC_LOG_LATEST: '/api/sync-log/latest',
@@ -8,105 +9,80 @@ const ROUTES = {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
-class InternalApi {
-  async getConfig(params) {
-    const response = await fetch(`${ROUTES.CONFIG}${params}`)
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+const request = async (url, options) => {
+  const response = options === undefined ? await fetch(url) : await fetch(url, options)
+  if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
 
-    return response.json()
+  return response.json()
+}
+
+class InternalApi {
+  getConfig(params) {
+    return request(`${ROUTES.CONFIG}${params}`)
   }
 
-  async saveConfig(config) {
-    const response = await fetch(ROUTES.CONFIG, {
+  saveConfig(config) {
+    return request(ROUTES.CONFIG, {
       method: 'POST',
       headers: JSON_HEADERS,
       body: JSON.stringify(config)
     })
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
   }
 
-  async deleteConfig(otpConfigId) {
-    const response = await fetch(`${ROUTES.CONFIG}/${otpConfigId}`, {
+  deleteConfig(otpConfigId) {
+    return request(`${ROUTES.CONFIG}/${otpConfigId}`, {
       method: 'DELETE'
     })
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
   }
 
-  async startSync(otpConfigId) {
-    const response = await fetch(ROUTES.START_SYNC, {
+  startSync(otpConfigId) {
+    return request(ROUTES.START_SYNC, {
       method: 'POST',
       headers: JSON_HEADERS,
       body: JSON.stringify({ otp_config_id: otpConfigId })
     })
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
   }
 
-  async testConnection(body) {
-    const response = await fetch(ROUTES.TEST_CONNECTION, {
+  testConnection(body) {
+    return request(ROUTES.TEST_CONNECTION, {
       method: 'POST',
       headers: JSON_HEADERS,
       body: JSON.stringify(body)
     })
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
   }
 
-  async getSyncLogLatest(otpConfigId) {
-    const response = await fetch(`${ROUTES.SYNC_LOG_LATEST}?otp_config_id=${otpConfigId}`)
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
+  getSyncLogLatest(otpConfigId) {
+    return request(`${ROUTES.SYNC_LOG_LATEST}?otp_config_id=${otpConfigId}`)
   }
 
-  async getSyncLogLatestByDocId(docId) {
-    const response = await fetch(`${ROUTES.SYNC_LOG_LATEST}?grist_doc_id=${docId}`)
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
+  getSyncLogLatestByDocId(docId) {
+    return request(`${ROUTES.SYNC_LOG_LATEST}?grist_doc_id=${docId}`)
   }
 
   async getGroups(otpConfigId) {
-    const response = await fetch(`/api/groups?otp_config_id=${otpConfigId}`)
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-    const groups = await response.json()
+    const groups = await request(`${ROUTES.GROUPS}?otp_config_id=${otpConfigId}`)
 
     return groups.map(([number, label]) => ({ number, label }))
   }
 
-  async getSchedule(otpConfigId) {
-    const response = await fetch(`${ROUTES.SCHEDULE}?otp_config_id=${otpConfigId}`)
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
+  getSchedule(otpConfigId) {
+    return request(`${ROUTES.SCHEDULE}?otp_config_id=${otpConfigId}`)
   }
 
-  async enableSchedule(otpConfigId) {
-    const response = await fetch(ROUTES.SCHEDULE, {
+  enableSchedule(otpConfigId) {
+    return request(ROUTES.SCHEDULE, {
       method: 'POST',
       headers: JSON_HEADERS,
       body: JSON.stringify({ otp_config_id: otpConfigId })
     })
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
   }
 
-  async disableSchedule(otpConfigId) {
-    const response = await fetch(ROUTES.SCHEDULE, {
+  disableSchedule(otpConfigId) {
+    return request(ROUTES.SCHEDULE, {
       method: 'DELETE',
       headers: JSON_HEADERS,
       body: JSON.stringify({ otp_config_id: otpConfigId })
     })
-    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
-
-    return response.json()
   }
 }
 
