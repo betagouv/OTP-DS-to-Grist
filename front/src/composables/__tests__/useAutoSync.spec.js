@@ -4,9 +4,7 @@ import { api } from '../../utils/InternalApi'
 
 vi.mock('../../utils/InternalApi', () => ({
   api: {
-    getSchedule: vi.fn(),
-    enableSchedule: vi.fn(),
-    disableSchedule: vi.fn()
+    getSchedule: vi.fn()
   }
 }))
 
@@ -14,8 +12,6 @@ describe('useAutoSync', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     api.getSchedule.mockReset()
-    api.enableSchedule.mockReset()
-    api.disableSchedule.mockReset()
   })
 
   afterEach(() => {
@@ -50,61 +46,6 @@ describe('useAutoSync', () => {
       await fetchSchedule(42)
 
       expect(scheduleEnabled.value).toBe(false)
-    })
-  })
-
-  describe('toggleSchedule', () => {
-    it('calls enableSchedule and returns true on success', async () => {
-      api.enableSchedule.mockResolvedValue({ success: true })
-
-      const { scheduleEnabled, toggleSchedule } = useAutoSync()
-      const result = await toggleSchedule(42, true, true)
-
-      expect(api.enableSchedule).toHaveBeenCalledWith(42)
-      expect(result).toBe(true)
-      expect(scheduleEnabled.value).toBe(true)
-    })
-
-    it('calls disableSchedule and returns true on success', async () => {
-      api.disableSchedule.mockResolvedValue({ success: true })
-
-      const { scheduleEnabled, toggleSchedule } = useAutoSync()
-      scheduleEnabled.value = true
-      const result = await toggleSchedule(42, false, true)
-
-      expect(api.disableSchedule).toHaveBeenCalledWith(42)
-      expect(result).toBe(true)
-      expect(scheduleEnabled.value).toBe(false)
-    })
-
-    it('reverts scheduleEnabled and returns false on API error response', async () => {
-      api.enableSchedule.mockResolvedValue({ success: false, message: 'Clé grist manquante' })
-
-      const { scheduleEnabled, toggleSchedule } = useAutoSync()
-      const result = await toggleSchedule(42, true, true)
-
-      expect(result).toBe(false)
-      expect(scheduleEnabled.value).toBe(false)
-    })
-
-    it('reverts scheduleEnabled and returns false on network error', async () => {
-      api.enableSchedule.mockRejectedValue(new Error('Network error'))
-
-      const { scheduleEnabled, toggleSchedule } = useAutoSync()
-      const result = await toggleSchedule(42, true, true)
-
-      expect(result).toBe(false)
-      expect(scheduleEnabled.value).toBe(false)
-    })
-
-    it('shows notification and returns false when hasGristKey is false', async () => {
-      const { scheduleEnabled, toggleSchedule } = useAutoSync()
-      const result = await toggleSchedule(42, true, false)
-
-      expect(result).toBe(false)
-      expect(scheduleEnabled.value).toBe(false)
-      expect(api.enableSchedule).not.toHaveBeenCalled()
-      expect(api.disableSchedule).not.toHaveBeenCalled()
     })
   })
 })

@@ -465,6 +465,7 @@ describe('Save with existing config (UPDATE)', () => {
   it('re-fetches config after successful save', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
     globalThis.fetch = fetchMock
 
@@ -484,18 +485,75 @@ describe('Save with existing config (UPDATE)', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: expect.any(String)
     })
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/schedule', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp_config_id: 1 })
+    })
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       '/api/config?grist_user_id=5&grist_doc_id=doc-123'
     )
     expect(wrapper.getComponent(GristFormSection).props('existingConfig'))
       .toEqual({ otp_config_id: 1 })
+  })
+
+  it('enables schedule (POST /api/schedule) after save when auto_sync_enabled is true', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
+    globalThis.fetch = fetchMock
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345', auto_sync_enabled: true
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp_config_id: 1 })
+    })
+    expect(wrapper.vm.actionErrors[0]).toBeNull()
+  })
+
+  it('shows an error when the schedule save fails after config save', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: false, message: 'Clé grist manquante' }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
+    globalThis.fetch = fetchMock
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345', auto_sync_enabled: true
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0])
+      .toBe("Configuration sauvegardée, mais la synchronisation automatique n'a pas pu être enregistrée")
   })
 
   it('handles save error gracefully without crashing', async () => {
@@ -530,6 +588,7 @@ describe('Save with existing config (UPDATE)', () => {
 
     globalThis.fetch.mockReset()
     globalThis.fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
 
@@ -678,6 +737,7 @@ describe('Multi-section save', () => {
 
   it('clears only the error of the section being saved', async () => {
     const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [
         { otp_config_id: 1, demarche_number: '11111' },
@@ -1175,6 +1235,7 @@ describe('Accordion DN state', () => {
 
     globalThis.fetch.mockReset()
     globalThis.fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
 
