@@ -3,6 +3,7 @@ import { ref, watch, computed } from 'vue'
 
 import {
   DsfrAccordion,
+  DsfrBadge,
   DsfrButton,
   DsfrButtonGroup,
   DsfrInputGroup,
@@ -159,115 +160,136 @@ watch(() => props.existingConfig, (config) => {
 
     <DsfrAccordion>
       <template #title>
-        <span
-          class="otp-accordion-title"
-          :title="accordionTitleDN"
-        >{{ accordionTitleDN }}</span>
+        <div class="otp-accordion-title-row fr-pr-2w">
+          <span
+            class="otp-accordion-title"
+            :title="accordionTitleDN"
+          >{{ accordionTitleDN }}</span>
+          <DsfrBadge
+            v-if="existingConfig?.otp_config_id"
+            :label="scheduleEnabled ? 'Automatique' : 'Manuelle'"
+            type="grey"
+            no-icon
+            class="otp-accordion-badge"
+          />
+        </div>
       </template>
-        <DsfrInputGroup
-            :error-message="dnErrorMessage"
-        >
-          <h5 class="fr-mt-3w fr-mb-0">Renseignez les informations de votre démarche numérique</h5>
-          <p class="fr-mb-0">Jeton d'API *</p>
-          <DsfrInput
-            :error-message="dnErrorMessage"
-            data-test-id="dn-token"
-            v-model="inputDNToken"
-            @input="handleDNInputsChange"
-            label="DN token"
-            :placeholder="dnTokenPlaceholder"
-            type="password"
-            required
-          />
-          <p class="fr-mt-2w">
-            <DsfrInfoIcon class="fr-mr-1v"/>
-            <a
-              :href="HELP_LINKS.token_api"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="fr-link fr-text--xs">Où trouver votre jeton API ?</a>
-          </p>
 
-          <p class="fr-mb-0">Numéro de démarche *</p>
-          <DsfrInput
-            data-test-id="dn-number"
-            v-model="inputDNNumber"
-            @input="handleDNInputsChange"
-            label="DN number"
-            placeholder="Saisissez votre numéro DN"
-            required
-          />
-        </DsfrInputGroup>
+      <DsfrInputGroup
+          :error-message="dnErrorMessage"
+      >
+        <h5 class="fr-mt-3w fr-mb-0">Renseignez les informations de votre démarche numérique</h5>
+        <p class="fr-mb-0">Jeton d'API *</p>
+        <DsfrInput
+          :error-message="dnErrorMessage"
+          data-test-id="dn-token"
+          v-model="inputDNToken"
+          @input="handleDNInputsChange"
+          label="DN token"
+          :placeholder="dnTokenPlaceholder"
+          type="password"
+          required
+        />
+        <p class="fr-mt-2w">
+          <DsfrInfoIcon class="fr-mr-1v"/>
+          <a
+            :href="HELP_LINKS.token_api"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="fr-link fr-text--xs">Où trouver votre jeton API ?</a>
+        </p>
 
-        <DNFiltersSection
-          ref="dnFiltersSectionRef"
-          :existing-config="existingConfig"
-          @change="handleDNFiltersChange"
-          @error-update="dnFiltersError = $event"
+        <p class="fr-mb-0">Numéro de démarche *</p>
+        <DsfrInput
+          data-test-id="dn-number"
+          v-model="inputDNNumber"
+          @input="handleDNInputsChange"
+          label="DN number"
+          placeholder="Saisissez votre numéro DN"
+          required
+        />
+      </DsfrInputGroup>
+
+      <DNFiltersSection
+        ref="dnFiltersSectionRef"
+        :existing-config="existingConfig"
+        @change="handleDNFiltersChange"
+        @error-update="dnFiltersError = $event"
+      />
+
+      <div class="fr-mt-4w">
+        <fieldset class="fr-fieldset" :aria-labelledby="`auto-sync-legend-${index}`">
+          <legend class="fr-fieldset__legend" :id="`auto-sync-legend-${index}`">
+            Synchronisation automatique
+          </legend>
+
+          <div class="fr-fieldset__content">
+            <div class="fr-checkbox-group">
+              <input
+                type="checkbox"
+                :id="`auto_sync_enabled-${index}`"
+                :name="`auto_sync_enabled-${index}`"
+                :checked="scheduleEnabled"
+                :disabled="!existingConfig || !existingConfig.has_grist_key || scheduleLoading"
+                @change="handleAutoSyncToggle"
+                data-test-id="auto-sync-toggle"
+              >
+
+              <label class="fr-label" :for="`auto_sync_enabled-${index}`">
+                Activer la synchronisation automatique
+              </label>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+
+      <DsfrButtonGroup inline-layout-when="always" size="large">
+        <DsfrButton
+          label="Lancer la synchronisation"
+          data-test-id="sync-button"
+          primary
+          :disabled="!canSync || sectionEmpty"
+          @click="$emit('sync', index)"
         />
 
-        <div class="fr-mt-4w">
-          <fieldset class="fr-fieldset" :aria-labelledby="`auto-sync-legend-${index}`">
-            <legend class="fr-fieldset__legend" :id="`auto-sync-legend-${index}`">
-              Synchronisation automatique
-            </legend>
+        <DsfrButton
+          label="Sauvegarder"
+          data-test-id="submit-form-button"
+          secondary
+          :disabled="!configValid || sectionEmpty || !isDirty"
+          @click="$emit('save', index)"
+        />
 
-            <div class="fr-fieldset__content">
-              <div class="fr-checkbox-group">
-                <input
-                  type="checkbox"
-                  :id="`auto_sync_enabled-${index}`"
-                  :name="`auto_sync_enabled-${index}`"
-                  :checked="scheduleEnabled"
-                  :disabled="!existingConfig || !existingConfig.has_grist_key || scheduleLoading"
-                  @change="handleAutoSyncToggle"
-                  data-test-id="auto-sync-toggle"
-                >
-
-                <label class="fr-label" :for="`auto_sync_enabled-${index}`">
-                  Activer la synchronisation automatique
-                </label>
-              </div>
-            </div>
-          </fieldset>
-        </div>
-
-        <DsfrButtonGroup inline-layout-when="always" size="large">
-          <DsfrButton
-            label="Lancer la synchronisation"
-            data-test-id="sync-button"
-            primary
-            :disabled="!canSync || sectionEmpty"
-            @click="$emit('sync', index)"
-          />
-
-          <DsfrButton
-            label="Sauvegarder"
-            data-test-id="submit-form-button"
-            secondary
-            :disabled="!configValid || sectionEmpty || !isDirty"
-            @click="$emit('save', index)"
-          />
-
-          <DsfrButton
-            label="Supprimer"
-            data-test-id="delete-config-button"
-            secondary
-            :disabled="!canDelete || sectionEmpty"
-            @click="$emit('delete', index)"
-          />
-        </DsfrButtonGroup>
-      </DsfrAccordion>
+        <DsfrButton
+          label="Supprimer"
+          data-test-id="delete-config-button"
+          secondary
+          :disabled="!canDelete || sectionEmpty"
+          @click="$emit('delete', index)"
+        />
+      </DsfrButtonGroup>
+    </DsfrAccordion>
   </div>
 </template>
 
 <style scoped>
+.otp-accordion-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
 .otp-accordion-title {
+  flex: 1;
+  min-width: 0;
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
+}
+.otp-accordion-badge {
+  flex-shrink: 0;
 }
 </style>
