@@ -246,9 +246,9 @@ defineExpose({
     </ul>
   </div>
 
-  <div class="fr-my-3w">
+  <div>
     <DsfrButton
-      label="Réinitialiser"
+      label="Réinitialiser cette démarche"
       data-test-id="reset-filters-button"
       secondary
       :disabled="!hasActiveFilters"

@@ -1,5 +1,6 @@
 const ROUTES = {
   CONFIG: '/api/config',
+  SCHEDULE: '/api/schedule',
   START_SYNC: '/api/start-sync',
   SYNC_LOG_LATEST: '/api/sync-log/latest',
   TEST_CONNECTION: '/api/test-connection'
@@ -77,6 +78,35 @@ class InternalApi {
     const groups = await response.json()
 
     return groups.map(([number, label]) => ({ number, label }))
+  }
+
+  async getSchedule(otpConfigId) {
+    const response = await fetch(`${ROUTES.SCHEDULE}?otp_config_id=${otpConfigId}`)
+    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
+    return response.json()
+  }
+
+  async enableSchedule(otpConfigId) {
+    const response = await fetch(ROUTES.SCHEDULE, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ otp_config_id: otpConfigId })
+    })
+    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
+    return response.json()
+  }
+
+  async disableSchedule(otpConfigId) {
+    const response = await fetch(ROUTES.SCHEDULE, {
+      method: 'DELETE',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ otp_config_id: otpConfigId })
+    })
+    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+
+    return response.json()
   }
 }
 
