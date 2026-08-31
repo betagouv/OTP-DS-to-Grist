@@ -975,7 +975,7 @@ describe('Auto-sync toggle', () => {
     delete globalThis.fetch
   })
 
-  it('is disabled when no existingConfig', async () => {
+  it('is enabled without existingConfig', async () => {
     mockFetchForSchedule()
     const wrapper = mount(DNFormSection, {
       props: { index: 0 },
@@ -984,30 +984,15 @@ describe('Auto-sync toggle', () => {
     await flushPromises()
 
     const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
-    expect(checkbox.attributes('disabled')).toBeDefined()
+    expect(checkbox.attributes('disabled')).toBeUndefined()
   })
 
-  it('is disabled when existingConfig has no has_grist_key', async () => {
+  it('is enabled when existingConfig has no has_grist_key', async () => {
     mockFetchForSchedule()
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
         existingConfig: { otp_config_id: 42, has_grist_key: false, demarche_number: DEMARCHE_NUMBER }
-      },
-      global: globalComponents
-    })
-    await flushPromises()
-
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
-    expect(checkbox.attributes('disabled')).toBeDefined()
-  })
-
-  it('is enabled when existingConfig has has_grist_key', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
-    const wrapper = mount(DNFormSection, {
-      props: {
-        index: 0,
-        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
       },
       global: globalComponents
     })
@@ -1038,7 +1023,7 @@ describe('Auto-sync toggle', () => {
     expect(checkbox.element.checked).toBe(true)
   })
 
-  it('calls enableSchedule API when checkbox is checked', async () => {
+  it('only updates local state when checked (no API call)', async () => {
     mockFetchForSchedule({ success: true, enabled: false })
     const wrapper = mount(DNFormSection, {
       props: {
@@ -1052,14 +1037,15 @@ describe('Auto-sync toggle', () => {
     const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
     await checkbox.setChecked(true)
 
-    const enableCall = globalThis.fetch.mock.calls.find(
-      ([url, opts]) => String(url) === '/api/schedule' && opts?.method === 'POST'
+    const scheduleCalls = globalThis.fetch.mock.calls.filter(
+      ([url, opts]) => String(url).includes('/api/schedule')
     )
-    expect(enableCall).toBeTruthy()
-    expect(JSON.parse(enableCall[1].body)).toEqual({ otp_config_id: 42 })
+    expect(scheduleCalls).toHaveLength(1) // uniquement le GET de chargement
+    expect(scheduleCalls[0][1]).toBeUndefined()
+    expect(wrapper.vm.getData().auto_sync_enabled).toBe(true)
   })
 
-  it('calls disableSchedule API when checkbox is unchecked', async () => {
+  it('only updates local state when unchecked (no API call)', async () => {
     mockFetchForSchedule({ success: true, enabled: true })
     const wrapper = mount(DNFormSection, {
       props: {
@@ -1072,26 +1058,17 @@ describe('Auto-sync toggle', () => {
 
     const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
     expect(checkbox.element.checked).toBe(true)
-
     await checkbox.setChecked(false)
 
-    const disableCall = globalThis.fetch.mock.calls.find(
-      ([url, opts]) => String(url) === '/api/schedule' && opts?.method === 'DELETE'
+    const scheduleCalls = globalThis.fetch.mock.calls.filter(
+      ([url, opts]) => String(url).includes('/api/schedule')
     )
-    expect(disableCall).toBeTruthy()
-    expect(JSON.parse(disableCall[1].body)).toEqual({ otp_config_id: 42 })
+    expect(scheduleCalls).toHaveLength(1)
+    expect(wrapper.vm.getData().auto_sync_enabled).toBe(false)
   })
 
-  it('resets checkbox when toggle API call fails', async () => {
-    globalThis.fetch = vi.fn((url, opts) => {
-      if (String(url).includes('/api/schedule') && !opts)
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: false }) })
-      if (String(url).includes('/api/schedule'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: false, message: 'Erreur' }) })
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
+  it('keeps server state (scheduleEnabled) unchanged after toggling locally', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1101,12 +1078,23 @@ describe('Auto-sync toggle', () => {
     })
     await flushPromises()
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    expect(wrapper.vm.scheduleEnabled).toBe(false)
 
-    await checkbox.setChecked(true)
-    await flushPromises()
+    await wrapper.find('[data-test-id="auto-sync-toggle"]').setChecked(true)
 
     expect(wrapper.vm.scheduleEnabled).toBe(false)
+    expect(wrapper.vm.getData().auto_sync_enabled).toBe(true)
+  })
+
+  it('exposes auto_sync_enabled in getData (default false)', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: { index: 0 },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.getData().auto_sync_enabled).toBe(false)
   })
 })
 
@@ -1184,13 +1172,8 @@ describe('Auto-sync badge in accordion title', () => {
     expect(badge.text()).toBe('Manuelle')
   })
 
-  it('updates from "Automatique" to "Manuelle" after disabling the schedule', async () => {
-    let scheduleEnabledState = true
+  it('stays on server state after toggling locally', async () => {
     globalThis.fetch = vi.fn((url, opts) => {
-      if (String(url).includes('/api/schedule') && !opts)
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: scheduleEnabledState }) })
-      if (String(url).includes('/api/schedule') && opts?.method === 'DELETE')
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
       if (String(url).includes('/api/schedule'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: true }) })
       if (String(url).includes('/api/groups'))
@@ -1212,6 +1195,6 @@ describe('Auto-sync badge in accordion title', () => {
     await checkbox.setChecked(false)
     await flushPromises()
 
-    expect(wrapper.find('.fr-badge').text()).toBe('Manuelle')
+    expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
   })
 })

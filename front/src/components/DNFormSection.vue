@@ -39,7 +39,8 @@ const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const isDirty = ref(false)
 const dnFiltersError = ref('')
 const dnFiltersSectionRef = ref(null)
-const { scheduleEnabled, scheduleLoading, fetchSchedule, toggleSchedule } = useAutoSync()
+const { scheduleEnabled, scheduleLoading, fetchSchedule } = useAutoSync()
+const scheduleToggle = ref(false)
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
@@ -96,19 +97,15 @@ const handleDNFiltersChange = () => {
   isDirty.value = true
 }
 
-const handleAutoSyncToggle = async (event) => {
-  const enabled = event.target.checked
-  await toggleSchedule(
-    props.existingConfig.otp_config_id,
-    enabled,
-    !!props.existingConfig.has_grist_key
-  )
+const handleAutoSyncToggle = (event) => {
+  scheduleToggle.value = event.target.checked
 }
 
 defineExpose({
   getData: () => ({
     token: inputDNToken.value,
     demarche_number: inputDNNumber.value,
+    auto_sync_enabled: scheduleToggle.value,
     ...(dnFiltersSectionRef.value?.getData() ?? {})
   })
 })
@@ -135,15 +132,16 @@ const resetConfig = () => {
   emit('error-update', null)
 }
 
-watch(() => props.existingConfig, (config) => {
+watch(() => props.existingConfig, async (config) => {
   dnErrorMessage.value = null
   config ? applyExistingConfig(config) : resetConfig()
   isDirty.value = false
   if (config?.otp_config_id) {
-    fetchSchedule(config.otp_config_id)
+    await fetchSchedule(config.otp_config_id)
   } else {
     scheduleEnabled.value = false
   }
+  scheduleToggle.value = scheduleEnabled.value
 }, {immediate: true})
 </script>
 
@@ -168,6 +166,7 @@ watch(() => props.existingConfig, (config) => {
           <DsfrBadge
             v-if="existingConfig?.otp_config_id"
             :label="scheduleEnabled ? 'Automatique' : 'Manuelle'"
+            :title="scheduleEnabled ? 'Synchronisation automatique' : 'Synchronisation manuelle'"
             type="grey"
             no-icon
             class="otp-accordion-badge"
@@ -225,15 +224,15 @@ watch(() => props.existingConfig, (config) => {
 
           <div class="fr-fieldset__content">
             <div class="fr-checkbox-group">
-              <input
-                type="checkbox"
-                :id="`auto_sync_enabled-${index}`"
-                :name="`auto_sync_enabled-${index}`"
-                :checked="scheduleEnabled"
-                :disabled="!existingConfig || !existingConfig.has_grist_key || scheduleLoading"
-                @change="handleAutoSyncToggle"
-                data-test-id="auto-sync-toggle"
-              >
+                <input
+                  type="checkbox"
+                  :id="`auto_sync_enabled-${index}`"
+                  :name="`auto_sync_enabled-${index}`"
+                  :checked="scheduleToggle"
+                  :disabled="scheduleLoading"
+                  @change="handleAutoSyncToggle"
+                  data-test-id="auto-sync-toggle"
+                >
 
               <label class="fr-label" :for="`auto_sync_enabled-${index}`">
                 Activer la synchronisation automatique

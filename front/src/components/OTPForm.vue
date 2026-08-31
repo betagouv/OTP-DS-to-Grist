@@ -95,13 +95,32 @@ const handleSave = async (index) => {
     const result = await api.saveConfig(payload)
 
     if (result.success) {
-      await loadConfig()
       const savedId = result.otp_config_id
+      const effectiveId = savedId || configs.value[index]?.otp_config_id
+
+      if (effectiveId) {
+        const scheduleCall = dnData.auto_sync_enabled
+          ? api.enableSchedule(effectiveId)
+          : api.disableSchedule(effectiveId)
+
+        try {
+          const scheduleResult = await scheduleCall
+          if (!scheduleResult.success) {
+            actionErrors.value[index] =
+              "Configuration sauvegardée, mais la synchronisation automatique n'a pas pu être enregistrée"
+          }
+        } catch {
+          actionErrors.value[index] =
+            "Configuration sauvegardée, mais la synchronisation automatique n'a pas pu être enregistrée"
+        }
+      }
+
+      await loadConfig()
       const newIndex = savedId
         ? configs.value.findIndex(config => config?.otp_config_id === savedId)
         : configs.value.length - 1
       activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
-      notify('Configuration sauvegardée', 'success')
+      if (!actionErrors.value[index]) notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
