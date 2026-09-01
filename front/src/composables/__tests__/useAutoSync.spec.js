@@ -48,4 +48,16 @@ describe('useAutoSync', () => {
       expect(scheduleEnabled.value).toBe(false)
     })
   })
+
+  describe('setScheduleEnabled', () => {
+    it('sets scheduleEnabled to the given value', () => {
+      const { scheduleEnabled, setScheduleEnabled } = useAutoSync()
+
+      setScheduleEnabled(true)
+      expect(scheduleEnabled.value).toBe(true)
+
+      setScheduleEnabled(false)
+      expect(scheduleEnabled.value).toBe(false)
+    })
+  })
 })

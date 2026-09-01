@@ -18,5 +18,9 @@ export const useAutoSync = () => {
     }
   }
 
-  return { scheduleEnabled, scheduleLoading, fetchSchedule }
+  const setScheduleEnabled = (value) => {
+    scheduleEnabled.value = value
+  }
+
+  return { scheduleEnabled, scheduleLoading, fetchSchedule, setScheduleEnabled }
 }

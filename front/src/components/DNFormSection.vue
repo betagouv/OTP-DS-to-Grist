@@ -39,7 +39,7 @@ const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const isDirty = ref(false)
 const dnFiltersError = ref('')
 const dnFiltersSectionRef = ref(null)
-const { scheduleEnabled, scheduleLoading, fetchSchedule } = useAutoSync()
+const { scheduleEnabled, scheduleLoading, fetchSchedule, setScheduleEnabled } = useAutoSync()
 const scheduleToggle = ref(false)
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
@@ -139,7 +139,7 @@ watch(() => props.existingConfig, async (config) => {
   if (config?.otp_config_id) {
     await fetchSchedule(config.otp_config_id)
   } else {
-    scheduleEnabled.value = false
+    setScheduleEnabled(false)
   }
   scheduleToggle.value = scheduleEnabled.value
 }, {immediate: true})
