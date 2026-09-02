@@ -227,6 +227,13 @@ def inject_env_name():
     return dict(env_name=os.getenv("ENV", ""))
 
 
+@app.context_processor
+def inject_sync_schedule():
+    hour = os.getenv("SYNC_HOUR", "0")
+    minute = os.getenv("SYNC_MINUTE", "0")
+    return dict(sync_schedule_time=f"{int(hour):02d}h{int(minute):02d}")
+
+
 @app.route("/")
 def index():
     """Page d'accueil avec configuration"""
