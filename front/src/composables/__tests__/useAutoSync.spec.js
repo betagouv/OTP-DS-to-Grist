@@ -49,6 +49,54 @@ describe('useAutoSync', () => {
     })
   })
 
+  describe('nextRun', () => {
+    it('stores next_run from the schedule response', async () => {
+      api.getSchedule.mockResolvedValue({
+        success: true,
+        enabled: true,
+        next_run: '2026-09-03T09:14:00+00:00'
+      })
+
+      const { nextRun, fetchSchedule } = useAutoSync()
+      await fetchSchedule(42)
+
+      expect(nextRun.value).toBe('2026-09-03T09:14:00+00:00')
+    })
+
+    it('keeps nextRun null when next_run is absent', async () => {
+      api.getSchedule.mockResolvedValue({ success: true, enabled: true })
+
+      const { nextRun, fetchSchedule } = useAutoSync()
+      await fetchSchedule(42)
+
+      expect(nextRun.value).toBeNull()
+    })
+
+    it('resets nextRun to null on fetch error', async () => {
+      api.getSchedule.mockRejectedValue(new Error('Network error'))
+
+      const { nextRun, fetchSchedule } = useAutoSync()
+      await fetchSchedule(42)
+
+      expect(nextRun.value).toBeNull()
+    })
+
+    it('clears nextRun when schedule is disabled', async () => {
+      api.getSchedule.mockResolvedValue({
+        success: true,
+        enabled: true,
+        next_run: '2026-09-03T09:14:00+00:00'
+      })
+
+      const { nextRun, setScheduleEnabled, fetchSchedule } = useAutoSync()
+      await fetchSchedule(42)
+      expect(nextRun.value).toBe('2026-09-03T09:14:00+00:00')
+
+      setScheduleEnabled(false)
+      expect(nextRun.value).toBeNull()
+    })
+  })
+
   describe('setScheduleEnabled', () => {
     it('sets scheduleEnabled to the given value', () => {
       const { scheduleEnabled, setScheduleEnabled } = useAutoSync()

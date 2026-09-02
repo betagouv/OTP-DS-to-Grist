@@ -39,8 +39,13 @@ const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const isDirty = ref(false)
 const dnFiltersError = ref('')
 const dnFiltersSectionRef = ref(null)
-const { scheduleEnabled, scheduleLoading, fetchSchedule, setScheduleEnabled } = useAutoSync()
+const { scheduleEnabled, scheduleLoading, nextRun, fetchSchedule, setScheduleEnabled } = useAutoSync()
 const scheduleToggle = ref(false)
+
+const nextRunLabel = computed(() => {
+  if (!nextRun.value) return null
+  return new Date(nextRun.value).toLocaleString('fr-FR')
+})
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
@@ -238,6 +243,12 @@ watch(() => props.existingConfig, async (config) => {
                 Activer la synchronisation automatique
               </label>
             </div>
+            <p
+              v-if="scheduleEnabled && nextRunLabel"
+              class="fr-hint-text fr-mt-1v"
+            >
+              Prochaine synchronisation : {{ nextRunLabel }}
+            </p>
           </div>
         </fieldset>
       </div>
