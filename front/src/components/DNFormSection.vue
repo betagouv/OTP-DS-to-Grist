@@ -103,6 +103,7 @@ const handleDNFiltersChange = () => {
 }
 
 const handleAutoSyncToggle = (event) => {
+  isDirty.value = true
   scheduleToggle.value = event.target.checked
 }
 
