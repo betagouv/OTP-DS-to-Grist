@@ -22,6 +22,18 @@ Ajouter les variables d'environnement :
 * DATABASE_URL (**automatiquement renseigné par Scalingo**)
 * SCALINGO_POSTGRESQL_URL (**automatiquement renseigné par Scalingo**)
 
+### Fuseau horaire et synchronisation automatique
+
+Les conteneurs Scalingo tournent par défaut en temps UTC. Pour que les
+synchronisations automatiques s'exécutent à une heure locale cohérente,
+définir :
+
+* `TZ` : fuseau horaire système du conteneur (ex: `TZ=Europe/Paris`)
+* `SYNC_TZ` : fuseau horaire utilisé pour planifier la synchronisation
+  automatique (défaut `Europe/Paris`)
+* `SYNC_HOUR` : heure de la synchronisation quotidienne (0-23)
+* `SYNC_MINUTE` : minute de la synchronisation quotidienne (0-59)
+
 ### Note à propos de DATABASE_URL
 
 Il est nécessaire de bien s'assurer que le protocol est bien `postgresql://` au lieu de juste `postgres://` (incompatible avec SQLAlchemy)

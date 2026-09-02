@@ -37,6 +37,20 @@ scheduler = BackgroundScheduler(
 config_manager = ConfigManager(DATABASE_URL)
 
 
+def compute_next_run(now: datetime) -> datetime:
+    """Calcule la prochaine exécution planifiée (SYNC_HOUR:SYNC_MINUTE dans SYNC_TZ)."""
+    tz = ZoneInfo(SYNC_TZ)
+    now_local = now.astimezone(tz) if now.tzinfo else now.replace(tzinfo=tz)
+    next_run = now_local.replace(
+        hour=SYNC_HOUR, minute=SYNC_MINUTE, second=0, microsecond=0
+    )
+
+    if now_local >= next_run:
+        next_run = next_run + timedelta(days=1)
+
+    return next_run
+
+
 def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     """
     Job exécuté automatiquement par APScheduler pour une configuration donnée.
@@ -98,12 +112,7 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
             raise Exception(f"Erreur API externe: {result.get('message')}")
 
         now = datetime.now(timezone.utc)
-        next_run = now.replace(
-            hour=SYNC_HOUR, minute=SYNC_MINUTE, second=0, microsecond=0
-        )
-
-        if now >= next_run:
-            next_run = next_run + timedelta(days=1)
+        next_run = compute_next_run(now)
 
         if user_schedule:
             user_schedule.next_run = next_run
