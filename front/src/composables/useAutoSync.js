@@ -4,6 +4,7 @@ import { api } from '../utils/InternalApi'
 export const useAutoSync = () => {
   const scheduleEnabled = ref(false)
   const scheduleLoading = ref(false)
+  const nextRun = ref(null)
 
   const fetchSchedule = async (otpConfigId) => {
     scheduleLoading.value = true
@@ -11,8 +12,10 @@ export const useAutoSync = () => {
     try {
       const result = await api.getSchedule(otpConfigId)
       scheduleEnabled.value = result.enabled || false
+      nextRun.value = result.next_run || null
     } catch {
       scheduleEnabled.value = false
+      nextRun.value = null
     } finally {
       scheduleLoading.value = false
     }
@@ -20,7 +23,8 @@ export const useAutoSync = () => {
 
   const setScheduleEnabled = (value) => {
     scheduleEnabled.value = value
+    if (!value) nextRun.value = null
   }
 
-  return { scheduleEnabled, scheduleLoading, fetchSchedule, setScheduleEnabled }
+  return { scheduleEnabled, scheduleLoading, nextRun, fetchSchedule, setScheduleEnabled }
 }

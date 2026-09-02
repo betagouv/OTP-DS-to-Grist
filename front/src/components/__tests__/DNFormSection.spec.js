@@ -1198,3 +1198,69 @@ describe('Auto-sync badge in accordion title', () => {
     expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
   })
 })
+
+describe('Auto-sync next run display', () => {
+  const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
+    globalThis.fetch = vi.fn((url, opts) => {
+      if (String(url).includes('/api/schedule'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+  }
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  it('is hidden when schedule is disabled', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const hint = wrapper.find('p.fr-hint-text')
+    expect(hint.exists()).toBe(false)
+  })
+
+  it('is hidden when schedule is enabled without next_run', async () => {
+    mockFetchForSchedule({ success: true, enabled: true })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const hint = wrapper.find('p.fr-hint-text')
+    expect(hint.exists()).toBe(false)
+  })
+
+  it('shows the formatted next run when schedule is enabled', async () => {
+    mockFetchForSchedule({
+      success: true,
+      enabled: true,
+      next_run: '2026-09-03T09:14:00+00:00'
+    })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const hint = wrapper.find('p.fr-hint-text')
+    expect(hint.exists()).toBe(true)
+    expect(hint.text()).toContain('Prochaine synchronisation')
+  })
+})

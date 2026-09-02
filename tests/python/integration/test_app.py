@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1014,6 +1015,84 @@ class TestErrorHandling:
         data_resp = json.loads(response.data)
         assert data_resp["success"] is False
         assert "required" in data_resp["message"]
+
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_with_next_run(self, mock_session, mock_scheduler, client):
+        """Test GET planning avec prochaine exécution prévue"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_schedule = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_schedule.enabled = True
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_job = MagicMock()
+        mock_job.next_run_time = datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc)
+        mock_scheduler.get_job.return_value = mock_job
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["success"] is True
+        assert data_resp["enabled"] is True
+        assert data_resp["next_run"] == "2026-09-03T09:14:00+00:00"
+        mock_scheduler.get_job.assert_called_once_with("scheduled_sync_1")
+
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_no_job(self, mock_session, mock_scheduler, client):
+        """Test GET planning sans job scheduler (next_run None)"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_schedule = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_schedule.enabled = True
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_scheduler.get_job.return_value = None
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["success"] is True
+        assert data_resp["enabled"] is True
+        assert data_resp["next_run"] is None
+
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_disabled(self, mock_session, mock_scheduler, client):
+        """Test GET planning sans schedule activé (enabled False, next_run None)"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_schedule = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_schedule.enabled = False
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_scheduler.get_job.return_value = None
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["success"] is True
+        assert data_resp["enabled"] is False
+        assert data_resp["next_run"] is None
 
     @patch("app.SessionLocal")
     @patch("app.reload_scheduler_jobs")

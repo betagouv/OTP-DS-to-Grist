@@ -228,7 +228,7 @@ def inject_env_name():
 
 
 @app.context_processor
-def inject_sync_schedule():
+def inject_sync_schedule_hour():
     hour = os.getenv("SYNC_HOUR", "0")
     minute = os.getenv("SYNC_MINUTE", "0")
     return dict(sync_schedule_time=f"{int(hour):02d}h{int(minute):02d}")
@@ -429,10 +429,14 @@ def api_schedule():
                 db.query(UserSchedule).filter_by(otp_config_id=otp_config.id).first()
             )
 
+            job = scheduler.get_job(f"scheduled_sync_{otp_config.id}")
+            next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+
             return jsonify(
                 {
                     "success": True,
                     "enabled": schedule.enabled if schedule else False,
+                    "next_run": next_run,
                     "last_run": schedule.last_run.isoformat()
                     if schedule and schedule.last_run
                     else None,
