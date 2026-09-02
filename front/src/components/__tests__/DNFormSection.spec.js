@@ -1096,6 +1096,29 @@ describe('Auto-sync toggle', () => {
 
     expect(wrapper.vm.getData().auto_sync_enabled).toBe(false)
   })
+
+  it('sets isDirty when toggling auto-sync', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        gristError: '',
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
+
+    expect(saveButton.attributes('disabled')).not.toBeUndefined()
+
+    await checkbox.setChecked(true)
+    await flushPromises()
+
+    expect(saveButton.attributes('disabled')).toBeUndefined()
+  })
 })
 
 describe('Auto-sync badge in accordion title', () => {
