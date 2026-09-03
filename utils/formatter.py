@@ -1,4 +1,22 @@
 import json
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+
+def to_local_iso(
+    value: datetime | None,
+    tz_name: str = "Europe/Paris"
+) -> str | None:
+    """
+    Convertit un datetime UTC (aware ou naïf) en heure locale au format ISO, sans
+    fuseau. Le front l'affiche directement comme heure locale.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+
+    return value.astimezone(ZoneInfo(tz_name)).replace(tzinfo=None).isoformat()
 
 
 def unwrap_json_list(raw: str) -> str:

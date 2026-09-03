@@ -1,6 +1,14 @@
+from datetime import datetime, timezone
+
+import pytest
+
 from unittest.mock import MagicMock, patch
 from database.models import UserSchedule, OtpConfiguration
+from sync import scheduled_sync
 
+
+def _utc(year, month, day, hour, minute=0):
+    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
 
 def _make_session_mock():
     """Crée un mock de session SQLAlchemy où filter_by().first() retourne un mock dédié."""
@@ -386,3 +394,36 @@ class TestReloadSchedulerJobs:
 
             assert mock_scheduler.add_job.call_count == 1
             assert mock_scheduler.add_job.call_args_list[0][1]["id"] == "scheduled_sync_1"
+
+class TestComputeNextRun:
+    """Calcul de la prochaine exécution planifiée dans SYNC_TZ."""
+
+    @pytest.fixture(autouse=True)
+    def _config(self, monkeypatch):
+        monkeypatch.setattr(scheduled_sync, "SYNC_HOUR", 11)
+        monkeypatch.setattr(scheduled_sync, "SYNC_MINUTE", 14)
+        monkeypatch.setattr(scheduled_sync, "SYNC_TZ", "Europe/Paris")
+
+    def test_next_run_in_configured_timezone(self):
+        """11h14 Paris = 09h14 UTC. Avant l'échéance -> aujourd'hui."""
+        now = _utc(2026, 9, 2, 8, 0)  # 10h00 Paris
+        expected = _utc(2026, 9, 2, 9, 14)  # 11h14 Paris
+        assert scheduled_sync.compute_next_run(now) == expected
+
+    def test_next_run_when_past_rolls_to_next_day(self):
+        """Déjà passé aujourd'hui -> lendemain (heure Paris conservée)."""
+        now = _utc(2026, 9, 2, 10, 0)  # 12h00 Paris, après 11h14
+        expected = _utc(2026, 9, 3, 9, 14)  # 11h14 Paris le lendemain
+        assert scheduled_sync.compute_next_run(now) == expected
+
+    def test_next_run_exact_moment_rolls_to_next_day(self):
+        """À l'échéance exacte -> considéré passé -> lendemain."""
+        now = _utc(2026, 9, 2, 9, 14)  # exactement 11h14 Paris
+        expected = _utc(2026, 9, 3, 9, 14)
+        assert scheduled_sync.compute_next_run(now) == expected
+
+    def test_next_run_with_naive_datetime_treated_as_utc(self):
+        """Un datetime naïf est interprété comme UTC puis converti."""
+        now = datetime(2026, 9, 2, 8, 0)
+        expected = _utc(2026, 9, 2, 9, 14)
+        assert scheduled_sync.compute_next_run(now) == expected
