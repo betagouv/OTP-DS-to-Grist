@@ -1460,11 +1460,7 @@ class SyncLogMock:
         otp_config_id=None,
         demarche_number=None,
     ):
-        class TimestampMock:
-            def isoformat(self):
-                return timestamp_iso
-
-        self.timestamp = TimestampMock()
+        self.timestamp = datetime.fromisoformat(timestamp_iso)
         self.status = status
         self.success_count = success_count
         self.error_count = error_count
