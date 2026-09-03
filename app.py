@@ -21,6 +21,7 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
+from utils.formatter import to_local_iso
 from utils.api_validator import (
     test_demarches_api,
     test_grist_api,
@@ -619,7 +620,7 @@ def api_sync_report():
         for log, config_id, schedule_id, demarche_number in logs_query:
             logs_data.append(
                 {
-                    "timestamp": log.timestamp.isoformat(),
+                    "timestamp": to_local_iso(log.timestamp),
                     "status": log.status,
                     "message": log.message,
                     "grist_user_id": log.grist_user_id,
@@ -659,7 +660,7 @@ def api_sync_log_latest():
     def format_sync(sync):
         return (
             {
-                "timestamp": sync.timestamp.isoformat(),
+                "timestamp": to_local_iso(sync.timestamp),
                 "status": sync.status,
                 "success_count": sync.success_count,
                 "error_count": sync.error_count,

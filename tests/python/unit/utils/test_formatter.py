@@ -1,4 +1,6 @@
-from utils.formatter import unwrap_json_list
+from datetime import datetime, timezone
+
+from utils.formatter import to_local_iso, unwrap_json_list
 
 
 def test_liste_json_simple():
@@ -45,3 +47,17 @@ def test_valeur_par_defaut_none():
     raw = champ.get("stringValue") or champ.get("value")
     result = unwrap_json_list(raw)
     assert result is None
+
+
+def test_to_local_iso_aware_utc():
+    value = datetime(2026, 9, 3, 9, 50, tzinfo=timezone.utc)
+    assert to_local_iso(value) == "2026-09-03T11:50:00"
+
+
+def test_to_local_iso_naif_traite_comme_utc():
+    value = datetime(2026, 9, 3, 9, 50)
+    assert to_local_iso(value) == "2026-09-03T11:50:00"
+
+
+def test_to_local_iso_none():
+    assert to_local_iso(None) is None
