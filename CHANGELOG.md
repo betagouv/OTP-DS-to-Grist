@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.9.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.8.0...v0.9.0) (2026-09-03)
+
+
+### Features
+
+* **Aide:** Maj des liens + récupération en variable d'environnement ([#487](https://github.com/betagouv/OTP-DS-to-Grist/issues/487)) ([366e370](https://github.com/betagouv/OTP-DS-to-Grist/commit/366e37081fd0243cbc906603714990525de81d9d))
+* ajout colonne correction_instructeur à la table dossiers ([#426](https://github.com/betagouv/OTP-DS-to-Grist/issues/426)) ([87d0f6e](https://github.com/betagouv/OTP-DS-to-Grist/commit/87d0f6ecb2bfd322f636c134a2646f486414bf2f))
+* ajoute la date de dernière correction en attente ([#411](https://github.com/betagouv/OTP-DS-to-Grist/issues/411)) ([e13b2ef](https://github.com/betagouv/OTP-DS-to-Grist/commit/e13b2effb45ebb10c4220c1b1473fe2dffbf494f))
+* **auto sync:** Suppression d'une route non utilisé + tests ([#478](https://github.com/betagouv/OTP-DS-to-Grist/issues/478)) ([a051f9c](https://github.com/betagouv/OTP-DS-to-Grist/commit/a051f9c0e0eaf54794643bbba51effd5264a2199))
+* **chore:** Suppression de code mort ([#477](https://github.com/betagouv/OTP-DS-to-Grist/issues/477)) ([5e213f7](https://github.com/betagouv/OTP-DS-to-Grist/commit/5e213f715109530946de0e5602149e5e14af7641))
+* **Config:** Déclenchement des vérifications + réactif ([#439](https://github.com/betagouv/OTP-DS-to-Grist/issues/439)) ([c165b05](https://github.com/betagouv/OTP-DS-to-Grist/commit/c165b057da7de985f63b983ae98e252b1a6bc767))
+* **multi démarches:** Ajouter une nouvelle section DN ([#394](https://github.com/betagouv/OTP-DS-to-Grist/issues/394)) ([9e289c4](https://github.com/betagouv/OTP-DS-to-Grist/commit/9e289c42d93984f69d4c5a5bf214912af613859b))
+* **multi:** Afficher la bannière de statut de synchronisation ([#403](https://github.com/betagouv/OTP-DS-to-Grist/issues/403)) ([1898f34](https://github.com/betagouv/OTP-DS-to-Grist/commit/1898f3476f1d1baa38e1a05a039f062392456d1f))
+* **Synchro:** Maj des liens d'aides ([#423](https://github.com/betagouv/OTP-DS-to-Grist/issues/423)) ([46c5289](https://github.com/betagouv/OTP-DS-to-Grist/commit/46c5289d3526558f871e34eb2637643b8992ad6c))
+* **Test:** Tests websocket ([#449](https://github.com/betagouv/OTP-DS-to-Grist/issues/449)) ([83b88f3](https://github.com/betagouv/OTP-DS-to-Grist/commit/83b88f31e36fee17604ac8142f4b5aa19c921377))
+* **User:** POC - Récupération email des utilisateurs ([#435](https://github.com/betagouv/OTP-DS-to-Grist/issues/435)) ([3ebd80f](https://github.com/betagouv/OTP-DS-to-Grist/commit/3ebd80f9aa848f4f3088e5e3d2ced17ac22d0a93))
+
+
+### Bug Fixes
+
+* plus de colonne vide pour les blocs répétables dans la table champs ([#468](https://github.com/betagouv/OTP-DS-to-Grist/issues/468)) ([72e2796](https://github.com/betagouv/OTP-DS-to-Grist/commit/72e27966b3078923abbea6052f2b424ea73c30ee))
+
+
+### Documentation
+
+* Suppression de technique.md ([11c44d7](https://github.com/betagouv/OTP-DS-to-Grist/commit/11c44d7d2b194e256222e75fee54f92c84656b71))
+
 ## [0.8.0](https://github.com/betagouv/OTP-DS-to-Grist/compare/v0.7.0...v0.8.0) (2026-07-10)
 
 
