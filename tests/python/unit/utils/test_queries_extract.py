@@ -1,4 +1,4 @@
-from queries_extract import dossier_to_flat_data
+from queries_extract import dossier_to_flat_data, extract_champ_values
 from schema_utils import create_columns_from_schema
 
 
@@ -271,3 +271,131 @@ class TestDossierToFlatDataDuplicateLabels:
         labels = {item["label"]: item["value"] for item in flat["annotations"]}
         assert labels.get("annotation_Avis") == "OK"
         assert labels.get("annotation_Avis_1") == "KO"
+
+
+# ---------------------------------------------------------------------------
+# Tests CarteChamp (champs carto top-level)
+#
+# Bug corrigé : un append inconditionnel en fin de extract_champ_values
+# ajoutait une entrée fantôme (value=None, json_value=None) après chaque
+# champ CarteChamp top-level, écrasant systématiquement la colonne dans
+# Grist lors du sync, quel que soit le nombre de zones dessinées.
+# ---------------------------------------------------------------------------
+
+
+def make_carte_champ(geo_areas, label="Localisation"):
+    return {
+        "__typename": "CarteChamp",
+        "id": "Q2FydGVDaGFtcC0xMjM0NQ==",
+        "label": label,
+        "champDescriptorId": "Q2hhbXBEZXNjcmlwdG9yLTk5",
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "prefilled": False,
+        "geoAreas": geo_areas,
+    }
+
+
+def make_geo_zone(zone_id, source="selection_utilisateur", description="zone", **extra):
+    zone = {
+        "id": zone_id,
+        "source": source,
+        "description": description,
+        "geometry": {"type": "Point", "coordinates": [2.88, 42.69]},
+    }
+    zone.update(extra)
+    return zone
+
+
+class TestCarteChampSansZone:
+    def test_une_seule_entree(self):
+        champ = make_carte_champ([])
+        result = extract_champ_values(champ)
+        assert len(result) == 1
+
+    def test_valeur_par_defaut(self):
+        champ = make_carte_champ([])
+        result = extract_champ_values(champ)
+        assert result[0]["value"] == "Aucune zone géographique définie"
+        assert result[0]["json_value"] is None
+
+
+class TestCarteChampUneZone:
+    def test_une_seule_entree(self):
+        champ = make_carte_champ([make_geo_zone("GeoArea-1", description="Parcelle A")])
+        result = extract_champ_values(champ)
+        assert len(result) == 1
+
+    def test_json_value_est_une_liste(self):
+        zone = make_geo_zone("GeoArea-1", description="Parcelle A")
+        champ = make_carte_champ([zone])
+        result = extract_champ_values(champ)
+        assert result[0]["json_value"] == [zone]
+
+    def test_value_contient_la_description(self):
+        champ = make_carte_champ(
+            [make_geo_zone("GeoArea-1", source="cadastre", description="Parcelle A")]
+        )
+        result = extract_champ_values(champ)
+        assert "Parcelle A" in result[0]["value"]
+        assert "cadastre" in result[0]["value"]
+
+
+class TestCarteChampPlusieursZones:
+    def test_une_seule_entree_pas_ecrasement(self):
+        zones = [
+            make_geo_zone("GeoArea-1", description="Point"),
+            make_geo_zone("GeoArea-2", description="Ligne"),
+            make_geo_zone("GeoArea-3", description="Polygone"),
+        ]
+        champ = make_carte_champ(zones)
+        result = extract_champ_values(champ)
+        assert len(result) == 1
+
+    def test_json_value_contient_toutes_les_zones(self):
+        zones = [
+            make_geo_zone("GeoArea-1", description="Point"),
+            make_geo_zone("GeoArea-2", description="Ligne"),
+            make_geo_zone("GeoArea-3", description="Polygone"),
+        ]
+        champ = make_carte_champ(zones)
+        result = extract_champ_values(champ)
+        assert result[0]["json_value"] == zones
+        assert len(result[0]["json_value"]) == 3
+
+    def test_value_resume_toutes_les_zones(self):
+        zones = [
+            make_geo_zone("GeoArea-1", description="Point"),
+            make_geo_zone("GeoArea-2", description="Ligne"),
+        ]
+        champ = make_carte_champ(zones)
+        result = extract_champ_values(champ)
+        assert "Zone 1" in result[0]["value"]
+        assert "Zone 2" in result[0]["value"]
+        assert "Point" in result[0]["value"]
+        assert "Ligne" in result[0]["value"]
+
+    def test_meme_label_pour_toutes_les_entrees_du_champ(self):
+        zones = [make_geo_zone("GeoArea-1"), make_geo_zone("GeoArea-2")]
+        champ = make_carte_champ(zones, label="Ma zone")
+        result = extract_champ_values(champ)
+        assert result[0]["label"] == "Ma zone"
+
+
+class TestCarteChampCasCadastre:
+    def test_donnees_cadastrales_preservees_dans_json_value(self):
+        zone = make_geo_zone(
+            "GeoArea-1",
+            source="cadastre",
+            description="parcelle",
+            commune="66136",
+            numero="813",
+            section="BE",
+            prefixe="000",
+            surface="668",
+        )
+        champ = make_carte_champ([zone])
+        result = extract_champ_values(champ)
+        zones_out = result[0]["json_value"]
+        assert zones_out[0]["commune"] == "66136"
+        assert zones_out[0]["numero"] == "813"
+        assert zones_out[0]["surface"] == "668"
