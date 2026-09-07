@@ -192,7 +192,7 @@ const handleAddDemarche = async () => {
       ref="gristSectionRef"
     />
 
-    <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w">
+    <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w fr-mb-1w">
       <div class="fr-col-6">
         <h6 class="fr-mb-3w">2. Démarche numérique</h6>
       </div>
