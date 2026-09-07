@@ -1212,9 +1212,9 @@ describe('Accordion DN state', () => {
     expect(wrapper.vm.activeDnAccordion).toBe(0)
   })
 
-  it('opens the most recent saved config (first position) when none is empty', async () => {
+  it('closes all sections on initial load when none is empty', async () => {
     const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, { otp_config_id: 2 }])
-    expect(wrapper.vm.activeDnAccordion).toBe(0)
+    expect(wrapper.vm.activeDnAccordion).toBe(-1)
   })
 
   it('closes all sections after starting a sync', async () => {
@@ -1280,5 +1280,35 @@ describe('Accordion DN state', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.activeDnAccordion).toBe(0)
+  })
+
+  it('keeps the edited config open at its own index after a save', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 6 }, { otp_config_id: 1 }])
+    expect(wrapper.vm.activeDnAccordion).toBe(-1)
+
+    wrapper.vm.activeDnAccordion = 1
+    await wrapper.vm.$nextTick()
+
+    globalThis.fetch.mockReset()
+    globalThis.fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] }) })
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+    dnSections[1].vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5', docId: 'doc-123', baseUrl: 'https://grist.example.com', token: 'grist-token'
+    })
+    dnSections[1].vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    dnSections[1].vm.$emit('save', 1)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.activeDnAccordion).toBe(1)
   })
 })

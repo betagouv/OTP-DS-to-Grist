@@ -29,6 +29,10 @@ const actionErrors = ref([])
 const serverConfigs = ref([])
 const activeDnAccordion = ref(-1)
 
+// Chargement initial : tout doit rester fermé. `loaded` devient vrai à la 1re
+// requête ; l'ouverture d'une section sauvegardée est gérée dans handleSave.
+let loaded = false
+
 const canDelete = (config) => canDeleteConfig(config)
 
 const canSync = (config) => canSyncConfig(config, props.syncRunning)
@@ -38,6 +42,7 @@ const loadConfig = async () => {
     const context = await getGristContext()
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
+    loaded = true
     emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
   } catch (e) {
     configError.value = 'Erreur lors du chargement de la configuration'
@@ -65,7 +70,7 @@ watch(serverConfigs, (val) => {
 
 watch(configs, (sections) => {
   const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
-  activeDnAccordion.value = emptyIndex >= 0 ? emptyIndex : 0
+  activeDnAccordion.value = loaded ? emptyIndex : -1
 }, { immediate: true })
 
 onMounted(loadConfig)
@@ -116,6 +121,7 @@ const handleSave = async (index) => {
       }
 
       await loadConfig()
+      activeDnAccordion.value = index
       if (!actionErrors.value[index]) notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
