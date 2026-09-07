@@ -65,7 +65,7 @@ watch(serverConfigs, (val) => {
 
 watch(configs, (sections) => {
   const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
-  activeDnAccordion.value = emptyIndex
+  activeDnAccordion.value = emptyIndex >= 0 ? emptyIndex : 0
 }, { immediate: true })
 
 onMounted(loadConfig)
@@ -116,10 +116,6 @@ const handleSave = async (index) => {
       }
 
       await loadConfig()
-      const newIndex = savedId
-        ? configs.value.findIndex(config => config?.otp_config_id === savedId)
-        : configs.value.length - 1
-      activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
       if (!actionErrors.value[index]) notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'

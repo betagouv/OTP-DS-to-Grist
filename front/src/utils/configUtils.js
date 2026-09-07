@@ -1,8 +1,8 @@
 export const sortConfigs = (configs) => {
-  const unsaved = configs.filter(config => !config)
-  const saved = configs.filter(config => config)
-    .sort((a, b) => a.otp_config_id - b.otp_config_id)
-  return [...saved, ...unsaved]
+  const unsaved = configs.filter(config => !config?.otp_config_id)
+  const saved = configs.filter(config => config?.otp_config_id)
+    .sort((a, b) => b.otp_config_id - a.otp_config_id)
+  return [...unsaved, ...saved]
 }
 
 export const canDeleteConfig = (config) => !!config?.otp_config_id
