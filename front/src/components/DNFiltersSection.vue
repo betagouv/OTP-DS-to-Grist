@@ -68,6 +68,7 @@ const hasActiveFilters = computed(() =>
 )
 
 const handleDateChange = () => {
+  emit('error-update', dateError.value)
   emit('change')
 }
 
@@ -84,6 +85,7 @@ const handleReset = () => {
   dateFin.value = ''
   selectedStatuses.value = []
   selectedGroups.value = []
+  emit('error-update', dateError.value)
   emit('change')
 }
 

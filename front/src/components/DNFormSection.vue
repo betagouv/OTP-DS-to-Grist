@@ -12,6 +12,7 @@ import {
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import DNFiltersSection from './DNFiltersSection.vue'
 import { api } from '../utils/InternalApi'
+import { useAutoSave } from '../composables/useAutoSave'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
 
@@ -82,8 +83,22 @@ const configValid = computed(() =>
 
 const debouncedValidate = debounce(validateDSConnection)
 
+const { isSaving, scheduleSave } = useAutoSave()
+
+const revision = ref(0)
+
+watch([isDirty, configValid, sectionEmpty, revision], () => {
+  if (!isDirty.value || !configValid.value || sectionEmpty.value) return
+  scheduleSave(() => {
+    if (configValid.value && !sectionEmpty.value) {
+      emit('save', props.index)
+    }
+  })
+})
+
 const handleDNInputsChange = () => {
   isDirty.value = true
+  revision.value++
   dnErrorMessage.value = null
   emit('error-update', null)
   debouncedValidate()
@@ -91,6 +106,7 @@ const handleDNInputsChange = () => {
 
 const handleDNFiltersChange = () => {
   isDirty.value = true
+  revision.value++
 }
 
 defineExpose({
@@ -195,21 +211,14 @@ watch(() => props.existingConfig, (config) => {
             label="Lancer la synchronisation"
             data-test-id="sync-button"
             primary
-            :disabled="!canSync || sectionEmpty"
+            :disabled="!canSync || sectionEmpty || isSaving"
             @click="$emit('sync', index)"
-          />
-          <DsfrButton
-            label="Sauvegarder"
-            data-test-id="submit-form-button"
-            secondary
-            :disabled="!configValid || sectionEmpty || !isDirty"
-            @click="$emit('save', index)"
           />
           <DsfrButton
             label="Supprimer"
             data-test-id="delete-config-button"
             secondary
-            :disabled="!canDelete || sectionEmpty"
+            :disabled="!canDelete || sectionEmpty || isSaving"
             @click="$emit('delete', index)"
           />
         </DsfrButtonGroup>

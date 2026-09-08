@@ -321,6 +321,25 @@ describe('DNFiltersSection — groupes instructeurs', () => {
     expect(hasGroupsSection(wrapper)).toBe(false)
   })
 
+  it('re-fetches groups when existingConfig changes after an autosave reload', async () => {
+    mockGroupsResponse([[1, 'Groupe A']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    await flushPromises()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/groups?otp_config_id=1')
+
+    mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
+    await wrapper.setProps({ existingConfig: { otp_config_id: 1, filter_groups: '1,2' } })
+    await flushPromises()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/groups?otp_config_id=1')
+    expect(wrapper.findComponent(DsfrMultiselect).props('options')).toEqual([
+      { number: 1, label: 'Groupe A' },
+      { number: 2, label: 'Groupe B' }
+    ])
+    expect(wrapper.vm.getData().filter_groups).toBe('1,2')
+  })
+
   it('shows a groups tag when groups are selected and the section is visible', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
     const wrapper = mountWithConfig({ otp_config_id: 1 })

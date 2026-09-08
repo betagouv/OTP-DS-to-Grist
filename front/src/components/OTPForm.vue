@@ -10,6 +10,7 @@ import OtpAlert from './OtpAlert.vue'
 import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { api } from '../utils/InternalApi'
 import { useNotification } from '../composables/useNotification'
+import { useAutoSave } from '../composables/useAutoSave'
 import { sortConfigs, canDeleteConfig, canSyncConfig } from '../utils/configUtils'
 
 const props = defineProps({
@@ -20,6 +21,7 @@ const emit = defineEmits(['config-loaded'])
 
 const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
 const { notify } = useNotification()
+const { scheduleSave: scheduleGristChange } = useAutoSave()
 const gristError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
@@ -71,6 +73,18 @@ watch(configs, (sections) => {
 onMounted(loadConfig)
 
 const handleSave = async (index) => {
+  const result = await saveConfigAt(index)
+  if (result) {
+    await loadConfig()
+    const savedId = result.otp_config_id
+    const newIndex = savedId
+      ? configs.value.findIndex(config => config?.otp_config_id === savedId)
+      : configs.value.length - 1
+    activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
+  }
+}
+
+const saveConfigAt = async (index) => {
   actionErrors.value[index] = null
 
   try {
@@ -94,20 +108,33 @@ const handleSave = async (index) => {
 
     const result = await api.saveConfig(payload)
 
-    if (result.success) {
-      await loadConfig()
-      const savedId = result.otp_config_id
-      const newIndex = savedId
-        ? configs.value.findIndex(config => config?.otp_config_id === savedId)
-        : configs.value.length - 1
-      activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
-      notify('Configuration sauvegardée', 'success')
-    } else {
-      actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
-    }
+    if (result.success)
+      return result
+
+    actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
+    return null
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la sauvegarde'
+    return null
   }
+}
+
+const handleGristChange = () => {
+  scheduleGristChange(async () => {
+    if (gristError.value !== '') return
+
+    const savedIndexes = configs.value
+      .map((config, index) => (config?.otp_config_id ? index : -1))
+      .filter((index) => index !== -1)
+
+    if (savedIndexes.length === 0) return
+
+    const results = await Promise.all(savedIndexes.map((index) => saveConfigAt(index)))
+
+    if (results.every(Boolean)) {
+      await loadConfig()
+    }
+  })
 }
 
 const handleDelete = async (index) => {
@@ -173,6 +200,7 @@ const handleAddDemarche = async () => {
          par le serveur (serverConfigs[0]), pas avec la liste triée `configs`. -->
     <GristFormSection
       @error-update="gristError = $event"
+      @change="handleGristChange"
       :existing-config="serverConfigs[0] || null"
       ref="gristSectionRef"
     />

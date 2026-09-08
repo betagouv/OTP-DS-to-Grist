@@ -340,7 +340,7 @@ describe('index prop', () => {
     expect(wrapper.props('index')).toBe(3)
   })
 
-  it('emits save with index value', async () => {
+  it('emits save with index value after autosave', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ success: true })
@@ -358,15 +358,12 @@ describe('index prop', () => {
     await numberInput.setValue('12345')
     await flushPromises()
 
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-    await saveButton.trigger('click')
-
     expect(wrapper.emitted('save')).toBeTruthy()
     expect(wrapper.emitted('save')[0]).toEqual([2])
   })
 })
 
-describe('Save button', () => {
+describe('Auto-save behavior', () => {
   let wrapper
 
   beforeEach(() => {
@@ -376,164 +373,122 @@ describe('Save button', () => {
     })
   })
 
-  it('is disabled when gristError is null (default)', async () => {
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-
-    expect(saveButton.attributes('disabled')).toBeDefined()
-  })
-
-  it('is enabled when gristError is empty string and DN validated', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true })
-    })
-    globalThis.fetch = mockFetch
-
+  const fillValidDN = async () => {
     const tokenInput = wrapper.find('[data-test-id="dn-token"]')
     await tokenInput.setValue('token')
     const numberInput = wrapper.find('[data-test-id="dn-number"]')
     await numberInput.setValue('12345')
     await flushPromises()
+  }
 
-    await wrapper.setProps({ gristError: '' })
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-
-    expect(saveButton.attributes('disabled')).toBeUndefined()
-  })
-
-  it('emits save event with index when clicked and enabled', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ success: true })
-    })
-    globalThis.fetch = mockFetch
-
-    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
-    await tokenInput.setValue('token')
-    const numberInput = wrapper.find('[data-test-id="dn-number"]')
-    await numberInput.setValue('12345')
-    await flushPromises()
-
-    await wrapper.setProps({ gristError: '' })
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-    await saveButton.trigger('click')
-
-    expect(wrapper.emitted('save')).toBeTruthy()
-    expect(wrapper.emitted('save')[0]).toEqual([0])
-  })
-
-  it('does not emit save event when clicked and disabled', async () => {
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-    await saveButton.trigger('click')
+  it('does not save when gristError is null (default)', async () => {
+    await fillValidDN()
 
     expect(wrapper.emitted('save')).toBeFalsy()
   })
 
-  it('disables save button after existingConfig changes (post-save reload)', async () => {
+  it('saves automatically when the section is valid and non-empty', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ success: true })
     })
     globalThis.fetch = mockFetch
 
-    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
-    await tokenInput.setValue('token')
-    const numberInput = wrapper.find('[data-test-id="dn-number"]')
-    await numberInput.setValue('12345')
-    await flushPromises()
-
     await wrapper.setProps({ gristError: '' })
+    await fillValidDN()
 
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ success: false, message: 'Token expiré' })
-    })
-
-    await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
-    await flushPromises()
-
-    expect(wrapper.vm.dnErrorMessage).toBe('Token expiré')
-    expect(wrapper.vm.accordionTitleDN).toBe('Échec')
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.emitted('save')).toBeTruthy()
+    expect(wrapper.emitted('save')[0]).toEqual([0])
   })
 
-  it('disables save button again after a successful save (post-reload)', async () => {
+  it('does not save when the DS connection test fails', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: false, message: 'Token invalide' })
+    })
+
+    await wrapper.setProps({ gristError: '' })
+    await fillValidDN()
+
+    expect(wrapper.vm.dnErrorMessage).toBe('Token invalide')
+    expect(wrapper.emitted('save')).toBeFalsy()
+  })
+
+  it('does not save a section that stays empty', async () => {
+    const wrapperEmpty = mount(DNFormSection, {
+      props: { index: 0, gristError: '' },
+      global: globalComponents
+    })
+
+    const tokenInput = wrapperEmpty.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('seul-token')
+    await flushPromises()
+
+    expect(wrapperEmpty.emitted('save')).toBeFalsy()
+  })
+
+  it('resets isDirty and does not re-save after existingConfig changes (post-save reload)', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ success: true })
     })
     globalThis.fetch = mockFetch
 
-    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
-    await tokenInput.setValue('token')
-    const numberInput = wrapper.find('[data-test-id="dn-number"]')
-    await numberInput.setValue('12345')
-    await flushPromises()
-
     await wrapper.setProps({ gristError: '' })
+    await fillValidDN()
 
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save')).toHaveLength(1)
 
     await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
     await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(false)
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('save')).toHaveLength(1)
   })
 
-  it('re-enables save button after editing a field', async () => {
+  it('re-saves automatically after a new edit following a reload', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ success: true })
     })
     globalThis.fetch = mockFetch
 
-    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
-    await tokenInput.setValue('token')
-    const numberInput = wrapper.find('[data-test-id="dn-number"]')
-    await numberInput.setValue('12345')
-    await flushPromises()
+    await wrapper.setProps({ gristError: '' })
+    await fillValidDN()
 
     await wrapper.setProps({ existingConfig: { otp_config_id: 1, demarche_number: '12345', has_ds_token: true } })
     await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(false)
 
-    const tokenInputAfter = wrapper.find('[data-test-id="dn-token"]')
-    await tokenInputAfter.setValue('nouveau-token')
-    await flushPromises()
-
-    await wrapper.setProps({ gristError: '' })
+    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await tokenInput.setValue('nouveau-token')
     await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(true)
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save')).toHaveLength(2)
   })
 
-  it('keeps the save button active after a failed save (existingConfig unchanged)', async () => {
+  it('keeps isDirty true after an autosave without reload', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ success: true })
     })
     globalThis.fetch = mockFetch
 
-    const tokenInput = wrapper.find('[data-test-id="dn-token"]')
-    await tokenInput.setValue('token')
-    const numberInput = wrapper.find('[data-test-id="dn-number"]')
-    await numberInput.setValue('12345')
-    await flushPromises()
-
     await wrapper.setProps({ gristError: '' })
+    await fillValidDN()
 
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.emitted('save')).toBeTruthy()
 
-    wrapper.vm.$emit('save', 0)
+    const newTokenInput = wrapper.find('[data-test-id="dn-token"]')
+    await newTokenInput.setValue('encore-un-token')
     await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(true)
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save').length).toBeGreaterThanOrEqual(2)
   })
 })
 
@@ -653,15 +608,6 @@ describe('sectionEmpty computed', () => {
       global: globalComponents
     })
     expect(wrapper.vm.sectionEmpty).toBe(false)
-  })
-
-  it('disables Save button when sectionEmpty is true', async () => {
-    const wrapper = mount(DNFormSection, {
-      props: { index: 0, gristError: '' },
-      global: globalComponents
-    })
-    const saveButton = wrapper.find('[data-test-id="submit-form-button"]')
-    expect(saveButton.attributes('disabled')).toBeDefined()
   })
 
   it('disables Sync button when sectionEmpty is true', async () => {
@@ -842,41 +788,49 @@ describe('Filters section integration', () => {
     expect(wrapper.vm.getData().filter_date_end).toBe('')
   })
 
-  it('enables the save button when a filter date is edited', async () => {
+  it('saves automatically when a filter date is edited', async () => {
     const wrapper = mountWithValidConfig()
     await flushPromises()
 
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('save')).toBeFalsy()
 
     await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-01-01')
+    await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(true)
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save')).toBeTruthy()
+    expect(wrapper.emitted('save')[0]).toEqual([0])
   })
 
-  it('disables the save button when dates are inconsistent', async () => {
-    const wrapper = mountWithValidConfig()
+  it('does not save when dates are inconsistent', async () => {
+    const wrapper = mountWithValidConfig({ filter_date_start: '2023-12-31' })
     await flushPromises()
 
-    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-12-31')
+    expect(wrapper.emitted('save')).toBeFalsy()
+
     await wrapper.find('[data-test-id="filter-date-end"]').setValue('2023-01-01')
+    await flushPromises()
 
     expect(wrapper.vm.dnFiltersError).not.toBe('')
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('save')).toBeFalsy()
   })
 
-  it('re-enables the save button once dates become consistent again', async () => {
-    const wrapper = mountWithValidConfig()
+  it('saves again once dates become consistent again', async () => {
+    const wrapper = mountWithValidConfig({
+      filter_date_start: '2023-12-31',
+      filter_date_end: '2023-01-01'
+    })
     await flushPromises()
 
-    await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-12-31')
-    await wrapper.find('[data-test-id="filter-date-end"]').setValue('2023-01-01')
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.vm.dnFiltersError).not.toBe('')
+    expect(wrapper.emitted('save')).toBeFalsy()
 
     await wrapper.find('[data-test-id="filter-date-end"]').setValue('2024-01-01')
+    await flushPromises()
 
     expect(wrapper.vm.dnFiltersError).toBe('')
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save')).toBeTruthy()
+    expect(wrapper.emitted('save')[0]).toEqual([0])
   })
 
   it('includes pre-filled filter statuses in getData', () => {
@@ -893,18 +847,20 @@ describe('Filters section integration', () => {
     expect(wrapper.vm.getData().filter_statuses).toBe('')
   })
 
-  it('enables the save button when a status is toggled', async () => {
+  it('saves automatically when a status is toggled', async () => {
     const wrapper = mountWithValidConfig()
     await flushPromises()
 
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('save')).toBeFalsy()
 
     await wrapper
       .find('input[type="checkbox"][value="en_construction"]')
       .setValue(true)
+    await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(true)
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save')).toBeTruthy()
+    expect(wrapper.emitted('save')[0]).toEqual([0])
   })
 
   it('includes pre-filled filter groups in getData', async () => {
@@ -927,7 +883,7 @@ describe('Filters section integration', () => {
     expect(wrapper.vm.getData().filter_groups).toBe('')
   })
 
-  it('enables the save button when a group is selected', async () => {
+  it('saves automatically when a group is selected', async () => {
     globalThis.fetch = vi.fn((url) => {
       if (String(url).includes('/api/groups'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve([[1, 'Groupe A'], [2, 'Groupe B']]) })
@@ -936,25 +892,29 @@ describe('Filters section integration', () => {
     const wrapper = mountWithValidConfig()
     await flushPromises()
 
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.emitted('save')).toBeFalsy()
 
     await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1])
+    await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(true)
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save')).toBeTruthy()
+    expect(wrapper.emitted('save')[0]).toEqual([0])
   })
 
-  it('keeps the save button active after resetting the filters', async () => {
+  it('saves automatically after resetting the filters', async () => {
     const wrapper = mountWithValidConfig()
     await flushPromises()
 
     await wrapper.find('[data-test-id="filter-date-start"]').setValue('2023-01-01')
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    await flushPromises()
+    expect(wrapper.emitted('save')).toHaveLength(1)
 
     await wrapper.find('[data-test-id="reset-filters-button"]').trigger('click')
+    await flushPromises()
 
     expect(wrapper.vm.getData().filter_date_start).toBe('')
     expect(wrapper.vm.isDirty).toBe(true)
-    expect(wrapper.find('[data-test-id="submit-form-button"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.emitted('save')).toHaveLength(2)
   })
 })

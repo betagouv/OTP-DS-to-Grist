@@ -73,6 +73,27 @@ describe('Grist form section', () => {
     expect(errorText.text()).toBe('Token invalide')
   })
 
+  it('emits change when the token is edited', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+    await tokenInput.setValue('nouveau-token')
+    await flushPromises()
+
+    expect(wrapper.emitted('change')).toBeTruthy()
+    expect(wrapper.emitted('change')).toHaveLength(1)
+  })
+
   it('shows no error when token is valid', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,

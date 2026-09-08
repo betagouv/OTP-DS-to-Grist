@@ -18,7 +18,7 @@ const props = defineProps({
 })
 
 const HELP_LINKS = window.HELP_LINKS
-const emit = defineEmits(['error-update'])
+const emit = defineEmits(['error-update', 'change'])
 const context = ref(null)
 
 const userId = ref('')
@@ -60,6 +60,7 @@ const debouncedValidate = debounce(validateGristConnection)
 const handleGristInputChange = () => {
   gristTokenErrorMessage.value = null
   gristFetchError.value = null
+  emit('change')
   debouncedValidate()
 }
 
