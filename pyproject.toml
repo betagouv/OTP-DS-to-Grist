@@ -59,7 +59,7 @@ shell = "python3 -c \"import secrets, base64; print('ENCRYPTION_KEY=' + base64.u
 
 [tool.poe.tasks.audit]
 help = "Audit de sécurité des dépendances (pip, npm racine, npm front)"
-shell = "pip-audit; npm audit; cd front && npm audit"
+shell = "s=0; pip-audit || s=1; npm audit || s=1; cd front && npm audit || s=1; exit $s"
 
 [tool.ruff]
 line-length = 88

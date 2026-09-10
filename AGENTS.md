@@ -54,6 +54,10 @@ encore en phase de migration : le legacy (templates/) reste single-config, le no
 (`front/`) vise le multi-config et est en cours de développement. Toute intervention doit
 considérer cette trajectoire.
 
+Côté backend, un ensemble de scripts legacy à la racine du projet (traitements Grist,
+extraction de démarches, utils divers) attend son intégration dans les modules du projet,
+structurés par domaine de responsabilité — la structure cible.
+
 ## Contexte du projet
 
 Ce projet a été initialement créé par un non-développeur avec assistance IA.

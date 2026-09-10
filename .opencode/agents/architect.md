@@ -24,8 +24,7 @@ Deux axes de migration sont en cours :
   nouvelles features vont dans `front/`, les modifications legacy se limitent
   aux correctifs.
 - **Backend** : des scripts à la racine du projet attendent d'être intégrés dans
-  les modules par domaine (`configuration/`, `database/`, `grist/`, `sync/`,
-  `utils/`).
+  les modules du projet, structurés par domaine de responsabilité.
 
 ## Directives
 
