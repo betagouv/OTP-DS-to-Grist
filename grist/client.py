@@ -2,13 +2,12 @@ import traceback
 from typing import Any
 
 import requests
-from utils.log import log, log_verbose, log_error, log_progress
+
+from utils.log import log, log_error, log_progress, log_verbose
 
 
 class GristClient:
-    def __init__(
-        self, base_url: str, api_key: str, doc_id: str | None = None
-    ) -> None:
+    def __init__(self, base_url: str, api_key: str, doc_id: str | None = None) -> None:
         self.base_url: str = base_url.rstrip("/")  # Enlever le / final s'il y en a un
         self.api_key: str = api_key
         self.doc_id: str | None = doc_id
@@ -169,9 +168,7 @@ class GristClient:
         log(f"  Cache dates: {len(dates_dict)} dossiers chargés depuis {table_id}")
         return dates_dict
 
-    def get_sync_metadata(
-        self, demarche_number: int | str
-    ) -> dict[str, Any] | None:
+    def get_sync_metadata(self, demarche_number: int | str) -> dict[str, Any] | None:
         """
         Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.
         Retourne un dict ou None si pas encore de sync enregistrée.
@@ -460,9 +457,7 @@ class GristClient:
 
         return response
 
-    def delete_records(
-        self, table_id: str, record_ids: list[int]
-    ) -> requests.Response:
+    def delete_records(self, table_id: str, record_ids: list[int]) -> requests.Response:
         """
         Supprime des enregistrements d'une table Grist.
         Le payload envoyé est la liste brute des ids (sans enveloppe).
@@ -471,9 +466,7 @@ class GristClient:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
-        url = (
-            f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records/delete"
-        )
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records/delete"
         log_verbose(f"POST {url}")
         response = requests.post(url, headers=self.headers, json=record_ids)
 
@@ -615,6 +608,10 @@ class GristClient:
         # Préparer les listes pour les opérations de création et de mise à jour
         to_create = []
         to_update = []
+        # ✅ Filet de sécurité : si un même dossier_number apparaît deux fois
+        # dans ce batch (ex. doublon résiduel malgré la déduplication en
+        # amont côté processor), on ne veut jamais le créer deux fois.
+        queued_for_creation: set[str] = set()
 
         for row_dict in dossiers_list:
             # Filtrer les colonnes qui existent dans la table
@@ -641,8 +638,21 @@ class GristClient:
                 # Mise à jour d'un enregistrement existant
                 record_id = existing_records[dossier_number_str]
                 to_update.append({"id": record_id, "fields": filtered_row_dict})
+            elif dossier_number_str in queued_for_creation:
+                # Doublon résiduel DANS ce batch (ne devrait plus arriver
+                # grâce à la déduplication en amont côté processor, mais on
+                # se protège quand même) : on ignore ce second passage
+                # plutôt que de créer une seconde ligne pour le même
+                # dossier. Rien n'est perdu — ce dossier sera resynchronisé
+                # normalement au prochain cycle.
+                log_error(
+                    f"[DEDUP] Doublon résiduel ignoré dans le batch pour le "
+                    f"dossier {dossier_number_str} (sera resynchronisé au "
+                    f"prochain cycle)"
+                )
             else:
                 # Création d'un nouvel enregistrement
+                queued_for_creation.add(dossier_number_str)
                 to_create.append({"fields": filtered_row_dict})
 
         # Variables pour suivre les succès
