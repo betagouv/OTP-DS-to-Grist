@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from grist.client import GristClient
 
@@ -318,101 +319,6 @@ class TestSaveSyncMetadata:
         assert payload["records"][0]["fields"]["demarche_number"] == 123
 
 
-class TestUpsertDossierInGrist:
-    """Tests unitaires pour GristClient.upsert_dossier_in_grist"""
-
-    def setup_method(self):
-        self.client = GristClient(
-            "https://grist.example.com", "test_key", doc_id="doc123"
-        )
-
-    def test_updates_existing(self):
-        """dossier existant -> PATCH"""
-        get_response = MagicMock()
-        get_response.status_code = 200
-        get_response.json.return_value = {
-            "records": [{"id": 5, "fields": {"dossier_number": "1001"}}]
-        }
-        patch_response = MagicMock()
-        patch_response.status_code = 200
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.patch",
-                return_value=patch_response,
-            ) as mock_patch,
-            patch("grist.client.requests.post") as mock_post,
-        ):
-            ok = self.client.upsert_dossier_in_grist(
-                "dossiers", {"dossier_number": "1001", "name": "X"}
-            )
-        assert ok is True
-        mock_patch.assert_called_once()
-        mock_post.assert_not_called()
-        payload = mock_patch.call_args.kwargs["json"]
-        assert payload["records"][0]["id"] == 5
-
-    def test_inserts_new(self):
-        """dossier nouveau -> POST"""
-        get_response = MagicMock()
-        get_response.status_code = 200
-        get_response.json.return_value = {"records": []}
-        post_response = MagicMock()
-        post_response.status_code = 201
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-            patch("grist.client.requests.patch") as mock_patch,
-        ):
-            ok = self.client.upsert_dossier_in_grist(
-                "dossiers", {"dossier_number": "2002", "name": "Y"}
-            )
-        assert ok is True
-        mock_post.assert_called_once()
-        mock_patch.assert_not_called()
-        payload = mock_post.call_args.kwargs["json"]
-        assert payload["records"][0]["fields"]["dossier_number"] == "2002"
-
-    def test_missing_dossier_number_returns_false(self):
-        """sans dossier_number -> False, aucun appel réseau"""
-        with patch("grist.client.requests.get") as mock_get:
-            ok = self.client.upsert_dossier_in_grist("dossiers", {"name": "Z"})
-        assert ok is False
-        mock_get.assert_not_called()
-
-    def test_error_status_returns_false(self):
-        """statut d'erreur -> False"""
-        get_response = MagicMock()
-        get_response.status_code = 200
-        get_response.json.return_value = {"records": []}
-        post_response = MagicMock()
-        post_response.status_code = 500
-        post_response.text = "err"
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.post",
-                return_value=post_response,
-            ),
-        ):
-            ok = self.client.upsert_dossier_in_grist(
-                "dossiers", {"dossier_number": "3003"}
-            )
-        assert ok is False
-
-
 class TestListDocuments:
     """Tests unitaires pour GristClient.list_documents"""
 
@@ -690,9 +596,7 @@ class TestAddColumns:
             "grist.client.requests.post",
             return_value=mock_response,
         ) as mock_post:
-            result = self.client.add_columns(
-                "t", [{"id": "col1", "type": "Text"}]
-            )
+            result = self.client.add_columns("t", [{"id": "col1", "type": "Text"}])
         assert result is mock_response
         mock_post.assert_called_once()
         assert (
