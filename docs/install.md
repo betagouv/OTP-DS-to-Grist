@@ -130,6 +130,14 @@ npm run test
 
 Voir [tests/README.md](../tests/README.md) pour les commandes et conventions.
 
+### Audit de sécurité des dépendances
+
+```bash
+poe audit
+```
+
+Vérifie les vulnérabilités des dépendances Python (`pip-audit`) et JavaScript (`npm audit` sur la racine et `front/`).
+
 ## Mode développement avec Docker
 
 ### Prérequis
