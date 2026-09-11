@@ -37,6 +37,7 @@ poethepoet = "^0.46.0"
 pytest = "^9.1.1"
 pytest-cov = "^7.1.0"
 ruff = "^0.16.0"
+pip-audit = "^2.10.1"
 
 [tool.poe.tasks.dev]
 shell = "python app.py"
@@ -55,6 +56,10 @@ shell = "python3 -c \"import secrets; print('FLASK_SECRET_KEY=' + secrets.token_
 [tool.poe.tasks.generate-encryption-key]
 help = "Génère une clé secrète de cryptage"
 shell = "python3 -c \"import secrets, base64; print('ENCRYPTION_KEY=' + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\""
+
+[tool.poe.tasks.audit]
+help = "Audit de sécurité des dépendances (pip, npm racine, npm front)"
+shell = "s=0; pip-audit || s=1; npm audit || s=1; cd front && npm audit || s=1; exit $s"
 
 [tool.ruff]
 line-length = 88
