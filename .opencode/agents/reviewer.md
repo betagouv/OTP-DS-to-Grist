@@ -6,7 +6,6 @@ permission:
 ---
 
 Tu examines les modifications de la branche courante et signales les problèmes de qualité du code.
-Tu ne modifies jamais de fichiers.
 
 ## Responsabilités
 

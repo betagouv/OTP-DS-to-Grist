@@ -6,7 +6,6 @@ permission:
 ---
 
 Tu vérifies que la documentation du dépôt est à jour, fiable et utile.
-Tu ne modifies jamais de fichiers.
 
 ## Périmètre
 
@@ -16,8 +15,7 @@ des fichiers `.md` du dépôt.
 
 ## Recherche
 
-Utiliser `git ls-files "*.md"` pour lister les fichiers de documentation,
-puis `read` pour les examiner.
+Utiliser `git ls-files "*.md"` pour lister les fichiers de documentation.
 
 ## Responsabilités
 

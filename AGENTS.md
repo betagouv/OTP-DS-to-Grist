@@ -56,7 +56,7 @@ considérer cette trajectoire.
 
 Côté backend, un ensemble de scripts legacy à la racine du projet (traitements Grist,
 extraction de démarches, utils divers) attend son intégration dans les modules du projet,
-structurés par domaine de responsabilité — la structure cible.
+structurés par domaine de responsabilité.
 
 ## Contexte du projet
 
