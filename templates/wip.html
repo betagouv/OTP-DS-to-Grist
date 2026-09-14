@@ -1,4 +1,8 @@
 {% extends "base.html" %}
+{# Le front Vue embarque son propre CSS DSFR (bundle) et gère les composants
+   via vue-dsfr. On retire donc les assets DSFR du CDN, qui instanciaient une
+   seconde fois les accordéons et corrompaient leur état de repli. #}
+{% block dsfr_js %}{% endblock %}
 {% block content %}
   <script>
     window.HELP_LINKS = {{ help_links | tojson }}
