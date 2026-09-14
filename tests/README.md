@@ -5,6 +5,8 @@
 En cas de bug, essayer de le reproduire via un test unitaire, puis, en même temps ou après faire le fix.
 Cela nous permet de cranter la non réapparition du bug.
 
+- Grouper les tests par fonction testée (ou préoccupation logique) : une classe Python ou un `describe()` JavaScript par fonction.
+
 ## Python
 
 Ces tests sont organisés en deux catégories.
