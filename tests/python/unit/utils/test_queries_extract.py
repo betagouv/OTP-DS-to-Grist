@@ -77,6 +77,31 @@ def make_schema_with_duplicate_labels():
     }
 
 
+def make_carte_champ(geo_areas, label="Localisation"):
+    """Fabrique un champ DS CarteChamp minimal."""
+    return {
+        "__typename": "CarteChamp",
+        "id": "Q2FydGVDaGFtcC0xMjM0NQ==",
+        "label": label,
+        "champDescriptorId": "Q2hhbXBEZXNjcmlwdG9yLTk5",
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "prefilled": False,
+        "geoAreas": geo_areas,
+    }
+
+
+def make_geo_zone(zone_id, source="selection_utilisateur", description="zone", **extra):
+    """Fabrique une zone géographique (geoArea) minimale pour un CarteChamp."""
+    zone = {
+        "id": zone_id,
+        "source": source,
+        "description": description,
+        "geometry": {"type": "Point", "coordinates": [2.88, 42.69]},
+    }
+    zone.update(extra)
+    return zone
+
+
 class TestCreateColumnsFromSchemaDescriptorMapping:
     """Tests sur la construction du mapping descriptor_to_column_id."""
 
@@ -283,55 +308,35 @@ class TestDossierToFlatDataDuplicateLabels:
 # ---------------------------------------------------------------------------
 
 
-def make_carte_champ(geo_areas, label="Localisation"):
-    return {
-        "__typename": "CarteChamp",
-        "id": "Q2FydGVDaGFtcC0xMjM0NQ==",
-        "label": label,
-        "champDescriptorId": "Q2hhbXBEZXNjcmlwdG9yLTk5",
-        "updatedAt": "2026-01-01T00:00:00Z",
-        "prefilled": False,
-        "geoAreas": geo_areas,
-    }
+class TestExtractChampValuesCarteChamp:
+    """Tests pour extract_champ_values - traitement des champs CarteChamp (top-level)."""
 
-
-def make_geo_zone(zone_id, source="selection_utilisateur", description="zone", **extra):
-    zone = {
-        "id": zone_id,
-        "source": source,
-        "description": description,
-        "geometry": {"type": "Point", "coordinates": [2.88, 42.69]},
-    }
-    zone.update(extra)
-    return zone
-
-
-class TestCarteChampSansZone:
-    def test_une_seule_entree(self):
+    def test_sans_zone_une_seule_entree(self):
         champ = make_carte_champ([])
         result = extract_champ_values(champ)
         assert len(result) == 1
 
-    def test_valeur_par_defaut(self):
+    def test_sans_zone_valeur_par_defaut(self):
         champ = make_carte_champ([])
         result = extract_champ_values(champ)
         assert result[0]["value"] == "Aucune zone géographique définie"
         assert result[0]["json_value"] is None
 
-
-class TestCarteChampUneZone:
-    def test_une_seule_entree(self):
+    def test_une_zone_une_seule_entree(self):
         champ = make_carte_champ([make_geo_zone("GeoArea-1", description="Parcelle A")])
         result = extract_champ_values(champ)
         assert len(result) == 1
 
-    def test_json_value_est_une_liste(self):
+    def test_une_zone_json_value_est_une_liste(self):
+        # Point d'attention : même avec 1 seule zone, json_value est une
+        # liste d'un élément (et non le dict de la zone directement), pour
+        # rester cohérent avec le cas multi-zones.
         zone = make_geo_zone("GeoArea-1", description="Parcelle A")
         champ = make_carte_champ([zone])
         result = extract_champ_values(champ)
         assert result[0]["json_value"] == [zone]
 
-    def test_value_contient_la_description(self):
+    def test_une_zone_value_contient_la_description(self):
         champ = make_carte_champ(
             [make_geo_zone("GeoArea-1", source="cadastre", description="Parcelle A")]
         )
@@ -339,9 +344,10 @@ class TestCarteChampUneZone:
         assert "Parcelle A" in result[0]["value"]
         assert "cadastre" in result[0]["value"]
 
-
-class TestCarteChampPlusieursZones:
-    def test_une_seule_entree_pas_ecrasement(self):
+    def test_plusieurs_zones_une_seule_entree_pas_ecrasement(self):
+        # Régression : avant le fix, 3 zones produisaient 3 entrées (+1
+        # fantôme) partageant le même label -> la dernière écrasait tout
+        # dans Grist. On vérifie qu'il n'y a plus qu'une seule entrée.
         zones = [
             make_geo_zone("GeoArea-1", description="Point"),
             make_geo_zone("GeoArea-2", description="Ligne"),
@@ -351,7 +357,7 @@ class TestCarteChampPlusieursZones:
         result = extract_champ_values(champ)
         assert len(result) == 1
 
-    def test_json_value_contient_toutes_les_zones(self):
+    def test_plusieurs_zones_json_value_contient_toutes_les_zones(self):
         zones = [
             make_geo_zone("GeoArea-1", description="Point"),
             make_geo_zone("GeoArea-2", description="Ligne"),
@@ -362,7 +368,7 @@ class TestCarteChampPlusieursZones:
         assert result[0]["json_value"] == zones
         assert len(result[0]["json_value"]) == 3
 
-    def test_value_resume_toutes_les_zones(self):
+    def test_plusieurs_zones_value_resume_toutes_les_zones(self):
         zones = [
             make_geo_zone("GeoArea-1", description="Point"),
             make_geo_zone("GeoArea-2", description="Ligne"),
@@ -374,15 +380,16 @@ class TestCarteChampPlusieursZones:
         assert "Point" in result[0]["value"]
         assert "Ligne" in result[0]["value"]
 
-    def test_meme_label_pour_toutes_les_entrees_du_champ(self):
+    def test_plusieurs_zones_meme_label_pour_toutes_les_entrees(self):
         zones = [make_geo_zone("GeoArea-1"), make_geo_zone("GeoArea-2")]
         champ = make_carte_champ(zones, label="Ma zone")
         result = extract_champ_values(champ)
         assert result[0]["label"] == "Ma zone"
 
-
-class TestCarteChampCasCadastre:
-    def test_donnees_cadastrales_preservees_dans_json_value(self):
+    def test_cadastre_donnees_preservees_dans_json_value(self):
+        # Les champs commune/numero/section/prefixe/surface ne sont plus
+        # dupliqués en clés à plat (dead code supprimé), mais restent
+        # accessibles via json_value puisqu'on garde le dict de zone complet.
         zone = make_geo_zone(
             "GeoArea-1",
             source="cadastre",
