@@ -67,6 +67,8 @@
     }
   },
   "forwardPorts": [5000],
+  "overrideCommand": true,
   "postCreateCommand": "poetry install --with dev && npm install",
+  "postStartCommand": "nohup bash -c 'poetry run poe dev > /tmp/app.log 2>&1 &' && sleep 3 && (curl -sf http://localhost:5000/ >/dev/null 2>&1 && echo '✅ App started on port 5000' || (echo '❌ App failed to start. Last logs:' && tail -30 /tmp/app.log))",
   "shutdownAction": "stopCompose"
 }
