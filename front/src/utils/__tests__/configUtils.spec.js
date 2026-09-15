@@ -3,20 +3,28 @@ import { describe, it, expect } from 'vitest'
 import { sortConfigs, canDeleteConfig, canSyncConfig } from '../configUtils'
 
 describe('sortConfigs', () => {
-  it('trie les configs sauvegardées par otp_config_id ascendant', () => {
+  it('trie les configs sauvegardées par otp_config_id décroissant', () => {
     const configs = [{ otp_config_id: 10 }, { otp_config_id: 2 }, { otp_config_id: 7 }]
 
     const result = sortConfigs(configs)
 
-    expect(result.map(c => c.otp_config_id)).toEqual([2, 7, 10])
+    expect(result.map(c => c.otp_config_id)).toEqual([10, 7, 2])
   })
 
-  it('place les entrées non sauvegardées (null) à la fin', () => {
+  it('place les entrées non sauvegardées (null) en tête', () => {
     const configs = [{ otp_config_id: 5 }, null, { otp_config_id: 3 }]
 
     const result = sortConfigs(configs)
 
-    expect(result.map(c => c?.otp_config_id ?? null)).toEqual([3, 5, null])
+    expect(result.map(c => c?.otp_config_id ?? null)).toEqual([null, 5, 3])
+  })
+
+  it('traite un objet avec otp_config_id null comme non sauvegardé', () => {
+    const configs = [{ otp_config_id: 5 }, { otp_config_id: null }]
+
+    const result = sortConfigs(configs)
+
+    expect(result.map(c => c?.otp_config_id ?? null)).toEqual([null, 5])
   })
 
   it('retourne [null] quand aucun config', () => {

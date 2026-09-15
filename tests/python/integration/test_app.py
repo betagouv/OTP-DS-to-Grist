@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1015,6 +1016,95 @@ class TestErrorHandling:
         assert data_resp["success"] is False
         assert "required" in data_resp["message"]
 
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_with_next_run(self, mock_session, mock_scheduler, client):
+        """Test GET planning avec prochaine exécution prévue"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_schedule = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_schedule.enabled = True
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_job = MagicMock()
+        mock_job.next_run_time = datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc)
+        mock_scheduler.get_job.return_value = mock_job
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["success"] is True
+        assert data_resp["enabled"] is True
+        assert data_resp["next_run"] == "2026-09-03T09:14:00+00:00"
+        mock_scheduler.get_job.assert_called_once_with("scheduled_sync_1")
+
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_no_job(self, mock_session, mock_scheduler, client):
+        """Test GET planning sans job scheduler (next_run None)"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_schedule = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_schedule.enabled = True
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_scheduler.get_job.return_value = None
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["success"] is True
+        assert data_resp["enabled"] is True
+        assert data_resp["next_run"] is None
+
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_disabled(self, mock_session, mock_scheduler, client):
+        """Test GET planning sans schedule activé (enabled False, next_run None)"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_schedule = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_schedule.enabled = False
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_scheduler.get_job.return_value = None
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["success"] is True
+        assert data_resp["enabled"] is False
+        assert data_resp["next_run"] is None
+
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_missing_param(self, mock_session, client):
+        """Test GET planning sans otp_config_id -> 400"""
+        response = client.get("/api/schedule")
+
+        assert response.status_code == 400
+
+        data_resp = json.loads(response.data)
+        assert data_resp["success"] is False
+        assert "required" in data_resp["message"]
+
     @patch("app.SessionLocal")
     @patch("app.reload_scheduler_jobs")
     def test_api_delete_config_success(self, mock_reload, mock_session, client):
@@ -1051,8 +1141,16 @@ class TestErrorHandling:
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
+    @patch(
+        "sync.scheduled_sync.compute_next_run",
+        return_value=datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc),
+    )
     def test_scheduled_sync_job_success(
-        self, mock_load_config, mock_sessionmaker, mock_create_engine
+        self,
+        mock_compute_next_run,
+        mock_load_config,
+        mock_sessionmaker,
+        mock_create_engine,
     ):
         """Test exécution réussie d'une synchronisation planifiée"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -1070,9 +1168,24 @@ class TestErrorHandling:
         mock_config.grist_user_id = "user123"
         mock_config.grist_doc_id = "doc456"
 
-        mock_db.query.return_value.filter_by.return_value.first.return_value = (
-            mock_config
-        )
+        mock_schedule = MagicMock()
+        mock_schedule.otp_config_id = 1
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_schedule.next_run = None
+
+        def query_side_effect(model):
+            if model.__name__ == "OtpConfiguration":
+                mock_q = MagicMock()
+                mock_q.filter_by.return_value.first.return_value = mock_config
+                return mock_q
+            elif model.__name__ == "UserSchedule":
+                mock_q = MagicMock()
+                mock_q.filter_by.return_value.first.return_value = mock_schedule
+                return mock_q
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
 
         mock_load_config.return_value = {
             "otp_config_id": 1,
@@ -1105,10 +1218,22 @@ class TestErrorHandling:
                 auto=True,
             )
 
+            assert mock_schedule.last_run is not None
+            assert mock_schedule.last_status == "success"
+            assert mock_schedule.next_run == datetime(
+                2026, 9, 3, 9, 14, tzinfo=timezone.utc
+            )
+
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
-    def test_scheduled_sync_job_error(self, mock_load_config, mock_sessionmaker):
-        """Test exécution échouée d'une synchronisation planifiée"""
+    @patch(
+        "sync.scheduled_sync.compute_next_run",
+        return_value=datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc),
+    )
+    def test_scheduled_sync_job_error(
+        self, mock_compute_next_run, mock_load_config, mock_sessionmaker
+    ):
+        """Test sync échouée (success=False) : last_status=error, schedule reste actif"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
 
@@ -1121,9 +1246,25 @@ class TestErrorHandling:
         mock_config.grist_user_id = "user123"
         mock_config.grist_doc_id = "doc456"
 
-        mock_db.query.return_value.filter_by.return_value.first.return_value = (
-            mock_config
-        )
+        mock_schedule = MagicMock()
+        mock_schedule.otp_config_id = 1
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_schedule.next_run = None
+        mock_schedule.enabled = True
+
+        def query_side_effect(model):
+            if model.__name__ == "OtpConfiguration":
+                mock_q = MagicMock()
+                mock_q.filter_by.return_value.first.return_value = mock_config
+                return mock_q
+            elif model.__name__ == "UserSchedule":
+                mock_q = MagicMock()
+                mock_q.filter_by.return_value.first.return_value = mock_schedule
+                return mock_q
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
 
         mock_load_config.return_value = {
             "otp_config_id": 1,
@@ -1156,14 +1297,90 @@ class TestErrorHandling:
                 auto=True,
             )
 
+            assert mock_schedule.last_run is not None
+            assert mock_schedule.last_status == "error"
+            assert mock_schedule.next_run == datetime(
+                2026, 9, 3, 9, 14, tzinfo=timezone.utc
+            )
+            assert mock_schedule.enabled is True
+
+    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.config_manager.load_config_by_id")
+    def test_scheduled_sync_job_external_api_error_disables_schedule(
+        self, mock_load_config, mock_sessionmaker
+    ):
+        """Test erreur API externe : schedule désactivé automatiquement"""
+        from sync.scheduled_sync import scheduled_sync_job
+        from sync.sync_manager import SyncManager
+        from utils.constants import EXIT_CODE_EXTERNAL_API_ERROR
+
+        mock_db = MagicMock()
+        mock_session_class = MagicMock(return_value=mock_db)
+        mock_sessionmaker.return_value = mock_session_class
+
+        mock_config = MagicMock()
+        mock_config.id = 1
+        mock_config.grist_user_id = "user123"
+        mock_config.grist_doc_id = "doc456"
+
+        mock_schedule = MagicMock()
+        mock_schedule.otp_config_id = 1
+        mock_schedule.last_run = None
+        mock_schedule.last_status = None
+        mock_schedule.next_run = None
+        mock_schedule.enabled = True
+
+        def query_side_effect(model):
+            if model.__name__ == "OtpConfiguration":
+                mock_q = MagicMock()
+                mock_q.filter_by.return_value.first.return_value = mock_config
+                return mock_q
+            elif model.__name__ == "UserSchedule":
+                mock_q = MagicMock()
+                mock_q.filter_by.return_value.first.return_value = mock_schedule
+                return mock_q
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        mock_load_config.return_value = {
+            "otp_config_id": 1,
+            "demarche_number": "123",
+            "grist_doc_id": "doc456",
+            "grist_user_id": "user123",
+            "has_ds_token": True,
+            "has_grist_key": True,
+        }
+
+        mock_notifier = MagicMock()
+        sync_manager = SyncManager(notify_callback=mock_notifier)
+
+        with patch.object(sync_manager, "run_synchronization_task") as mock_sync:
+            mock_sync.return_value = {
+                "success": False,
+                "error_code": EXIT_CODE_EXTERNAL_API_ERROR,
+                "message": "Erreur API externe",
+            }
+
+            scheduled_sync_job(1, sync_manager)
+
+            mock_sync.assert_called_once()
+
+            assert mock_schedule.last_run is not None
+            assert mock_schedule.next_run is None
+            assert mock_schedule.last_status is None
+            assert mock_schedule.enabled is False
+
+    @patch("sync.scheduled_sync.SYNC_MINUTE", 0)
+    @patch("sync.scheduled_sync.SYNC_HOUR", 11)
     @patch("sync.scheduled_sync.sessionmaker")
     def test_reload_scheduler_jobs(self, mock_sessionmaker):
-        """Test rechargement des jobs du scheduler"""
+        """Test rechargement des jobs du scheduler (stagger +5 min par config)"""
         from sync.scheduled_sync import reload_scheduler_jobs, scheduler
         from sync.sync_manager import SyncManager
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = mock_db
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
 
         mock_schedule1 = MagicMock()
         mock_schedule1.otp_config_id = 1
@@ -1172,11 +1389,6 @@ class TestErrorHandling:
         mock_schedule2 = MagicMock()
         mock_schedule2.otp_config_id = 2
         mock_schedule2.enabled = True
-
-        mock_db.query.return_value.filter_by.return_value.all.return_value = [
-            mock_schedule1,
-            mock_schedule2,
-        ]
 
         mock_config1 = MagicMock()
         mock_config1.id = 1
@@ -1191,6 +1403,13 @@ class TestErrorHandling:
         mock_config2.demarche_number = "456"
 
         def mock_filter_by(**kwargs):
+            if kwargs.get("enabled"):
+                mock_query = MagicMock()
+                mock_query.filter.return_value.all.return_value = [
+                    mock_schedule1,
+                    mock_schedule2,
+                ]
+                return mock_query
             if kwargs.get("id") == 1:
                 return MagicMock(first=MagicMock(return_value=mock_config1))
             elif kwargs.get("id") == 2:
@@ -1202,10 +1421,30 @@ class TestErrorHandling:
         mock_notifier = MagicMock()
         sync_manager = SyncManager(notify_callback=mock_notifier)
 
-        with patch.object(scheduler, "remove_all_jobs") as mock_remove:
+        with patch.object(scheduler, "remove_all_jobs") as mock_remove, patch.object(
+            scheduler, "add_job"
+        ) as mock_add:
             reload_scheduler_jobs(sync_manager)
 
             mock_remove.assert_called_once()
+
+            assert mock_add.call_count == 2
+
+            job_ids = [call.kwargs["id"] for call in mock_add.call_args_list]
+            assert job_ids == ["scheduled_sync_1", "scheduled_sync_2"]
+
+            first_trigger = mock_add.call_args_list[0].kwargs["trigger"]
+            second_trigger = mock_add.call_args_list[1].kwargs["trigger"]
+
+            def trigger_value(trigger, name):
+                return [
+                    f for f in trigger.fields if f.name == name
+                ][0].expressions[0].first
+
+            assert trigger_value(first_trigger, "hour") == 11
+            assert trigger_value(first_trigger, "minute") == 0
+            assert trigger_value(second_trigger, "hour") == 11
+            assert trigger_value(second_trigger, "minute") == 5
 
 
 class SyncLogMock:
@@ -1221,11 +1460,7 @@ class SyncLogMock:
         otp_config_id=None,
         demarche_number=None,
     ):
-        class TimestampMock:
-            def isoformat(self):
-                return timestamp_iso
-
-        self.timestamp = TimestampMock()
+        self.timestamp = datetime.fromisoformat(timestamp_iso)
         self.status = status
         self.success_count = success_count
         self.error_count = error_count

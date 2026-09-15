@@ -29,6 +29,10 @@ const actionErrors = ref([])
 const serverConfigs = ref([])
 const activeDnAccordion = ref(-1)
 
+// Chargement initial : tout doit rester fermé. `loaded` devient vrai à la 1re
+// requête ; l'ouverture d'une section sauvegardée est gérée dans handleSave.
+let loaded = false
+
 const canDelete = (config) => canDeleteConfig(config)
 
 const canSync = (config) => canSyncConfig(config, props.syncRunning)
@@ -38,6 +42,7 @@ const loadConfig = async () => {
     const context = await getGristContext()
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
+    loaded = true
     emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
   } catch (e) {
     configError.value = 'Erreur lors du chargement de la configuration'
@@ -65,7 +70,7 @@ watch(serverConfigs, (val) => {
 
 watch(configs, (sections) => {
   const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
-  activeDnAccordion.value = emptyIndex
+  activeDnAccordion.value = loaded ? emptyIndex : -1
 }, { immediate: true })
 
 onMounted(loadConfig)
@@ -95,13 +100,29 @@ const handleSave = async (index) => {
     const result = await api.saveConfig(payload)
 
     if (result.success) {
-      await loadConfig()
       const savedId = result.otp_config_id
-      const newIndex = savedId
-        ? configs.value.findIndex(config => config?.otp_config_id === savedId)
-        : configs.value.length - 1
-      activeDnAccordion.value = newIndex >= 0 ? newIndex : -1
-      notify('Configuration sauvegardée', 'success')
+      const effectiveId = savedId || configs.value[index]?.otp_config_id
+
+      if (effectiveId) {
+        const scheduleCall = dnData.auto_sync_enabled
+          ? api.enableSchedule(effectiveId)
+          : api.disableSchedule(effectiveId)
+
+        try {
+          const scheduleResult = await scheduleCall
+          if (!scheduleResult.success) {
+            actionErrors.value[index] =
+              "Configuration sauvegardée, mais la synchronisation automatique n'a pas pu être enregistrée"
+          }
+        } catch {
+          actionErrors.value[index] =
+            "Configuration sauvegardée, mais la synchronisation automatique n'a pas pu être enregistrée"
+        }
+      }
+
+      await loadConfig()
+      activeDnAccordion.value = index
+      if (!actionErrors.value[index]) notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
@@ -177,7 +198,7 @@ const handleAddDemarche = async () => {
       ref="gristSectionRef"
     />
 
-    <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w">
+    <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w fr-mb-1w">
       <div class="fr-col-6">
         <h6 class="fr-mb-3w">2. Démarche numérique</h6>
       </div>

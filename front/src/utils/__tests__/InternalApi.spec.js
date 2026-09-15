@@ -165,4 +165,95 @@ describe('InternalApi', () => {
       await expect(api.getSyncLogLatestByDocId('doc-abc')).rejects.toThrow('Erreur HTTP 500')
     })
   })
+
+  describe('getSchedule', () => {
+    it('calls GET /api/schedule with otp_config_id', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true, enabled: true })
+      })
+
+      const result = await api.getSchedule(5)
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/schedule?otp_config_id=5')
+      expect(result).toEqual({ success: true, enabled: true })
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 404 })
+
+      await expect(api.getSchedule(1)).rejects.toThrow('Erreur HTTP 404')
+    })
+  })
+
+  describe('enableSchedule', () => {
+    it('calls POST /api/schedule with otp_config_id', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      })
+
+      const result = await api.enableSchedule(10)
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp_config_id: 10 })
+      })
+      expect(result).toEqual({ success: true })
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 403 })
+
+      await expect(api.enableSchedule(1)).rejects.toThrow('Erreur HTTP 403')
+    })
+  })
+
+  describe('disableSchedule', () => {
+    it('calls DELETE /api/schedule with otp_config_id', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      })
+
+      const result = await api.disableSchedule(10)
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/schedule', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp_config_id: 10 })
+      })
+      expect(result).toEqual({ success: true })
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 404 })
+
+      await expect(api.disableSchedule(1)).rejects.toThrow('Erreur HTTP 404')
+    })
+  })
+
+  describe('getGroups', () => {
+    it('calls GET /api/groups with otp_config_id and maps groups', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve([[1, 'Groupe A'], [3, 'Groupe C']])
+      })
+
+      const result = await api.getGroups(7)
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/groups?otp_config_id=7')
+      expect(result).toEqual([
+        { number: 1, label: 'Groupe A' },
+        { number: 3, label: 'Groupe C' }
+      ])
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
+
+      await expect(api.getGroups(1)).rejects.toThrow('Erreur HTTP 500')
+    })
+  })
 })

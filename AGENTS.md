@@ -7,6 +7,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 - Lancer les tests associés après chaque modification
 - Demander des clarifications pour toute ambiguïté
 - En cas de demande impliquant beaucoup de modifications, proposer un plan en étapes.
+  - Présenter le plan (ou l'approche) en mode plan et attendre la validation de l'utilisateur avant d'exécuter / de modifier le code
   - Pendant la conception du plan, analyser les risques de régressions
   - Ces étapes devraient être testables
   - Ces étapes ne doivent pas contenir régression
@@ -21,7 +22,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
 - Éviter de dupliquer la logique : rechercher et cibler les points d'entrée communs
   (ex: un chokepoint partagé par plusieurs chemins) avant d'ajouter des appels à plusieurs endroits.
-- Ne jamais committer ni push : préparer les commits (stage) mais laisser l'utilisateur les créer et les valider après relecture
+- Ne jamais committer, ni push, ni effectuer de `git add` (stage). Laisser les fichiers modifiés tels quels ; l'utilisateur relit, puis prépare et valide lui-même les commits.
 
 ## Architecture du projet
 
