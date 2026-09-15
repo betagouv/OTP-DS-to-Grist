@@ -5,6 +5,7 @@ import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
 import { useDemarcheContext } from '../../composables/useDemarcheContext'
+import { useSyncTask } from '../../composables/useSyncTask'
 
 describe('hasUnsavedSection computation', () => {
   const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
@@ -947,6 +948,21 @@ describe('Sync action', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ otp_config_id: 1 })
     })
+  })
+
+  it('stores task_id via useSyncTask when sync starts', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ task_id: 'task_1' })
+    })
+
+    wrapper.getComponent(DNFormSection).vm.$emit('sync', 0)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const { currentTaskId } = useSyncTask()
+    expect(currentTaskId.value).toBe('task_1')
   })
 
   it('does not call API when there is no config', async () => {
