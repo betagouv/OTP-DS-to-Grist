@@ -18,6 +18,9 @@ services:
       - ./static:/app/static
       - ./deleted_dossiers_checker.py:/app/deleted_dossiers_checker.py
       - ./hide_id_columns.py:/app/hide_id_columns.py
+      - ./utils:/app/utils
+      - ./sync:/app/sync
+      - ./grist:/app/grist
       - ./build:/home/appuser/build:ro
     environment:
       - PATH=/app/.venv/bin:$PATH
