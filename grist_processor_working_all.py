@@ -33,7 +33,7 @@ from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
-from utils.log import log, log_verbose, log_error, log_progress
+from utils.log import log, log_error, log_progress, log_verbose
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -1449,6 +1449,22 @@ def process_demarche_for_grist_optimized(
                 table_ids.get("annotations")
             )
         cache_demandeurs = client.get_existing_dossier_numbers(table_ids["demandeurs"])
+
+        # Cache des blocs répétables, préchargé une seule fois (au lieu d'un GET
+        # complet de chaque table répétable à chaque lot dans process_repetables_batch)
+        cache_repetables = {}
+        if table_ids.get("repetable_blocks"):
+            from repetable_processor import (
+                get_existing_repetable_rows_improved_no_filter,
+            )
+
+            for block_key, block_table_id in table_ids["repetable_blocks"].items():
+                cache_repetables[block_key] = (
+                    get_existing_repetable_rows_improved_no_filter(
+                        client, block_table_id, None
+                    )
+                )
+
         log(f"Cache global préchargé en {time.time() - start_cache:.1f}s")
 
         # Construire les sets de dossiers à skipper par table
@@ -1718,6 +1734,11 @@ def process_demarche_for_grist_optimized(
                                 },
                                 problematic_ids=problematic_descriptor_ids,
                                 batch_size=50,
+                                existing_rows_cache={
+                                    normalized_block: cache_repetables.setdefault(
+                                        normalized_block, {}
+                                    )
+                                },
                             )
                             log(
                                 f"  Bloc '{block_label}': {success_count} réussis, {error_count} échecs"
