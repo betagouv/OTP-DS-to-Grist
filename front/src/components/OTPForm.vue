@@ -8,6 +8,7 @@ import DNFormSection from './DNFormSection.vue'
 import OtpAlert from './OtpAlert.vue'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
+import { useSyncTask } from '../composables/useSyncTask'
 import { api } from '../utils/InternalApi'
 import { useNotification } from '../composables/useNotification'
 import { sortConfigs, canDeleteConfig, canSyncConfig } from '../utils/configUtils'
@@ -19,6 +20,7 @@ const props = defineProps({
 const emit = defineEmits(['config-loaded'])
 
 const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
+const { setCurrentTaskId } = useSyncTask()
 const { notify } = useNotification()
 const gristError = ref(null)
 const dnSectionRefs = ref([])
@@ -162,7 +164,8 @@ const handleSync = async (index) => {
   actionErrors.value[index] = null
   try {
     setDemarcheIndex(index + 1)
-    await api.startSync(otpConfigIdToSync)
+    const result = await api.startSync(otpConfigIdToSync)
+    setCurrentTaskId(result.task_id)
     activeDnAccordion.value = -1
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'
