@@ -5,7 +5,6 @@ services:
       - "5000:5000"
     volumes:
       - ./app.py:/app/app.py
-      - ./constants.py:/app/constants.py
       - ./queries.py:/app/queries.py
       - ./queries_extract.py:/app/queries_extract.py
       - ./queries_graphql.py:/app/queries_graphql.py
@@ -13,15 +12,22 @@ services:
       - ./schema_utils.py:/app/schema_utils.py
       - ./repetable_processor.py:/app/repetable_processor.py
       - ./grist_processor_working_all.py:/app/grist_processor_working_all.py
-      - ./sync_task_manager.py:/app/sync_task_manager.py
       - ./configuration:/app/configuration
       - ./database:/app/database
       - ./templates:/app/templates
       - ./static:/app/static
+      - ./deleted_dossiers_checker.py:/app/deleted_dossiers_checker.py
+      - ./hide_id_columns.py:/app/hide_id_columns.py
+      - ./utils:/app/utils
+      - ./sync:/app/sync
+      - ./grist:/app/grist
       - ./build:/home/appuser/build:ro
     environment:
       - PATH=/app/.venv/bin:$PATH
       - DATABASE_URL=${DOCKER_DATABASE_URL}
+      - HELP_LINK_FAQ=https://docs.numerique.gouv.fr/docs/f6181e26-8739-4671-85b4-eeaf3e828788/
+      - HELP_LINK_DN_TOKEN_API=https://docs.numerique.gouv.fr/docs/cd079f0c-c72b-4704-a59b-7aa5b2e77ff0/
+      - HELP_LINK_GRIST_API_KEY=https://docs.numerique.gouv.fr/docs/fb36b922-36c8-4c58-bc64-f08151fd5efe/
     depends_on:
       - db
 

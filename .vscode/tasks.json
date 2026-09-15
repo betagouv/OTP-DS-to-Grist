@@ -41,6 +41,24 @@
       }
     },
     {
+      "label": "🚀 App (live)",
+      "type": "shell",
+      "command": "if curl -sf http://localhost:5000/ >/dev/null 2>&1; then echo '✅ App déjà démarrée (port 5000)'; else exec poetry run python app.py; fi",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated",
+        "clear": false
+      }
+    },
+    {
       "label": "npm: lint",
       "type": "npm",
       "script": "lint",
