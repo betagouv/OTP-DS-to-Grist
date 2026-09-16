@@ -1,4 +1,5 @@
 import json
+from typing import Any
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -69,7 +70,7 @@ def format_json_value(json_value, max_length=10000) -> str | None:
         return str_value
 
 
-def build_filters_key(api_filters) -> str:
+def build_filters_key(api_filters: dict[str, Any] | None) -> str:
     """Construit une clé canonique JSON déterministe des filtres actifs.
 
     Utilisée pour détecter un changement de filtres entre deux synchronisations :
@@ -98,7 +99,7 @@ def build_filters_key(api_filters) -> str:
     return json.dumps(filters, sort_keys=True, ensure_ascii=False)
 
 
-def _normalize_list(value) -> list:
+def _normalize_list(value: Any) -> list[str]:
     """Normalise une liste de filtres pour garantir le déterminisme (tri, None -> [])."""
     if not value:
         return []
