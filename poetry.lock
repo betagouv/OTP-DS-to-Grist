@@ -616,14 +616,14 @@ wmi = ["wmi (>=1.5.1)"]
 
 [[package]]
 name = "eventlet"
-version = "0.41.0"
+version = "0.41.2"
 description = "Highly concurrent networking library"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "eventlet-0.41.0-py3-none-any.whl", hash = "sha256:bc22396093cb4119ff7007776be6a5348a613ccd42eeb0f9519853a6efcbcabe"},
-    {file = "eventlet-0.41.0.tar.gz", hash = "sha256:35df85f0ccd3e73effb6fd9f1ceae46b500b966c7da1817289c323a307bd397b"},
+    {file = "eventlet-0.41.2-py3-none-any.whl", hash = "sha256:6cae50e67fe6ae8bb7013e7fd4d8e0d0d20aeb9b3259b93f023c93eb6749631f"},
+    {file = "eventlet-0.41.2.tar.gz", hash = "sha256:721b86b77fca33a735598292022ac6feef99747bf48f52defdada6b572acd5af"},
 ]
 
 [package.dependencies]
@@ -2314,4 +2314,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "82e47154a98b0c6ec5bb2a4ddf1f6a728a01779d6eb61495ab931131cfb8c5d7"
+content-hash = "972b1da5cac67957ad60eb9c393d5071c26926dd077d8d3cc3de6b212c9d42a2"
