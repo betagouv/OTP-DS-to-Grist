@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from utils.formatter import to_local_iso, unwrap_json_list
+from utils.formatter import build_filters_key, to_local_iso, unwrap_json_list
 
 
 def test_liste_json_simple():
@@ -61,3 +61,38 @@ def test_to_local_iso_naif_traite_comme_utc():
 
 def test_to_local_iso_none():
     assert to_local_iso(None) is None
+
+
+class TestBuildFiltersKey:
+    """Tests unitaires pour build_filters_key (détection de changement de filtres)"""
+
+    def test_same_filters_same_key(self):
+        """mêmes filtres -> même clé (déterminisme)"""
+        filters = {"statuts": ["en_construction"], "date_debut": "2024-01-01"}
+        assert build_filters_key(filters) == build_filters_key(filters)
+
+    def test_different_filters_different_key(self):
+        """filtres différents -> clé différente"""
+        assert build_filters_key({"statuts": ["en_construction"]}) != build_filters_key(
+            {"statuts": ["en_instruction"]}
+        )
+
+    def test_no_filter_returns_non_none_key(self):
+        """aucun filtre (None ou vide) -> clé déterministe non-None, jamais ambiguë"""
+        key = build_filters_key(None)
+        assert key is not None
+        assert key == build_filters_key({})
+        assert '"date_debut": null' in key
+        assert key != build_filters_key({"statuts": ["en_construction"]})
+
+    def test_list_order_is_normalized(self):
+        """ordre différent des statuts/groupes -> même clé (tri)"""
+        a = build_filters_key({"statuts": ["b", "a", "c"]})
+        b = build_filters_key({"statuts": ["c", "a", "b"]})
+        assert a == b
+
+    def test_key_is_readable_json(self):
+        """clé lisible JSON avec les 4 champs de filtres"""
+        key = build_filters_key({"statuts": ["en_construction"], "groupes_instructeurs": ["5"]})
+        assert "statuts" in key and "groupes_instructeurs" in key
+        assert "en_construction" in key and "5" in key

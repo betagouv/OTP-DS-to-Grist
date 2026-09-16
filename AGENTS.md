@@ -22,7 +22,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
 - Éviter de dupliquer la logique : rechercher et cibler les points d'entrée communs
   (ex: un chokepoint partagé par plusieurs chemins) avant d'ajouter des appels à plusieurs endroits.
-- Ne jamais committer, ni push, ni effectuer de `git add` (stage). Laisser les fichiers modifiés tels quels ; l'utilisateur relit, puis prépare et valide lui-même les commits.
+- Ne jamais committer, pousser ni stager : laisser l'utilisateur préparer, créer et valider ses propres commits après relecture
 
 ## Architecture du projet
 
