@@ -1,3 +1,7 @@
+---
+disable: true
+---
+
 # Agents opencode du projet
 
 Ce dossier contient les agents opencode dédiés à l'analyse du dépôt.
