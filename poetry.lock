@@ -1566,14 +1566,14 @@ docs = ["furo", "sphinx"]
 
 [[package]]
 name = "python-socketio"
-version = "5.16.3"
+version = "5.17.0"
 description = "Socket.IO server and client for Python"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "python_socketio-5.16.3-py3-none-any.whl", hash = "sha256:e7ad14202a5e6448824c7c2f86161d04e13dec05992257df5c709e6a2798c041"},
-    {file = "python_socketio-5.16.3.tar.gz", hash = "sha256:89b136f677ae65607a84cecda9b4d6c5377b40a97582c504c25df89af16d520e"},
+    {file = "python_socketio-5.17.0-py3-none-any.whl", hash = "sha256:b5826fd2f8aa02e11347816349b74ac6b53e8a4f4e4b1cf1388e1aff19b7f3f4"},
+    {file = "python_socketio-5.17.0.tar.gz", hash = "sha256:c3bbfc4937dcfea7c4d1b182afa94d4a30335d153987e8f2078b344beacf95a0"},
 ]
 
 [package.dependencies]
@@ -2314,4 +2314,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "b05a0fa19f3de322437a48f22b860b88030d446f4bb19a9a622c10bfcd1957b2"
+content-hash = "cb944c5dad923647240c2e129103b77b2ba655dbe9f4593127e10a4bca219004"
