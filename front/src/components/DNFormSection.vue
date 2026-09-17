@@ -22,6 +22,7 @@ const props = defineProps({
   gristError: { type: String, default: null },
   canDelete: { type: Boolean, default: false },
   canSync: { type: Boolean, default: false },
+  inFlight: { type: Boolean, default: false },
   error: { type: String, default: null },
   index: { type: Number, required: true }
 })
@@ -75,6 +76,7 @@ const validateDSConnection = async () => {
   }
 
   emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
+  debouncedAutoSave()
 }
 
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
@@ -91,20 +93,31 @@ const configValid = computed(() =>
 
 const debouncedValidate = debounce(validateDSConnection)
 
+// NOTE : une section DN post édition et bloquée par une erreur
+// de connexion Grist ne sera pas re-sauvegardée quand l'erreur se règle
+// (les modifications du bloc Grist ne ré-arment pas l'auto-save).
+// Cas à traiter dans la tâche 393.
+const debouncedAutoSave = debounce(() => {
+  if (isDirty.value && configValid.value && !sectionEmpty.value) emit('save', props.index)
+}, 1500)
+
 const handleDNInputsChange = () => {
   isDirty.value = true
   dnErrorMessage.value = null
   emit('error-update', null)
   debouncedValidate()
+  debouncedAutoSave()
 }
 
 const handleDNFiltersChange = () => {
   isDirty.value = true
+  debouncedAutoSave()
 }
 
 const handleAutoSyncToggle = (event) => {
   isDirty.value = true
   scheduleToggle.value = event.target.checked
+  debouncedAutoSave()
 }
 
 defineExpose({
@@ -140,6 +153,13 @@ const resetConfig = () => {
 
 watch(() => props.existingConfig, async (config) => {
   dnErrorMessage.value = null
+
+  // Une sauvegarde en cours a terminé son reload : ne pas écraser des
+  // éditions locales pas encore sauvegardées (frappes pendant la requête).
+  // Parité avec le legacy (risque assumé) ; la section se re-sauvegardera
+  // d'elle-même à la prochaine interruption de saisie.
+  if (isDirty.value) return
+
   config ? applyExistingConfig(config) : resetConfig()
   isDirty.value = false
   if (config?.otp_config_id) {
@@ -259,23 +279,15 @@ watch(() => props.existingConfig, async (config) => {
           label="Lancer la synchronisation"
           data-test-id="sync-button"
           primary
-          :disabled="!canSync || sectionEmpty"
+          :disabled="!canSync || sectionEmpty || inFlight"
           @click="$emit('sync', index)"
-        />
-
-        <DsfrButton
-          label="Sauvegarder"
-          data-test-id="submit-form-button"
-          secondary
-          :disabled="!configValid || sectionEmpty || !isDirty"
-          @click="$emit('save', index)"
         />
 
         <DsfrButton
           label="Supprimer"
           data-test-id="delete-config-button"
           secondary
-          :disabled="!canDelete || sectionEmpty"
+          :disabled="!canDelete || sectionEmpty || inFlight"
           @click="$emit('delete', index)"
         />
       </DsfrButtonGroup>
