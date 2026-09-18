@@ -6,7 +6,7 @@ par absence) et met à jour les colonnes dossiers_supprimes_DN, date_suppression
 et raison_suppression dans Grist.
 """
 
-from queries_graphql import get_deleted_dossiers
+from dn.client import get_deleted_dossiers
 
 COLUMN_ID = "dossiers_supprimes_DN"
 COLUMN_LABEL = "Dossiers supprimés DN"

@@ -7,8 +7,8 @@ services:
       - ./app.py:/app/app.py
       - ./queries.py:/app/queries.py
       - ./queries_extract.py:/app/queries_extract.py
-      - ./queries_graphql.py:/app/queries_graphql.py
       - ./queries_util.py:/app/queries_util.py
+      - ./dn:/app/dn
       - ./schema_utils.py:/app/schema_utils.py
       - ./repetable_processor.py:/app/repetable_processor.py
       - ./grist_processor_working_all.py:/app/grist_processor_working_all.py
