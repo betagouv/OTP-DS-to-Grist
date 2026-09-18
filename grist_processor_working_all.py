@@ -21,7 +21,7 @@ from grist.column_cache import ColumnCache
 from hide_id_columns import IdColumnHider
 from queries import get_dossier
 from queries_extract import dossier_to_flat_data
-from queries_graphql import get_demarche_dossiers_filtered
+from dn.client import get_demarche_dossiers
 from queries_util import get_timings
 from schema_utils import (
     create_columns_from_schema,
@@ -1032,8 +1032,6 @@ def process_demarche_for_grist_optimized(
 
                 # Utiliser l'ancienne méthode pour récupérer des échantillons
                 try:
-                    from queries_graphql import get_demarche_dossiers
-
                     all_dossiers_brief = get_demarche_dossiers(demarche_number)
                     sample_size = min(3, len(all_dossiers_brief))
                     sample_dossier_numbers = [
@@ -1116,7 +1114,7 @@ def process_demarche_for_grist_optimized(
             if api_filters.get("date_fin"):
                 log(f"Filtre par date de fin: {api_filters['date_fin']}")
 
-            all_dossiers = get_demarche_dossiers_filtered(
+            all_dossiers = get_demarche_dossiers(
                 demarche_number,
                 date_debut=api_filters.get("date_debut"),
                 date_fin=api_filters.get("date_fin"),
@@ -1179,12 +1177,10 @@ def process_demarche_for_grist_optimized(
                 log(f"Filtre par groupes instructeurs: {', '.join(groupes_filter)}")
 
             # Récupérer tous les dossiers puis filtrer côté client
-            from queries_graphql import get_demarche_dossiers
-
             log("Récupération de tous les dossiers avec pagination...")
             if updated_since_cursor:
                 log(f"Récupération filtrée avec updatedSince: {updated_since_cursor}")
-                all_dossiers = get_demarche_dossiers_filtered(
+                all_dossiers = get_demarche_dossiers(
                     demarche_number, updated_since=updated_since_cursor
                 )
             else:

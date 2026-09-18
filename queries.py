@@ -3,11 +3,10 @@ import json
 import traceback
 from pprint import pprint
 from dotenv import load_dotenv
-from queries_graphql import (
+from dn.client import (
     get_dossier,
     get_demarche,
     get_demarche_dossiers,
-    get_dossier_geojson
 )
 from queries_util import (
     format_complex_json_for_grist,
@@ -23,7 +22,6 @@ __all__ = [
     'get_dossier',
     'get_demarche',
     'get_demarche_dossiers',
-    'get_dossier_geojson',
     'extract_champ_values',
     'dossier_to_flat_data',
     'associate_geojson_with_champs',
