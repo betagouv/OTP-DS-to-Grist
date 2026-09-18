@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from queries_util import timed
 from utils.constants import DEMARCHES_API_URL
+from utils.timing import timed
 
 load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
