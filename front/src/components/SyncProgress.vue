@@ -5,8 +5,10 @@ import { io } from 'socket.io-client'
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
 import { useDemarcheContext } from '../composables/useDemarcheContext'
+import { useSyncTask } from '../composables/useSyncTask'
 
 const { totalDemarches, demarcheIndex } = useDemarcheContext()
+const { currentTaskId, setCurrentTaskId } = useSyncTask()
 const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
 const task = ref(null)
 const socket = ref(null)
@@ -32,11 +34,13 @@ const counts = computed(() => {
 onMounted(() => {
   socket.value = io()
   socket.value.on('task_update', (data) => {
+    if (data.task_id !== currentTaskId.value) return
     task.value = data.task
     if (data.task.status === 'running') {
       emit('sync-started')
       emit('sync-running-changed', true)
     } else if (data.task.status === 'completed' || data.task.status === 'error') {
+      setCurrentTaskId(null)
       emit('sync-running-changed', false)
       emit('sync-finished', {
         status: data.task.status,
