@@ -23,6 +23,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
 - Éviter de dupliquer la logique : rechercher et cibler les points d'entrée communs
   (ex: un chokepoint partagé par plusieurs chemins) avant d'ajouter des appels à plusieurs endroits.
+- Code mort : même si appelé par les tests.
 - Le dépôt peut changer pendant un échange (commit, stash, checkout effectués par l'utilisateur).
   Avant toute réponse portant sur l'état du code, ou avant toute modification, vérifier
   `git status --short` + `git rev-parse HEAD` et comparer avec la référence du dernier échange
