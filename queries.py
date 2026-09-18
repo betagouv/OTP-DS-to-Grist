@@ -8,12 +8,9 @@ from dn.client import (
     get_demarche,
     get_demarche_dossiers,
 )
-from queries_util import (
-    format_complex_json_for_grist,
-    associate_geojson_with_champs
-)
 from queries_extract import extract_champ_values, dossier_to_flat_data
 from utils.api_validator import test_demarches_api
+from utils.formatter import format_json_value
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 
@@ -24,8 +21,7 @@ __all__ = [
     'get_demarche_dossiers',
     'extract_champ_values',
     'dossier_to_flat_data',
-    'associate_geojson_with_champs',
-    'format_complex_json_for_grist'
+    'format_json_value'
 ]
 
 # Code d'exemple pour tester le script
