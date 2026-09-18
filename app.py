@@ -809,27 +809,6 @@ def execution():
 @app.route("/debug")
 def debug():
     """Page de débogage"""
-    # Vérifier la présence des fichiers requis
-    required_files = [
-        "grist_processor_working_all.py",
-        "queries.py",
-        "queries_extract.py",
-        "queries_graphql.py",
-        "queries_util.py",
-        "repetable_processor.py",
-    ]
-
-    file_status = {}
-    for file in required_files:
-        file_path = os.path.join(script_dir, file)
-        file_status[file] = os.path.exists(file_path)
-
-    # Lister tous les fichiers du répertoire
-    try:
-        all_files = sorted(os.listdir(script_dir))
-    except Exception as e:
-        all_files = [f"Erreur: {str(e)}"]
-
     # Variables d'environnement (masquées pour la sécurité)
     env_vars = {
         "DEMARCHES_API_TOKEN": "***"
@@ -874,8 +853,6 @@ def debug():
 
     return render_template(
         "debug.html",
-        file_status=file_status,
-        all_files=all_files,
         env_vars=env_vars,
         filter_vars=filter_vars,
         script_dir=script_dir,
