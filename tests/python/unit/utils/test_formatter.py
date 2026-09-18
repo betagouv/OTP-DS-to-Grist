@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from utils.formatter import to_local_iso, unwrap_json_list
+from utils.formatter import format_json_value, to_local_iso, unwrap_json_list
 
 
 def test_liste_json_simple():
@@ -61,3 +61,20 @@ def test_to_local_iso_naif_traite_comme_utc():
 
 def test_to_local_iso_none():
     assert to_local_iso(None) is None
+
+
+def test_format_json_value_none():
+    assert format_json_value(None) is None
+
+
+def test_format_json_value_simple():
+    assert format_json_value("abc") == '"abc"'
+
+
+def test_format_json_value_dict():
+    assert format_json_value({"a": 1}) == '{"a": 1}'
+
+
+def test_format_json_value_tronque():
+    result = format_json_value("abcdefghijklmnopqrstuvwxyz", max_length=10)
+    assert result == '"abcdefghi' + "..."
