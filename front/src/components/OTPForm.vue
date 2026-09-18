@@ -29,8 +29,7 @@ const configError = ref(null)
 const actionErrors = ref([])
 
 // Indices des sections dont une sauvegarde est en vol : leurs boutons
-// d'action (synchronisation/suppression) sont désactivés le temps de la
-// requête, comme sur le front legacy.
+// d'action (synchronisation/suppression) sont désactivés le temps de la requête
 const savingIndices = ref(new Set())
 
 const serverConfigs = ref([])
