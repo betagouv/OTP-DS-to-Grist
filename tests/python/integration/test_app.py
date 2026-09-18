@@ -452,7 +452,7 @@ class TestEndpoints:
         assert data["results"][1]["success"] is False
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.get_available_groups")
+    @patch("app.get_groups")
     def test_api_groups_otp_config_id_mode(self, mock_groups, mock_load, client):
         """Test de récupération des groupes en mode otp_config_id"""
         mock_load.return_value = {"ds_api_token": "token789", "demarche_number": "456"}
