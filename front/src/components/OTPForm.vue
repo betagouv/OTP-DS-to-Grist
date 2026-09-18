@@ -26,12 +26,20 @@ const gristSectionRef = ref(null)
 const configError = ref(null)
 const actionErrors = ref([])
 
+// Indices des sections dont une sauvegarde est en vol : leurs boutons
+// d'action (synchronisation/suppression) sont désactivés le temps de la requête
+const savingIndices = ref(new Set())
+
 const serverConfigs = ref([])
 const activeDnAccordion = ref(-1)
 
 // Chargement initial : tout doit rester fermé. `loaded` devient vrai à la 1re
 // requête ; l'ouverture d'une section sauvegardée est gérée dans handleSave.
 let loaded = false
+
+// Après une sauvegarde, la section à rouvrir est cherchée par otp_config_id
+// dans la liste rechargée : son index peut changer après le tri décroissant.
+let pendingOpenId = null
 
 const canDelete = (config) => canDeleteConfig(config)
 
@@ -69,6 +77,12 @@ watch(serverConfigs, (val) => {
 }, { immediate: true })
 
 watch(configs, (sections) => {
+  if (pendingOpenId !== null) {
+    const target = sections.findIndex(config => config?.otp_config_id === pendingOpenId)
+    activeDnAccordion.value = target >= 0 ? target : -1
+    pendingOpenId = null
+    return
+  }
   const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
   activeDnAccordion.value = loaded ? emptyIndex : -1
 }, { immediate: true })
@@ -77,6 +91,7 @@ onMounted(loadConfig)
 
 const handleSave = async (index) => {
   actionErrors.value[index] = null
+  savingIndices.value.add(index)
 
   try {
     const dnData = dnSectionRefs.value[index].getData()
@@ -120,14 +135,17 @@ const handleSave = async (index) => {
         }
       }
 
+      pendingOpenId = effectiveId || null
       await loadConfig()
-      activeDnAccordion.value = index
+      pendingOpenId = null
       if (!actionErrors.value[index]) notify('Configuration sauvegardée', 'success')
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la sauvegarde'
+  } finally {
+    savingIndices.value.delete(index)
   }
 }
 
@@ -224,6 +242,7 @@ const handleAddDemarche = async () => {
         :grist-error="gristError"
         :can-delete="canDelete(config)"
         :can-sync="canSync(config)"
+        :in-flight="savingIndices.has(index)"
         :existing-config="config"
         :error="actionErrors[index] || null"
         @clear-error="actionErrors[index] = null"
