@@ -4,7 +4,8 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 
 ## Préférences utilisateur
 
-- Lancer les tests associés après chaque modification
+### Analyse
+
 - Demander des clarifications pour toute ambiguïté
 - En cas de demande impliquant beaucoup de modifications, proposer un plan en étapes.
   - Présenter le plan (ou l'approche) en mode plan et attendre la validation de l'utilisateur avant d'exécuter / de modifier le code
@@ -22,6 +23,15 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
   deviennent vite obsolètes. Les points concrets à modifier sont identifiés au moment du code.
 - Éviter de dupliquer la logique : rechercher et cibler les points d'entrée communs
   (ex: un chokepoint partagé par plusieurs chemins) avant d'ajouter des appels à plusieurs endroits.
+- Le dépôt peut changer pendant un échange (commit, stash, checkout effectués par l'utilisateur).
+  Avant toute réponse portant sur l'état du code, ou avant toute modification, vérifier
+  `git status --short` + `git rev-parse HEAD` et comparer avec la référence du dernier échange
+  (pour les questions hors code : `git rev-parse HEAD` seul). En cas d'écart, relire le code
+  concerné avant de répondre, et le signaler seulement si l'écart peut affecter la demande.
+
+### Exécution
+
+- Lancer les tests associés après chaque modification
 - Ne jamais committer, ni push, ni effectuer de `git add` (stage). Laisser les fichiers modifiés tels quels ; l'utilisateur relit, puis prépare et valide lui-même les commits.
 
 ## Architecture du projet
