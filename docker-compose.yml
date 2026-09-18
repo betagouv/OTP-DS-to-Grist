@@ -5,7 +5,6 @@ services:
       - "5000:5000"
     volumes:
       - ./app.py:/app/app.py
-      - ./queries.py:/app/queries.py
       - ./queries_extract.py:/app/queries_extract.py
       - ./dn:/app/dn
       - ./schema_utils.py:/app/schema_utils.py

@@ -19,9 +19,8 @@ from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient
 from grist.column_cache import ColumnCache
 from hide_id_columns import IdColumnHider
-from queries import get_dossier
+from dn.client import get_demarche_dossiers, get_dossier
 from queries_extract import dossier_to_flat_data
-from dn.client import get_demarche_dossiers
 from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
