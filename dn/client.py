@@ -7,12 +7,11 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from queries_util import timed
 from utils.constants import DEMARCHES_API_URL
+from utils.timing import timed
 
 load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
-API_URL = DEMARCHES_API_URL
 
 # Requêtes GraphQL (fragmentées en quelques constantes)
 # Pour les fragments communs
@@ -30,7 +29,6 @@ fragment PersonneMoraleFragment on PersonneMorale {
         raisonSociale
         nomCommercial
 
-        # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
         capitalSocial
         codeEffectifEntreprise
         formeJuridique
@@ -40,7 +38,6 @@ fragment PersonneMoraleFragment on PersonneMorale {
         etatAdministratif
     }
 
-    # ✅ NOUVEAU BLOC ASSOCIATION (pour les associations)
     association {
         rna
         titre
@@ -66,8 +63,6 @@ fragment AddressFragment on Address {
     label
     type
     streetAddress
-
-    # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
     streetNumber
     streetName
     postalCode
@@ -599,7 +594,7 @@ fragment DossierFragment on Dossier {
     + CHAMP_FRAGMENTS
 )
 
-# ✅ SESSION GLOBALE (créée une seule fois)
+# SESSION GLOBALE (créée une seule fois)
 _session = None
 
 
@@ -665,7 +660,7 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
     # Exécution de la requête
     session = get_session_with_retries()
     response = session.post(
-        API_URL,
+        DEMARCHES_API_URL,
         json={"query": query_get_dossier, "variables": variables},
         headers=headers,
     )
@@ -760,7 +755,7 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
     # Exécution de la requête avec retry automatique
     session = get_session_with_retries()
     response = session.post(
-        API_URL,
+        DEMARCHES_API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers,
     )
@@ -852,8 +847,8 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
     return demarche
 
 
-@timed("get_demarche_dossiers_filtered", "ds")
-def get_demarche_dossiers_filtered(
+@timed("get_demarche_dossiers", "ds")
+def get_demarche_dossiers(
     demarche_number: int,
     date_debut: str = None,
     date_fin: str = None,
@@ -862,8 +857,14 @@ def get_demarche_dossiers_filtered(
     updated_since: str = None,
 ) -> List[Dict[str, Any]]:
     """
-    Récupère les dossiers avec filtrage côté serveur RÉEL.
-    Utilise SEULEMENT les paramètres qui fonctionnent vraiment selon les tests.
+    Récupère les dossiers d'une démarche, avec pagination.
+
+    Sans filtre, retourne tous les dossiers (échantillonnage lors de la
+    détection du schéma, fallback "récupération classique" quand aucun filtre
+    optimisé n'est actif).
+
+    Avec filtres, les paramètres sont appliqués côté serveur RÉEL quand c'est
+    possible : seule une partie fonctionne vraiment selon les tests.
 
     PARAMÈTRES RÉELLEMENT SUPPORTÉS :
     [OK]createdSince: ISO8601DateTime (date de début)
@@ -1008,7 +1009,7 @@ def get_demarche_dossiers_filtered(
     # Exécution de la requête avec retry automatique
     session = get_session_with_retries()  # ✅ AJOUTE CETTE LIGNE
     response = session.post(
-        API_URL,
+        DEMARCHES_API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers,
     )
@@ -1045,7 +1046,7 @@ def get_demarche_dossiers_filtered(
 
             session = get_session_with_retries()  # ✅ AJOUTE
             next_response = session.post(  # ✅ CHANGE requests → session
-                API_URL,
+                DEMARCHES_API_URL,
                 json={"query": query_get_demarche, "variables": variables},
                 headers=headers,
             )
@@ -1151,16 +1152,6 @@ def get_demarche_dossiers_filtered(
     return filtered_dossiers
 
 
-def get_demarche_dossiers(demarche_number: int):
-    """
-    Récupère tous les dossiers d'une démarche, sans filtre, avec pagination
-    (délègue à get_demarche_dossiers_filtered sans arguments).
-    Utilisée pour l'échantillonnage lors de la détection du schéma et comme
-    fallback "récupération classique" quand aucun filtre optimisé n'est actif.
-    """
-    return get_demarche_dossiers_filtered(demarche_number)
-
-
 def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, Any]]:
     """
     Récupère uniquement le numéro et les labels de TOUS les dossiers d'une démarche.
@@ -1214,7 +1205,7 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     while has_next_page:
         page_num += 1
         response = session.post(
-            API_URL,
+            DEMARCHES_API_URL,
             json={
                 "query": query,
                 "variables": {"demarcheNumber": demarche_number, "after": cursor},
@@ -1236,31 +1227,6 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     print(f"[LABELS] {len(dossiers)} dossiers récupérés en {page_num} page(s)")
 
     return dossiers
-
-
-def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
-    """
-    Récupère les données géométriques d'un dossier au format GeoJSON.
-    """
-    if not API_TOKEN:
-        raise ValueError(
-            "Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN"
-        )
-
-    base_url = (
-        API_URL.split("/api/")[0]
-        if "/api/" in API_URL
-        else "https://www.demarches-simplifiees.fr"
-    )
-    url = f"{base_url}/dossiers/{dossier_number}/geojson"
-
-    headers = {"Authorization": f"Bearer {API_TOKEN}", "Accept": "application/json"}
-
-    session = get_session_with_retries()
-    response = session.get(url, headers=headers)
-    response.raise_for_status()
-
-    return response.json()
 
 
 def get_deleted_dossiers(
@@ -1308,7 +1274,7 @@ def get_deleted_dossiers(
             "since": deleted_since,
         }
         response = session.post(
-            API_URL,
+            DEMARCHES_API_URL,
             json={"query": query_deleted, "variables": variables},
             headers=headers,
         )
@@ -1337,7 +1303,7 @@ def get_deleted_dossiers(
     while has_next_page:
         variables = {"demarcheNumber": demarche_number, "first": 100, "after": cursor}
         response = session.post(
-            API_URL,
+            DEMARCHES_API_URL,
             json={"query": query_pending, "variables": variables},
             headers=headers,
         )
@@ -1351,3 +1317,51 @@ def get_deleted_dossiers(
         cursor = connection["pageInfo"]["endCursor"]
 
     return all_deleted
+
+
+def get_groups(api_token: str, demarche_number: int) -> list[tuple[int, str]]:
+    """Récupère les groupes instructeurs disponibles pour une démarche"""
+    if not all([api_token, demarche_number]):
+        return []
+
+    try:
+        query = """
+        query getDemarche($demarcheNumber: Int!) {
+            demarche(number: $demarcheNumber) {
+                groupeInstructeurs {
+                    id
+                    number
+                    label
+                }
+            }
+        }
+        """
+
+        variables = {"demarcheNumber": int(demarche_number)}
+        headers = {
+            "Authorization": f"Bearer {api_token}",
+            "Content-Type": "application/json",
+        }
+
+        session = get_session_with_retries()
+        response = session.post(
+            DEMARCHES_API_URL,
+            json={"query": query, "variables": variables},
+            headers=headers,
+            timeout=10,
+        )
+
+        if response.status_code != 200:
+            return []
+
+        result = response.json()
+        if "errors" in result:
+            return []
+
+        groupes = (
+            result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
+        )
+        return [(groupe.get("number"), groupe.get("label")) for groupe in groupes]
+
+    except Exception:
+        return []
