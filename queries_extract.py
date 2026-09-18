@@ -1,72 +1,15 @@
-import base64
 import json
 import os
 from typing import Any, Dict, List
 
 import requests
 
+from dn.formatter import decode_base64_id
 from utils.constants import DEMARCHES_API_URL
-from utils.formatter import unwrap_json_list
+from utils.formatter import format_json_value, unwrap_json_list
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
-
-
-def decode_base64_id(base64_id: str) -> str:
-    """
-    Décode un ID en Base64 utilisé par l'API GraphQL.
-
-    Args:
-        base64_id: ID en format Base64
-
-    Returns:
-        ID décodé
-    """
-    try:
-        # Décodage Base64
-        decoded = base64.b64decode(base64_id).decode("utf-8")
-
-        # Les IDs GraphQL sont souvent de la forme "TypeName:id"
-        if ":" in decoded:
-            return decoded.split(":")[-1]
-
-        # Extrait juste le nombre si le format est "Champ-123456"
-        if "-" in decoded:
-            return decoded.split("-")[-1]
-
-        return decoded
-    except Exception:
-        # Si le décodage échoue, retourne l'ID original
-        return base64_id
-
-
-def format_complex_json_for_grist(json_value, max_length=10000):
-    """
-    Formate une valeur JSON complexe pour l'insertion dans Grist.
-    Tronque si nécessaire et s'assure que la valeur est une chaîne.
-
-    Args:
-        json_value: Valeur JSON à formater
-        max_length: Longueur maximale de la chaîne résultante
-
-    Returns:
-        Chaîne formatée pour Grist
-    """
-    if json_value is None:
-        return None
-
-    try:
-        json_str = json.dumps(json_value, ensure_ascii=False)
-        # Tronquer si la chaîne est trop longue
-        if len(json_str) > max_length:
-            json_str = json_str[:max_length] + "..."
-        return json_str
-    except (TypeError, ValueError):
-        # Si la sérialisation échoue, convertir en chaîne simple
-        str_value = str(json_value)
-        if len(str_value) > max_length:
-            str_value = str_value[:max_length] + "..."
-        return str_value
 
 
 def extract_champ_values(
@@ -691,7 +634,7 @@ def extract_repetable_blocks(
                         # Ajouter la valeur JSON si elle existe
                         if champ_value["json_value"] is not None:
                             row_data[f"{final_label}_json"] = (
-                                format_complex_json_for_grist(champ_value["json_value"])
+                                format_json_value(champ_value["json_value"])
                             )
 
                 repetable_rows.append(row_data)
