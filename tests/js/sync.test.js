@@ -217,6 +217,39 @@ describe('updateTaskProgress', () => {
     expect(resultContentManual.querySelector('.fr-alert').classList.contains('fr-alert--success')).toBe(true)
     expect(showNotification).toHaveBeenCalledWith('Synchronisation terminée avec succès!', 'success')
   })
+
+  it(
+    'rend les logs reçus en delta sans duplication',
+    () => {
+      document.body.innerHTML = `<div id="progress_bar" style="width: 0%;"></div>
+        <span id="sync-progress-text">Progression</span>
+        <div id="progress_percentage">0%</div>
+        <div id="elapsed_time">0s</div>
+        <div id="logs_count">0</div>
+        <div id="logs_content"></div>
+        <div id="copy_logs_btn"></div>`
+
+      globalThis.startTime = null
+      globalThis.logsCount = 0
+      globalThis.logsVisible = false
+      globalThis.updateStatsFromLog = jest.fn()
+
+      updateTaskProgress({ progress: 10, message: 'Étape 1', logs: [{ timestamp: 1700000000, message: 'ligne 1' }] })
+      updateTaskProgress({ progress: 20, message: 'Étape 2', logs: [{ timestamp: 1700000001, message: 'ligne 2' }] })
+
+      const logsContent = document.getElementById('logs_content')
+      const rendered = logsContent.textContent
+      expect(rendered).toContain('ligne 1')
+      expect(rendered).toContain('ligne 2')
+      expect(rendered.split('ligne 1').length - 1).toBe(1)
+      expect(rendered.split('ligne 2').length - 1).toBe(1)
+      expect(document.getElementById('logs_count').textContent).toBe('2')
+
+      // Un événement sans nouvelles lignes n'ajoute rien
+      updateTaskProgress({ progress: 30, message: 'Étape 3', logs: [] })
+      expect(logsContent.textContent.split('ligne 2').length - 1).toBe(1)
+    }
+  )
 })
 
 describe('toggleAutoSync', () => {
