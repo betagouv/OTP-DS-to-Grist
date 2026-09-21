@@ -1320,7 +1320,9 @@ def get_deleted_dossiers(
     return all_deleted
 
 
-def get_groups(api_token: str, demarche_number: int) -> list[tuple[int, str]]:
+def get_groups(
+    api_token: str | None, demarche_number: str | None
+) -> list[tuple[int, str]]:
     """Récupère les groupes instructeurs disponibles pour une démarche"""
     if not all([api_token, demarche_number]):
         return []
