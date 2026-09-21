@@ -1,4 +1,6 @@
 import os
+import random
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -8,7 +10,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from utils.constants import DEMARCHES_API_URL
-from utils.log import log_error
+from utils.log import log, log_error
 from utils.timing import timed
 
 load_dotenv()
@@ -598,6 +600,50 @@ fragment DossierFragment on Dossier {
 # SESSION GLOBALE (créée une seule fois)
 _session = None
 
+# Configuration du rate limiting réactif (API Démarches Numériques),
+# surchargeable via variables d'environnement
+MAX_429_RETRIES = max(1, int(os.getenv("DEMARCHES_MAX_429_RETRIES", "3")))
+FALLBACK_429_DELAY = int(os.getenv("DEMARCHES_FALLBACK_429_DELAY", "60"))
+MAX_RANDOM_DELAY_SECONDS = int(os.getenv("DEMARCHES_MAX_RANDOM_DELAY_SECONDS", "5"))
+
+
+class RateLimitedSession(requests.Session):
+    """
+    Session HTTP réagissant au throttling de l'API DN (rack-attack).
+    Sur une réponse 429, attend le délai indiqué puis relance la requête.
+
+    En-têtes d'une réponse 429 (voir rack_attack.rb côté DN) :
+      Retry-After        : secondes à attendre avant de relancer
+      RateLimit-Reset    : timestamp epoch (s) de fin de fenêtre (le plus fiable)
+      RateLimit-Remaining: vaut "0" sur un 429
+      RateLimit-Limit    : non transmis par l'API
+    """
+
+    def request(self, method, url, *args, **kwargs) -> requests.Response:
+        for attempt in range(1, MAX_429_RETRIES + 1):
+            response = super().request(method, url, *args, **kwargs)
+            if response.status_code != 429 or attempt == MAX_429_RETRIES:
+                return response
+            delay = self._retry_delay(response)
+            log(
+                f"429 Too Many Requests - attente de {delay:.0f}s "
+                f"avant nouvelle tentative (essai {attempt}/{MAX_429_RETRIES - 1})"
+            )
+            time.sleep(delay)
+        return response
+
+    def _retry_delay(self, response: requests.Response) -> float:
+        jitter = random.uniform(0, MAX_RANDOM_DELAY_SECONDS)
+        retry_after = response.headers.get("Retry-After")
+        if retry_after is not None:
+            return float(retry_after) + jitter
+
+        reset = response.headers.get("RateLimit-Reset")
+        if reset is not None:
+            return max(0.0, float(reset) - time.time()) + jitter
+
+        return FALLBACK_429_DELAY + jitter
+
 
 def get_session_with_retries():
     """
@@ -608,14 +654,16 @@ def get_session_with_retries():
 
     if _session is None:
         print(
-            "[RETRY] Création session avec retry automatique (3 tentatives, backoff 1s)"
+            "[RETRY] Création session avec retry automatique "
+            "(5xx: 3 tentatives, backoff 1s) et anti-429 (attente + relance)"
         )
-        _session = requests.Session()
+        _session = RateLimitedSession()
 
+        # 429 géré par RateLimitedSession ; ici uniquement les erreurs serveur 5xx
         retry_strategy = Retry(
             total=3,
             backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
+            status_forcelist=[500, 502, 503, 504],
             allowed_methods=["GET", "POST"],
             raise_on_status=False,
         )

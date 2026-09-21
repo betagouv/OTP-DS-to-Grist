@@ -2,8 +2,7 @@ import json
 import os
 from typing import Any, Dict, List
 
-import requests
-
+from dn.client import get_session_with_retries
 from dn.formatter import decode_base64_id
 from utils.constants import DEMARCHES_API_URL
 from utils.formatter import format_json_value, unwrap_json_list
@@ -723,7 +722,7 @@ def extract_instructeurs_from_demarche(demarche_number: int) -> List[Dict[str, A
         "Content-Type": "application/json",
     }
 
-    response = requests.post(
+    response = get_session_with_retries().post(
         API_URL,
         json={"query": query, "variables": {"demarcheNumber": demarche_number}},
         headers=headers,
