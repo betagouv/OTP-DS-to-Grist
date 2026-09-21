@@ -383,7 +383,7 @@ class TestSyncPipelineGrist:
         ignorerait les dossiers nouvellement éligibles aux filtres B.
 
         Régression : sans détection du changement de filtres, l'appel à
-        `get_demarche_dossiers_filtered` reçoit encore `updated_since`, donc
+        `get_demarche_dossiers` reçoit encore `updated_since`, donc
         le test échoue.
         """
         server = FakeGristServer(
@@ -418,7 +418,7 @@ class TestSyncPipelineGrist:
             mock_fetch = stack.enter_context(
                 patch.object(
                     gpa,
-                    "get_demarche_dossiers_filtered",
+                    "get_demarche_dossiers",
                     return_value=[make_dossier_brief(1)],
                 )
             )
