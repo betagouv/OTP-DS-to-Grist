@@ -3,12 +3,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from repetable_processor import (
-    ensure_repetable_columns_exist,
     auto_fix_missing_columns_optimized,
-    process_repetables_for_grist,
+    ensure_repetable_columns_exist,
+    get_existing_repetable_rows_improved_no_filter,
     process_repetable_data_batch,
     process_repetables_batch,
-    get_existing_repetable_rows_improved_no_filter,
+    process_repetables_for_grist,
 )
 
 
@@ -33,9 +33,7 @@ class TestEnsureRepetableColumnsExist:
     def test_all_columns_present_no_post(self):
         """colonnes nécessaires présentes -> True, pas de POST"""
         self.client.get_columns.return_value = {"age": "Int"}
-        result = ensure_repetable_columns_exist(
-            self.client, "blocs", [{"age": 5}]
-        )
+        result = ensure_repetable_columns_exist(self.client, "blocs", [{"age": 5}])
         assert result is True
         self.client.add_columns.assert_not_called()
 
@@ -43,9 +41,7 @@ class TestEnsureRepetableColumnsExist:
         """colonnes manquantes -> POST avec type inféré"""
         self.client.get_columns.return_value = {"autre_col": "Text"}
         self.client.add_columns.return_value = self._mock_post()
-        result = ensure_repetable_columns_exist(
-            self.client, "blocs", [{"age": 5}]
-        )
+        result = ensure_repetable_columns_exist(self.client, "blocs", [{"age": 5}])
         assert result is True
         self.client.add_columns.assert_called_once()
         assert self.client.add_columns.call_args.args[0] == "blocs"
@@ -56,9 +52,7 @@ class TestEnsureRepetableColumnsExist:
     def test_get_error_returns_false(self):
         """GET en échec -> False, pas de POST"""
         self.client.get_columns.return_value = {}
-        result = ensure_repetable_columns_exist(
-            self.client, "blocs", [{"age": 5}]
-        )
+        result = ensure_repetable_columns_exist(self.client, "blocs", [{"age": 5}])
         assert result is False
         self.client.add_columns.assert_not_called()
 
@@ -66,9 +60,7 @@ class TestEnsureRepetableColumnsExist:
         """POST en échec -> False"""
         self.client.get_columns.return_value = {"autre_col": "Text"}
         self.client.add_columns.return_value = self._mock_post(status=500)
-        result = ensure_repetable_columns_exist(
-            self.client, "blocs", [{"age": 5}]
-        )
+        result = ensure_repetable_columns_exist(self.client, "blocs", [{"age": 5}])
         assert result is False
 
 
@@ -167,7 +159,10 @@ class TestProcessRepetablesForGrist:
 
     def _call(self):
         dossier_data = {"number": 123, "champs": []}
-        column_types = [{"id": "champ_1", "type": "Text"}, {"id": "champ_2", "type": "Text"}]
+        column_types = [
+            {"id": "champ_1", "type": "Text"},
+            {"id": "champ_2", "type": "Text"},
+        ]
         with (
             patch(
                 "repetable_processor.get_existing_repetable_rows_improved_no_filter",
@@ -451,7 +446,11 @@ class TestProcessRepetablesBatchRecords:
                         {
                             "id": "row_1",
                             "champs": [
-                                {"__typename": "TextChamp", "label": "Nom", "stringValue": "Toto"},
+                                {
+                                    "__typename": "TextChamp",
+                                    "label": "Nom",
+                                    "stringValue": "Toto",
+                                },
                             ],
                         }
                     ],
@@ -580,6 +579,49 @@ class TestProcessRepetablesBatchRecords:
         assert self.client.post_records.call_args.args[1] == [
             {"fields": self._expected_record()}
         ]
+
+    def test_existing_rows_cache_skips_refetch(self):
+        """existing_rows_cache fourni -> pas de GET complet de la table"""
+        existing_rows = {"123_maquettes_row_1": 42}
+        self.client.patch_records.return_value = self._mock_response(200)
+        with patch(
+            "repetable_processor.get_existing_repetable_rows_improved_no_filter"
+        ) as mock_fetch:
+            success, errors = process_repetables_batch(
+                self.client,
+                [self._dossier()],
+                self._table_ids(),
+                self._column_types(),
+                existing_rows_cache={"maquettes": existing_rows},
+            )
+        assert (success, errors) == (1, 0)
+        mock_fetch.assert_not_called()
+        self.client.patch_records.assert_called_once()
+        assert self.client.patch_records.call_args.args[1] == [
+            {"id": 42, "fields": self._expected_record()}
+        ]
+
+    def test_create_updates_cache_in_place(self):
+        """création réussie -> le dict existing_rows_cache passé par l'appelant
+        est mis à jour avec le nouvel id, pour que le lot suivant (ou le run
+        suivant, via le cache préchargé) retrouve la ligne sans refetch."""
+        response = self._mock_response(201)
+        response.json.return_value = {"records": [{"id": 99}]}
+        self.client.post_records.return_value = response
+
+        shared_cache = {}
+        success, errors = process_repetables_batch(
+            self.client,
+            [self._dossier()],
+            self._table_ids(),
+            self._column_types(),
+            existing_rows_cache={"maquettes": shared_cache},
+        )
+
+        assert (success, errors) == (1, 0)
+        assert shared_cache["123_maquettes_row_1"] == 99
+        assert shared_cache["123_maquettes_index_1"] == 99
+        assert shared_cache["row_1"] == 99
 
 
 class TestProcessRepetablesForGristRecords:
