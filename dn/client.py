@@ -1,4 +1,6 @@
 import os
+import random
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -7,12 +9,12 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from queries_util import timed
 from utils.constants import DEMARCHES_API_URL
+from utils.log import log, log_error
+from utils.timing import timed
 
 load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
-API_URL = DEMARCHES_API_URL
 
 # Requêtes GraphQL (fragmentées en quelques constantes)
 # Pour les fragments communs
@@ -30,7 +32,6 @@ fragment PersonneMoraleFragment on PersonneMorale {
         raisonSociale
         nomCommercial
 
-        # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
         capitalSocial
         codeEffectifEntreprise
         formeJuridique
@@ -40,7 +41,6 @@ fragment PersonneMoraleFragment on PersonneMorale {
         etatAdministratif
     }
 
-    # ✅ NOUVEAU BLOC ASSOCIATION (pour les associations)
     association {
         rna
         titre
@@ -66,8 +66,6 @@ fragment AddressFragment on Address {
     label
     type
     streetAddress
-
-    # ✅ NOUVEAUX CHAMPS RÉCUPÉRÉS
     streetNumber
     streetName
     postalCode
@@ -599,8 +597,52 @@ fragment DossierFragment on Dossier {
     + CHAMP_FRAGMENTS
 )
 
-# ✅ SESSION GLOBALE (créée une seule fois)
+# SESSION GLOBALE (créée une seule fois)
 _session = None
+
+# Configuration du rate limiting réactif (API Démarches Numériques),
+# surchargeable via variables d'environnement
+MAX_429_RETRIES = max(1, int(os.getenv("DEMARCHES_MAX_429_RETRIES", "3")))
+FALLBACK_429_DELAY = int(os.getenv("DEMARCHES_FALLBACK_429_DELAY", "60"))
+MAX_RANDOM_DELAY_SECONDS = int(os.getenv("DEMARCHES_MAX_RANDOM_DELAY_SECONDS", "5"))
+
+
+class RateLimitedSession(requests.Session):
+    """
+    Session HTTP réagissant au throttling de l'API DN (rack-attack).
+    Sur une réponse 429, attend le délai indiqué puis relance la requête.
+
+    En-têtes d'une réponse 429 (voir rack_attack.rb côté DN) :
+      Retry-After        : secondes à attendre avant de relancer
+      RateLimit-Reset    : timestamp epoch (s) de fin de fenêtre (le plus fiable)
+      RateLimit-Remaining: vaut "0" sur un 429
+      RateLimit-Limit    : non transmis par l'API
+    """
+
+    def request(self, method, url, *args, **kwargs) -> requests.Response:
+        for attempt in range(1, MAX_429_RETRIES + 1):
+            response = super().request(method, url, *args, **kwargs)
+            if response.status_code != 429 or attempt == MAX_429_RETRIES:
+                return response
+            delay = self._retry_delay(response)
+            log(
+                f"429 Too Many Requests - attente de {delay:.0f}s "
+                f"avant nouvelle tentative (essai {attempt}/{MAX_429_RETRIES - 1})"
+            )
+            time.sleep(delay)
+        return response
+
+    def _retry_delay(self, response: requests.Response) -> float:
+        jitter = random.uniform(0, MAX_RANDOM_DELAY_SECONDS)
+        retry_after = response.headers.get("Retry-After")
+        if retry_after is not None:
+            return float(retry_after) + jitter
+
+        reset = response.headers.get("RateLimit-Reset")
+        if reset is not None:
+            return max(0.0, float(reset) - time.time()) + jitter
+
+        return FALLBACK_429_DELAY + jitter
 
 
 def get_session_with_retries():
@@ -612,14 +654,16 @@ def get_session_with_retries():
 
     if _session is None:
         print(
-            "[RETRY] Création session avec retry automatique (3 tentatives, backoff 1s)"
+            "[RETRY] Création session avec retry automatique "
+            "(5xx: 3 tentatives, backoff 1s) et anti-429 (attente + relance)"
         )
-        _session = requests.Session()
+        _session = RateLimitedSession()
 
+        # 429 géré par RateLimitedSession ; ici uniquement les erreurs serveur 5xx
         retry_strategy = Retry(
             total=3,
             backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
+            status_forcelist=[500, 502, 503, 504],
             allowed_methods=["GET", "POST"],
             raise_on_status=False,
         )
@@ -665,7 +709,7 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
     # Exécution de la requête
     session = get_session_with_retries()
     response = session.post(
-        API_URL,
+        DEMARCHES_API_URL,
         json={"query": query_get_dossier, "variables": variables},
         headers=headers,
     )
@@ -760,7 +804,7 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
     # Exécution de la requête avec retry automatique
     session = get_session_with_retries()
     response = session.post(
-        API_URL,
+        DEMARCHES_API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers,
     )
@@ -852,8 +896,8 @@ def get_demarche(demarche_number: int) -> Dict[str, Any]:
     return demarche
 
 
-@timed("get_demarche_dossiers_filtered", "ds")
-def get_demarche_dossiers_filtered(
+@timed("get_demarche_dossiers", "ds")
+def get_demarche_dossiers(
     demarche_number: int,
     date_debut: str = None,
     date_fin: str = None,
@@ -862,8 +906,14 @@ def get_demarche_dossiers_filtered(
     updated_since: str = None,
 ) -> List[Dict[str, Any]]:
     """
-    Récupère les dossiers avec filtrage côté serveur RÉEL.
-    Utilise SEULEMENT les paramètres qui fonctionnent vraiment selon les tests.
+    Récupère les dossiers d'une démarche, avec pagination.
+
+    Sans filtre, retourne tous les dossiers (échantillonnage lors de la
+    détection du schéma, fallback "récupération classique" quand aucun filtre
+    optimisé n'est actif).
+
+    Avec filtres, les paramètres sont appliqués côté serveur RÉEL quand c'est
+    possible : seule une partie fonctionne vraiment selon les tests.
 
     PARAMÈTRES RÉELLEMENT SUPPORTÉS :
     [OK]createdSince: ISO8601DateTime (date de début)
@@ -1008,7 +1058,7 @@ def get_demarche_dossiers_filtered(
     # Exécution de la requête avec retry automatique
     session = get_session_with_retries()  # ✅ AJOUTE CETTE LIGNE
     response = session.post(
-        API_URL,
+        DEMARCHES_API_URL,
         json={"query": query_get_demarche, "variables": variables},
         headers=headers,
     )
@@ -1045,7 +1095,7 @@ def get_demarche_dossiers_filtered(
 
             session = get_session_with_retries()  # ✅ AJOUTE
             next_response = session.post(  # ✅ CHANGE requests → session
-                API_URL,
+                DEMARCHES_API_URL,
                 json={"query": query_get_demarche, "variables": variables},
                 headers=headers,
             )
@@ -1151,16 +1201,6 @@ def get_demarche_dossiers_filtered(
     return filtered_dossiers
 
 
-def get_demarche_dossiers(demarche_number: int):
-    """
-    Récupère tous les dossiers d'une démarche, sans filtre, avec pagination
-    (délègue à get_demarche_dossiers_filtered sans arguments).
-    Utilisée pour l'échantillonnage lors de la détection du schéma et comme
-    fallback "récupération classique" quand aucun filtre optimisé n'est actif.
-    """
-    return get_demarche_dossiers_filtered(demarche_number)
-
-
 def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, Any]]:
     """
     Récupère uniquement le numéro et les labels de TOUS les dossiers d'une démarche.
@@ -1205,16 +1245,12 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     dossiers = []
     cursor = None
     page_num = 0
-
-    dossiers = []
-    cursor = None
-    page_num = 0
     has_next_page = True
 
     while has_next_page:
         page_num += 1
         response = session.post(
-            API_URL,
+            DEMARCHES_API_URL,
             json={
                 "query": query,
                 "variables": {"demarcheNumber": demarche_number, "after": cursor},
@@ -1236,31 +1272,6 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     print(f"[LABELS] {len(dossiers)} dossiers récupérés en {page_num} page(s)")
 
     return dossiers
-
-
-def get_dossier_geojson(dossier_number: int) -> Dict[str, Any]:
-    """
-    Récupère les données géométriques d'un dossier au format GeoJSON.
-    """
-    if not API_TOKEN:
-        raise ValueError(
-            "Le token d'API n'est pas configuré. Définissez DEMARCHES_API_TOKEN"
-        )
-
-    base_url = (
-        API_URL.split("/api/")[0]
-        if "/api/" in API_URL
-        else "https://www.demarches-simplifiees.fr"
-    )
-    url = f"{base_url}/dossiers/{dossier_number}/geojson"
-
-    headers = {"Authorization": f"Bearer {API_TOKEN}", "Accept": "application/json"}
-
-    session = get_session_with_retries()
-    response = session.get(url, headers=headers)
-    response.raise_for_status()
-
-    return response.json()
 
 
 def get_deleted_dossiers(
@@ -1308,14 +1319,15 @@ def get_deleted_dossiers(
             "since": deleted_since,
         }
         response = session.post(
-            API_URL,
+            DEMARCHES_API_URL,
             json={"query": query_deleted, "variables": variables},
             headers=headers,
         )
         response.raise_for_status()
         result = response.json()
         if "errors" in result:
-            raise Exception(f"GraphQL errors: {result['errors']}")
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            raise Exception(f"GraphQL errors: {', '.join(messages)}")
         connection = result["data"]["demarche"]["deletedDossiers"]
         all_deleted.extend(connection["nodes"])
         has_next_page = connection["pageInfo"]["hasNextPage"]
@@ -1337,17 +1349,74 @@ def get_deleted_dossiers(
     while has_next_page:
         variables = {"demarcheNumber": demarche_number, "first": 100, "after": cursor}
         response = session.post(
-            API_URL,
+            DEMARCHES_API_URL,
             json={"query": query_pending, "variables": variables},
             headers=headers,
         )
         response.raise_for_status()
         result = response.json()
         if "errors" in result:
-            raise Exception(f"GraphQL errors: {result['errors']}")
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            raise Exception(f"GraphQL errors: {', '.join(messages)}")
         connection = result["data"]["demarche"]["pendingDeletedDossiers"]
         all_deleted.extend(connection["nodes"])
         has_next_page = connection["pageInfo"]["hasNextPage"]
         cursor = connection["pageInfo"]["endCursor"]
 
     return all_deleted
+
+
+def get_groups(
+    api_token: str | None, demarche_number: str | None
+) -> list[tuple[int, str]]:
+    """Récupère les groupes instructeurs disponibles pour une démarche"""
+    if not all([api_token, demarche_number]):
+        return []
+
+    try:
+        query = """
+        query getDemarche($demarcheNumber: Int!) {
+            demarche(number: $demarcheNumber) {
+                groupeInstructeurs {
+                    id
+                    number
+                    label
+                }
+            }
+        }
+        """
+
+        variables = {"demarcheNumber": int(demarche_number)}
+        headers = {
+            "Authorization": f"Bearer {api_token}",
+            "Content-Type": "application/json",
+        }
+
+        session = get_session_with_retries()
+        response = session.post(
+            DEMARCHES_API_URL,
+            json={"query": query, "variables": variables},
+            headers=headers,
+            timeout=10,
+        )
+
+        if response.status_code != 200:
+            return []
+
+        result = response.json()
+        if "errors" in result:
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            log_error(
+                "Erreur GraphQL lors de la récupération des groupes instructeurs: "
+                + ", ".join(messages)
+            )
+            return []
+
+        groupes = (
+            result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
+        )
+        return [(groupe.get("number"), groupe.get("label")) for groupe in groupes]
+
+    except Exception as e:
+        log_error(f"Erreur lors de la récupération des groupes instructeurs: {e}")
+        return []

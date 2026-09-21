@@ -175,9 +175,11 @@ const updateTaskProgress = (task) => {
   }
 
   // Ajouter les nouveaux logs
-  if (task.logs && task.logs.length > logsCount) {
-    const newLogs = task.logs.slice(logsCount)
+  // (task.logs ne contient que les lignes ajoutées depuis le dernier envoi)
+  if (task.logs && task.logs.length > 0) {
+    const newLogs = task.logs
     const logsContent = document.getElementById('logs_content')
+    const fragment = document.createDocumentFragment()
 
     newLogs.forEach((log) => {
       const logTime = new Date(log.timestamp * 1000).toLocaleTimeString()
@@ -190,17 +192,29 @@ const updateTaskProgress = (task) => {
         message.toLowerCase().includes('échec') ||
         message.toLowerCase().includes('failed')
 
-      const logStyle = isError ? 'color: #ce0500; font-weight: bold;' : ''
+      const timeElement = document.createElement('div')
+      timeElement.style.color = '#666'
+      timeElement.style.fontSize = '0.8rem'
+      timeElement.textContent = `[${logTime}]`
 
-      logsContent.innerHTML += `<div style="color: #666; font-size: 0.8rem;">
-        [${logTime}]</div><div style="margin-bottom: 0.5rem; ${logStyle}">${escapeHtml(message)}
-      </div>`
+      const messageElement = document.createElement('div')
+      messageElement.style.marginBottom = '0.5rem'
+      if (isError) {
+        messageElement.style.color = '#ce0500'
+        messageElement.style.fontWeight = 'bold'
+      }
+      messageElement.textContent = message
+
+      fragment.appendChild(timeElement)
+      fragment.appendChild(messageElement)
 
       // Extraire les statistiques depuis les logs
       updateStatsFromLog(message)
     })
 
-    logsCount = task.logs.length
+    logsContent.appendChild(fragment)
+
+    logsCount += newLogs.length
     document.getElementById('logs_count').textContent = logsCount
 
     // Afficher le bouton de copie si des logs existent

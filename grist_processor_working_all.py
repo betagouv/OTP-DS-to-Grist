@@ -1,4 +1,5 @@
 import concurrent.futures
+import gc
 import hashlib
 import json as json_module
 import os
@@ -19,10 +20,9 @@ from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient
 from grist.column_cache import ColumnCache
 from hide_id_columns import IdColumnHider
-from queries import get_dossier
-from queries_extract import dossier_to_flat_data
-from queries_graphql import get_demarche_dossiers_filtered
-from queries_util import get_timings
+from dn.client import get_demarche_dossiers, get_dossier
+from dn.extract import dossier_to_flat_data
+from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
     get_demarche_schema,
@@ -1032,8 +1032,6 @@ def process_demarche_for_grist_optimized(
 
                 # Utiliser l'ancienne méthode pour récupérer des échantillons
                 try:
-                    from queries_graphql import get_demarche_dossiers
-
                     all_dossiers_brief = get_demarche_dossiers(demarche_number)
                     sample_size = min(3, len(all_dossiers_brief))
                     sample_dossier_numbers = [
@@ -1116,7 +1114,7 @@ def process_demarche_for_grist_optimized(
             if api_filters.get("date_fin"):
                 log(f"Filtre par date de fin: {api_filters['date_fin']}")
 
-            all_dossiers = get_demarche_dossiers_filtered(
+            all_dossiers = get_demarche_dossiers(
                 demarche_number,
                 date_debut=api_filters.get("date_debut"),
                 date_fin=api_filters.get("date_fin"),
@@ -1179,12 +1177,10 @@ def process_demarche_for_grist_optimized(
                 log(f"Filtre par groupes instructeurs: {', '.join(groupes_filter)}")
 
             # Récupérer tous les dossiers puis filtrer côté client
-            from queries_graphql import get_demarche_dossiers
-
             log("Récupération de tous les dossiers avec pagination...")
             if updated_since_cursor:
                 log(f"Récupération filtrée avec updatedSince: {updated_since_cursor}")
-                all_dossiers = get_demarche_dossiers_filtered(
+                all_dossiers = get_demarche_dossiers(
                     demarche_number, updated_since=updated_since_cursor
                 )
             else:
@@ -1293,6 +1289,9 @@ def process_demarche_for_grist_optimized(
             dossier_batches.append(batch_dossier_numbers)
 
         log(f"Dossiers organisés en {batch_count} lots de {batch_size} maximum")
+
+        # Les métadonnées de tous les dossiers ne servent plus une fois les lots constitués
+        del all_dossiers, filtered_dossiers
 
         descriptor_to_column_id = column_types.get("descriptor_to_column_id", {})
 
@@ -1735,7 +1734,7 @@ def process_demarche_for_grist_optimized(
             for dossier_data in batch_dossiers_dict.values():
                 avis = dossier_data.get("avis", [])
                 if avis:
-                    from queries_extract import extract_avis_from_dossier
+                    from dn.extract import extract_avis_from_dossier
 
                     all_avis_records.extend(extract_avis_from_dossier(dossier_data))
 
@@ -1755,6 +1754,17 @@ def process_demarche_for_grist_optimized(
             if all_avis_records:
                 log(f"[TIMING] Après avis: {time.time() - batch_start:.1f}s")
                 log_progress.log("Traitement de la table Avis")
+
+            # Libérer la mémoire du lot avant le lot suivant
+            del batch_dossiers_dict, all_avis_records
+            del dossier_records, champ_records, annotation_records, all_annotations_for_columns
+            if "filtered_repetable_dict" in locals():
+                del filtered_repetable_dict
+            if "all_repetable_rows" in locals():
+                del all_repetable_rows
+            if "rows_by_block" in locals():
+                del rows_by_block
+            gc.collect()
 
         # Calculer les statistiques finales
         elapsed_time = time.time() - start_time

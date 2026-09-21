@@ -38,3 +38,32 @@ def unwrap_json_list(raw: str) -> str:
         return ", ".join(str(v) for v in parsed)
 
     return raw
+
+
+def format_json_value(json_value, max_length=10000) -> str | None:
+    """
+    Formate une valeur JSON complexe en chaîne.
+    Tronque si nécessaire et s'assure que la valeur est une chaîne.
+
+    Args:
+        json_value: Valeur JSON à formater
+        max_length: Longueur maximale de la chaîne résultante
+
+    Returns:
+        Chaîne formatée
+    """
+    if json_value is None:
+        return None
+
+    try:
+        json_str = json.dumps(json_value, ensure_ascii=False)
+        # Tronquer si la chaîne est trop longue
+        if len(json_str) > max_length:
+            json_str = json_str[:max_length] + "..."
+        return json_str
+    except (TypeError, ValueError):
+        # Si la sérialisation échoue, convertir en chaîne simple
+        str_value = str(json_value)
+        if len(str_value) > max_length:
+            str_value = str_value[:max_length] + "..."
+        return str_value

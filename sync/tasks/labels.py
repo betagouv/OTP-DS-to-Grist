@@ -16,7 +16,7 @@ import os
 import sys
 import time
 
-from queries_graphql import get_demarche_dossiers_labels_only
+from dn.client import get_demarche_dossiers_labels_only
 
 BATCH_SIZE = 500
 

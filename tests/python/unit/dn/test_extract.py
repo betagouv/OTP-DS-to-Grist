@@ -1,4 +1,4 @@
-from queries_extract import dossier_to_flat_data, extract_champ_values
+from dn.extract import dossier_to_flat_data, extract_champ_values
 from schema_utils import create_columns_from_schema
 
 

@@ -235,7 +235,7 @@ class TestSyncPipelineGrist:
             stack.enter_context(
                 patch.object(
                     gpa,
-                    "get_demarche_dossiers_filtered",
+                    "get_demarche_dossiers",
                     return_value=[make_dossier_brief(1)],
                 )
             )
