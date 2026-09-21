@@ -1197,10 +1197,6 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     dossiers = []
     cursor = None
     page_num = 0
-
-    dossiers = []
-    cursor = None
-    page_num = 0
     has_next_page = True
 
     while has_next_page:
