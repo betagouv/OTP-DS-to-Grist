@@ -233,62 +233,18 @@ def extract_champ_values(
         elif champ["__typename"] == "CarteChamp":
             # Traitement détaillé pour les champs Carte
             geo_areas = champ.get("geoAreas", [])
-
-            # Si pas de zones géographiques, retourner un résultat minimal
             if not geo_areas:
-                result.append(
-                    {
-                        "id": champ["id"],
-                        "numeric_id": decode_base64_id(champ["id"]),
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}",
-                        "base_label": champ["label"],
-                        "type": champ["__typename"],
-                        "value": "Aucune zone géographique définie",
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
+                value = "Aucune zone géographique définie"
+                json_value = None
             else:
-                # Créer des entrées séparées pour chaque zone géographique
-                for j, geo_area in enumerate(geo_areas):
-                    geo_result = {
-                        "id": champ["id"],
-                        "numeric_id": decode_base64_id(champ["id"]),
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}",
-                        "base_label": champ["label"],
-                        "type": champ["__typename"],
-                        # Champs spécifiques à la zone géographique
-                        "geo_area_id": geo_area.get("id"),
-                        "geo_area_source": geo_area.get("source"),
-                        "geo_area_description": geo_area.get("description"),
-                        "geo_area_geometry_type": geo_area.get("geometry", {}).get(
-                            "type"
-                        ),
-                        "geo_area_geometry_coordinates": json.dumps(
-                            geo_area.get("geometry", {}).get("coordinates")
-                        )
-                        if geo_area.get("geometry")
-                        else None,
-                        # Informations supplémentaires pour les parcelles cadastrales
-                        "parcelle_commune": geo_area.get("commune"),
-                        "parcelle_numero": geo_area.get("numero"),
-                        "parcelle_section": geo_area.get("section"),
-                        "parcelle_prefixe": geo_area.get("prefixe"),
-                        "parcelle_surface": geo_area.get("surface"),
-                        # Valeur textuelle pour compatibilité
-                        "value": f"Zone {j + 1}: {geo_area.get('source', '')} - {geo_area.get('description', 'Sans description')}",
-                        "json_value": geo_area,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                    result.append(geo_result)
+                # Une seule entrée pour TOUTES les zones : évite l'écrasement
+                # (les entrées multiples partageaient le même label de colonne).
+                # json_value porte la liste complète, pas une zone isolée.
+                value = "; ".join(
+                    f"Zone {j + 1}: {geo_area.get('source', '')} - {geo_area.get('description', 'Sans description')}"
+                    for j, geo_area in enumerate(geo_areas)
+                )
+                json_value = geo_areas
         elif champ["__typename"] == "DossierLinkChamp" and champ.get("dossier"):
             # Traitement pour les liens vers d'autres dossiers
             linked_dossier = champ.get("dossier", {})
