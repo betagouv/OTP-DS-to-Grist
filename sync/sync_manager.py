@@ -19,6 +19,9 @@ load_dotenv()
 
 from utils.constants import DATABASE_URL
 
+# Nombre maximal de logs retenus par tâche en mémoire serveur
+MAX_LOGS_PER_TASK = 2000
+
 
 class SyncManager:
     """
@@ -30,6 +33,7 @@ class SyncManager:
         self.tasks = {}
         self.task_counter = 0
         self.notify_callback = notify_callback
+        self._broadcast_offset: dict[str, int] = {}
 
     def notify(self, event_type: str, data: dict[str, Any]) -> None:
         """Méthode publique pour les notifications"""
@@ -250,6 +254,7 @@ class SyncManager:
             "message": "Initialisation...",
             "start_time": time.time(),
             "logs": [],
+            "log_base": 0,
         }
 
         # Démarrer la tâche dans un thread séparé
@@ -301,6 +306,10 @@ class SyncManager:
 
             self._emit_update(task_id)
 
+        finally:
+            self.tasks.pop(task_id, None)
+            self._broadcast_offset.pop(task_id, None)
+
     def _update_progress(self, task_id: str, progress: float, message: str) -> None:
         """Met à jour la progression d'une tâche"""
         if task_id in self.tasks:
@@ -311,14 +320,23 @@ class SyncManager:
     def _add_log(self, task_id: str, message: str) -> None:
         """Ajoute un log à une tâche"""
         if task_id in self.tasks:
-            self.tasks[task_id]["logs"].append(
-                {"timestamp": time.time(), "message": message}
-            )
+            task = self.tasks[task_id]
+            task["logs"].append({"timestamp": time.time(), "message": message})
+            if len(task["logs"]) > MAX_LOGS_PER_TASK:
+                trimmed = len(task["logs"]) - MAX_LOGS_PER_TASK
+                del task["logs"][:trimmed]
+                task["log_base"] += trimmed
             self._emit_update(task_id)
 
     def _emit_update(self, task_id: str) -> None:
-        """Émet une mise à jour via notification callback"""
-        self.notify("task_update", {"task_id": task_id, "task": self.tasks[task_id]})
+        """Émet une mise à jour via notification callback (logs en delta)"""
+        task = self.tasks[task_id]
+        next_index = task["log_base"] + len(task["logs"])
+        broadcasted = self._broadcast_offset.get(task_id, 0)
+        cut = max(0, broadcasted - task["log_base"])
+        self._broadcast_offset[task_id] = next_index
+        task_payload = {**task, "logs": task["logs"][cut:]}
+        self.notify("task_update", {"task_id": task_id, "task": task_payload})
         time.sleep(0)
 
     def get_task(self, task_id: str) -> dict[str, Any] | None:

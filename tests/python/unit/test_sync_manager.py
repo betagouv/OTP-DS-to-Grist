@@ -124,8 +124,10 @@ class TestSyncManager:
         task = self.manager.get_task("nonexistent_task")
         assert task is None
 
-    def test_update_progress_existing_task(self):
+    @patch("threading.Thread")
+    def test_update_progress_existing_task(self, mock_thread):
         """Test _update_progress pour une tâche existante"""
+        mock_thread.return_value = MagicMock()
         task_func = MagicMock(return_value="result")
         task_id = self.manager.start_task(task_func)
 
@@ -148,8 +150,10 @@ class TestSyncManager:
         # Aucune notification ne doit être envoyée
         self.mock_callback.assert_not_called()
 
-    def test_add_log_existing_task(self):
+    @patch("threading.Thread")
+    def test_add_log_existing_task(self, mock_thread):
         """Test _add_log pour une tâche existante"""
+        mock_thread.return_value = MagicMock()
         task_func = MagicMock(return_value="result")
         task_id = self.manager.start_task(task_func)
 
@@ -173,8 +177,10 @@ class TestSyncManager:
         # Aucune notification ne doit être envoyée
         self.mock_callback.assert_not_called()
 
-    def test_emit_update(self):
+    @patch("threading.Thread")
+    def test_emit_update(self, mock_thread):
         """Test _emit_update envoie la bonne notification"""
+        mock_thread.return_value = MagicMock()
         task_func = MagicMock(return_value="result")
         task_id = self.manager.start_task(task_func)
 
@@ -186,8 +192,50 @@ class TestSyncManager:
             "task_update", {"task_id": task_id, "task": task}
         )
 
-    def test_run_task_success(self):
+    @patch("threading.Thread")
+    def test_emit_update_sends_only_new_logs(self, mock_thread):
+        """Test que l'émission delta n'envoie que les logs nouveaux"""
+        mock_thread.return_value = MagicMock()
+        task_func = MagicMock(return_value="result")
+        task_id = self.manager.start_task(task_func)
+
+        self.manager._add_log(task_id, "ligne 1")
+        self.mock_callback.reset_mock()
+        self.manager._add_log(task_id, "ligne 2")
+
+        last_call = self.mock_callback.call_args
+        assert last_call.args[0] == "task_update"
+        data = last_call.args[1]
+        assert data["task_id"] == task_id
+        emitted_logs = data["task"]["logs"]
+        assert len(emitted_logs) == 1
+        assert emitted_logs[0]["message"] == "ligne 2"
+        assert "progress" in data["task"]
+
+    @patch("threading.Thread")
+    @patch("sync.sync_manager.MAX_LOGS_PER_TASK", 3)
+    def test_add_log_caps_logs_at_max(self, mock_thread):
+        """Test que les logs sont rognés à MAX_LOGS_PER_TASK"""
+        mock_thread.return_value = MagicMock()
+        task_func = MagicMock(return_value="result")
+        task_id = self.manager.start_task(task_func)
+
+        for i in range(5):
+            self.manager._add_log(task_id, f"ligne {i}")
+
+        task = self.manager.tasks[task_id]
+        assert len(task["logs"]) == 3
+        assert task["log_base"] == 2
+        assert [log["message"] for log in task["logs"]] == [
+            "ligne 2",
+            "ligne 3",
+            "ligne 4",
+        ]
+
+    @patch("threading.Thread")
+    def test_run_task_success(self, mock_thread):
         """Test _run_task avec exécution réussie"""
+        mock_thread.return_value = MagicMock()
 
         # pyright: ignore[reportUnusedVariable]
         def mock_task_func(*_args, **_kwargs):
@@ -199,9 +247,17 @@ class TestSyncManager:
         # Exécuter manuellement la tâche en appelant _run_task directement
         self.manager._run_task(task_id, mock_task_func)
 
-        # Vérifier l'état final de la tâche
-        task = self.manager.get_task(task_id)
-        assert task is not None
+        # La tâche terminée est retirée de self.tasks
+        assert self.manager.get_task(task_id) is None
+        assert task_id not in self.manager.tasks
+        assert task_id not in self.manager._broadcast_offset
+
+        # L'état final a bien été émis avant la suppression
+        last_call = self.mock_callback.call_args
+        assert last_call.args[0] == "task_update"
+        data = last_call.args[1]
+        assert data["task_id"] == task_id
+        task = data["task"]
         assert task["status"] == "completed"
         assert task["progress"] == 100
         assert "result" in task
@@ -663,14 +719,52 @@ class TestSyncManager:
             "message": "Initialisation...",
             "start_time": time.time(),
             "logs": [],
+            "log_base": 0,
         }
 
         self.manager._run_task(task_id, mock_sync_task)
 
-        task = self.manager.get_task(task_id)
-        assert task is not None
+        # La tâche terminée est retirée de self.tasks
+        assert self.manager.get_task(task_id) is None
+        assert task_id not in self.manager.tasks
+
+        # L'état final a bien été émis avant la suppression
+        last_call = self.mock_callback.call_args
+        assert last_call.args[0] == "task_update"
+        data = last_call.args[1]
+        assert data["task_id"] == task_id
+        task = data["task"]
         assert task["status"] == "error"
         assert "Erreur test" in task["message"]
+
+    def test_run_task_removes_task_when_function_raises(self):
+        """Test que la tâche est retirée même si task_function lève une exception"""
+
+        def mock_failing_task(*_args, **_kwargs):
+            raise RuntimeError("Erreur inattendue")
+
+        task_id = "test_task_raise"
+        self.manager.tasks[task_id] = {
+            "status": "running",
+            "progress": 0,
+            "message": "Initialisation...",
+            "start_time": time.time(),
+            "logs": [],
+            "log_base": 0,
+        }
+
+        self.manager._run_task(task_id, mock_failing_task)
+
+        # La tâche est retirée malgré l'échec
+        assert self.manager.get_task(task_id) is None
+        assert task_id not in self.manager.tasks
+
+        # L'état final a bien été émis avant la suppression
+        last_call = self.mock_callback.call_args
+        assert last_call.args[0] == "task_update"
+        data = last_call.args[1]
+        assert data["task_id"] == task_id
+        assert data["task"]["status"] == "error"
 
     @patch("sync.sync_manager.create_engine")
     @patch("sync.sync_manager.sessionmaker")

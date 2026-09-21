@@ -1,4 +1,5 @@
 import concurrent.futures
+import gc
 import hashlib
 import json as json_module
 import os
@@ -1289,6 +1290,9 @@ def process_demarche_for_grist_optimized(
 
         log(f"Dossiers organisés en {batch_count} lots de {batch_size} maximum")
 
+        # Les métadonnées de tous les dossiers ne servent plus une fois les lots constitués
+        del all_dossiers, filtered_dossiers
+
         descriptor_to_column_id = column_types.get("descriptor_to_column_id", {})
 
         # Fonction pour préparer un seul dossier (DÉFINIE AVANT LA BOUCLE)
@@ -1750,6 +1754,17 @@ def process_demarche_for_grist_optimized(
             if all_avis_records:
                 log(f"[TIMING] Après avis: {time.time() - batch_start:.1f}s")
                 log_progress.log("Traitement de la table Avis")
+
+            # Libérer la mémoire du lot avant le lot suivant
+            del batch_dossiers_dict, all_avis_records
+            del dossier_records, champ_records, annotation_records, all_annotations_for_columns
+            if "filtered_repetable_dict" in locals():
+                del filtered_repetable_dict
+            if "all_repetable_rows" in locals():
+                del all_repetable_rows
+            if "rows_by_block" in locals():
+                del rows_by_block
+            gc.collect()
 
         # Calculer les statistiques finales
         elapsed_time = time.time() - start_time
