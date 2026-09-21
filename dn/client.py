@@ -1282,7 +1282,8 @@ def get_deleted_dossiers(
         response.raise_for_status()
         result = response.json()
         if "errors" in result:
-            raise Exception(f"GraphQL errors: {result['errors']}")
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            raise Exception(f"GraphQL errors: {', '.join(messages)}")
         connection = result["data"]["demarche"]["deletedDossiers"]
         all_deleted.extend(connection["nodes"])
         has_next_page = connection["pageInfo"]["hasNextPage"]
@@ -1311,7 +1312,8 @@ def get_deleted_dossiers(
         response.raise_for_status()
         result = response.json()
         if "errors" in result:
-            raise Exception(f"GraphQL errors: {result['errors']}")
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            raise Exception(f"GraphQL errors: {', '.join(messages)}")
         connection = result["data"]["demarche"]["pendingDeletedDossiers"]
         all_deleted.extend(connection["nodes"])
         has_next_page = connection["pageInfo"]["hasNextPage"]
