@@ -8,6 +8,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from utils.constants import DEMARCHES_API_URL
+from utils.log import log_error
 from utils.timing import timed
 
 load_dotenv()
@@ -1356,6 +1357,11 @@ def get_groups(api_token: str, demarche_number: int) -> list[tuple[int, str]]:
 
         result = response.json()
         if "errors" in result:
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            log_error(
+                "Erreur GraphQL lors de la récupération des groupes instructeurs: "
+                + ", ".join(messages)
+            )
             return []
 
         groupes = (
@@ -1363,5 +1369,6 @@ def get_groups(api_token: str, demarche_number: int) -> list[tuple[int, str]]:
         )
         return [(groupe.get("number"), groupe.get("label")) for groupe in groupes]
 
-    except Exception:
+    except Exception as e:
+        log_error(f"Erreur lors de la récupération des groupes instructeurs: {e}")
         return []

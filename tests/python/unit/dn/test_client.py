@@ -93,6 +93,27 @@ class TestGetGroups:
         """Exception quelconque → retourne []"""
         assert get_groups("token", "123") == []
 
+    @patch("dn.client.get_session_with_retries")
+    def test_graphql_errors_are_logged(self, mock_session_factory, capsys):
+        """Erreurs GraphQL → les messages sont loggés (concis, sans le dict brut)"""
+        mock_response = _mock_response(json_data={"errors": [{"message": "Unauthorized"}]})
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_response
+        mock_session_factory.return_value = mock_session
+
+        get_groups("token", "123")
+
+        output = capsys.readouterr().out
+        assert "Unauthorized" in output
+        assert "{'message'" not in output
+
+    @patch("dn.client.get_session_with_retries", side_effect=Exception("Network error"))
+    def test_exception_is_logged(self, mock_session_factory, capsys):
+        """Exception → l'erreur est loggée avant de retourner []"""
+        get_groups("token", "123")
+
+        assert "Network error" in capsys.readouterr().out
+
 
 class TestGetSessionWithRetries:
     """Tests pour get_session_with_retries (singleton)"""
