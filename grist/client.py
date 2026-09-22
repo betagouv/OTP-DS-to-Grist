@@ -2,13 +2,12 @@ import traceback
 from typing import Any
 
 import requests
-from utils.log import log, log_verbose, log_error, log_progress
+
+from utils.log import log, log_error, log_progress, log_verbose
 
 
 class GristClient:
-    def __init__(
-        self, base_url: str, api_key: str, doc_id: str | None = None
-    ) -> None:
+    def __init__(self, base_url: str, api_key: str, doc_id: str | None = None) -> None:
         self.base_url: str = base_url.rstrip("/")  # Enlever le / final s'il y en a un
         self.api_key: str = api_key
         self.doc_id: str | None = doc_id
@@ -169,9 +168,7 @@ class GristClient:
         log(f"  Cache dates: {len(dates_dict)} dossiers chargés depuis {table_id}")
         return dates_dict
 
-    def get_sync_metadata(
-        self, demarche_number: int | str
-    ) -> dict[str, Any] | None:
+    def get_sync_metadata(self, demarche_number: int | str) -> dict[str, Any] | None:
         """
         Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.
         Retourne un dict ou None si pas encore de sync enregistrée.
@@ -242,69 +239,6 @@ class GristClient:
             )
 
         return existing_grist_id
-
-    def upsert_dossier_in_grist(self, table_id: str, row_dict: dict[str, Any]) -> bool:
-        """
-        Insère ou met à jour un dossier dans une table Grist, en filtrant les champs problématiques.
-        """
-        # Log des champs avant filtrage
-        log_verbose(f"Champs dans row_dict avant filtrage: {list(row_dict.keys())}")
-        log_verbose(f"Présence de 'label_names': {'label_names' in row_dict}")
-        log_verbose(f"Présence de 'labels_json': {'labels_json' in row_dict}")
-
-        if "label_names" in row_dict:
-            log_verbose(f"Valeur de 'label_names': {row_dict['label_names']}")
-        if "labels_json" in row_dict:
-            log_verbose(f"Valeur de 'labels_json': {row_dict['labels_json']}")
-            if not self.doc_id:
-                raise ValueError("Document ID is required")
-
-        # Vérifier si nous avons le numéro de dossier
-        dossier_number = row_dict.get("dossier_number") or row_dict.get("number")
-
-        if not dossier_number:
-            log_error("dossier_number ou number manquant dans les données")
-            log_verbose(f"Données disponibles: {row_dict.keys()}")
-            return False
-
-        # Convertir le numéro de dossier en chaîne pour les comparaisons
-        dossier_number_str = str(dossier_number)
-
-        # Récupération des dossiers existants pour vérifier si on doit faire un update ou un insert
-        log_verbose(f"Récupération des dossiers existants pour la table {table_id}...")
-        existing_records = self.get_existing_dossier_numbers(table_id)
-        log_verbose(f"Dossiers existants trouvés: {len(existing_records)}")
-
-        # S'assurer que le dictionnaire est formaté correctement pour l'API Grist
-        # Grist attend des champs sous la forme {"fields": {...}}
-        formatted_row = {"fields": row_dict} if "fields" not in row_dict else row_dict
-
-        log_verbose(
-            f"Recherche du dossier {dossier_number_str} dans les enregistrements existants..."
-        )
-        if dossier_number_str in existing_records:
-            # Mise à jour de l'enregistrement existant
-            record_id = existing_records[dossier_number_str]
-            log_verbose(
-                f"Dossier {dossier_number_str} trouvé avec ID {record_id}, mise à jour..."
-            )
-            response = self.patch_records(
-                table_id, [{"id": record_id, "fields": formatted_row["fields"]}]
-            )
-        else:
-            # Création d'un nouvel enregistrement
-            log_verbose(
-                f"Dossier {dossier_number_str} non trouvé, création d'un nouvel enregistrement..."
-            )
-            response = self.post_records(table_id, [formatted_row])
-
-        if response.status_code in [200, 201]:
-            return True
-        else:
-            log_error(
-                f"Erreur UPSERT pour {dossier_number_str}: {response.status_code} - {response.text}"
-            )
-            return False
 
     def list_documents(self) -> dict[str, Any]:
         url = f"{self.base_url}/docs"
@@ -460,9 +394,7 @@ class GristClient:
 
         return response
 
-    def delete_records(
-        self, table_id: str, record_ids: list[int]
-    ) -> requests.Response:
+    def delete_records(self, table_id: str, record_ids: list[int]) -> requests.Response:
         """
         Supprime des enregistrements d'une table Grist.
         Le payload envoyé est la liste brute des ids (sans enveloppe).
@@ -471,9 +403,7 @@ class GristClient:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
-        url = (
-            f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records/delete"
-        )
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records/delete"
         log_verbose(f"POST {url}")
         response = requests.post(url, headers=self.headers, json=record_ids)
 
@@ -615,6 +545,10 @@ class GristClient:
         # Préparer les listes pour les opérations de création et de mise à jour
         to_create = []
         to_update = []
+        # ✅ Filet de sécurité : si un même dossier_number apparaît deux fois
+        # dans ce batch (ex. doublon résiduel malgré la déduplication en
+        # amont côté processor), on ne veut jamais le créer deux fois.
+        queued_for_creation: set[str] = set()
 
         for row_dict in dossiers_list:
             # Filtrer les colonnes qui existent dans la table
@@ -641,8 +575,21 @@ class GristClient:
                 # Mise à jour d'un enregistrement existant
                 record_id = existing_records[dossier_number_str]
                 to_update.append({"id": record_id, "fields": filtered_row_dict})
+            elif dossier_number_str in queued_for_creation:
+                # Doublon résiduel DANS ce batch (ne devrait plus arriver
+                # grâce à la déduplication en amont côté processor, mais on
+                # se protège quand même) : on ignore ce second passage
+                # plutôt que de créer une seconde ligne pour le même
+                # dossier. Rien n'est perdu — ce dossier sera resynchronisé
+                # normalement au prochain cycle.
+                log_error(
+                    f"[DEDUP] Doublon résiduel ignoré dans le batch pour le "
+                    f"dossier {dossier_number_str} (sera resynchronisé au "
+                    f"prochain cycle)"
+                )
             else:
                 # Création d'un nouvel enregistrement
+                queued_for_creation.add(dossier_number_str)
                 to_create.append({"fields": filtered_row_dict})
 
         # Variables pour suivre les succès

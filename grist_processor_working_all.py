@@ -33,7 +33,7 @@ from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
-from utils.log import log, log_verbose, log_error, log_progress
+from utils.log import log, log_error, log_progress, log_verbose
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -1228,6 +1228,33 @@ def process_demarche_for_grist_optimized(
             log(
                 f"Après filtrage: {total_dossiers} dossiers ({(total_dossiers / total_dossiers_brut * 100) if total_dossiers_brut > 0 else 0:.1f}%)"
             )
+
+        # ✅ Déduplication défensive par numéro de dossier. La pagination DN
+        # (triée implicitement, filtrée par updatedSince) peut faire
+        # apparaître un même dossier sur deux pages si sa
+        # dateDerniereModification change PENDANT la récupération
+        # multi-pages (cas fréquent sur une démarche à forte activité en
+        # direct). Sans cette étape, un dossier dupliqué dans la liste
+        # source peut être créé deux fois dans Grist (voir aussi le filet
+        # de sécurité dans upsert_multiple_dossiers_in_grist).
+        seen_dossier_numbers = set()
+        deduped_dossiers = []
+        nb_doublons_source = 0
+        for dossier in filtered_dossiers:
+            num = dossier.get("number")
+            if num in seen_dossier_numbers:
+                nb_doublons_source += 1
+                continue
+            seen_dossier_numbers.add(num)
+            deduped_dossiers.append(dossier)
+
+        if nb_doublons_source:
+            log(
+                f"[DEDUP] {nb_doublons_source} doublon(s) de dossier retiré(s) "
+                f"de la liste source (pagination DN instable probable)"
+            )
+        filtered_dossiers = deduped_dossiers
+        total_dossiers = len(filtered_dossiers)
 
         # Si aucun dossier ne correspond aux critères
         if total_dossiers == 0:
