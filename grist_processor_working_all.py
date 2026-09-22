@@ -658,50 +658,6 @@ def fetch_dossiers_in_parallel(dossier_numbers, max_workers=2, timeout=120):
     return results
 
 
-# Fonction pour récupérer les labels d'un dossier spécifique
-def get_dossier_labels(dossier_number):
-    """Récupère uniquement les labels d'un dossier spécifique"""
-
-    query = """
-    query GetDossierLabels($dossierNumber: Int!) {
-        dossier(number: $dossierNumber) {
-            id
-            number
-            labels {
-                id
-                name
-                color
-            }
-        }
-    }
-    """
-
-    variables = {"dossierNumber": int(dossier_number)}
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    response = requests.post(
-        API_URL, json={"query": query, "variables": variables}, headers=headers
-    )
-
-    if response.status_code != 200:
-        log_error(
-            f"Erreur HTTP lors de la récupération des labels: {response.status_code}"
-        )
-        return None
-
-    result = response.json()
-
-    if "errors" in result:
-        log_error("Erreurs GraphQL lors de la récupération des labels")
-        return None
-
-    return result.get("data", {}).get("dossier", {}).get("labels", [])
-
-
 def add_id_columns_based_on_annotations(client, table_id, annotations):
     """
     Ajoute des colonnes pour les IDs des annotations basées sur leur label
