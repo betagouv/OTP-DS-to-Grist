@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Any
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -70,7 +71,7 @@ def format_json_value(json_value, max_length=10000) -> str | None:
         return str_value
 
 
-def build_filters_key(api_filters: dict[str, Any] | None) -> str:
+def build_filters_cache_key() -> str:
     """Construit une clé canonique JSON déterministe des filtres actifs.
 
     Utilisée pour détecter un changement de filtres entre deux synchronisations :
@@ -80,23 +81,29 @@ def build_filters_key(api_filters: dict[str, Any] | None) -> str:
 
     La clé est volontairement lisible (JSON) et non un hash opaque pour faciliter
     l'inspection des filtres stockés.
-
-    NB : la clé est non-versionnée ET ne couvre que `api_filters` (chemin optimisé).
-    L'ajout futur d'un champ de filtre dans cette fonction modifiera donc la clé et
-    déclenchera une synchro complète ponctuelle pour tous les utilisateurs existants
-    (comportement attendu et sûr). Le chemin legacy (variables d'environnement
-    DATE_DEPOT_DEBUT / STATUTS_DOSSIERS / ...) n'est PAS couvert par cette clé :
-    à vérifier/nettoyer si ce chemin se révèle être du code mort.
     """
+    # Chemin LEGACY (le seul réellement exécuté en prod) : le front/scheduler passe
+    # par ces variables d'environnement. `API_FILTERS_JSON` n'étant jamais peuplé
+    # dans le dépôt, la clé doit refléter ces variables pour détecter un changement
+    # de filtres (ex : un groupe instructeur sélectionné côté front) et déclencher
+    # la synchro complète ; sinon `filters_hash` resterait stable et les dossiers
+    # nouvellement éligibles/exclus seraient ignorés par le delta.
     filters = {
-        "date_debut": (api_filters or {}).get("date_debut"),
-        "date_fin": (api_filters or {}).get("date_fin"),
-        "statuts": _normalize_list((api_filters or {}).get("statuts")),
+        "date_debut": os.getenv("DATE_DEPOT_DEBUT") or None,
+        "date_fin": os.getenv("DATE_DEPOT_FIN") or None,
+        "statuts": _normalize_list(_split_env_list(os.getenv("STATUTS_DOSSIERS"))),
         "groupes_instructeurs": _normalize_list(
-            (api_filters or {}).get("groupes_instructeurs")
+            _split_env_list(os.getenv("GROUPES_INSTRUCTEURS"))
         ),
     }
     return json.dumps(filters, sort_keys=True, ensure_ascii=False)
+
+
+def _split_env_list(raw: str | None) -> list[str]:
+    """Découpe une liste de valeurs legacy (séparées par des virgules) en objets propres."""
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",")]
 
 
 def _normalize_list(value: Any) -> list[str]:

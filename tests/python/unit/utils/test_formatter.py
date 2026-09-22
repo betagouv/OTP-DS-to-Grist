@@ -1,6 +1,11 @@
 from datetime import datetime, timezone
 
-from utils.formatter import build_filters_key, format_json_value, to_local_iso, unwrap_json_list
+from utils.formatter import (
+    build_filters_cache_key,
+    format_json_value,
+    to_local_iso,
+    unwrap_json_list,
+)
 
 
 def test_liste_json_simple():
@@ -80,36 +85,48 @@ def test_format_json_value_tronque():
     assert result == '"abcdefghi' + "..."
 
 
-class TestBuildFiltersKey:
-    """Tests unitaires pour build_filters_key (détection de changement de filtres)"""
+class TestBuildFiltersCacheKey:
+    """Tests unitaires pour build_filters_cache_key (détection de changement de filtres)"""
 
-    def test_same_filters_same_key(self):
-        """mêmes filtres -> même clé (déterminisme)"""
-        filters = {"statuts": ["en_construction"], "date_debut": "2024-01-01"}
-        assert build_filters_key(filters) == build_filters_key(filters)
+    def test_legacy_env_groupes_change_key(self, monkeypatch):
+        """chemin legacy : un changement de GROUPES_INSTRUCTEURS doit changer la clé
+        (sinon `filters_hash` est stable et la sync complète n'est jamais déclenchée)"""
+        monkeypatch.delenv("GROUPES_INSTRUCTEURS", raising=False)
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        key_vide = build_filters_cache_key()
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "5")
+        key_avec_groupe = build_filters_cache_key()
+        assert key_vide != key_avec_groupe
 
-    def test_different_filters_different_key(self):
-        """filtres différents -> clé différente"""
-        assert build_filters_key({"statuts": ["en_construction"]}) != build_filters_key(
-            {"statuts": ["en_instruction"]}
-        )
+    def test_legacy_env_statuts_change_key(self, monkeypatch):
+        monkeypatch.delenv("GROUPES_INSTRUCTEURS", raising=False)
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        key_vide = build_filters_cache_key()
+        monkeypatch.setenv("STATUTS_DOSSIERS", "en_construction")
+        key_avec_statut = build_filters_cache_key()
+        assert key_vide != key_avec_statut
 
-    def test_no_filter_returns_non_none_key(self):
-        """aucun filtre (None ou vide) -> clé déterministe non-None, jamais ambiguë"""
-        key = build_filters_key(None)
-        assert key is not None
-        assert key == build_filters_key({})
-        assert '"date_debut": null' in key
-        assert key != build_filters_key({"statuts": ["en_construction"]})
+    def test_legacy_env_dates_change_key(self, monkeypatch):
+        monkeypatch.delenv("GROUPES_INSTRUCTEURS", raising=False)
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        key_vide = build_filters_cache_key()
+        monkeypatch.setenv("DATE_DEPOT_DEBUT", "2024-01-01")
+        key_avec_date = build_filters_cache_key()
+        assert key_vide != key_avec_date
 
-    def test_list_order_is_normalized(self):
-        """ordre différent des statuts/groupes -> même clé (tri)"""
-        a = build_filters_key({"statuts": ["b", "a", "c"]})
-        b = build_filters_key({"statuts": ["c", "a", "b"]})
+    def test_legacy_env_list_order_normalized(self, monkeypatch):
+        """ordre des valeurs legacy (groupes/statuts) normalisé -> même clé"""
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "5,3")
+        a = build_filters_cache_key()
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "3,5")
+        b = build_filters_cache_key()
         assert a == b
-
-    def test_key_is_readable_json(self):
-        """clé lisible JSON avec les 4 champs de filtres"""
-        key = build_filters_key({"statuts": ["en_construction"], "groupes_instructeurs": ["5"]})
-        assert "statuts" in key and "groupes_instructeurs" in key
-        assert "en_construction" in key and "5" in key

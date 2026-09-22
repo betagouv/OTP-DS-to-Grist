@@ -33,7 +33,7 @@ from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
-from utils.formatter import build_filters_key
+from utils.formatter import build_filters_cache_key
 from utils.log import log, log_verbose, log_error, log_progress
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -1066,7 +1066,7 @@ def process_demarche_for_grist_optimized(
         force_full_sync = (
             sync_meta.get("force_full_sync", False) if sync_meta else False
         )
-        current_filters_key = build_filters_key(api_filters)
+        current_filters_key = build_filters_cache_key()
 
         # Détecter un changement de filtres entre deux synchronisations : le delta
         # `updatedSince` ne verrait alors que les dossiers modifiés et ignorerait
