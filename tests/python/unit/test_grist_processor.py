@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from grist_processor_working_all import (
     normalize_column_name,
@@ -6,9 +6,7 @@ from grist_processor_working_all import (
     filter_record_to_existing_columns,
     add_id_columns_based_on_annotations,
     upsert_avis_records,
-    get_problematic_descriptor_ids,
 )
-from utils.constants import DEMARCHES_API_URL
 
 
 class TestNormalizeColumnName:
@@ -388,131 +386,3 @@ class TestUpsertAvisRecords:
         self.client.get_records.assert_called_once()
         self.client.post_records.assert_not_called()
         self.client.patch_records.assert_not_called()
-
-
-class TestGetProblematicDescriptorIds:
-    """Tests unitaires pour get_problematic_descriptor_ids"""
-
-    @staticmethod
-    def _payload(descriptors):
-        return {
-            "data": {
-                "demarche": {
-                    "activeRevision": {"champDescriptors": descriptors}
-                }
-            }
-        }
-
-    @staticmethod
-    def _descriptors_with_repetition():
-        return [
-            {"__typename": "TextChampDescriptor", "id": "1", "type": "text"},
-            {
-                "__typename": "HeaderSectionChampDescriptor",
-                "id": "2",
-                "type": "header_section",
-            },
-            {
-                "__typename": "ExplicationChampDescriptor",
-                "id": "3",
-                "type": "explication",
-            },
-            {
-                "__typename": "RepetitionChampDescriptor",
-                "champDescriptors": [
-                    {"__typename": "TextChampDescriptor", "id": "4", "type": "text"},
-                    {
-                        "__typename": "HeaderSectionChampDescriptor",
-                        "id": "5",
-                        "type": "header_section",
-                    },
-                ],
-            },
-        ]
-
-    def test_nominal_collects_problematic_ids(self):
-        """ids des descripteurs header_section/explication collectés, y compris récursion répétable"""
-        with (
-            patch("grist_processor_working_all.API_TOKEN", "fake-token"),
-            patch("grist_processor_working_all.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(
-                self._descriptors_with_repetition()
-            )
-            result = get_problematic_descriptor_ids(12345)
-
-        assert result == {"2", "3", "5"}
-
-    def test_no_problematic_fields_returns_empty(self):
-        """aucun champ problématique -> set vide"""
-        descriptors = [
-            {"__typename": "TextChampDescriptor", "id": "1", "type": "text"}
-        ]
-        with (
-            patch("grist_processor_working_all.API_TOKEN", "fake-token"),
-            patch("grist_processor_working_all.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(descriptors)
-            result = get_problematic_descriptor_ids(12345)
-
-        assert result == set()
-
-    def test_graphql_errors_return_empty_and_log(self):
-        """erreurs GraphQL -> log_error + set vide"""
-        with (
-            patch("grist_processor_working_all.API_TOKEN", "fake-token"),
-            patch("grist_processor_working_all.requests.post") as mock_post,
-            patch("grist_processor_working_all.log_error") as mock_log_error,
-        ):
-            mock_post.return_value.json.return_value = {
-                "errors": [{"message": "boom"}]
-            }
-            result = get_problematic_descriptor_ids(12345)
-
-        assert result == set()
-        mock_log_error.assert_called_once()
-        assert "boom" in mock_log_error.call_args[0][0]
-
-    def test_missing_active_revision_returns_empty(self):
-        """activeRevision absent -> set vide"""
-        with (
-            patch("grist_processor_working_all.API_TOKEN", "fake-token"),
-            patch("grist_processor_working_all.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {"data": {"demarche": {}}}
-            result = get_problematic_descriptor_ids(12345)
-
-        assert result == set()
-
-    def test_missing_champ_descriptors_returns_empty(self):
-        """champDescriptors absent -> set vide"""
-        with (
-            patch("grist_processor_working_all.API_TOKEN", "fake-token"),
-            patch("grist_processor_working_all.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(None)
-            result = get_problematic_descriptor_ids(12345)
-
-        assert result == set()
-
-    def test_request_contract(self):
-        """requête bien formée (URL, headers, variables, fragment répétable)"""
-        with (
-            patch("grist_processor_working_all.API_TOKEN", "fake-token"),
-            patch("grist_processor_working_all.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(
-                self._descriptors_with_repetition()
-            )
-            get_problematic_descriptor_ids(12345)
-
-        mock_post.assert_called_once()
-        call = mock_post.call_args
-        assert call.args[0] == DEMARCHES_API_URL
-        assert call.kwargs["headers"] == {
-            "Authorization": "Bearer fake-token",
-            "Content-Type": "application/json",
-        }
-        assert call.kwargs["json"]["variables"] == {"demarcheNumber": 12345}
-        query = call.kwargs["json"]["query"]
-        assert "RepetitionChampDescriptor" in query

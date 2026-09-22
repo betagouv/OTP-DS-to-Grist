@@ -16,6 +16,7 @@ from dn.client import (
     detect_demandeur_type,
     get_dossier,
     get_groups,
+    get_problematic_descriptor_ids,
     get_session_with_retries,
 )
 from utils.constants import DEMARCHES_API_URL
@@ -1090,3 +1091,216 @@ class TestGetDemarcheSchema:
         assert result == self.DEMARCHE
         assert mock_request.call_count == 2
         assert mock_log.call_count == 1
+
+
+class TestGetProblematicDescriptorIds:
+    """Tests unitaires pour dn.client.get_problematic_descriptor_ids"""
+
+    @staticmethod
+    def _payload(descriptors):
+        return {
+            "data": {
+                "demarche": {
+                    "activeRevision": {"champDescriptors": descriptors}
+                }
+            }
+        }
+
+    @staticmethod
+    def _descriptors_with_repetition():
+        return [
+            {"__typename": "TextChampDescriptor", "id": "1", "type": "text"},
+            {
+                "__typename": "HeaderSectionChampDescriptor",
+                "id": "2",
+                "type": "header_section",
+            },
+            {
+                "__typename": "ExplicationChampDescriptor",
+                "id": "3",
+                "type": "explication",
+            },
+            {
+                "__typename": "RepetitionChampDescriptor",
+                "champDescriptors": [
+                    {"__typename": "TextChampDescriptor", "id": "4", "type": "text"},
+                    {
+                        "__typename": "HeaderSectionChampDescriptor",
+                        "id": "5",
+                        "type": "header_section",
+                    },
+                ],
+            },
+        ]
+
+    def test_nominal_collects_problematic_ids(self):
+        """ids des descripteurs header_section/explication collectés, y compris récursion répétable"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                self._descriptors_with_repetition()
+            )
+            mock_session_factory.return_value = mock_session
+            result = get_problematic_descriptor_ids(12345)
+
+        assert result == {"2", "3", "5"}
+
+    def test_no_problematic_fields_returns_empty(self):
+        """aucun champ problématique -> set vide"""
+        descriptors = [
+            {"__typename": "TextChampDescriptor", "id": "1", "type": "text"}
+        ]
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                descriptors
+            )
+            mock_session_factory.return_value = mock_session
+            result = get_problematic_descriptor_ids(12345)
+
+        assert result == set()
+
+    def test_graphql_errors_return_empty_and_log(self):
+        """erreurs GraphQL -> log_error + set vide"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+            patch("dn.client.log_error") as mock_log_error,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {
+                "errors": [{"message": "boom"}]
+            }
+            mock_session_factory.return_value = mock_session
+            result = get_problematic_descriptor_ids(12345)
+
+        assert result == set()
+        mock_log_error.assert_called_once()
+        assert "boom" in mock_log_error.call_args[0][0]
+
+    def test_missing_active_revision_returns_empty(self):
+        """activeRevision absent -> set vide"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {"data": {"demarche": {}}}
+            mock_session_factory.return_value = mock_session
+            result = get_problematic_descriptor_ids(12345)
+
+        assert result == set()
+
+    def test_missing_champ_descriptors_returns_empty(self):
+        """champDescriptors absent -> set vide"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(None)
+            mock_session_factory.return_value = mock_session
+            result = get_problematic_descriptor_ids(12345)
+
+        assert result == set()
+
+    def test_missing_token_raises_value_error(self):
+        """Token non configuré -> ValueError, sans appel réseau"""
+        with (
+            patch("dn.client.API_TOKEN", None),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            with pytest.raises(ValueError):
+                get_problematic_descriptor_ids(12345)
+        mock_session_factory.assert_not_called()
+
+    def test_request_contract(self):
+        """requête bien formée (URL, headers, variables, fragment répétable)"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                self._descriptors_with_repetition()
+            )
+            mock_session_factory.return_value = mock_session
+            get_problematic_descriptor_ids(12345)
+
+        mock_session.post.assert_called_once()
+        call = mock_session.post.call_args
+        assert call.args[0] == DEMARCHES_API_URL
+        assert call.kwargs["headers"] == {
+            "Authorization": "Bearer fake-token",
+            "Content-Type": "application/json",
+        }
+        assert call.kwargs["json"]["variables"] == {"demarcheNumber": 12345}
+        query = call.kwargs["json"]["query"]
+        assert "RepetitionChampDescriptor" in query
+
+    @patch.object(requests.Session, "request")
+    @patch("dn.client.log")
+    @patch("time.sleep")
+    def test_429_retry_then_success(
+        self, mock_sleep, mock_log, mock_request
+    ):
+        """429 puis 200 → les IDs sont récupérés après retry (via RateLimitedSession)"""
+        mock_request.side_effect = [
+            _mock_response(429, headers={"Retry-After": "5"}),
+            _mock_response(
+                200,
+                json_data=self._payload(self._descriptors_with_repetition()),
+            ),
+        ]
+
+        with patch("random.uniform", return_value=0):
+            with patch("dn.client.API_TOKEN", "fake-token"):
+                result = get_problematic_descriptor_ids(12345)
+
+        assert result == {"2", "3", "5"}
+        assert mock_request.call_count == 2
+        assert mock_log.call_count == 2  # retry 429 + compte des descripteurs
+
+    @patch.object(requests.Session, "request")
+    @patch("dn.client.log")
+    @patch("time.sleep")
+    def test_429_exhaustion_raises(
+        self, mock_sleep, mock_log, mock_request
+    ):
+        """429 persistants → la dernière réponse 429 remonte puis raise_for_status lève"""
+        final_response = _mock_response(429, headers={"Retry-After": "5"})
+        final_response.raise_for_status.side_effect = requests.HTTPError(
+            "429 Too Many Requests"
+        )
+        mock_request.side_effect = [
+            _mock_response(429, headers={"Retry-After": "5"}),
+            _mock_response(429, headers={"Retry-After": "5"}),
+            final_response,
+        ]
+
+        with patch("random.uniform", return_value=0):
+            with patch("dn.client.API_TOKEN", "fake-token"):
+                with pytest.raises(requests.HTTPError):
+                    get_problematic_descriptor_ids(12345)
+
+        assert mock_request.call_count == MAX_429_RETRIES

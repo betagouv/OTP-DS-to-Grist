@@ -887,6 +887,94 @@ def get_demarche_schema(demarche_number) -> Dict[str, Any]:
     return demarche
 
 
+def get_problematic_descriptor_ids(demarche_number: int) -> set[str]:
+    """
+    Récupère les IDs des descripteurs de champs problématiques
+    (HeaderSectionChamp et ExplicationChamp) pour une démarche donnée,
+    y compris dans les blocs répétables.
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    query = """
+    query getDemarche($demarcheNumber: Int!) {
+      demarche(number: $demarcheNumber) {
+        activeRevision {
+          champDescriptors {
+            __typename
+            id
+            type
+            ... on RepetitionChampDescriptor {
+              champDescriptors {
+                __typename
+                id
+                type
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    response = get_session_with_retries().post(
+        DEMARCHES_API_URL,
+        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
+        headers=headers,
+    )
+
+    response.raise_for_status()
+    result = response.json()
+
+    problematic_ids: set[str] = set()
+
+    # Vérifier les erreurs
+    if "errors" in result:
+        log_error(
+            f"GraphQL errors: {', '.join([error.get('message', 'Unknown error') for error in result['errors']])}"
+        )
+        return problematic_ids
+
+    # Fonction récursive pour explorer tous les descripteurs
+    def explore_descriptors(descriptors):
+        for descriptor in descriptors:
+            # Ajouter si problématique
+            if descriptor.get("type") in [
+                "header_section",
+                "explication",
+            ] or descriptor.get("__typename") in [
+                "HeaderSectionChampDescriptor",
+                "ExplicationChampDescriptor",
+            ]:
+                problematic_ids.add(descriptor.get("id"))
+
+            # Explorer récursivement les blocs répétables
+            if (
+                descriptor.get("__typename") == "RepetitionChampDescriptor"
+                and "champDescriptors" in descriptor
+            ):
+                explore_descriptors(descriptor["champDescriptors"])
+
+    # Extraire les IDs des champs problématiques
+    if (
+        result.get("data")
+        and result["data"].get("demarche")
+        and result["data"]["demarche"].get("activeRevision")
+        and result["data"]["demarche"]["activeRevision"].get("champDescriptors")
+    ):
+        descriptors = result["data"]["demarche"]["activeRevision"]["champDescriptors"]
+        explore_descriptors(descriptors)
+
+    log(f"Nombre de descripteurs problématiques identifiés: {len(problematic_ids)}")
+
+    return problematic_ids
+
+
 # Fonctions d'API
 @timed("get_dossier", "ds")
 def get_dossier(dossier_number: int) -> Dict[str, Any]:
