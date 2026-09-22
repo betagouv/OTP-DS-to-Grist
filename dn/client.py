@@ -675,6 +675,218 @@ def get_session_with_retries():
     return _session
 
 
+def detect_demandeur_type(demarche_number: int) -> str | None:
+    """
+    Détecte le type de demandeur (PersonnePhysique ou PersonneMorale)
+    en analysant le premier dossier de la démarche.
+
+    Args:
+        demarche_number: Numéro de la démarche
+
+    Returns:
+        "PersonnePhysique" | "PersonneMorale" | None (si erreur GraphQL)
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré")
+
+    # Requête pour récupérer juste le premier dossier
+    query = """
+    query getFirstDossier($demarcheNumber: Int!) {
+        demarche(number: $demarcheNumber) {
+            id
+            dossiers(first: 1) {
+                nodes {
+                    id
+                    demandeur {
+                        __typename
+                    }
+                }
+            }
+        }
+    }
+    """
+
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = get_session_with_retries().post(
+            DEMARCHES_API_URL,
+            json={
+                "query": query,
+                "variables": {"demarcheNumber": int(demarche_number)},
+            },
+            headers=headers,
+            timeout=30,
+        )
+
+        response.raise_for_status()
+        result = response.json()
+
+        if "errors" in result:
+            print(
+                f"⚠️  Erreur lors de la détection du type de demandeur pour la démarche {demarche_number}"
+            )
+            return None
+
+        dossiers = (
+            result.get("data", {})
+            .get("demarche", {})
+            .get("dossiers", {})
+            .get("nodes", [])
+        )
+
+        if dossiers and len(dossiers) > 0:
+            demandeur = dossiers[0].get("demandeur", {})
+            demandeur_type = demandeur.get("__typename")
+
+            if demandeur_type in [
+                "PersonnePhysique",
+                "PersonneMorale",
+                "PersonneMoraleIncomplete",
+            ]:
+                # PersonneMoraleIncomplete est traité comme PersonneMorale
+                if demandeur_type == "PersonneMoraleIncomplete":
+                    return "PersonneMorale"
+                return demandeur_type
+
+        # Aucun dossier trouvé
+        print(
+            f"ℹ️  Aucun dossier trouvé pour la démarche {demarche_number}, type par défaut: PersonneMorale"
+        )
+        return "PersonneMorale"  # Par défaut si aucun dossier
+
+    except Exception as e:
+        print(f"❌ Erreur lors de la détection du type: {e}")
+        return "PersonneMorale"  # Par défaut en cas d'erreur
+
+
+def get_demarche_schema(demarche_number) -> Dict[str, Any]:
+    """
+    Récupère le schéma complet d'une démarche,
+    avec tous ses descripteurs de champs,
+    sans dépendre des dossiers existants.
+
+    FONCTION EXISTANTE - GARDÉE POUR COMPATIBILITÉ
+
+    Args:
+        demarche_number: Numéro de la démarche
+
+    Returns:
+        dict: Structure complète des descripteurs de champs et d'annotations
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    # Requête GraphQL spécifique pour récupérer les descripteurs de champs
+    query = """
+    query getDemarcheSchema($demarcheNumber: Int!) {
+        demarche(number: $demarcheNumber) {
+            id
+            number
+            title
+            activeRevision {
+                id
+                champDescriptors {
+                    ...ChampDescriptorFragment
+                    ... on RepetitionChampDescriptor {
+                        champDescriptors {
+                            ...ChampDescriptorFragment
+                        }
+                    }
+                }
+                annotationDescriptors {
+                    ...ChampDescriptorFragment
+                    ... on RepetitionChampDescriptor {
+                        champDescriptors {
+                            ...ChampDescriptorFragment
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fragment ChampDescriptorFragment on ChampDescriptor {
+        __typename
+        id
+        type
+        label
+        description
+        required
+        ... on DropDownListChampDescriptor {
+            options
+            otherOption
+        }
+        ... on MultipleDropDownListChampDescriptor {
+            options
+        }
+        ... on LinkedDropDownListChampDescriptor {
+            options
+        }
+        ... on PieceJustificativeChampDescriptor {
+            fileTemplate {
+                filename
+            }
+        }
+        ... on ExplicationChampDescriptor {
+            collapsibleExplanationEnabled
+            collapsibleExplanationText
+        }
+    }
+    """
+
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    # Exécuter la requête
+    response = get_session_with_retries().post(
+        DEMARCHES_API_URL,
+        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
+        headers=headers,
+    )
+
+    # Vérifier le code de statut
+    response.raise_for_status()
+
+    # Analyser la réponse JSON
+    result = response.json()
+
+    # Vérifier les erreurs
+    if "errors" in result:
+        filtered_errors = []
+        for error in result["errors"]:
+            error_message = error.get("message", "")
+            if (
+                "permissions" not in error_message
+                and "hidden due to permissions" not in error_message
+            ):
+                filtered_errors.append(error_message)
+
+        if filtered_errors:
+            raise Exception(f"GraphQL errors: {', '.join(filtered_errors)}")
+
+    # Si aucune donnée n'est retournée, c'est un problème
+    if not result.get("data") or not result["data"].get("demarche"):
+        raise Exception(
+            f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}"
+        )
+
+    demarche = result["data"]["demarche"]
+
+    # Vérifier que activeRevision existe
+    if not demarche.get("activeRevision"):
+        raise Exception(
+            f"Aucune révision active trouvée pour la démarche {demarche_number}"
+        )
+
+    return demarche
+
+
 # Fonctions d'API
 @timed("get_dossier", "ds")
 def get_dossier(dossier_number: int) -> Dict[str, Any]:

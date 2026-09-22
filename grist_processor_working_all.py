@@ -20,12 +20,11 @@ from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient
 from grist.column_cache import ColumnCache
 from hide_id_columns import IdColumnHider
-from dn.client import get_demarche_dossiers, get_dossier
+from dn.client import get_demarche_dossiers, get_demarche_schema, get_dossier
 from dn.extract import dossier_to_flat_data
 from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
-    get_demarche_schema,
     get_demarche_schema_enhanced,
     update_grist_tables_from_schema,
 )

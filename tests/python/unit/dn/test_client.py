@@ -12,10 +12,13 @@ from dn.client import (
     get_demarche,
     get_demarche_dossiers,
     get_demarche_dossiers_labels_only,
+    get_demarche_schema,
+    detect_demandeur_type,
     get_dossier,
     get_groups,
     get_session_with_retries,
 )
+from utils.constants import DEMARCHES_API_URL
 
 
 def _mock_response(status_code=200, json_data=None, headers=None):
@@ -758,3 +761,332 @@ class TestRateLimitedSession:
         assert response.status_code == 200
         assert mock_request.call_count == 2
         mock_sleep.assert_called_once_with(5.0)
+
+
+class TestDetectDemandeurType:
+    """Tests unitaires pour dn.client.detect_demandeur_type"""
+
+    @staticmethod
+    def _payload(demandeur_type=None, nodes=None):
+        if nodes is None:
+            nodes = (
+                [{"demandeur": {"__typename": demandeur_type}}]
+                if demandeur_type
+                else []
+            )
+        return {"data": {"demarche": {"dossiers": {"nodes": nodes}}}}
+
+    def test_personne_physique_detected(self):
+        """Le type PersonnePhysique du premier dossier est renvoyé"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                "PersonnePhysique"
+            )
+            mock_session_factory.return_value = mock_session
+            result = detect_demandeur_type(12345)
+        assert result == "PersonnePhysique"
+
+    def test_personne_morale_detected(self):
+        """Le type PersonneMorale du premier dossier est renvoyé"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                "PersonneMorale"
+            )
+            mock_session_factory.return_value = mock_session
+            result = detect_demandeur_type(12345)
+        assert result == "PersonneMorale"
+
+    def test_personne_morale_incomplete_mapped_to_morale(self):
+        """PersonneMoraleIncomplete est traité comme PersonneMorale"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                "PersonneMoraleIncomplete"
+            )
+            mock_session_factory.return_value = mock_session
+            result = detect_demandeur_type(12345)
+        assert result == "PersonneMorale"
+
+    def test_no_dossier_returns_default_morale(self):
+        """Aucun dossier → type par défaut PersonneMorale"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                nodes=[]
+            )
+            mock_session_factory.return_value = mock_session
+            result = detect_demandeur_type(12345)
+        assert result == "PersonneMorale"
+
+    def test_graphql_errors_return_none(self):
+        """Présence de 'errors' dans la réponse → None"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {
+                "errors": [{"message": "boom"}]
+            }
+            mock_session_factory.return_value = mock_session
+            result = detect_demandeur_type(12345)
+        assert result is None
+
+    def test_http_error_returns_default_morale(self):
+        """Exception HTTP (raise_for_status) → type par défaut PersonneMorale"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.raise_for_status.side_effect = Exception(
+                "HTTP 500"
+            )
+            mock_session_factory.return_value = mock_session
+            result = detect_demandeur_type(12345)
+        assert result == "PersonneMorale"
+
+    def test_missing_token_raises_value_error(self):
+        """Token non configuré → ValueError, sans appel réseau"""
+        with (
+            patch("dn.client.API_TOKEN", None),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            with pytest.raises(ValueError):
+                detect_demandeur_type(12345)
+        mock_session_factory.assert_not_called()
+
+    def test_request_contract(self):
+        """La requête POST est bien formée (URL, headers, variables, timeout)"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = self._payload(
+                "PersonnePhysique"
+            )
+            mock_session_factory.return_value = mock_session
+            detect_demandeur_type(12345)
+        mock_session.post.assert_called_once()
+        call = mock_session.post.call_args
+        assert call.args[0] == DEMARCHES_API_URL
+        assert call.kwargs["headers"] == {
+            "Authorization": "Bearer fake-token",
+            "Content-Type": "application/json",
+        }
+        assert call.kwargs["json"]["variables"] == {"demarcheNumber": 12345}
+        assert call.kwargs["timeout"] == 30
+
+    @patch.object(requests.Session, "request")
+    @patch("dn.client.log")
+    @patch("time.sleep")
+    def test_429_retry_then_success(
+        self, mock_sleep, mock_log, mock_request
+    ):
+        """429 puis 200 → la détection réussit après retry (via RateLimitedSession)"""
+        mock_request.side_effect = [
+            _mock_response(429, headers={"Retry-After": "5"}),
+            _mock_response(
+                200, json_data=self._payload("PersonnePhysique")
+            ),
+        ]
+
+        with patch("random.uniform", return_value=0):
+            with patch("dn.client.API_TOKEN", "fake-token"):
+                result = detect_demandeur_type(12345)
+
+        assert result == "PersonnePhysique"
+        assert mock_request.call_count == 2
+        assert mock_log.call_count == 1
+
+    @patch.object(requests.Session, "request")
+    @patch("dn.client.log")
+    @patch("time.sleep")
+    def test_429_exhaustion_returns_default(
+        self, mock_sleep, mock_log, mock_request
+    ):
+        """429 persistants → repli sur le type par défaut PersonneMorale"""
+        mock_request.side_effect = [
+            _mock_response(429, headers={"Retry-After": "5"}),
+            _mock_response(429, headers={"Retry-After": "5"}),
+            _mock_response(429, headers={"Retry-After": "5"}),
+        ]
+
+        with patch("random.uniform", return_value=0):
+            with patch("dn.client.API_TOKEN", "fake-token"):
+                result = detect_demandeur_type(12345)
+
+        assert result == "PersonneMorale"
+        assert mock_request.call_count == MAX_429_RETRIES
+
+
+class TestGetDemarcheSchema:
+    """Tests unitaires pour dn.client.get_demarche_schema"""
+
+    DEMARCHE = {
+        "id": "D1",
+        "number": 12345,
+        "activeRevision": {
+            "id": "R1",
+            "champDescriptors": [],
+            "annotationDescriptors": [],
+        },
+    }
+
+    def test_nominal_returns_demarche(self):
+        """Le dict demarche complet (avec activeRevision) est renvoyé"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {
+                "data": {"demarche": self.DEMARCHE}
+            }
+            mock_session_factory.return_value = mock_session
+            result = get_demarche_schema(12345)
+        assert result == self.DEMARCHE
+
+    def test_non_permission_graphql_errors_raise(self):
+        """Erreurs GraphQL hors permissions → Exception"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {
+                "errors": [{"message": "Access denied"}]
+            }
+            mock_session_factory.return_value = mock_session
+            with pytest.raises(Exception, match="GraphQL errors"):
+                get_demarche_schema(12345)
+
+    def test_permission_errors_are_ignored(self):
+        """Erreurs de permissions seules → le schéma est renvoyé"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {
+                "errors": [
+                    {"message": "hidden due to permissions"},
+                    {"message": "no permissions"},
+                ],
+                "data": {"demarche": self.DEMARCHE},
+            }
+            mock_session_factory.return_value = mock_session
+            result = get_demarche_schema(12345)
+        assert result == self.DEMARCHE
+
+    def test_missing_demarche_raises(self):
+        """data.demarche absent → Exception"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {"data": {}}
+            mock_session_factory.return_value = mock_session
+            with pytest.raises(Exception, match="Aucune donnée de démarche"):
+                get_demarche_schema(12345)
+
+    def test_missing_active_revision_raises(self):
+        """activeRevision absent → Exception"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {
+                "data": {"demarche": {"id": "D1"}}
+            }
+            mock_session_factory.return_value = mock_session
+            with pytest.raises(Exception, match="Aucune révision active"):
+                get_demarche_schema(12345)
+
+    def test_request_contract_includes_type_in_fragment(self):
+        """La requête inclut le champ 'type' dans ChampDescriptorFragment
+        (dépendance de create_columns_from_schema) et un header d'authentification"""
+        with (
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch(
+                "dn.client.get_session_with_retries"
+            ) as mock_session_factory,
+        ):
+            mock_session = MagicMock()
+            mock_session.post.return_value.json.return_value = {
+                "data": {"demarche": self.DEMARCHE}
+            }
+            mock_session_factory.return_value = mock_session
+            get_demarche_schema(12345)
+        call = mock_session.post.call_args
+        assert call.args[0] == DEMARCHES_API_URL
+        assert call.kwargs["headers"]["Authorization"] == "Bearer fake-token"
+        assert call.kwargs["json"]["variables"] == {"demarcheNumber": 12345}
+        query = call.kwargs["json"]["query"]
+        assert "fragment ChampDescriptorFragment" in query
+        fragment = query.split("fragment ChampDescriptorFragment")[1]
+        assert "type" in fragment
+        assert "__typename" in fragment
+
+    @patch.object(requests.Session, "request")
+    @patch("dn.client.log")
+    @patch("time.sleep")
+    def test_429_retry_then_success(
+        self, mock_sleep, mock_log, mock_request
+    ):
+        """429 puis 200 → le schéma est récupéré après retry (via RateLimitedSession)"""
+        mock_request.side_effect = [
+            _mock_response(429, headers={"Retry-After": "5"}),
+            _mock_response(200, json_data={"data": {"demarche": self.DEMARCHE}}),
+        ]
+
+        with patch("random.uniform", return_value=0):
+            with patch("dn.client.API_TOKEN", "fake-token"):
+                result = get_demarche_schema(12345)
+
+        assert result == self.DEMARCHE
+        assert mock_request.call_count == 2
+        assert mock_log.call_count == 1

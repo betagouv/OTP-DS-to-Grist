@@ -1,10 +1,6 @@
-import pytest
 from unittest.mock import MagicMock, patch
 
-import schema_utils
 from schema_utils import (
-    detect_demandeur_type,
-    get_demarche_schema,
     get_problematic_descriptor_ids_from_schema,
     auto_clean_schema_descriptors,
     update_grist_tables_from_schema,
@@ -205,9 +201,13 @@ class TestUpdateGristTablesFromSchema:
         post_response = MagicMock()
         post_response.status_code = 200
         self.client.add_columns.return_value = post_response
+        fake_session = MagicMock()
+        fake_session.post.return_value.json.return_value = {
+            "data": {"demarche": {"dossiers": {"nodes": []}}}
+        }
         with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch("dn.client.get_session_with_retries", return_value=fake_session),
         ):
             result = update_grist_tables_from_schema(
                 self.client, 123, self._column_types()
@@ -218,15 +218,19 @@ class TestUpdateGristTablesFromSchema:
         assert self.client.add_columns.call_args.args[1] == [
             {"id": "nouveau_col", "type": "Text"}
         ]
-        assert mock_post.call_count == 1
-        assert "columns" not in mock_post.call_args.kwargs["json"]
+        fake_session.post.assert_called_once()
+        assert "columns" not in fake_session.post.call_args.kwargs["json"]
 
     def test_get_error_no_post(self):
         """GET en échec -> aucun POST de colonnes"""
         self.client.get_columns.return_value = {}
+        fake_session = MagicMock()
+        fake_session.post.return_value.json.return_value = {
+            "data": {"demarche": {"dossiers": {"nodes": []}}}
+        }
         with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
+            patch("dn.client.API_TOKEN", "fake-token"),
+            patch("dn.client.get_session_with_retries", return_value=fake_session),
         ):
             result = update_grist_tables_from_schema(
                 self.client, 123, self._column_types()
@@ -235,216 +239,7 @@ class TestUpdateGristTablesFromSchema:
         self.client.add_columns.assert_not_called()
         column_posts = [
             c
-            for c in mock_post.call_args_list
+            for c in fake_session.post.call_args_list
             if "columns" in c.kwargs.get("json", {})
         ]
         assert column_posts == []
-
-
-class TestDetectDemandeurType:
-    """Tests unitaires pour schema_utils.detect_demandeur_type"""
-
-    @staticmethod
-    def _payload(demandeur_type=None, nodes=None):
-        if nodes is None:
-            nodes = (
-                [{"demandeur": {"__typename": demandeur_type}}]
-                if demandeur_type
-                else []
-            )
-        return {"data": {"demarche": {"dossiers": {"nodes": nodes}}}}
-
-    def test_personne_physique_detected(self):
-        """Le type PersonnePhysique du premier dossier est renvoyé"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(
-                "PersonnePhysique"
-            )
-            result = detect_demandeur_type(12345)
-        assert result == "PersonnePhysique"
-
-    def test_personne_morale_detected(self):
-        """Le type PersonneMorale du premier dossier est renvoyé"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload("PersonneMorale")
-            result = detect_demandeur_type(12345)
-        assert result == "PersonneMorale"
-
-    def test_personne_morale_incomplete_mapped_to_morale(self):
-        """PersonneMoraleIncomplete est traité comme PersonneMorale"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(
-                "PersonneMoraleIncomplete"
-            )
-            result = detect_demandeur_type(12345)
-        assert result == "PersonneMorale"
-
-    def test_no_dossier_returns_default_morale(self):
-        """Aucun dossier → type par défaut PersonneMorale"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(nodes=[])
-            result = detect_demandeur_type(12345)
-        assert result == "PersonneMorale"
-
-    def test_graphql_errors_return_none(self):
-        """Présence de 'errors' dans la réponse → None"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {
-                "errors": [{"message": "boom"}]
-            }
-            result = detect_demandeur_type(12345)
-        assert result is None
-
-    def test_http_error_returns_default_morale(self):
-        """Exception HTTP (raise_for_status) → type par défaut PersonneMorale"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.raise_for_status.side_effect = Exception(
-                "HTTP 500"
-            )
-            result = detect_demandeur_type(12345)
-        assert result == "PersonneMorale"
-
-    def test_missing_token_raises_value_error(self):
-        """Token non configuré → ValueError, sans appel réseau"""
-        with (
-            patch("schema_utils.API_TOKEN", None),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            with pytest.raises(ValueError):
-                detect_demandeur_type(12345)
-        mock_post.assert_not_called()
-
-    def test_request_contract(self):
-        """La requête POST est bien formée (URL, headers, variables, timeout)"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = self._payload(
-                "PersonnePhysique"
-            )
-            detect_demandeur_type(12345)
-        mock_post.assert_called_once()
-        call = mock_post.call_args
-        assert call.args[0] == schema_utils.API_URL
-        assert call.kwargs["headers"] == {
-            "Authorization": "Bearer fake-token",
-            "Content-Type": "application/json",
-        }
-        assert call.kwargs["json"]["variables"] == {"demarcheNumber": 12345}
-        assert call.kwargs["timeout"] == 30
-
-
-class TestGetDemarcheSchema:
-    """Tests unitaires pour schema_utils.get_demarche_schema"""
-
-    DEMARCHE = {
-        "id": "D1",
-        "number": 12345,
-        "activeRevision": {
-            "id": "R1",
-            "champDescriptors": [],
-            "annotationDescriptors": [],
-        },
-    }
-
-    def test_nominal_returns_demarche(self):
-        """Le dict demarche complet (avec activeRevision) est renvoyé"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {
-                "data": {"demarche": self.DEMARCHE}
-            }
-            result = get_demarche_schema(12345)
-        assert result == self.DEMARCHE
-
-    def test_non_permission_graphql_errors_raise(self):
-        """Erreurs GraphQL hors permissions → Exception"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {
-                "errors": [{"message": "Access denied"}]
-            }
-            with pytest.raises(Exception, match="GraphQL errors"):
-                get_demarche_schema(12345)
-
-    def test_permission_errors_are_ignored(self):
-        """Erreurs de permissions seules → le schéma est renvoyé"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {
-                "errors": [
-                    {"message": "hidden due to permissions"},
-                    {"message": "no permissions"},
-                ],
-                "data": {"demarche": self.DEMARCHE},
-            }
-            result = get_demarche_schema(12345)
-        assert result == self.DEMARCHE
-
-    def test_missing_demarche_raises(self):
-        """data.demarche absent → Exception"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {"data": {}}
-            with pytest.raises(Exception, match="Aucune donnée de démarche"):
-                get_demarche_schema(12345)
-
-    def test_missing_active_revision_raises(self):
-        """activeRevision absent → Exception"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {
-                "data": {"demarche": {"id": "D1"}}
-            }
-            with pytest.raises(Exception, match="Aucune révision active"):
-                get_demarche_schema(12345)
-
-    def test_request_contract_includes_type_in_fragment(self):
-        """La requête inclut le champ 'type' dans ChampDescriptorFragment
-        (dépendance de create_columns_from_schema) et un header d'authentification"""
-        with (
-            patch("schema_utils.API_TOKEN", "fake-token"),
-            patch("schema_utils.requests.post") as mock_post,
-        ):
-            mock_post.return_value.json.return_value = {
-                "data": {"demarche": self.DEMARCHE}
-            }
-            get_demarche_schema(12345)
-        call = mock_post.call_args
-        assert call.args[0] == schema_utils.API_URL
-        assert call.kwargs["headers"]["Authorization"] == "Bearer fake-token"
-        assert call.kwargs["json"]["variables"] == {"demarcheNumber": 12345}
-        query = call.kwargs["json"]["query"]
-        assert "fragment ChampDescriptorFragment" in query
-        fragment = query.split("fragment ChampDescriptorFragment")[1]
-        assert "type" in fragment
-        assert "__typename" in fragment

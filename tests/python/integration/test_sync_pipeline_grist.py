@@ -16,9 +16,9 @@ from urllib.parse import urlparse
 
 import requests
 
+import dn.client
 import grist.client as grist_client_module
 import grist_processor_working_all as gpa
-import schema_utils
 from grist.client import GristClient
 
 BASE_URL = "https://grist.test"
@@ -261,7 +261,7 @@ class TestSyncPipelineGrist:
                 patch.object(gpa, "get_dossier", side_effect=make_dossier)
             )
             stack.enter_context(
-                patch.object(schema_utils, "detect_demandeur_type", return_value=None)
+                patch.object(dn.client, "detect_demandeur_type", return_value=None)
             )
             mock_instructeurs = stack.enter_context(
                 patch.object(gpa, "sync_instructeurs")
