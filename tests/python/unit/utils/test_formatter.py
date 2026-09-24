@@ -1,6 +1,11 @@
 from datetime import datetime, timezone
 
-from utils.formatter import format_json_value, to_local_iso, unwrap_json_list
+from utils.formatter import (
+    build_filters_cache_key,
+    format_json_value,
+    to_local_iso,
+    unwrap_json_list,
+)
 
 
 def test_liste_json_simple():
@@ -78,3 +83,50 @@ def test_format_json_value_dict():
 def test_format_json_value_tronque():
     result = format_json_value("abcdefghijklmnopqrstuvwxyz", max_length=10)
     assert result == '"abcdefghi' + "..."
+
+
+class TestBuildFiltersCacheKey:
+    """Tests unitaires pour build_filters_cache_key (détection de changement de filtres)"""
+
+    def test_legacy_env_groupes_change_key(self, monkeypatch):
+        """chemin legacy : un changement de GROUPES_INSTRUCTEURS doit changer la clé
+        (sinon `filters_hash` est stable et la sync complète n'est jamais déclenchée)"""
+        monkeypatch.delenv("GROUPES_INSTRUCTEURS", raising=False)
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        key_vide = build_filters_cache_key()
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "5")
+        key_avec_groupe = build_filters_cache_key()
+        assert key_vide != key_avec_groupe
+
+    def test_legacy_env_statuts_change_key(self, monkeypatch):
+        monkeypatch.delenv("GROUPES_INSTRUCTEURS", raising=False)
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        key_vide = build_filters_cache_key()
+        monkeypatch.setenv("STATUTS_DOSSIERS", "en_construction")
+        key_avec_statut = build_filters_cache_key()
+        assert key_vide != key_avec_statut
+
+    def test_legacy_env_dates_change_key(self, monkeypatch):
+        monkeypatch.delenv("GROUPES_INSTRUCTEURS", raising=False)
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        key_vide = build_filters_cache_key()
+        monkeypatch.setenv("DATE_DEPOT_DEBUT", "2024-01-01")
+        key_avec_date = build_filters_cache_key()
+        assert key_vide != key_avec_date
+
+    def test_legacy_env_list_order_normalized(self, monkeypatch):
+        """ordre des valeurs legacy (groupes/statuts) normalisé -> même clé"""
+        monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
+        monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "5,3")
+        a = build_filters_cache_key()
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "3,5")
+        b = build_filters_cache_key()
+        assert a == b

@@ -1,4 +1,6 @@
 import json
+import os
+from typing import Any
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -67,3 +69,48 @@ def format_json_value(json_value, max_length=10000) -> str | None:
         if len(str_value) > max_length:
             str_value = str_value[:max_length] + "..."
         return str_value
+
+
+def build_filters_cache_key() -> str:
+    """Construit une clé canonique JSON déterministe des filtres actifs.
+
+    Utilisée pour détecter un changement de filtres entre deux synchronisations :
+    si la clé stockée dans `Sync_metadata.filters_hash` diffère de la clé actuelle,
+    une synchro complète est forcée (le delta `updatedSince` ne couvrirait sinon
+    pas les dossiers nouvellement éligibles/exclus par les nouveaux filtres).
+
+    La clé est volontairement lisible (JSON) et non un hash opaque pour faciliter
+    l'inspection des filtres stockés.
+    """
+    # Chemin LEGACY (le seul réellement exécuté en prod) : le front/scheduler passe
+    # par ces variables d'environnement. `API_FILTERS_JSON` n'étant jamais peuplé
+    # dans le dépôt, la clé doit refléter ces variables pour détecter un changement
+    # de filtres (ex : un groupe instructeur sélectionné côté front) et déclencher
+    # la synchro complète ; sinon `filters_hash` resterait stable et les dossiers
+    # nouvellement éligibles/exclus seraient ignorés par le delta.
+    filters = {
+        "date_debut": os.getenv("DATE_DEPOT_DEBUT") or None,
+        "date_fin": os.getenv("DATE_DEPOT_FIN") or None,
+        "statuts": _normalize_list(_split_env_list(os.getenv("STATUTS_DOSSIERS"))),
+        "groupes_instructeurs": _normalize_list(
+            _split_env_list(os.getenv("GROUPES_INSTRUCTEURS"))
+        ),
+    }
+    return json.dumps(filters, sort_keys=True, ensure_ascii=False)
+
+
+def _split_env_list(raw: str | None) -> list[str]:
+    """Découpe une liste de valeurs legacy (séparées par des virgules) en objets propres."""
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",")]
+
+
+def _normalize_list(value: Any) -> list[str]:
+    """Normalise une liste de filtres pour garantir le déterminisme (tri, None -> [])."""
+    if not value:
+        return []
+    try:
+        return sorted(str(v) for v in value)
+    except TypeError:
+        return [str(value)]
