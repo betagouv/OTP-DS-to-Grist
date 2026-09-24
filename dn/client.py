@@ -2,14 +2,11 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List
 
-import requests
 from dotenv import load_dotenv
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from utils.constants import DEMARCHES_API_URL
 from utils.log import log_error
-from utils.rate_limited_session import RateLimitedSession
+from utils.rate_limited_session import RateLimitedSession, build_rate_limited_session
 from utils.timing import timed
 
 load_dotenv()
@@ -597,7 +594,7 @@ fragment DossierFragment on Dossier {
 )
 
 # SESSION GLOBALE (créée une seule fois)
-_session = None
+_session: RateLimitedSession | None = None
 
 # Configuration du rate limiting réactif des appels à l'API Démarches Numériques,
 # surchargeable via variables d'environnement.
@@ -616,7 +613,7 @@ DEMARCHES_MAX_RANDOM_DELAY_SECONDS = int(
 )
 
 
-def get_session_with_retries():
+def get_session_with_retries() -> RateLimitedSession:
     """
     Retourne une session HTTP avec retry (singleton).
     La session est créée une seule fois et réutilisée.
@@ -624,28 +621,11 @@ def get_session_with_retries():
     global _session
 
     if _session is None:
-        print(
-            "[RETRY] Création session avec retry automatique "
-            "(5xx: 3 tentatives, backoff 1s) et anti-429 (attente + relance)"
-        )
-        _session = RateLimitedSession(
+        _session = build_rate_limited_session(
             max_retries=DEMARCHES_MAX_429_RETRIES,
             fallback_delay=DEMARCHES_FALLBACK_429_DELAY,
             max_random_delay=DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
         )
-
-        # 429 géré par RateLimitedSession ; ici uniquement les erreurs serveur 5xx
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET", "POST"],
-            raise_on_status=False,
-        )
-
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        _session.mount("https://", adapter)
-        _session.mount("http://", adapter)
 
     return _session
 

@@ -2,6 +2,8 @@ import random
 import time
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from utils.log import log
 
@@ -54,3 +56,38 @@ class RateLimitedSession(requests.Session):
             return max(0.0, float(reset) - time.time()) + jitter
 
         return self.fallback_delay + jitter
+
+
+def build_rate_limited_session(
+    max_retries: int,
+    fallback_delay: float,
+    max_random_delay: float,
+) -> RateLimitedSession:
+    """Assemble une session prête à l'emploi : anti-429 + retry 5xx.
+
+    L'anti-429 est porté par RateLimitedSession.request() (les trois
+    paramètres max_retries / fallback_delay / max_random_delay). L'adapter
+    monté ici ne traite que les erreurs serveur 5xx (total=3, backoff 1s,
+    statuts [500, 502, 503, 504], raise_on_status=False).
+
+    allowed_methods=None : aucun filtre sur les verbes → tous les verbes
+    (le défaut urllib3 exclut précisément POST et PATCH).
+    """
+    session = RateLimitedSession(
+        max_retries=max_retries,
+        fallback_delay=fallback_delay,
+        max_random_delay=max_random_delay,
+    )
+
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=None,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+    return session

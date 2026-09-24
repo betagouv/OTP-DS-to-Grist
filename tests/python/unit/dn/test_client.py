@@ -2,6 +2,9 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from dn.client import (
+    DEMARCHES_FALLBACK_429_DELAY,
+    DEMARCHES_MAX_429_RETRIES,
+    DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
     get_deleted_dossiers,
     get_demarche,
     get_demarche_dossiers,
@@ -119,31 +122,28 @@ class TestGetGroups:
 class TestGetSessionWithRetries:
     """Tests pour get_session_with_retries (singleton)"""
 
-    @patch("dn.client.HTTPAdapter")
-    @patch("dn.client.RateLimitedSession")
-    def test_reuses_same_session(self, mock_session_cls, mock_adapter_cls):
+    @patch("dn.client.build_rate_limited_session")
+    def test_reuses_same_session(self, mock_builder):
         """La session est un singleton : deux appels → même objet"""
-        mock_session_cls.return_value = MagicMock()
+        mock_builder.return_value = MagicMock()
         with patch("dn.client._session", None):
             session1 = get_session_with_retries()
             session2 = get_session_with_retries()
 
         assert session1 is session2
-        assert mock_session_cls.call_count == 1
+        assert mock_builder.call_count == 1
 
-    @patch("dn.client.HTTPAdapter")
-    @patch("dn.client.RateLimitedSession")
-    def test_mounts_retry_adapter_on_https_and_http(self, mock_session_cls, mock_adapter_cls):
-        """Un adapter avec retry est monté sur https:// et http://"""
-        session = MagicMock()
-        mock_session_cls.return_value = session
+    @patch("dn.client.build_rate_limited_session")
+    def test_calls_builder_with_dn_rate_limits(self, mock_builder):
+        """La session est construite avec les limites 429 de DN"""
         with patch("dn.client._session", None):
             get_session_with_retries()
 
-        assert mock_adapter_cls.call_count == 1
-        assert session.mount.call_count == 2
-        schemas = [call[0][0] for call in session.mount.call_args_list]
-        assert schemas == ["https://", "http://"]
+        mock_builder.assert_called_once_with(
+            max_retries=DEMARCHES_MAX_429_RETRIES,
+            fallback_delay=DEMARCHES_FALLBACK_429_DELAY,
+            max_random_delay=DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
+        )
 
 
 class TestGetDossier:

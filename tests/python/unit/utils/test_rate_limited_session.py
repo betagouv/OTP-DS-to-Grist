@@ -2,7 +2,10 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from utils.rate_limited_session import RateLimitedSession
+from utils.rate_limited_session import (
+    RateLimitedSession,
+    build_rate_limited_session,
+)
 
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_FALLBACK_DELAY = 60
@@ -206,3 +209,48 @@ class TestRateLimitedSession:
         assert response.status_code == 200
         assert mock_request.call_count == 2
         mock_sleep.assert_called_once_with(5.0)
+
+
+class TestBuildRateLimitedSession:
+    """Tests pour build_rate_limited_session (assemblage de la session complète)"""
+
+    def _built_session(self):
+        return build_rate_limited_session(
+            max_retries=DEFAULT_MAX_RETRIES,
+            fallback_delay=DEFAULT_FALLBACK_DELAY,
+            max_random_delay=DEFAULT_MAX_RANDOM_DELAY,
+        )
+
+    def test_returns_rate_limited_session_parameterized(self):
+        """La session assemblée est un RateLimitedSession paramétré aux valeurs passées"""
+        session = self._built_session()
+
+        assert isinstance(session, RateLimitedSession)
+        assert session.max_retries == DEFAULT_MAX_RETRIES
+        assert session.fallback_delay == DEFAULT_FALLBACK_DELAY
+        assert session.max_random_delay == DEFAULT_MAX_RANDOM_DELAY
+
+    def test_mounts_same_retry_adapter_on_https_and_http(self):
+        """Un adapter retry 5xx (total=3, backoff 1, 500/502/503/504) monte sur https et http"""
+        session = self._built_session()
+
+        https_adapter = session.get_adapter("https://grist.example.com")
+        http_adapter = session.get_adapter("http://grist.example.com")
+        assert https_adapter is http_adapter
+        assert https_adapter.max_retries.total == 3
+        assert https_adapter.max_retries.backoff_factor == 1
+        assert https_adapter.max_retries.status_forcelist == [500, 502, 503, 504]
+        assert https_adapter.max_retries.raise_on_status is False
+
+    def test_all_methods_allowed(self):
+        """allowed_methods est None → tous les verbes sont retryables (incl. POST/PATCH)"""
+        retries = (
+            self._built_session()
+            .get_adapter("https://grist.example.com")
+            .max_retries
+        )
+
+        assert retries.allowed_methods is None
+        assert retries._is_method_retryable("GET") is True
+        assert retries._is_method_retryable("POST") is True
+        assert retries._is_method_retryable("PATCH") is True
