@@ -426,7 +426,7 @@ class TestSyncPipelineGrist:
                 patch.object(gpa, "get_dossier", side_effect=make_dossier)
             )
             stack.enter_context(
-                patch.object(schema_utils, "detect_demandeur_type", return_value=None)
+                patch.object(dn.client, "detect_demandeur_type", return_value=None)
             )
             stack.enter_context(patch.object(gpa, "sync_instructeurs"))
             stack.enter_context(patch.object(gpa, "sync_labels_for_demarche"))
