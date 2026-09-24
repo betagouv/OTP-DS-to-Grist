@@ -77,6 +77,22 @@ class GristClient:
 
             return None
 
+    def get_plan_info(self) -> dict[str, Any]:
+        """Infos plan/site Grist de la session courante (GET /api/session/access/active).
+
+        Retourne le payload complet (billingAccount.product.name, features,
+        apiUsage...). Peut échouer si le token n'est pas owner / manager du site.
+        self.base_url porte déjà le suffixe /api (ex. /o/<site>/api), le préfixe
+        /o/<site> étant retiré côté serveur avant dispatch.
+        """
+        resp = self._get_session().get(
+            f"{self.base_url}/session/access/active",
+            headers=self.headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def table_exists(self, table_id: str) -> dict[str, Any] | None:
         """
         Vérifie si une table existe dans le document Grist.

@@ -78,6 +78,23 @@
     </div>
 </div>
 
+<!-- Plan Grist -->
+<div class="fr-card fr-mb-4w">
+    <div class="fr-card__body">
+        <div class="fr-card__content">
+            <h2 class="fr-card__title">
+                <i class="fas fa-gauge-high fr-mr-1w" style="color: #000091;" aria-hidden="true"></i>
+                <span style="color: #000091;">Plan Grist (limites API)</span>
+            </h2>
+            <div id="grist-plan" class="fr-mt-3w">
+                <div class="fr-alert fr-alert--info">
+                    <p>Chargement des informations du plan...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Variables d'environnement -->
 <div class="fr-card fr-mb-4w">
     <div class="fr-card__body">
@@ -158,7 +175,35 @@
 
         // Charger le rapport des syncs
         loadSyncReport()
+
+        // Charger les infos du plan Grist
+        loadGristPlan()
     })
+
+    async function loadGristPlan() {
+        const planDiv = document.getElementById('grist-plan');
+        try {
+            const response = await fetch('/api/grist-plan' + window.location.search);
+            const data = await response.json();
+            if (data.error) {
+                planDiv.innerHTML = `<div class="fr-alert fr-alert--error"><p>${data.error}</p></div>`;
+                return;
+            }
+            let html = `<p class="fr-text--lg"><strong>Plan :</strong> ${data.plan || 'Non détecté'}</p>`;
+            html += '<table class="fr-table fr-table--no-caption"><thead><tr><th scope="col">Limite</th><th scope="col">Valeur</th><th scope="col">Consommation</th></tr></thead><tbody>';
+            html += `<tr><td>Quotidienne / document</td><td>${data.daily_limit ?? 'Non définie'}</td><td>--</td></tr>`;
+            const monthlyUsage = data.usage
+                ? `${data.usage.used} / ${data.usage.limit} (${data.usage.month})`
+                : data.monthly_limit
+                    ? 'Owner / manager requis'
+                    : 'Non concernée';
+            html += `<tr><td>Mensuelle / site</td><td>${data.monthly_limit ?? 'Non définie'}</td><td>${monthlyUsage}</td></tr>`;
+            html += '</tbody></table>';
+            planDiv.innerHTML = html;
+        } catch (error) {
+            planDiv.innerHTML = `<div class="fr-alert fr-alert--error"><p>Erreur de chargement du plan Grist: ${error.message}</p></div>`;
+        }
+    }
 
     async function loadSyncReport() {
         const reportDiv = document.getElementById('sync-report');
