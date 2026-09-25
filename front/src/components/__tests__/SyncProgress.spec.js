@@ -3,6 +3,9 @@ import { mount } from '@vue/test-utils'
 
 import SyncProgress from '../SyncProgress.vue'
 import { useDemarcheContext } from '../../composables/useDemarcheContext'
+import { useSyncTask } from '../../composables/useSyncTask'
+
+const { setCurrentTaskId } = useSyncTask()
 
 const mockOn = vi.fn()
 const mockDisconnect = vi.fn()
@@ -15,9 +18,9 @@ vi.mock('socket.io-client', () => ({
 const scrollIntoView = vi.fn()
 Element.prototype.scrollIntoView = scrollIntoView
 
-function triggerTaskUpdate(task) {
+function triggerTaskUpdate(task, taskId = 'task_1') {
   const handler = mockOn.mock.calls.find(([event]) => event === 'task_update')?.[1]
-  if (handler) handler({ task })
+  if (handler) handler({ task_id: taskId, task })
 }
 
 describe('SyncProgress', () => {
@@ -40,6 +43,7 @@ describe('SyncProgress', () => {
     mockOn.mockClear()
     mockDisconnect.mockClear()
     scrollIntoView.mockClear()
+    setCurrentTaskId('task_1')
     const { setDemarcheCount } = useDemarcheContext()
     setDemarcheCount(0)
     wrapper = mount(SyncProgress)
@@ -47,6 +51,7 @@ describe('SyncProgress', () => {
 
   afterEach(() => {
     wrapper?.unmount()
+    setCurrentTaskId(null)
   })
 
   it('hided by default', () => {
@@ -198,6 +203,47 @@ describe('SyncProgress', () => {
     const localWrapper = mount(SyncProgress)
     localWrapper.unmount()
     expect(mockDisconnect).toHaveBeenCalled()
+  })
+
+  it('ignores task_update for a different task', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Autre synchro' }, 'task_2')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.fr-card').exists()).toBe(false)
+    expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
+    expect(wrapper.emitted('sync-started')).toBeFalsy()
+    expect(wrapper.emitted('sync-finished')).toBeFalsy()
+  })
+
+  it('ignores all task_update when no current task is set', async () => {
+    setCurrentTaskId(null)
+    triggerTaskUpdate({ status: 'running', progress: 50, message: 'Quelque chose' }, 'task_3')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.fr-card').exists()).toBe(false)
+    expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
+  })
+
+  it('resets currentTaskId on completion', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({
+      status: 'completed', progress: 100, message: 'Terminé',
+      result: { success_count: 5, error_count: 1 },
+      end_time: 1752600000
+    })
+    await wrapper.vm.$nextTick()
+
+    const { currentTaskId } = useSyncTask()
+    expect(currentTaskId.value).toBe(null)
+  })
+
+  it('resets currentTaskId on error', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
+    triggerTaskUpdate({ status: 'error', progress: 50, message: 'Erreur' })
+    await wrapper.vm.$nextTick()
+
+    const { currentTaskId } = useSyncTask()
+    expect(currentTaskId.value).toBe(null)
   })
 
 })
