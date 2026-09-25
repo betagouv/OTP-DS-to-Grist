@@ -12,6 +12,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, url_for
+import requests
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -19,6 +20,7 @@ from configuration.config_manager import ConfigManager
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from dn.client import get_groups
+from grist.client import GristClient
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
@@ -591,6 +593,52 @@ def api_sync_report():
         ), 500
     finally:
         db.close()
+
+
+@app.route("/api/grist-plan")
+def api_grist_plan():
+    """Infos du plan Grist (limites API) pour la configuration courante (page debug)."""
+    grist_user_id = request.args.get("grist_user_id", "")
+    grist_doc_id = request.args.get("grist_doc_id", "")
+
+    try:
+        configs = config_manager.load_config(grist_user_id, grist_doc_id)
+        config = configs[0] if configs else {}
+        if not config.get("grist_doc_id"):
+            return jsonify({"error": "Configuration introuvable"}), 200
+
+        client = GristClient(config["grist_base_url"], config["grist_api_key"])
+        data = client.get_plan_info()
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code if e.response is not None else None
+        if status_code in (401, 403):
+            return (
+                jsonify(
+                    {
+                        "error": "Plan Grist indisponible avec ce token "
+                        "(réservé owner / manager du site)"
+                    }
+                ),
+                200,
+            )
+        return jsonify({"error": f"Plan Grist indisponible (HTTP {status_code})"}), 200
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération du plan Grist: {str(e)}")
+        return jsonify({"error": "Plan Grist indisponible"}), 200
+
+    org = data.get("org") or {}
+    billing = org.get("billingAccount") or {}
+    product = billing.get("product") or {}
+    features = billing.get("features") or product.get("features") or {}
+
+    return jsonify(
+        {
+            "plan": product.get("name"),
+            "daily_limit": features.get("baseMaxApiUnitsPerDocumentPerDay"),
+            "monthly_limit": features.get("maxApiCallsPerOrgMonth"),
+            "usage": org.get("apiUsage") or None,
+        }
+    )
 
 
 @app.route("/api/sync-log/latest", methods=["GET"])

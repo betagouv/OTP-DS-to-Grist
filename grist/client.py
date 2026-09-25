@@ -1,8 +1,22 @@
+import os
 import traceback
 from typing import Any
 
 import requests
+
 from utils.log import log, log_verbose, log_error, log_progress
+from utils.rate_limited_session import RateLimitedSession, build_rate_limited_session
+
+
+# Configuration du rate limiting réactif des appels à l'API Grist,
+# surchargeable via variables d'environnement.
+# Grist ne renvoie pas d'en-têtes Retry-After / RateLimit-Reset sur les 429 :
+# RateLimitedSession retombe alors sur GRIST_FALLBACK_429_DELAY.
+GRIST_MAX_429_RETRIES = max(1, int(os.getenv("GRIST_MAX_429_RETRIES", "3")))
+GRIST_FALLBACK_429_DELAY = int(os.getenv("GRIST_FALLBACK_429_DELAY", "60"))
+GRIST_MAX_RANDOM_DELAY_SECONDS = int(
+    os.getenv("GRIST_MAX_RANDOM_DELAY_SECONDS", "5")
+)
 
 
 class GristClient:
@@ -17,6 +31,18 @@ class GristClient:
             "Content-Type": "application/json",
         }
         log(f"Initialisation du client Grist avec l'URL de base: {self.base_url}")
+        self._session: RateLimitedSession | None = None
+
+    def _get_session(self) -> RateLimitedSession:
+        """Session HTTP du client, créée paresseusement (retry 429 + 5xx)."""
+        if self._session is None:
+            self._session = build_rate_limited_session(
+                max_retries=GRIST_MAX_429_RETRIES,
+                fallback_delay=GRIST_FALLBACK_429_DELAY,
+                max_random_delay=GRIST_MAX_RANDOM_DELAY_SECONDS,
+            )
+
+        return self._session
 
     def set_doc_id(self, doc_id: str | None) -> None:
         self.doc_id = doc_id
@@ -38,7 +64,7 @@ class GristClient:
     def get_grist_user_email(self) -> str | None:
         """Email Grist de l'utilisateur courant via SCIM /Me. None si indisponible."""
         try:
-            resp = requests.get(
+            resp = self._get_session().get(
                 f"{self.base_url}/scim/v2/Me", headers=self.headers, timeout=10
             )
             if resp.status_code != 200:
@@ -50,6 +76,22 @@ class GristClient:
             log_error(f"SCIM /Me indisponible: {e}")
 
             return None
+
+    def get_plan_info(self) -> dict[str, Any]:
+        """Infos plan/site Grist de la session courante (GET /api/session/access/active).
+
+        Retourne le payload complet (billingAccount.product.name, features,
+        apiUsage...). Peut échouer si le token n'est pas owner / manager du site.
+        self.base_url porte déjà le suffixe /api (ex. /o/<site>/api), le préfixe
+        /o/<site> étant retiré côté serveur avant dispatch.
+        """
+        resp = self._get_session().get(
+            f"{self.base_url}/session/access/active",
+            headers=self.headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def table_exists(self, table_id: str) -> dict[str, Any] | None:
         """
@@ -177,7 +219,7 @@ class GristClient:
         Retourne un dict ou None si pas encore de sync enregistrée.
         """
         url = f"{self.base_url}/docs/{self.doc_id}/tables/Sync_metadata/records"
-        response = requests.get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers)
 
         if response.status_code != 200:
             log_error(f"Erreur get_sync_metadata: {response.status_code}")
@@ -218,7 +260,7 @@ class GristClient:
         fields = {"demarche_number": int(demarche_number), **metadata}
 
         # Chercher si une ligne existe déjà pour cette démarche
-        get_response = requests.get(url, headers=self.headers)
+        get_response = self._get_session().get(url, headers=self.headers)
         existing_id = None
         if get_response.status_code == 200:
             for record in get_response.json().get("records", []):
@@ -230,10 +272,10 @@ class GristClient:
 
         if existing_id:
             payload = {"records": [{"id": existing_id, "fields": fields}]}
-            response = requests.patch(url, headers=self.headers, json=payload)
+            response = self._get_session().patch(url, headers=self.headers, json=payload)
         else:
             payload = {"records": [{"fields": fields}]}
-            response = requests.post(url, headers=self.headers, json=payload)
+            response = self._get_session().post(url, headers=self.headers, json=payload)
 
         if response.status_code in [200, 201]:
             log(f"  Sync_metadata sauvegardée pour démarche {demarche_number}")
@@ -310,7 +352,7 @@ class GristClient:
     def list_documents(self) -> dict[str, Any]:
         url = f"{self.base_url}/docs"
         log_verbose(f"GET {url}")
-        response = requests.get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers)
         if response.status_code != 200:
             log_error(f"Erreur {response.status_code}: {response.text}")
             response.raise_for_status()
@@ -323,7 +365,7 @@ class GristClient:
             raise ValueError("Document ID is required")
         url = f"{self.base_url}/docs/{self.doc_id}"
         log_verbose(f"GET {url}")
-        response = requests.get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers)
         if response.status_code != 200:
             log_error(f"Erreur {response.status_code}: {response.text}")
             response.raise_for_status()
@@ -337,7 +379,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables"
         log_verbose(f"GET {url}")
-        response = requests.get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers)
         if response.status_code != 200:
             log_error(f"Erreur {response.status_code}: {response.text}")
             response.raise_for_status()
@@ -363,7 +405,7 @@ class GristClient:
                     f"Invalid column id '{col['id']}'. Must start with a letter and contain only letters, numbers, and underscores."
                 )
 
-        response = requests.post(url, headers=self.headers, json=data)
+        response = self._get_session().post(url, headers=self.headers, json=data)
         if response.status_code != 200:
             log_error(f"Erreur {response.status_code}: {response.text}")
             response.raise_for_status()
@@ -381,7 +423,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
         log_verbose(f"GET {url}")
-        response = requests.get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers)
 
         if response.status_code != 200:
             log_error(
@@ -408,7 +450,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"GET {url}")
-        response = requests.get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers)
 
         return response
 
@@ -425,7 +467,7 @@ class GristClient:
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
         log_verbose(f"POST {url}")
         payload = {"columns": columns}
-        response = requests.post(url, headers=self.headers, json=payload)
+        response = self._get_session().post(url, headers=self.headers, json=payload)
 
         return response
 
@@ -441,7 +483,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"POST {url}")
-        response = requests.post(url, headers=self.headers, json={"records": records})
+        response = self._get_session().post(url, headers=self.headers, json={"records": records})
 
         return response
 
@@ -457,7 +499,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"PATCH {url}")
-        response = requests.patch(url, headers=self.headers, json={"records": records})
+        response = self._get_session().patch(url, headers=self.headers, json={"records": records})
 
         return response
 
@@ -476,7 +518,7 @@ class GristClient:
             f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records/delete"
         )
         log_verbose(f"POST {url}")
-        response = requests.post(url, headers=self.headers, json=record_ids)
+        response = self._get_session().post(url, headers=self.headers, json=record_ids)
 
         return response
 

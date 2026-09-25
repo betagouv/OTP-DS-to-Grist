@@ -2,7 +2,7 @@
 
 Exécute réellement `process_demarche_for_grist_optimized` avec :
 - la couche DN mockée (schéma, liste des dossiers, dossiers complets) ;
-- le transport HTTP Grist mocké au seam `grist.client.requests` (serveur Grist factice) ;
+- le transport HTTP Grist mocké au seam `GristClient._get_session` (serveur Grist factice) ;
 - les sous-tâches `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`
   mockées ; `IdColumnHider` réel.
 
@@ -11,12 +11,11 @@ Aucun service externe (DN, Grist, DB) n'est requis.
 
 import json
 from contextlib import ExitStack
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
 import requests
 
-import grist.client as grist_client_module
 import grist_processor_working_all as gpa
 import schema_utils
 from grist.client import GristClient
@@ -237,16 +236,16 @@ class TestSyncPipelineGrist:
         client = GristClient(BASE_URL, "api-key", DOC_ID)
 
         with ExitStack() as stack:
+            session = MagicMock()
             for method in ("get", "post", "patch"):
-                stack.enter_context(
-                    patch.object(
-                        grist_client_module.requests,
-                        method,
-                        side_effect=lambda *args, method=method, **kwargs: server.handle(
-                            method, args[0], kwargs.get("json")
-                        ),
+                getattr(session, method).side_effect = (
+                    lambda *args, method=method, **kwargs: server.handle(
+                        method, args[0], kwargs.get("json")
                     )
                 )
+            stack.enter_context(
+                patch.object(GristClient, "_get_session", return_value=session)
+            )
             stack.enter_context(
                 patch.object(gpa, "get_optimized_schema", return_value=make_schema())
             )
@@ -402,16 +401,16 @@ class TestSyncPipelineGrist:
         client = GristClient(BASE_URL, "api-key", DOC_ID)
 
         with ExitStack() as stack:
+            session = MagicMock()
             for method in ("get", "post", "patch"):
-                stack.enter_context(
-                    patch.object(
-                        grist_client_module.requests,
-                        method,
-                        side_effect=lambda *args, method=method, **kwargs: server.handle(
-                            method, args[0], kwargs.get("json")
-                        ),
+                getattr(session, method).side_effect = (
+                    lambda *args, method=method, **kwargs: server.handle(
+                        method, args[0], kwargs.get("json")
                     )
                 )
+            stack.enter_context(
+                patch.object(GristClient, "_get_session", return_value=session)
+            )
             stack.enter_context(
                 patch.object(gpa, "get_optimized_schema", return_value=make_schema())
             )
