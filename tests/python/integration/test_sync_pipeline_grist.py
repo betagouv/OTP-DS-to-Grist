@@ -1,21 +1,39 @@
 """Test d'intégration de la pipeline de sync complète (périmètre Grist).
 
-Exécute réellement `process_demarche_for_grist_optimized` avec :
-- la couche DN mockée (schéma, liste des dossiers, dossiers complets) ;
-- le transport HTTP Grist mocké au seam `grist.client.requests` (serveur Grist factice) ;
-- les sous-tâches `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`
-  mockées ; `IdColumnHider` réel.
+Ces tests exécutent réellement `process_demarche_for_grist_optimized` et
+**n'affirment que l'état final du document Grist** : quel que soit le découpage
+technique retenu (pagination, lots, requêtes), les mêmes dossiers doivent se
+retrouver dans le document, avec les mêmes champs.
+
+Le transport HTTP Grist est intercepté au seam `grist.client.requests` et servi
+par `FakeGristServer`, un serveur factice **persistant** : les écritures sont
+conservées, l'état final est donc observable.
+
+La couche DN est branchée sur `FakeDemarchesServer`, un faux serveur GraphQL DN
+avec pagination par curseurs, via le seam `dn.client.get_session_with_retries` :
+la vraie pagination DS est donc traversée. Ce faux serveur sert un dossier
+"résumé" ou "détaillé" selon la query reçue, si bien qu'une requête qui
+abandonnerait les détails se verrait dans l'état final Grist.
+
+Sont mockés, pour isoler le périmètre : `get_optimized_schema` (schéma DS),
+`sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
+`detect_demandeur_type` et `IdColumnHider` (dernière tâche de niveau démarche,
+dont on vérifie seulement qu'elle est exécutée).
 
 Aucun service externe (DN, Grist, DB) n'est requis.
 """
 
 import json
+import os
+import re
 from contextlib import ExitStack
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import urlparse
 
 import requests
 
+import dn.client as dn_client_module
 import grist.client as grist_client_module
 import grist_processor_working_all as gpa
 import schema_utils
@@ -24,6 +42,21 @@ from grist.client import GristClient
 BASE_URL = "https://grist.test"
 DOC_ID = "doc123"
 DEMARCHE_NUMBER = 12345
+DOSSIERS_TABLE = "Demarche_12345_dossiers"
+CHAMPS_TABLE = "Demarche_12345_champs"
+ANNOTATIONS_TABLE = "Demarche_12345_annotations"
+AVIS_TABLE = "Demarche_12345_avis"
+SYNC_METADATA_TABLE = "Sync_metadata"
+
+# `.env` est chargé au import de `dn.client` : les variables de filtre sont
+# neutralisées par défaut pour que le `.env` du poste n'altère pas les tests.
+# `run_pipeline(filters=...)` permet de surcharger une partie de ces filtres.
+FILTRES_VIDES = {
+    "DATE_DEPOT_DEBUT": "",
+    "DATE_DEPOT_FIN": "",
+    "STATUTS_DOSSIERS": "",
+    "GROUPES_INSTRUCTEURS": "",
+}
 
 
 def build_response(payload, status=200):
@@ -36,39 +69,65 @@ def build_response(payload, status=200):
 
 
 class FakeGristServer:
-    """Mini serveur Grist en mémoire : tables + colonnes, trace de tous les appels.
+    """Mini serveur Grist en mémoire : tables, colonnes et **enregistrements**.
 
-    `initial_records` permet de pré-remplir une table (ex: Sync_metadata) avec
-    des enregistrements retournés lors du premier GET records de cette table.
+    Les POST/PATCH records sont conservés : `rows()` et `column()` exposent
+    l'état final du document, ce qui permet d'affirmer qu'un dossier a bien
+    été écrit (ou mis à jour) plutôt que de supposer que le code le fait.
+
+    `initial_records` permet de pré-remplir une table (ex: un dossier déjà
+    synchronisé, une ligne Sync_metadata).
     Format : {table_id: [{champ: valeur, ...}, ...]}
     """
 
     def __init__(self, initial_records=None):
         self.tables = {}
-        self.calls = []
-        self._initial_records = initial_records or {}
-        self._records_sent = set()
+        self.store = {}
+        self._next_id = {}
         self._add_initial_tables()
+        for table_id, records in (initial_records or {}).items():
+            for fields in records:
+                self._insert(table_id, fields)
 
     def _add_initial_tables(self):
-        self.tables["Demarche_12345_dossiers"] = {
+        self.tables[DOSSIERS_TABLE] = {
             "id": "Id",
             "manualSort": "ManualSortPos",
             "dossier_id": "Text",
             "dossier_number": "Int",
             "state": "Text",
         }
-        self.tables["Demarche_12345_champs"] = {
+        self.tables[CHAMPS_TABLE] = {
             "id": "Id",
             "dossier_number": "Int",
             "champ_id": "Text",
         }
 
+    def _insert(self, table_id, fields):
+        next_id = self._next_id.get(table_id, 0) + 1
+        self._next_id[table_id] = next_id
+        self.store.setdefault(table_id, {})[next_id] = dict(fields)
+        return next_id
+
+    def rows(self, table_id):
+        """État final d'une table : champs des enregistrements, par ordre d'id."""
+        return [dict(fields) for fields in self.store.get(table_id, {}).values()]
+
+    def column(self, table_id, column_id):
+        """Valeurs d'une colonne pour tous les enregistrements de la table."""
+        return [
+            fields[column_id] for fields in self.rows(table_id) if column_id in fields
+        ]
+
+    def metadata(self, demarche_number):
+        """Ligne Sync_metadata d'une démarche, ou None si absente."""
+        for fields in self.rows(SYNC_METADATA_TABLE):
+            if str(fields.get("demarche_number")) == str(demarche_number):
+                return fields
+        return None
+
     def handle(self, method, url, payload=None):
         method = method.upper()
-        self.calls.append(
-            {"method": method, "path": urlparse(url).path, "json": payload}
-        )
         parts = [p for p in urlparse(url).path.split("/") if p]
         return self._route(method, parts, payload)
 
@@ -105,19 +164,41 @@ class FakeGristServer:
                 }
             )
 
-        if method == "GET" and parts[4] == "records":
-            if parts[3] in self._initial_records and parts[3] not in self._records_sent:
-                self._records_sent.add(parts[3])
-                records = self._initial_records[parts[3]]
-                return build_response(
-                    {
-                        "records": [
-                            {"id": i + 1, "fields": r}
-                            for i, r in enumerate(records)
-                        ]
-                    }
-                )
-            return build_response({"records": []})
+        if method == "POST" and parts[4:] == ["records", "delete"]:
+            for record_id in payload or []:
+                self.store.get(table_id, {}).pop(record_id, None)
+            return build_response({})
+
+        if method == "GET" and parts[4:] == ["records"]:
+            return build_response(
+                {
+                    "records": [
+                        {"id": record_id, "fields": dict(fields)}
+                        for record_id, fields in sorted(
+                            self.store.get(table_id, {}).items()
+                        )
+                    ]
+                }
+            )
+
+        if method == "POST" and parts[4:] == ["records"]:
+            return build_response(
+                {
+                    "records": [
+                        {"id": self._insert(table_id, record["fields"])}
+                        for record in payload["records"]
+                    ]
+                }
+            )
+
+        if method == "PATCH" and parts[4:] == ["records"]:
+            for record in payload["records"]:
+                stored = self.store.get(table_id, {}).get(record["id"])
+                if stored is not None:
+                    stored.update(record["fields"])
+            return build_response(
+                {"records": [{"id": record["id"]} for record in payload["records"]]}
+            )
 
         if method == "POST" and len(parts) == 4:
             for table in payload["tables"]:
@@ -129,12 +210,6 @@ class FakeGristServer:
         if method == "POST" and parts[4] == "columns":
             for col in payload["columns"]:
                 self.tables.setdefault(table_id, {})[col["id"]] = col.get("type", "Text")
-            return build_response({})
-
-        if method in ("POST", "PATCH") and parts[4] == "records":
-            return build_response({"records": []})
-
-        if method == "POST" and parts[4] == "records" and parts[5] == "delete":
             return build_response({})
 
         raise AssertionError(f"Requête non prévue : {method} {parts}")
@@ -169,13 +244,12 @@ def make_schema():
     }
 
 
-def make_dossier_brief(number):
-    """Entrée de liste de dossiers (utilisée pour la constitution des lots)."""
-    return {"number": number, "state": "accepte"}
+def make_dossier(number, **overrides):
+    """Dossier DS complet (format réel de l'API).
 
-
-def make_dossier(number):
-    """Dossier DS complet (format réel de l'API)."""
+    `overrides` permet de faire varier un champ (statut, date de dépôt,
+    groupe instructeur) dossier par dossier.
+    """
     return {
         "id": f"dossier_{number}",
         "number": number,
@@ -215,7 +289,7 @@ def make_dossier(number):
         ],
         "avis": [
             {
-                "id": "avis_1",
+                "id": f"avis_{number}",
                 "question": "Question ?",
                 "reponse": "Oui",
                 "claimant": {"email": "instructeur@test.fr"},
@@ -228,232 +302,408 @@ def make_dossier(number):
         "demandeur": None,
         "traitements": [],
         "instructeurs": [{"email": "inst@test.fr"}],
+        **overrides,
     }
+
+
+def dossiers_de_test(nombre):
+    """Les `nombre` premiers dossiers, numérotés de 1 à `nombre`."""
+    return [make_dossier(number) for number in range(1, nombre + 1)]
+
+
+MARQUEUR_DETAIL = "champs"
+"""La query de résumé ne demande pas les `champs`, le fragment détaillé si."""
+
+RESUME_CLES = (
+    "id",
+    "number",
+    "state",
+    "archived",
+    "prefilled",
+    "dateDepot",
+    "dateDerniereModification",
+    "datePassageEnConstruction",
+    "datePassageEnInstruction",
+    "dateTraitement",
+    "usager",
+    "groupeInstructeur",
+    "demandeur",
+    "labels",
+)
+
+
+class FakeDemarchesServer:
+    """Faux serveur GraphQL DN : sert la liste paginée des dossiers et, tant
+    qu'elle est appelée, le détail unitaire.
+
+    Les curseurs sont opaques (`cursor:<décalage>`) : le client doit les
+    reprendre tels quels. La forme des dossiers servie dépend de la query
+    reçue (résumé ou détail détaillé), si bien qu'une query paginée qui
+    abandonnerait les détails se voit dans l'état final Grist.
+    """
+
+    def __init__(self, dossiers):
+        self.dossiers = dossiers
+
+    def _offset(self, cursor):
+        prefixe, _, valeur = str(cursor).partition(":")
+        assert prefixe == "cursor" and valeur.isdigit(), f"Curseur inattendu : {cursor!r}"
+        return int(valeur)
+
+    def _page_size(self, query, variables):
+        if variables.get("first") is not None:
+            return int(variables["first"])
+        trouve = re.search(r"first:\s*(\d+)", query)
+        return int(trouve.group(1)) if trouve else 100
+
+    def _filtres_serveur(self, variables):
+        dossiers = self.dossiers
+        updated_since = variables.get("updatedSince")
+        if updated_since:
+            dossiers = [
+                d
+                for d in dossiers
+                if d["dateDerniereModification"] > updated_since
+            ]
+        created_since = variables.get("createdSince")
+        if created_since:
+            dossiers = [d for d in dossiers if d["dateDepot"] > created_since]
+        return dossiers
+
+    def _resume(self, dossier):
+        return {cle: dossier.get(cle) for cle in RESUME_CLES}
+
+    def handle(self, query, variables):
+        if "dossiers(" in query:
+            return self._liste_paginee(query, variables)
+        assert "dossier(number:" in query, f"Query DN non prévue : {query[:120]}"
+        return self._dossier_unitaire(query, variables)
+
+    def _dossier_unitaire(self, query, variables):
+        number = variables.get("dossierNumber")
+        dossier = next((d for d in self.dossiers if d["number"] == number), None)
+        return build_response(
+            {"data": {"dossier": dossier if dossier is None else self._forme(query, dossier)}}
+        )
+
+    def _liste_paginee(self, query, variables):
+        first = self._page_size(query, variables)
+        after = variables.get("after", variables.get("afterCursor"))
+        dossiers = self._filtres_serveur(variables)
+        debut = 0 if after is None else self._offset(after)
+        fenetre = dossiers[debut : debut + first]
+        suite = debut + len(fenetre) < len(dossiers)
+        end_cursor = f"cursor:{debut + len(fenetre)}" if suite else None
+
+        nodes = [self._forme(query, dossier) for dossier in fenetre]
+        return build_response(
+            {
+                "data": {
+                    "demarche": {
+                        "id": "demarche_1",
+                        "number": DEMARCHE_NUMBER,
+                        "title": "Démarche test",
+                        "dossiers": {
+                            "pageInfo": {
+                                "hasPreviousPage": debut > 0,
+                                "hasNextPage": suite,
+                                "startCursor": f"cursor:{debut}",
+                                "endCursor": end_cursor,
+                            },
+                            "nodes": nodes,
+                        },
+                    }
+                }
+            }
+        )
+
+    def _forme(self, query, dossier):
+        return dict(dossier) if MARQUEUR_DETAIL in query else self._resume(dossier)
+
+
+class FakeDemarchesSession:
+    """Session HTTP factice : ne sert que les POST GraphQL de `dn.client`."""
+
+    def __init__(self, server):
+        self.server = server
+
+    def post(self, url, **kwargs):
+        payload = kwargs.get("json") or {}
+        return self.server.handle(
+            payload.get("query", ""), payload.get("variables") or {}
+        )
+
+
+def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
+    """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
+
+    La couche DN réelle est branchée sur `dn_server` (faux serveur GraphQL
+    paginé) ; seule la dernière tâche de niveau démarche est observée.
+
+    `filters` surcharge les variables de filtre neutralisées par défaut, afin
+    que les tests n dépendent pas du `.env` du poste.
+    """
+    client = GristClient(BASE_URL, "api-key", DOC_ID)
+
+    with ExitStack() as stack:
+        for method in ("get", "post", "patch"):
+            stack.enter_context(
+                patch.object(
+                    grist_client_module.requests,
+                    method,
+                    side_effect=lambda *args, method=method, **kwargs: server.handle(
+                        method, args[0], kwargs.get("json")
+                    ),
+                )
+            )
+        stack.enter_context(
+            patch.object(gpa, "get_optimized_schema", return_value=make_schema())
+        )
+        stack.enter_context(
+            patch.object(dn_client_module, "API_TOKEN", "jeton-de-test")
+        )
+        stack.enter_context(
+            patch.object(
+                dn_client_module,
+                "get_session_with_retries",
+                return_value=FakeDemarchesSession(dn_server),
+            )
+        )
+        stack.enter_context(
+            patch.dict(os.environ, {**FILTRES_VIDES, **(filters or {})})
+        )
+        stack.enter_context(
+            patch.object(schema_utils, "detect_demandeur_type", return_value=None)
+        )
+        stack.enter_context(patch.object(gpa, "sync_instructeurs"))
+        stack.enter_context(patch.object(gpa, "sync_labels_for_demarche"))
+        stack.enter_context(
+            patch.object(
+                gpa,
+                "check_deleted_dossiers",
+                return_value={"newly_marked": 0},
+            )
+        )
+        hider = stack.enter_context(patch.object(gpa, "IdColumnHider"))
+
+        result = gpa.process_demarche_for_grist_optimized(
+            client,
+            DEMARCHE_NUMBER,
+            **pipeline_kwargs,
+        )
+
+    mocks = SimpleNamespace(hider=hider)
+    return result, mocks
 
 
 class TestSyncPipelineGrist:
     def test_process_demarche_pipeline_complete_writes_to_grist(self):
+        """Une sync complète écrit le dossier, ses champs, son annotation, son
+        avis et les métadonnées de sync, et crée les tables attendues.
+        """
         server = FakeGristServer()
-        client = GristClient(BASE_URL, "api-key", DOC_ID)
+        dn_server = FakeDemarchesServer([make_dossier(1)])
 
-        with ExitStack() as stack:
-            for method in ("get", "post", "patch"):
-                stack.enter_context(
-                    patch.object(
-                        grist_client_module.requests,
-                        method,
-                        side_effect=lambda *args, method=method, **kwargs: server.handle(
-                            method, args[0], kwargs.get("json")
-                        ),
-                    )
-                )
-            stack.enter_context(
-                patch.object(gpa, "get_optimized_schema", return_value=make_schema())
-            )
-            stack.enter_context(
-                patch.object(
-                    gpa,
-                    "get_demarche_dossiers",
-                    return_value=[make_dossier_brief(1)],
-                )
-            )
-            stack.enter_context(
-                patch.object(gpa, "get_dossier", side_effect=make_dossier)
-            )
-            stack.enter_context(
-                patch.object(schema_utils, "detect_demandeur_type", return_value=None)
-            )
-            mock_instructeurs = stack.enter_context(
-                patch.object(gpa, "sync_instructeurs")
-            )
-            mock_labels = stack.enter_context(
-                patch.object(gpa, "sync_labels_for_demarche")
-            )
-            mock_deleted = stack.enter_context(
-                patch.object(
-                    gpa,
-                    "check_deleted_dossiers",
-                    return_value={"newly_marked": 0},
-                )
-            )
-
-            result = gpa.process_demarche_for_grist_optimized(
-                client,
-                DEMARCHE_NUMBER,
-                parallel=False,
-                batch_size=100,
-                api_filters={"statuts": ["accepte"]},
-            )
+        result, mocks = run_pipeline(server, dn_server, parallel=False)
 
         assert result is True
 
-        # Le document Grist a été vérifié
-        assert any(
-            call["method"] == "GET" and call["path"] == f"/docs/{DOC_ID}"
-            for call in server.calls
-        )
-
         # Toutes les tables attendues existent
-        assert "Demarche_12345_dossiers" in server.tables
-        assert "Demarche_12345_champs" in server.tables
-        assert "Demarche_12345_annotations" in server.tables
+        assert DOSSIERS_TABLE in server.tables
+        assert CHAMPS_TABLE in server.tables
+        assert ANNOTATIONS_TABLE in server.tables
         assert "Demarche_12345_demandeurs" in server.tables
         assert "Demarche_12345_instructeurs" in server.tables
-        assert "Sync_metadata" in server.tables
-        assert "Demarche_12345_avis" in server.tables
+        assert SYNC_METADATA_TABLE in server.tables
+        assert AVIS_TABLE in server.tables
 
         # Colonnes ajoutées via add_columns (évolution de schéma + id d'annotation)
-        assert "suivi_par" in server.tables["Demarche_12345_dossiers"]
-        assert "objet_de_la_demande" in server.tables["Demarche_12345_champs"]
-        assert "annotation_interne" in server.tables["Demarche_12345_annotations"]
-        assert "annotation_interne_id" in server.tables["Demarche_12345_annotations"]
+        assert "suivi_par" in server.tables[DOSSIERS_TABLE]
+        assert "objet_de_la_demande" in server.tables[CHAMPS_TABLE]
+        assert "annotation_interne" in server.tables[ANNOTATIONS_TABLE]
+        assert "annotation_interne_id" in server.tables[ANNOTATIONS_TABLE]
 
-        # Upserts : un POST de création par table, avec les bons payloads
-        records_posts = {
-            table: [
-                call["json"]["records"]
-                for call in server.calls
-                if call["method"] == "POST"
-                and call["path"] == f"/docs/{DOC_ID}/tables/{table}/records"
-            ]
-            for table in server.tables
-        }
+        # Le dossier est écrit avec les valeurs de la source
+        dossiers = server.rows(DOSSIERS_TABLE)
+        assert len(dossiers) == 1
+        assert dossiers[0]["dossier_number"] == 1
+        assert dossiers[0]["state"] == "accepte"
+        assert dossiers[0]["suivi_par"] == "inst@test.fr"
 
-        dossier_fields = records_posts["Demarche_12345_dossiers"][0][0]["fields"]
-        assert len(records_posts["Demarche_12345_dossiers"]) == 1
-        assert dossier_fields["dossier_number"] == 1
-        assert dossier_fields["suivi_par"] == "inst@test.fr"
-        assert dossier_fields["state"] == "accepte"
+        # Idem pour les champs, annotations et avis rattachés
+        champs = server.rows(CHAMPS_TABLE)
+        assert len(champs) == 1
+        assert champs[0]["dossier_number"] == 1
+        assert champs[0]["objet_de_la_demande"] == "Projet X"
 
-        champ_fields = records_posts["Demarche_12345_champs"][0][0]["fields"]
-        assert len(records_posts["Demarche_12345_champs"]) == 1
-        assert champ_fields["dossier_number"] == 1
-        assert champ_fields["objet_de_la_demande"] == "Projet X"
+        annotations = server.rows(ANNOTATIONS_TABLE)
+        assert len(annotations) == 1
+        assert annotations[0]["dossier_number"] == 1
+        assert annotations[0]["annotation_interne"] == "note"
+        assert annotations[0]["annotation_interne_id"] == "id_annot"
 
-        annotation_fields = records_posts["Demarche_12345_annotations"][0][0]["fields"]
-        assert len(records_posts["Demarche_12345_annotations"]) == 1
-        assert annotation_fields["dossier_number"] == 1
-        assert annotation_fields["annotation_interne"] == "note"
-        assert annotation_fields["annotation_interne_id"] == "id_annot"
-
-        avis_fields = records_posts["Demarche_12345_avis"][0][0]["fields"]
-        assert len(records_posts["Demarche_12345_avis"]) == 1
-        assert avis_fields["dossier_number"] == 1
-        assert avis_fields["avis_id"] == "avis_1"
-        assert avis_fields["question"] == "Question ?"
-        assert avis_fields["expert_email"] == "expert@test.fr"
+        avis = server.rows(AVIS_TABLE)
+        assert len(avis) == 1
+        assert avis[0]["dossier_number"] == 1
+        assert avis[0]["avis_id"] == "avis_1"
+        assert avis[0]["question"] == "Question ?"
+        assert avis[0]["expert_email"] == "expert@test.fr"
 
         # Sync_metadata enregistrée en succès
-        sync_posts = [
-            call["json"]
-            for call in server.calls
-            if call["method"] == "POST"
-            and call["path"] == f"/docs/{DOC_ID}/tables/Sync_metadata/records"
-        ]
-        assert len(sync_posts) == 1
-        sync_fields = sync_posts[0]["records"][0]["fields"]
-        assert sync_fields["demarche_number"] == DEMARCHE_NUMBER
-        assert sync_fields["last_sync_status"] == "success"
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["demarche_number"] == DEMARCHE_NUMBER
+        assert metadata["last_sync_status"] == "success"
 
-        # Tâches de niveau démarche : instructeurs + suppression actives,
-        # labels absents (sync complète), IdColumnHider exécuté
-        mock_instructeurs.assert_called_once()
-        mock_deleted.assert_called_once()
-        mock_labels.assert_not_called()
-        for table in [
-            "_grist_Tables",
-            "_grist_Tables_column",
-            "_grist_Views_section",
-            "_grist_Views_section_field",
-        ]:
-            assert any(
-                call["method"] == "GET"
-                and call["path"] == f"/docs/{DOC_ID}/tables/{table}/records"
-                for call in server.calls
-            )
+        # Le masquage des colonnes `_id` est toujours exécuté en fin de sync
+        mocks.hider.return_value.hide_id_columns.assert_called_once()
 
     def test_filter_change_forces_full_sync(self):
-        """Quand les filtres changent entre deux syncs, le cursor
-        `updated_since` doit être ignoré (sync complète) pour ne pas manquer
-        les dossiers correspondant aux nouveaux critères.
+        """Un changement de filtres doit réintégrer dans le document les dossiers
+        que le repère de reprise aurait écartés.
 
-        Scénario : la 1ère sync a tourné avec des filtres A (cursor positionné
-        + hash stocké). On relance avec des filtres B différents. Le delta
-        utilisant `updated_since` ne verrait que les dossiers modifiés et
-        ignorerait les dossiers nouvellement éligibles aux filtres B.
+        Scénario : `Sync_metadata` porte un repère `updated_since` et un hash de
+        filtres obsolètes. Un dossier déposé avant ce repère n'est pas renvoyé
+        par le delta `updatedSince` : il ne doit pas pour autant manquer dans le
+        document, sous peine d'être ignoré à jamais.
 
-        Régression : sans détection du changement de filtres, l'appel à
-        `get_demarche_dossiers` reçoit encore `updated_since`, donc
-        le test échoue.
+        Régression : sans détection du changement de filtres, le delta ne verrait
+        que le dossier modifié et l'autre resterait absent.
         """
+        cursor_initial = "2024-06-01T00:00:00Z"
         server = FakeGristServer(
             initial_records={
-                "Sync_metadata": [
+                SYNC_METADATA_TABLE: [
                     {
                         "demarche_number": DEMARCHE_NUMBER,
-                        "updated_since_cursor": "2024-06-01T00:00:00Z",
-                        "deleted_since_cursor": "2024-06-01T00:00:00Z",
+                        "updated_since_cursor": cursor_initial,
+                        "deleted_since_cursor": cursor_initial,
                         "filters_hash": "hash_anciens_filtres",
                         "force_full_sync": False,
                     }
                 ]
             }
         )
-        client = GristClient(BASE_URL, "api-key", DOC_ID)
+        dn_server = FakeDemarchesServer(
+            [
+                make_dossier(1, dateDerniereModification="2024-07-01T00:00:00Z"),
+                make_dossier(2, dateDerniereModification="2024-05-01T00:00:00Z"),
+            ]
+        )
 
-        with ExitStack() as stack:
-            for method in ("get", "post", "patch"):
-                stack.enter_context(
-                    patch.object(
-                        grist_client_module.requests,
-                        method,
-                        side_effect=lambda *args, method=method, **kwargs: server.handle(
-                            method, args[0], kwargs.get("json")
-                        ),
-                    )
-                )
-            stack.enter_context(
-                patch.object(gpa, "get_optimized_schema", return_value=make_schema())
-            )
-            mock_fetch = stack.enter_context(
-                patch.object(
-                    gpa,
-                    "get_demarche_dossiers",
-                    return_value=[make_dossier_brief(1)],
-                )
-            )
-            stack.enter_context(
-                patch.object(gpa, "get_dossier", side_effect=make_dossier)
-            )
-            stack.enter_context(
-                patch.object(schema_utils, "detect_demandeur_type", return_value=None)
-            )
-            stack.enter_context(patch.object(gpa, "sync_instructeurs"))
-            stack.enter_context(patch.object(gpa, "sync_labels_for_demarche"))
-            stack.enter_context(
-                patch.object(
-                    gpa,
-                    "check_deleted_dossiers",
-                    return_value={"newly_marked": 0},
-                )
-            )
+        result, _ = run_pipeline(server, dn_server, parallel=False)
 
-            result = gpa.process_demarche_for_grist_optimized(
-                client,
-                DEMARCHE_NUMBER,
-                parallel=False,
-                batch_size=100,
-                # Filtres DIFFÉRENTS de ceux stockés dans Sync_metadata
-                api_filters={"statuts": ["en_instruction"]},
-            )
+        assert result is True
+        assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == [1, 2]
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+
+    def test_pipeline_updates_existing_dossier_without_duplicate(self):
+        """Un dossier déjà présent dans le document est mis à jour, pas dupliqué."""
+        server = FakeGristServer(
+            initial_records={
+                DOSSIERS_TABLE: [
+                    {
+                        "dossier_id": "dossier_1",
+                        "dossier_number": 1,
+                        "state": "en_instruction",
+                    }
+                ]
+            }
+        )
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
 
         assert result is True
 
-        # Le changement de filtres doit forcer une sync complète : le cursor
-        # updated_since est ignoré lors de l'appel à la couche DN.
-        call_kwargs = mock_fetch.call_args.kwargs
-        assert call_kwargs.get("updated_since") is None, (
-            "Les filtres ont changé mais le cursor updated_since a été utilisé "
-            "→ les dossiers correspondant aux nouveaux filtres seraient ignorés"
+        lignes = server.rows(DOSSIERS_TABLE)
+        assert len(lignes) == 1
+        assert lignes[0]["state"] == "accepte"
+        assert lignes[0]["suivi_par"] == "inst@test.fr"
+
+    def test_dn_pagination_writes_every_dossier(self):
+        """201 dossiers servis par l'API DN en plusieurs pages : l'état final
+        Grist doit contenir chaque dossier une seule fois, avec ses champs,
+        annotations et avis.
+
+        Régression : dossier perdu ou dupliqué à la frontière des pages, ou
+        query paginée qui ne demanderait plus les détails des dossiers.
+        """
+        numbers = list(range(1, 202))
+        dn_server = FakeDemarchesServer(dossiers_de_test(201))
+        server = FakeGristServer()
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+
+        # L'égalité des listes (et non des sets) garantit l'absence de doublon
+        assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == numbers
+        assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(numbers)
+        assert set(server.column(ANNOTATIONS_TABLE, "dossier_number")) == set(numbers)
+        assert set(server.column(AVIS_TABLE, "dossier_number")) == set(numbers)
+        assert len(set(server.column(AVIS_TABLE, "avis_id"))) == len(numbers)
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+
+    def test_dn_filters_keep_expected_dossiers_across_pages(self):
+        """Le filtrage de la production ne doit faire perdre aucun dossier
+        éligible, et les bornes de dates restent inclusives.
+
+        Scénario : la première page est presque entièrement écartée, les pages
+        suivantes contiennent les dossiers éligibles et trois cas limites (un
+        statut non filtré, un groupe non filtré, une date trop tardive).
+
+        Régression : dossier sauté parce qu'il se trouvait après une zone
+        filtrée, ou borne de date devenue exclusive.
+        """
+        numbers = list(range(1, 202))
+        debut, fin = "2024-03-01", "2024-06-19"
+        hors_periode = "2024-01-05T09:00:00Z"  # avant DATE_DEPOT_DEBUT
+        dans_periode = "2024-06-15T09:00:00Z"
+        hors_fin = "2024-06-20T09:00:00Z"  # après DATE_DEPOT_FIN
+
+        dossiers = [
+            make_dossier(
+                number,
+                dateDepot=dans_periode,
+                groupeInstructeur={"id": "groupe_1", "number": 1, "label": "G1"},
+            )
+            for number in numbers
+        ]
+        # Page 1 : tous hors période, sauf le dossier 50 exactement sur la borne
+        for dossier in dossiers[:100]:
+            dossier["dateDepot"] = hors_periode
+        dossiers[49]["dateDepot"] = debut + "T00:00:00Z"
+        # Un statut non filtré, un groupe non filtré, une date trop tardive
+        dossiers[119]["state"] = "refuse"
+        dossiers[129]["groupeInstructeur"] = {
+            "id": "groupe_2",
+            "number": 2,
+            "label": "G2",
+        }
+        dossiers[150]["dateDepot"] = hors_fin
+        # Le dossier 201 est déposé le jour même de la borne haute : conservé
+        dossiers[200]["dateDepot"] = fin + "T23:30:00Z"
+
+        # Sont attendus : le dossier 50 (borne basse inclusive) et 201 (borne
+        # haute inclusive), tous les dossiers 101 à 200 sauf 120 (statut),
+        # 130 (groupe) et 151 (borne haute).
+        attendus = {50, 201} | (set(range(101, 201)) - {120, 130, 151})
+
+        dn_server = FakeDemarchesServer(dossiers)
+        server = FakeGristServer()
+
+        result, _ = run_pipeline(
+            server,
+            dn_server,
+            filters={
+                "DATE_DEPOT_DEBUT": debut,
+                "DATE_DEPOT_FIN": fin,
+                "STATUTS_DOSSIERS": "accepte",
+                "GROUPES_INSTRUCTEURS": "1",
+            },
+            parallel=False,
         )
 
+        assert result is True
+        assert set(server.column(DOSSIERS_TABLE, "dossier_number")) == attendus
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
