@@ -1251,7 +1251,7 @@ describe('Accordion DN state', () => {
 
     globalThis.fetch.mockReset()
     globalThis.fetch
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 1 }] }) })
 
@@ -1295,7 +1295,7 @@ describe('Accordion DN state', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.vm.activeDnAccordion).toBe(0)
+    expect(wrapper.vm.activeDnAccordion).toBe(1)
   })
 
   it('keeps the edited config open at its own index after a save', async () => {

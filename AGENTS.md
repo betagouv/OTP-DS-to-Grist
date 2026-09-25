@@ -6,6 +6,8 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 
 ### Analyse
 
+- Lancer les tests associés après chaque modification
+- Rappeler brièvement la question de l'utilisateur avant chaque réponse (modes de discussion point par point)
 - Demander des clarifications pour toute ambiguïté
 - En cas de demande impliquant beaucoup de modifications, proposer un plan en étapes.
   - Présenter le plan (ou l'approche) en mode plan et attendre la validation de l'utilisateur avant d'exécuter / de modifier le code
