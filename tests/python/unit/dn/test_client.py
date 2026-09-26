@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from dn.client import (
+    iter_demarche_dossier_pages,
     FALLBACK_429_DELAY,
     MAX_429_RETRIES,
     MAX_RANDOM_DELAY_SECONDS,
@@ -758,3 +759,224 @@ class TestRateLimitedSession:
         assert response.status_code == 200
         assert mock_request.call_count == 2
         mock_sleep.assert_called_once_with(5.0)
+
+def _dossier(number, **champs):
+    """Dossier détaillé minimal, tel que renvoyé par la connexion paginée."""
+    dossier = {
+        "number": number,
+        "state": "instruite",
+        "dateDepot": "2024-01-01T00:00:00+01:00",
+        "dateDerniereModification": "2024-02-01T00:00:00+01:00",
+        "motivation": "because",
+        "usager": {"email": "usager@example.com"},
+        "champs": [],
+        "annotations": [],
+    }
+    dossier.update(champs)
+    return dossier
+
+
+def _page(nodes, has_next_page=False, end_cursor=None, errors=None):
+    payload = {
+        "data": {
+            "demarche": {
+                "dossiers": {
+                    "pageInfo": {
+                        "hasNextPage": has_next_page,
+                        "endCursor": end_cursor,
+                    },
+                    "nodes": nodes,
+                }
+            }
+        }
+    }
+    if errors is not None:
+        payload["errors"] = errors
+    return _mock_response(json_data=payload)
+
+
+class TestIterDemarcheDossierPages:
+    """Tests pour iter_demarche_dossier_pages (pagination des dossiers détaillés)"""
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_missing_token_raises(self, _mock_session):
+        """Token manquant → ValueError, aucune requête"""
+        with patch("dn.client.API_TOKEN", ""):
+            with pytest.raises(ValueError):
+                list(iter_demarche_dossier_pages(123))
+        _mock_session.assert_not_called()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_yields_dossiers_page_by_page(self, mock_session):
+        """Chaque page est rendue dès sa réception, avec le curseur de la page suivante"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _page([_dossier(1), _dossier(2)], has_next_page=True, end_cursor="c1"),
+            _page([_dossier(3)], has_next_page=False, end_cursor="c2"),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_demarche_dossier_pages(123))
+
+        assert [[dossier["number"] for dossier in page] for page in pages] == [
+            [1, 2],
+            [3],
+        ]
+        curseurs = [
+            appel.kwargs["json"]["variables"]["afterCursor"]
+            for appel in session.post.call_args_list
+        ]
+        assert curseurs == [None, "c1"]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_query_requests_detailed_dossiers(self, mock_session):
+        """La page est détaillée (champs, annotations, avis), sans filtre serveur"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+        mock_session.return_value = session
+
+        list(iter_demarche_dossier_pages(123))
+
+        variables = session.post.call_args.kwargs["json"]["variables"]
+        query = session.post.call_args.kwargs["json"]["query"]
+        assert variables["includeChamps"] is True
+        assert variables["includeAnotations"] is True
+        assert variables["includeAvis"] is True
+        assert "champs" in query and "annotations" in query
+        assert "apiFilters" not in query
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_page_size_is_capped(self, mock_session):
+        """La taille de page est transmise, bornée au maximum DN"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+        mock_session.return_value = session
+
+        list(iter_demarche_dossier_pages(123, page_size=500))
+
+        assert session.post.call_args.kwargs["json"]["variables"]["first"] == 100
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_updated_since_is_transmitted(self, mock_session):
+        """Le repère de reprise est transmis à l'API"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+        mock_session.return_value = session
+
+        list(iter_demarche_dossier_pages(123, updated_since="2024-06-01T00:00:00Z"))
+
+        variables = session.post.call_args.kwargs["json"]["variables"]
+        assert variables["updatedSince"] == "2024-06-01T00:00:00Z"
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_injected_session_is_used(self, mock_session):
+        """La session injectée est utilisée telle quelle (pas de session globale)"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+
+        list(iter_demarche_dossier_pages(123, session=session))
+
+        session.post.assert_called_once()
+        mock_session.assert_not_called()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_display_only_champs_are_filtered(self, mock_session):
+        """En-têtes de section et explications retirés des champs et annotations"""
+        session = MagicMock()
+        session.post.return_value = _page(
+            [
+                _dossier(
+                    1,
+                    champs=[
+                        {"__typename": "TextChamp", "id": "c1"},
+                        {"__typename": "HeaderSectionChamp", "id": "c2"},
+                        {"__typename": "ExplicationChamp", "id": "c3"},
+                    ],
+                    annotations=[
+                        {"__typename": "TextChamp", "id": "a1"},
+                        {"__typename": "ExplicationChamp", "id": "a2"},
+                    ],
+                )
+            ]
+        )
+        mock_session.return_value = session
+
+        page = next(iter_demarche_dossier_pages(123))
+
+        assert [champ["id"] for champ in page[0]["champs"]] == ["c1"]
+        assert [annotation["id"] for annotation in page[0]["annotations"]] == ["a1"]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_permission_errors_are_ignored(self, mock_session):
+        """Les dossiers masqués par les permissions n'interrompent pas la pagination"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _page(
+                [_dossier(1)],
+                has_next_page=True,
+                end_cursor="c1",
+                errors=[{"message": "Dossier 2 hidden due to permissions"}],
+            ),
+            _page([_dossier(3)], has_next_page=False, end_cursor="c2"),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_demarche_dossier_pages(123))
+
+        assert [[dossier["number"] for dossier in page] for page in pages] == [[1], [3]]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_non_permission_errors_raise(self, mock_session):
+        """Une autre erreur GraphQL interrompt la pagination"""
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={
+                "data": {"demarche": None},
+                "errors": [{"message": "Erreur interne du serveur"}],
+            }
+        )
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="Erreur interne"):
+            list(iter_demarche_dossier_pages(123))
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_inaccessible_demarche_yields_nothing(self, mock_session):
+        """Démarche inaccessible (null) → aucune page, pas d'erreur"""
+        session = MagicMock()
+        session.post.return_value = _mock_response(json_data={"data": {"demarche": None}})
+        mock_session.return_value = session
+
+        assert list(iter_demarche_dossier_pages(123)) == []
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_single_page_stops_pagination(self, mock_session):
+        """hasNextPage à false → une seule requête"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)], has_next_page=False)
+        mock_session.return_value = session
+
+        assert len(list(iter_demarche_dossier_pages(123))) == 1
+        session.post.assert_called_once()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_empty_page_does_not_loop_forever(self, mock_session):
+        """Page vide et curseur immobile → arrêt sans boucle infinie"""
+        session = MagicMock()
+        session.post.return_value = _page([], has_next_page=True, end_cursor=None)
+        mock_session.return_value = session
+
+        assert list(iter_demarche_dossier_pages(123)) == []
+        assert session.post.call_count == 1
