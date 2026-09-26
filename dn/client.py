@@ -1,9 +1,9 @@
 import os
 import random
 import time
+from collections.abc import Iterator
 from datetime import datetime
 from typing import Any, Dict, List
-
 import requests
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
@@ -15,6 +15,8 @@ from utils.timing import timed
 
 load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
+
+PAGE_SIZE_DOSSIERS_MAX = 100
 
 # Requêtes GraphQL (fragmentées en quelques constantes)
 # Pour les fragments communs
@@ -304,41 +306,18 @@ fragment ChampFragment on Champ {
 }
 """
 
-# Requête pour un dossier spécifique
-query_get_dossier = (
-    """
-query getDossier(
-    $dossierNumber: Int!
-    $includeChamps: Boolean = true
-    $includeAnotations: Boolean = true
-    $includeGeometry: Boolean = true
-    $includeTraitements: Boolean = true
-    $includeInstructeurs: Boolean = true
-    $includeAvis: Boolean = true
-    $includeCorrections: Boolean = true
-) {
-    dossier(number: $dossierNumber) {
-        ...DossierFragment
-        demarche {
-            ...DemarcheDescriptorFragment
-        }
-    }
+PAGE_INFO_FRAGMENT = """
+fragment PageInfoFragment on PageInfo {
+    hasPreviousPage
+    hasNextPage
+    startCursor
+    endCursor
 }
+"""
 
-fragment DemarcheDescriptorFragment on DemarcheDescriptor {
-    id
-    number
-    title
-    description
-    state
-    declarative
-    dateCreation
-    datePublication
-    dateDerniereModification
-    dateDepublication
-    dateFermeture
-}
-
+# Fragment dossier détaillé, partagé par la requête unitaire et la requête paginée
+# (utilise les variables $include* que chaque requête doit déclarer)
+DOSSIER_FRAGMENT = """
 fragment DossierFragment on Dossier {
     __typename
     id
@@ -414,9 +393,87 @@ fragment DossierFragment on Dossier {
         }
     }
 }
+"""
+
+# Requête paginée des dossiers DÉTAILLÉS d'une démarche
+# (une page = la connexion `dossiers` complète, avec champs, annotations, avis…)
+query_dossiers_detaille = (
+    """
+query getDossiersPage(
+    $demarcheNumber: Int!
+    $first: Int!
+    $afterCursor: String = null
+    $updatedSince: ISO8601DateTime = null
+    $includeChamps: Boolean = true
+    $includeAnotations: Boolean = true
+    $includeGeometry: Boolean = true
+    $includeTraitements: Boolean = true
+    $includeInstructeurs: Boolean = true
+    $includeAvis: Boolean = true
+    $includeCorrections: Boolean = true
+) {
+    demarche(number: $demarcheNumber) {
+        dossiers(
+            first: $first
+            after: $afterCursor
+            updatedSince: $updatedSince
+        ) {
+            pageInfo {
+                ...PageInfoFragment
+            }
+            nodes {
+                ...DossierFragment
+            }
+        }
+    }
+}
+
+"""
+    + DOSSIER_FRAGMENT
+    + PAGE_INFO_FRAGMENT
+    + COMMON_FRAGMENTS
+    + SPECIALIZED_FRAGMENTS
+    + CHAMP_FRAGMENTS
+)
+
+# Requête pour un dossier spécifique
+query_get_dossier = (
+    """
+query getDossier(
+    $dossierNumber: Int!
+    $includeChamps: Boolean = true
+    $includeAnotations: Boolean = true
+    $includeGeometry: Boolean = true
+    $includeTraitements: Boolean = true
+    $includeInstructeurs: Boolean = true
+    $includeAvis: Boolean = true
+    $includeCorrections: Boolean = true
+) {
+    dossier(number: $dossierNumber) {
+        ...DossierFragment
+        demarche {
+            ...DemarcheDescriptorFragment
+        }
+    }
+}
+
+fragment DemarcheDescriptorFragment on DemarcheDescriptor {
+    id
+    number
+    title
+    description
+    state
+    declarative
+    dateCreation
+    datePublication
+    dateDerniereModification
+    dateDepublication
+    dateFermeture
+}
 
 
 """
+    + DOSSIER_FRAGMENT
     + COMMON_FRAGMENTS
     + SPECIALIZED_FRAGMENTS
     + CHAMP_FRAGMENTS
@@ -468,13 +525,6 @@ query getDemarche(
             }
         }
     }
-}
-
-fragment PageInfoFragment on PageInfo {
-    hasPreviousPage
-    hasNextPage
-    startCursor
-    endCursor
 }
 
 fragment RevisionFragment on Revision {
@@ -592,6 +642,7 @@ fragment DossierFragment on Dossier {
 
 
 """
+    + PAGE_INFO_FRAGMENT
     + COMMON_FRAGMENTS
     + SPECIALIZED_FRAGMENTS
     + CHAMP_FRAGMENTS
@@ -675,6 +726,25 @@ def get_session_with_retries():
     return _session
 
 
+# Champs d'affichage uniquement : sans valeur métier, ils ne doivent pas
+# produire de colonnes dans Grist
+TYPES_CHAMPS_AFFICHAGE = ("HeaderSectionChamp", "ExplicationChamp")
+
+
+def _filtrer_champs_presents(dossier: dict[str, Any]) -> dict[str, Any]:
+    """Retire des `champs` et des `annotations` les éléments purement d'affichage."""
+    filtered = dossier.copy()
+    for clé in ("champs", "annotations"):
+        if clé in filtered:
+            filtered[clé] = [
+                élément
+                for élément in filtered[clé]
+                if élément.get("__typename") not in TYPES_CHAMPS_AFFICHAGE
+            ]
+
+    return filtered
+
+
 # Fonctions d'API
 @timed("get_dossier", "ds")
 def get_dossier(dossier_number: int) -> Dict[str, Any]:
@@ -752,27 +822,7 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
 
     dossier = result["data"]["dossier"]
 
-    # Filtrer les champs indésirables
-    filtered_dossier = dossier.copy()
-
-    # Filtrer les champs
-    if "champs" in filtered_dossier:
-        filtered_dossier["champs"] = [
-            champ
-            for champ in filtered_dossier["champs"]
-            if champ.get("__typename") not in ["HeaderSectionChamp", "ExplicationChamp"]
-        ]
-
-    # Filtrer les annotations
-    if "annotations" in filtered_dossier:
-        filtered_dossier["annotations"] = [
-            annotation
-            for annotation in filtered_dossier["annotations"]
-            if annotation.get("__typename")
-            not in ["HeaderSectionChamp", "ExplicationChamp"]
-        ]
-
-    return filtered_dossier
+    return _filtrer_champs_presents(dossier)
 
 
 def get_demarche(demarche_number: int) -> Dict[str, Any]:
@@ -1199,6 +1249,108 @@ def get_demarche_dossiers(
             )
 
     return filtered_dossiers
+
+
+def _noeuds_dossiers(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Dossiers d'une page paginée (liste vide si la démarche est inaccessible)."""
+    return (data.get("demarche") or {}).get("dossiers", {}).get("nodes") or []
+
+
+def _page_info(data: dict[str, Any]) -> tuple[bool, str | None]:
+    """(hasNextPage, endCursor) d'une page paginée (démarche inaccessible = fin)."""
+    page_info = (data.get("demarche") or {}).get("dossiers", {}).get("pageInfo")
+    if not page_info:
+        return False, None
+    return bool(page_info["hasNextPage"]), page_info["endCursor"]
+
+
+def iter_demarche_dossier_pages(
+    demarche_number: int,
+    session: requests.Session | None = None,
+    page_size: int = PAGE_SIZE_DOSSIERS_MAX,
+    updated_since: str | None = None,
+) -> Iterator[list[dict[str, Any]]]:
+    """
+    Parcourt les dossiers d'une démarche PAGE PAR PAGE, en renvoyant des dossiers
+    DÉTAILLÉS (champs, annotations, avis, traitements, géométrie des pièces jointes).
+
+    Chaque page est rendue dès sa réception : le consommateur peut l'écrire (Grist)
+    avant que la suivante soit demandée, et la mémoire reste bornée à une page,
+    quel que soit le nombre de dossiers de la démarche.
+
+    Yield:
+        list[dict[str, Any]]: une page de dossiers, filtrés des champs
+        d'affichage (en-têtes de section, explications).
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    page_size = min(page_size, PAGE_SIZE_DOSSIERS_MAX)
+
+    if session is None:
+        session = get_session_with_retries()
+
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    variables = {
+        "demarcheNumber": demarche_number,
+        "first": page_size,
+        "updatedSince": updated_since,
+        "includeChamps": True,
+        "includeAnotations": True,
+        "includeGeometry": True,
+        "includeTraitements": True,
+        "includeInstructeurs": True,
+        "includeAvis": True,
+        "includeCorrections": True,
+    }
+
+    page_num = 0
+    has_next_page = True
+    cursor = None
+    while has_next_page:
+        page_num += 1
+        response = session.post(
+            DEMARCHES_API_URL,
+            json={
+                "query": query_dossiers_detaille,
+                "variables": {**variables, "afterCursor": cursor},
+            },
+            headers=headers,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        # Les dossiers en accès refusé n'apparaissent pas dans la page : on ignore
+        # l'erreur et on poursuit, les autres dossiers restant exploitables.
+        if "errors" in result:
+            messages = [e.get("message", "") for e in result["errors"]]
+            if any("permissions" not in message for message in messages):
+                raise Exception(f"GraphQL errors: {', '.join(messages)}")
+            log(f"[DOSSIERS] {len(messages)} dossier(s) en accès refusé, ignoré(s)")
+
+        data = result.get("data") or {}
+        has_next_page, cursor_suivant = _page_info(data)
+        page = [_filtrer_champs_presents(node) for node in _noeuds_dossiers(data)]
+
+        if page:
+            log(f"[DOSSIERS] Page {page_num} : {len(page)} dossier(s) reçu(s)")
+            yield page
+
+        if not has_next_page:
+            return
+
+        # Un curseur qui n'avance pas ferait boucler sur la même page
+        if cursor_suivant == cursor:
+            log_error(
+                f"[DOSSIERS] Curseur inchangé après la page {page_num} "
+                "(démarche inexistante ou dossiers tous inaccessibles) : arrêt"
+            )
+            return
+        cursor = cursor_suivant
 
 
 def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, Any]]:

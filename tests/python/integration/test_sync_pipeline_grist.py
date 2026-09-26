@@ -38,6 +38,7 @@ import grist.client as grist_client_module
 import grist_processor_working_all as gpa
 import schema_utils
 from grist.client import GristClient
+from sync.filters import build_filters_cache_key
 
 BASE_URL = "https://grist.test"
 DOC_ID = "doc123"
@@ -340,10 +341,14 @@ class FakeDemarchesServer:
     reprendre tels quels. La forme des dossiers servie dépend de la query
     reçue (résumé ou détail détaillé), si bien qu'une query paginée qui
     abandonnerait les détails se voit dans l'état final Grist.
+
+    `page_en_erreur` (optionnel) fait répondre la page de ce numéro par une
+    erreur GraphQL, comme une API DN qui tombe en cours de parcours.
     """
 
-    def __init__(self, dossiers):
+    def __init__(self, dossiers, page_en_erreur=None):
         self.dossiers = dossiers
+        self.page_en_erreur = page_en_erreur
 
     def _offset(self, cursor):
         prefixe, _, valeur = str(cursor).partition(":")
@@ -391,6 +396,10 @@ class FakeDemarchesServer:
         after = variables.get("after", variables.get("afterCursor"))
         dossiers = self._filtres_serveur(variables)
         debut = 0 if after is None else self._offset(after)
+        if self.page_en_erreur == debut // max(first, 1) + 1:
+            return build_response(
+                {"errors": [{"message": "Erreur interne du serveur DN"}]}
+            )
         fenetre = dossiers[debut : debut + first]
         suite = debut + len(fenetre) < len(dossiers)
         end_cursor = f"cursor:{debut + len(fenetre)}" if suite else None
@@ -707,3 +716,74 @@ class TestSyncPipelineGrist:
         assert result is True
         assert set(server.column(DOSSIERS_TABLE, "dossier_number")) == attendus
         assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+
+    def test_dn_page_error_keeps_resume_marker(self):
+        """Une page perdue en cours de parcours ne doit pas faire avancer le
+        repère de reprise, sinon ses dossiers ne seraient jamais réintégrés.
+
+        Scénario : 201 dossiers, l'API DN échoue sur la page 2. Les dossiers de la
+        page 1 doivent être dans le document, ceux des pages suivantes absents, et
+        les deux repères de reprise (`updated_since`, `deleted_since`) inchangés,
+        la synchro étant marquée partielle.
+
+        Régression : un repère avancé malgré la page perdue, qui effacerait
+        définitivement les dossiers non reçus de l'API.
+        """
+        with patch.dict(os.environ, FILTRES_VIDES):
+            hash_sans_filtre = build_filters_cache_key()
+
+        cursor_initial = "2023-01-01T00:00:00Z"
+        server = FakeGristServer(
+            initial_records={
+                SYNC_METADATA_TABLE: [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": cursor_initial,
+                        "deleted_since_cursor": cursor_initial,
+                        "filters_hash": hash_sans_filtre,
+                        "force_full_sync": False,
+                    }
+                ]
+            }
+        )
+        dn_server = FakeDemarchesServer(dossiers_de_test(201), page_en_erreur=2)
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        # Les pages lues sont écrites, la page perdue et les suivantes sont absentes
+        assert result is True
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == list(range(1, 101))
+        assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(range(1, 101))
+
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "partial"
+        assert metadata["updated_since_cursor"] == cursor_initial
+        assert metadata["deleted_since_cursor"] == cursor_initial
+
+    def test_dossier_error_does_not_lose_other_dossiers(self):
+        """Un dossier impossible à préparer ne doit pas faire perdre les autres.
+
+        Régression : le dossier en échec et toute sa page perdus, ou une synchro
+        déclarée réussie alors qu'un dossier n'a pas été écrit.
+        """
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer(dossiers_de_test(10))
+        preparation_reelle = gpa.dossier_to_flat_data
+
+        def preparation_qui_casse_le_dossier_5(dossier, *args, **kwargs):
+            if dossier.get("number") == 5:
+                raise RuntimeError("extraction impossible")
+            return preparation_reelle(dossier, *args, **kwargs)
+
+        with patch.object(
+            gpa,
+            "dossier_to_flat_data",
+            side_effect=preparation_qui_casse_le_dossier_5,
+        ):
+            result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        attendus = [1, 2, 3, 4, 6, 7, 8, 9, 10]
+        assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == attendus
+        assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(attendus)
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "partial"

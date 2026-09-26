@@ -20,7 +20,7 @@ from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient
 from grist.column_cache import ColumnCache
 from hide_id_columns import IdColumnHider
-from dn.client import get_demarche_dossiers, get_dossier
+from dn.client import PAGE_SIZE_DOSSIERS_MAX, iter_demarche_dossier_pages
 from dn.extract import dossier_to_flat_data
 from utils.timing import get_timings
 from schema_utils import (
@@ -29,11 +29,11 @@ from schema_utils import (
     get_demarche_schema_enhanced,
     update_grist_tables_from_schema,
 )
+from sync.filters import build_filters_cache_key, filter_dossiers, read_filters_from_env
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
-from utils.formatter import build_filters_cache_key
 from utils.log import log, log_verbose, log_error, log_progress
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -603,62 +603,6 @@ def format_value_for_grist(value, value_type):
     return value
 
 
-def fetch_dossiers_in_parallel(dossier_numbers, max_workers=2, timeout=120):
-    """
-    Récupère plusieurs dossiers en parallèle.
-    """
-    results = {}
-    errors = []
-
-    def fetch_dossier(dossier_number):
-        try:
-            start_time = time.time()
-            dossier_data = get_dossier(dossier_number)
-            elapsed = time.time() - start_time
-            log_verbose(f"Dossier {dossier_number} récupéré en {elapsed:.2f}s")
-            return dossier_number, dossier_data
-        except Exception as e:
-            log_error(
-                f"Erreur lors de la récupération du dossier {dossier_number}: {str(e)}"
-            )
-            return dossier_number, None
-
-    log(
-        f"Récupération en parallèle de {len(dossier_numbers)} dossiers avec {max_workers} workers..."
-    )
-
-    # Utiliser ThreadPoolExecutor pour le parallélisme
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_dossier = {
-            executor.submit(fetch_dossier, dossier_num): dossier_num
-            for dossier_num in dossier_numbers
-        }
-
-        for future in concurrent.futures.as_completed(
-            future_to_dossier, timeout=timeout
-        ):
-            dossier_num = future_to_dossier[future]
-            try:
-                dossier_num, dossier_data = future.result()
-                if dossier_data:
-                    results[dossier_num] = dossier_data
-                else:
-                    errors.append(dossier_num)
-            except Exception as e:
-                log_error(f"Exception pour le dossier {dossier_num}: {str(e)}")
-                errors.append(dossier_num)
-
-    success_rate = len(results) / len(dossier_numbers) * 100 if dossier_numbers else 0
-    log(
-        f"Récupération parallèle terminée: {len(results)}/{len(dossier_numbers)} dossiers récupérés ({success_rate:.1f}%)"
-    )
-
-    if errors:
-        log(f"Échecs: {len(errors)} dossiers n'ont pas pu être récupérés")
-
-    return results
-
-
 # Fonction pour récupérer les labels d'un dossier spécifique
 def get_dossier_labels(dossier_number):
     """Récupère uniquement les labels d'un dossier spécifique"""
@@ -860,20 +804,22 @@ def process_demarche_for_grist_optimized(
     client,
     demarche_number,
     parallel=True,
-    batch_size=100,
+    batch_size=PAGE_SIZE_DOSSIERS_MAX,
     max_workers=3,
-    api_filters=None,
 ):
     """
-    Version optimisée du traitement d'une démarche pour Grist avec filtrage côté serveur.
+    Version optimisée du traitement d'une démarche pour Grist.
+
+    Les dossiers sont récupérés PAGE PAR PAGE (dossiers détaillés) et écrits dans
+    Grist au fur et à mesure : la mémoire reste bornée à une page, quelle que soit
+    la taille de la démarche.
 
     Args:
         client: Instance de GristClient
         demarche_number: Numéro de la démarche
-        parallel: Utiliser le traitement parallèle si True
-        batch_size: Taille des lots pour le traitement par lot
+        parallel: Préparer les dossiers en parallèle si True
+        batch_size: Nombre de dossiers par page, borné par l'API DN à 100
         max_workers: Nombre maximum de workers pour le traitement parallèle
-        api_filters: Filtres optimisés à appliquer côté serveur
 
     Returns:
         bool: Succès ou échec global
@@ -1025,20 +971,13 @@ def process_demarche_for_grist_optimized(
 
                 # Récupérer quelques dossiers pour analyse du schéma
                 sample_dossiers = []
-                sample_dossier_numbers = []
 
-                # Utiliser l'ancienne méthode pour récupérer des échantillons
+                # La première page de l'itérateur est déjà détaillée : un seul
+                # appel, au lieu d'un résumé puis d'un appel par dossier
                 try:
-                    all_dossiers_brief = get_demarche_dossiers(demarche_number)
-                    sample_size = min(3, len(all_dossiers_brief))
-                    sample_dossier_numbers = [
-                        all_dossiers_brief[i]["number"] for i in range(sample_size)
-                    ]
-
-                    for num in sample_dossier_numbers:
-                        dossier = get_dossier(num)
-                        if dossier:
-                            sample_dossiers.append(dossier)
+                    for page in iter_demarche_dossier_pages(demarche_number):
+                        sample_dossiers = page[:3]
+                        break
                 except Exception as e:
                     log_error(f"Erreur lors de la récupération des échantillons: {e}")
                     return False
@@ -1107,201 +1046,8 @@ def process_demarche_for_grist_optimized(
         log(f"  Table champs: {table_ids['champ_table_id']}")
         log(f"  Table annotations: {table_ids['annotation_table_id']}")
 
-        # Récupération des dossiers
-        if api_filters and api_filters:
-            log(
-                "[FILTRAGE] Récupération optimisée des dossiers avec filtres côté serveur..."
-            )
-            if api_filters.get("groupes_instructeurs"):
-                log(
-                    f"Filtre par groupes instructeurs (numéros): {', '.join(map(str, api_filters['groupes_instructeurs']))}"
-                )
-            if api_filters.get("statuts"):
-                log(f"Filtre par statuts: {', '.join(api_filters['statuts'])}")
-            if api_filters.get("date_debut"):
-                log(f"Filtre par date de début: {api_filters['date_debut']}")
-            if api_filters.get("date_fin"):
-                log(f"Filtre par date de fin: {api_filters['date_fin']}")
-
-            all_dossiers = get_demarche_dossiers(
-                demarche_number,
-                date_debut=api_filters.get("date_debut"),
-                date_fin=api_filters.get("date_fin"),
-                groupes_instructeurs=api_filters.get("groupes_instructeurs"),
-                statuts=api_filters.get("statuts"),
-                updated_since=updated_since_cursor,
-            )
-
-            total_dossiers = len(all_dossiers)
-            log(f"[OK] Dossiers récupérés avec filtres optimisés: {total_dossiers}")
-            filtered_dossiers = all_dossiers
-
-        else:
-            log(
-                "[ATTENTION] Récupération classique de tous les dossiers (pas de filtres optimisés)"
-            )
-
-            # Récupérer les filtres depuis les variables d'environnement pour compatibilité
-            date_debut_str = os.getenv("DATE_DEPOT_DEBUT", "")
-            date_fin_str = os.getenv("DATE_DEPOT_FIN", "")
-            statuts_filter = (
-                os.getenv("STATUTS_DOSSIERS", "").split(",")
-                if os.getenv("STATUTS_DOSSIERS")
-                else []
-            )
-            groupes_filter = (
-                os.getenv("GROUPES_INSTRUCTEURS", "").split(",")
-                if os.getenv("GROUPES_INSTRUCTEURS")
-                else []
-            )
-
-            # Nettoyer les filtres
-            if date_debut_str.strip() == "":
-                date_debut_str = None
-            if date_fin_str.strip() == "":
-                date_fin_str = None
-            statuts_filter = [s for s in statuts_filter if s.strip()]
-            groupes_filter = [g for g in groupes_filter if g.strip()]
-
-            # Convertir les dates
-            date_debut = None
-            date_fin = None
-            if date_debut_str:
-                try:
-                    date_debut = datetime.strptime(date_debut_str, "%Y-%m-%d")
-                    log(f"Filtre par date de début: {date_debut.strftime('%Y-%m-%d')}")
-                except ValueError:
-                    log_error(f"Format de date de début invalide: {date_debut_str}")
-
-            if date_fin_str:
-                try:
-                    date_fin = datetime.strptime(date_fin_str, "%Y-%m-%d")
-                    log(f"Filtre par date de fin: {date_fin.strftime('%Y-%m-%d')}")
-                except ValueError:
-                    log_error(f"Format de date de fin invalide: {date_fin_str}")
-
-            if statuts_filter:
-                log(f"Filtre par statuts: {', '.join(statuts_filter)}")
-            if groupes_filter:
-                log(f"Filtre par groupes instructeurs: {', '.join(groupes_filter)}")
-
-            # Récupérer tous les dossiers puis filtrer côté client
-            log("Récupération de tous les dossiers avec pagination...")
-            if updated_since_cursor:
-                log(f"Récupération filtrée avec updatedSince: {updated_since_cursor}")
-                all_dossiers = get_demarche_dossiers(
-                    demarche_number, updated_since=updated_since_cursor
-                )
-            else:
-                all_dossiers = get_demarche_dossiers(demarche_number)
-
-            total_dossiers_brut = len(all_dossiers)
-            log(f"Nombre total de dossiers trouvés: {total_dossiers_brut}")
-
-            # Appliquer les filtres côté client
-            filtered_dossiers = []
-            for dossier in all_dossiers:
-                # Filtre par statut
-                if statuts_filter and dossier["state"] not in statuts_filter:
-                    continue
-
-                # Filtre par groupe instructeur
-                if groupes_filter and (
-                    not dossier.get("groupeInstructeur")
-                    or str(dossier["groupeInstructeur"].get("number", ""))
-                    not in groupes_filter
-                ):
-                    continue
-
-                # Filtre par date de dépôt
-                if date_debut or date_fin:
-                    date_depot_str = dossier.get("dateDepot")
-                    if not date_depot_str:
-                        continue
-
-                    try:
-                        date_depot = datetime.strptime(
-                            date_depot_str.split("T")[0], "%Y-%m-%d"
-                        )
-
-                        if date_debut and date_depot < date_debut:
-                            continue
-                        if date_fin and date_depot > date_fin:
-                            continue
-                    except (ValueError, AttributeError, TypeError):
-                        continue
-
-                filtered_dossiers.append(dossier)
-
-            total_dossiers = len(filtered_dossiers)
-            log(
-                f"Après filtrage: {total_dossiers} dossiers ({(total_dossiers / total_dossiers_brut * 100) if total_dossiers_brut > 0 else 0:.1f}%)"
-            )
-
-        # Si aucun dossier ne correspond aux critères
-        if total_dossiers == 0:
-            if updated_since_cursor:
-                cursor_dt = datetime.strptime(
-                    updated_since_cursor, "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=timezone.utc)
-                cursor_fr = cursor_dt.astimezone(ZoneInfo("Europe/Paris")).strftime(
-                    "%d/%m/%Y à %H:%M:%S"
-                )
-                log(
-                    f"Aucun dossier modifié ou ajouté depuis la dernière sync ({cursor_fr}) — Grist déjà à jour"
-                )
-            else:
-                log("Aucun dossier ne correspond aux critères de filtrage")
-            elapsed_time = time.time() - start_time
-            minutes = int(elapsed_time // 60)
-            seconds = elapsed_time % 60
-            log("\nTraitement terminé!")
-            log(f"Durée totale: {minutes} min {seconds:.1f} sec")
-            log("Tables créées avec succès, mais aucun dossier à traiter.")
-            sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            try:
-                client.save_sync_metadata(
-                    demarche_number,
-                    {
-                        "last_sync_at": sync_end_time,
-                        "updated_since_cursor": sync_start_time,
-                        "deleted_since_cursor": sync_start_time,
-                        "last_sync_status": "success",
-                        "last_sync_duration": round(elapsed_time, 1),
-                        "force_full_sync": False,
-                        "filters_hash": current_filters_key,
-                    },
-                )
-            except Exception as e:
-                log_error(f"Erreur sauvegarde Sync_metadata: {e}")
-
-            run_demarche_level_tasks(
-                client,
-                table_ids,
-                demarche_number,
-                updated_since_cursor=updated_since_cursor,
-                force_full_sync=force_full_sync,
-                deleted_since_cursor=deleted_since_cursor,
-                schema_method_successful=schema_method_successful,
-            )
-
-            return True
-
-        # Organiser les dossiers en lots
-        dossier_batches = []
-        batch_count = (total_dossiers + batch_size - 1) // batch_size
-
-        for i in range(0, total_dossiers, batch_size):
-            batch_dossier_numbers = [
-                filtered_dossiers[j]["number"]
-                for j in range(i, min(i + batch_size, total_dossiers))
-            ]
-            dossier_batches.append(batch_dossier_numbers)
-
-        log(f"Dossiers organisés en {batch_count} lots de {batch_size} maximum")
-
-        # Les métadonnées de tous les dossiers ne servent plus une fois les lots constitués
-        del all_dossiers, filtered_dossiers
+        # Filtres de sélection des dossiers (appliqués page par page, plus bas)
+        filters = read_filters_from_env()
 
         descriptor_to_column_id = column_types.get("descriptor_to_column_id", {})
 
@@ -1442,9 +1188,6 @@ def process_demarche_for_grist_optimized(
                 log_error(f"Erreur préparation dossier {dossier_num}: {str(e)}")
                 return None
 
-        # Traiter les lots de dossiers
-        total_success = 0
-        total_errors = 0
         # Préchargement des caches UNE SEULE FOIS avant la boucle
         log("Préchargement des enregistrements existants (global)...")
         start_cache = time.time()
@@ -1465,87 +1208,109 @@ def process_demarche_for_grist_optimized(
         skip_champs = set()
         skip_annotations = set()
 
-        for batch_idx, batch in enumerate(dossier_batches):
-            log(
-                f"Traitement du lot {batch_idx + 1}/{batch_count} ({len(batch)} dossiers)..."
-            )
-            batch_start = time.time()
+        # Traitement page par page : chaque page de dossiers est écrite dans Grist
+        # avant que la suivante ne soit demandée à l'API, et la mémoire reste
+        # bornée à une page quelle que soit la taille de la démarche.
+        pages = iter_demarche_dossier_pages(
+            demarche_number,
+            updated_since=updated_since_cursor,
+            page_size=batch_size,
+        )
+        received_count = 0
+        selected_count = 0
+        page_number = 0
+        pagination_error = False
 
-            # Filtrer les dossiers à fetcher (skip si inchangé sur toutes les tables)
-            batch_to_fetch = [num for num in batch if str(num) not in skip_dossiers]
-            skipped_count = len(batch) - len(batch_to_fetch)
-            if skipped_count:
-                log(f"  {skipped_count} dossier(s) inchangés → fetch DS skippé")
+        while True:
+            try:
+                page = next(pages)
+            except StopIteration:
+                break
+            except Exception as e:
+                # La page est perdue : on arrête sans avancer le repère de reprise,
+                # sinon les dossiers qu'elle contenait ne seraient jamais réintégrés.
+                log_error(
+                    f"Erreur de l'API DN sur la page {page_number + 1} de la démarche "
+                    f"{demarche_number}: {e}"
+                )
+                pagination_error = True
+                break
 
-            # Récupérer les dossiers complets
-            if batch_to_fetch:
-                if parallel:
-                    batch_dossiers_dict = fetch_dossiers_in_parallel(
-                        batch_to_fetch, max_workers=max_workers
-                    )
-                else:
-                    batch_dossiers_dict = {}
-                    for num in batch_to_fetch:
-                        dossier = get_dossier(num)
-                        if dossier:
-                            batch_dossiers_dict[num] = dossier
-                        else:
-                            log_error(
-                                f"Dossier {num} inaccessible en raison de restrictions de permission, ignoré"
-                            )
-            else:
-                batch_dossiers_dict = {}
-
-            log(f"[TIMING] Récupération API DS: {time.time() - batch_start:.1f}s")
-            log_progress.log("Communication API DN")
-
-            if not batch_dossiers_dict:
-                if skipped_count == len(batch):
-                    log(
-                        f"  Lot {batch_idx + 1} entièrement skippé (tous les dossiers sont à jour)"
-                    )
-                else:
-                    log_error(
-                        f"Aucun dossier n'a pu être récupéré pour le lot {batch_idx + 1}"
-                    )
+            page_number += 1
+            received_count += len(page)
+            selection = filter_dossiers(page, filters)
+            selected_count += len(selection)
+            if not selection:
+                log(f"Page {page_number} : aucun dossier ne correspond aux filtres")
                 continue
 
-            # Préparer les dossiers EN PARALLÈLE
-            log("Préparation des records en parallèle...")
+            page_start = time.time()
+            page_dossiers = {dossier["number"]: dossier for dossier in selection}
+            log(
+                f"Traitement de la page {page_number} "
+                f"({len(page_dossiers)}/{len(page)} dossiers)..."
+            )
+            log_progress.log("Communication API DN")
+
+            # Préparer les dossiers de la page
             start_prep = time.time()
             dossier_records = []
             champ_records = []
             annotation_records = []
             all_annotations_for_columns = []
 
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=max_workers
-            ) as executor:
-                future_to_dossier = {
-                    executor.submit(
-                        prepare_single_dossier,
+            if parallel:
+                log("Préparation des records en parallèle...")
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=max_workers
+                ) as executor:
+                    preparations = [
+                        (
+                            num,
+                            future.result(),
+                        )
+                        for future, num in {
+                            executor.submit(
+                                prepare_single_dossier,
+                                num,
+                                data,
+                                column_types,
+                                problematic_descriptor_ids,
+                            ): num
+                            for num, data in page_dossiers.items()
+                        }.items()
+                    ]
+            else:
+                log("Préparation des records...")
+                preparations = [
+                    (
                         num,
-                        data,
-                        column_types,
-                        problematic_descriptor_ids,
-                    ): num
-                    for num, data in batch_dossiers_dict.items()
-                }
+                        prepare_single_dossier(
+                            num,
+                            data,
+                            column_types,
+                            problematic_descriptor_ids,
+                        ),
+                    )
+                    for num, data in page_dossiers.items()
+                ]
 
-                for future in concurrent.futures.as_completed(future_to_dossier):
-                    result = future.result()
-                    if result:
-                        dossier_records.append(result["dossier"])
-                        champ_records.append(result["champ"])
-                        annotation_records.append(result["annotation"])
-                        all_annotations_for_columns.extend(result["annotations_list"])
-                    else:
-                        log_error("Résultat None pour un dossier")  # ← AJOUTE CE LOG
+            for num, result in preparations:
+                if result is None:
+                    # Un dossier illisible ne fait pas échouer la page entière, mais
+                    # il est compté en échec pour que la synchro soit marquée partielle.
+                    log_error(f"  Dossier {num} : préparation échouée, dossier ignoré")
+                    failed_dossiers.add(str(num))
+                    continue
+                dossier_records.append(result["dossier"])
+                champ_records.append(result["champ"])
+                annotation_records.append(result["annotation"])
+                all_annotations_for_columns.extend(result["annotations_list"])
 
             log(
                 f"Records préparés: {len(dossier_records)} dossiers, {len(champ_records)} champs, {len(annotation_records)} annotations"
-            )  # ← AJOUTE APRÈS LA BOUCLE
-            log(f"[TIMING] Préparation parallèle: {time.time() - start_prep:.1f}s")
+            )
+            log(f"[TIMING] Préparation des records: {time.time() - start_prep:.1f}s")
 
             # Créer les colonnes UNE SEULE FOIS après la préparation
             if table_ids.get("annotations"):
@@ -1596,18 +1361,14 @@ def process_demarche_for_grist_optimized(
                 log(
                     f"  Upsert par lot de {len(champ_records)} enregistrements de champs..."
                 )
-                success = client.upsert_multiple_dossiers_in_grist(
+                client.upsert_multiple_dossiers_in_grist(
                     table_ids["champ_table_id"],
                     champ_records,
                     existing_records=cache_champs,
                     column_cache=column_cache,
                 )
-                if success:
-                    total_success += len(champ_records)
-                else:
-                    total_errors += len(champ_records)
 
-                log(f"[TIMING] Après upsert champs: {time.time() - batch_start:.1f}s")
+                log(f"[TIMING] Après upsert champs: {time.time() - page_start:.1f}s")
                 log_progress.log("Mise à jour des enregistrements de champs")
 
             annotation_records = [
@@ -1627,7 +1388,7 @@ def process_demarche_for_grist_optimized(
                 )
 
                 log(
-                    f"[TIMING] Après upsert annotations: {time.time() - batch_start:.1f}s"
+                    f"[TIMING] Après upsert annotations: {time.time() - page_start:.1f}s"
                 )
             elif annotation_records:
                 log("  Annotations présentes mais pas de table - ignorées")
@@ -1637,13 +1398,13 @@ def process_demarche_for_grist_optimized(
             # Traiter les demandeurs par lot
             if table_ids.get("demandeurs") and table_ids.get("demandeur_type"):
                 log(
-                    f"  Traitement des demandeurs par lot ({len(batch_dossiers_dict)} dossiers)..."
+                    f"  Traitement des demandeurs de la page ({len(page_dossiers)} dossiers)..."
                 )
 
                 demandeur_records = []
                 demandeur_type = table_ids["demandeur_type"]
 
-                for dossier_num, dossier_data in batch_dossiers_dict.items():
+                for dossier_num, dossier_data in page_dossiers.items():
                     if str(dossier_num) in skip_dossiers:
                         continue
                     try:
@@ -1672,7 +1433,7 @@ def process_demarche_for_grist_optimized(
                         log_error("   Erreur lors du traitement des demandeurs")
 
                 log(
-                    f"[TIMING] Après upsert demandeurs: {time.time() - batch_start:.1f}s"
+                    f"[TIMING] Après upsert demandeurs: {time.time() - page_start:.1f}s"
                 )
                 log_progress.log("Mise à jour des demandeurs")
 
@@ -1684,7 +1445,7 @@ def process_demarche_for_grist_optimized(
                 all_repetable_rows = []
                 filtered_repetable_dict = {
                     num: data
-                    for num, data in batch_dossiers_dict.items()
+                    for num, data in page_dossiers.items()
                     if str(num) not in skip_champs
                 }
                 for dossier_data in filtered_repetable_dict.values():
@@ -1718,7 +1479,7 @@ def process_demarche_for_grist_optimized(
                             # Préparer les données pour le batch
                             success_count, error_count = process_repetables_batch(
                                 client,
-                                list(batch_dossiers_dict.values()),
+                                list(page_dossiers.values()),
                                 {normalized_block: block_table_id},
                                 {
                                     normalized_block: column_types["repetable_blocks"][
@@ -1736,12 +1497,12 @@ def process_demarche_for_grist_optimized(
                                 f"  Erreur traitement bloc '{block_label}': {str(e)}"
                             )
 
-            log(f"[TIMING] Après blocs répétables: {time.time() - batch_start:.1f}s")
+            log(f"[TIMING] Après blocs répétables: {time.time() - page_start:.1f}s")
             log_progress.log("Traitement des champs répétables")
 
-            # Traiter les avis du lot
+            # Traiter les avis de la page
             all_avis_records = []
-            for dossier_data in batch_dossiers_dict.values():
+            for dossier_data in page_dossiers.values():
                 avis = dossier_data.get("avis", [])
                 if avis:
                     from dn.extract import extract_avis_from_dossier
@@ -1762,11 +1523,11 @@ def process_demarche_for_grist_optimized(
                 upsert_avis_records(client, table_ids["avis"], all_avis_records)
 
             if all_avis_records:
-                log(f"[TIMING] Après avis: {time.time() - batch_start:.1f}s")
+                log(f"[TIMING] Après avis: {time.time() - page_start:.1f}s")
                 log_progress.log("Traitement de la table Avis")
 
-            # Libérer la mémoire du lot avant le lot suivant
-            del batch_dossiers_dict, all_avis_records
+            # Libérer la mémoire de la page avant la page suivante
+            del page_dossiers, all_avis_records
             del dossier_records, champ_records, annotation_records, all_annotations_for_columns
             if "filtered_repetable_dict" in locals():
                 del filtered_repetable_dict
@@ -1774,6 +1535,7 @@ def process_demarche_for_grist_optimized(
                 del all_repetable_rows
             if "rows_by_block" in locals():
                 del rows_by_block
+            log(f"[TIMING] Page {page_number} traitée en {time.time() - page_start:.1f}s")
             gc.collect()
 
         # Calculer les statistiques finales
@@ -1787,20 +1549,49 @@ def process_demarche_for_grist_optimized(
 
         log("\nTraitement terminé!")
         log(f"Durée totale: {minutes} min {seconds:.1f} sec")
+        log(
+            f"Dossiers reçus de l'API: {received_count} sur {page_number} page(s), "
+            f"{selected_count} retenu(s) après filtrage"
+        )
         log(f"Dossiers traités avec succès: {total_success}")
         if total_errors > 0:
             log(f"Dossiers en échec: {total_errors}")
 
+        if pagination_error:
+            # Une page n'a pas pu être lue : le repère de reprise ne doit pas avancer,
+            # sinon les dossiers de cette page ne seraient jamais réintégrés.
+            log_error(
+                "Page(s) de dossiers perdue(s) côté API DN : le repère de reprise est "
+                "conservé, les dossiers non traités seront repris au prochain run"
+            )
+        elif selected_count == 0:
+            if updated_since_cursor:
+                cursor_dt = datetime.strptime(
+                    updated_since_cursor, "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=timezone.utc)
+                cursor_fr = cursor_dt.astimezone(ZoneInfo("Europe/Paris")).strftime(
+                    "%d/%m/%Y à %H:%M:%S"
+                )
+                log(
+                    f"Aucun dossier modifié ou ajouté depuis la dernière sync ({cursor_fr}) — Grist déjà à jour"
+                )
+            else:
+                log("Aucun dossier ne correspond aux critères de filtrage")
+
         # Sauvegarder le curseur de sync
         sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        curseur_reprise = updated_since_cursor if pagination_error else sync_start_time
+        supprime_depuis = deleted_since_cursor if pagination_error else sync_start_time
         try:
             client.save_sync_metadata(
                 demarche_number,
                 {
                     "last_sync_at": sync_end_time,
-                    "updated_since_cursor": sync_start_time,
-                    "deleted_since_cursor": sync_start_time,
-                    "last_sync_status": "success" if total_errors == 0 else "partial",
+                    "updated_since_cursor": curseur_reprise,
+                    "deleted_since_cursor": supprime_depuis,
+                    "last_sync_status": (
+                        "partial" if (total_errors or pagination_error) else "success"
+                    ),
                     "last_sync_duration": round(elapsed_time, 1),
                     "force_full_sync": False,
                     "filters_hash": current_filters_key,
@@ -1819,7 +1610,7 @@ def process_demarche_for_grist_optimized(
             deleted_since_cursor=deleted_since_cursor,
             schema_method_successful=schema_method_successful,
         )
-        return total_success > 0 or schema_method_successful
+        return total_success > 0 or schema_method_successful or selected_count == 0
 
     except Exception as e:
         log_error(f"Erreur lors du traitement de la démarche pour Grist: {e}")
@@ -1894,19 +1685,9 @@ def main():
     # Initialiser le client Grist
     client = GristClient(grist_base_url, grist_api_key, grist_doc_id)
 
-    # NOUVEAU : Récupérer les filtres optimisés depuis l'environnement
-    api_filters_json = os.getenv("API_FILTERS_JSON", "{}")
-    try:
-        api_filters = json_module.loads(api_filters_json)
-        if api_filters:
-            log(f"[FILTRAGE] Filtres optimisés détectés: {list(api_filters.keys())}")
-    except Exception:
-        api_filters = {}
-        log("Aucun filtre optimisé détecté, utilisation de l'ancienne méthode")
-
     # Récupérer les autres paramètres
     parallel = os.getenv("PARALLEL", "true").lower() == "true"
-    batch_size = int(os.getenv("BATCH_SIZE", "50"))
+    batch_size = int(os.getenv("BATCH_SIZE", PAGE_SIZE_DOSSIERS_MAX))
     max_workers = int(os.getenv("MAX_WORKERS", "3"))
 
     # Traiter la démarche avec la fonction optimisée
@@ -1916,7 +1697,6 @@ def main():
         parallel=parallel,
         batch_size=batch_size,
         max_workers=max_workers,
-        api_filters=api_filters,  # Passer les filtres optimisés
     ):
         log(f"Traitement de la démarche {demarche_number} terminé avec succès")
         print_api_timings()
