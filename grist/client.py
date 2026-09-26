@@ -1,5 +1,7 @@
+import json
 import os
 import traceback
+from collections.abc import Callable
 from typing import Any
 
 import requests
@@ -17,6 +19,81 @@ GRIST_FALLBACK_429_DELAY = int(os.getenv("GRIST_FALLBACK_429_DELAY", "60"))
 GRIST_MAX_RANDOM_DELAY_SECONDS = int(
     os.getenv("GRIST_MAX_RANDOM_DELAY_SECONDS", "5")
 )
+
+# L'API Grist refuse les corps de requête trop volumineux.
+# Au-delà, une écriture échoue en bloc :
+# les enregistrements sont donc découpés en paquets
+# pour que chaque requête reste acceptée.
+GRIST_MAX_BODY_BYTES = 1024 * 1024
+
+# Poids de l'enveloppe `{"records": [ … ]}` : le reste du corps vient des
+# enregistrements sérialisés et de leur virgule séparatrice (2 octets chacun).
+_RECORDS_PAYLOAD_BASE_BYTES = 13
+
+
+def _record_weight(record: dict[str, Any]) -> int:
+    """Poids d'un enregistrement dans un payload `{"records": [...]}`."""
+    return len(json.dumps(record).encode("utf-8")) + 2
+
+
+def _records_payload_bytes(records: list[dict[str, Any]]) -> int:
+    """Taille du corps HTTP que `requests` produira pour `records`."""
+    return len(json.dumps({"records": records}).encode("utf-8"))
+
+
+def _split_records_by_size(
+    records: list[dict[str, Any]], max_bytes: int = GRIST_MAX_BODY_BYTES
+) -> list[list[dict[str, Any]]]:
+    """
+    Découpe les enregistrements en paquets dont le corps tient sous `max_bytes`.
+
+    Un enregistrement plus volumineux que la limite forme son propre paquet : il
+    ne peut pas être fractionné davantage, son envoi est tenté et c'est Grist
+    qui décide de l'accepter ou de le refuser.
+    """
+    if _records_payload_bytes(records) <= max_bytes:
+        return [records]
+
+    packets: list[list[dict[str, Any]]] = []
+    packet: list[dict[str, Any]] = []
+    poids = _RECORDS_PAYLOAD_BASE_BYTES
+    for record in records:
+        poids_record = _record_weight(record)
+        if packet and poids + poids_record > max_bytes:
+            packets.append(packet)
+            packet = []
+            poids = _RECORDS_PAYLOAD_BASE_BYTES
+        packet.append(record)
+        poids += poids_record
+    if packet:
+        packets.append(packet)
+
+    return packets
+
+
+def _record_label(record: dict[str, Any]) -> str:
+    """Désignation lisible d'un enregistrement, pour les messages d'erreur."""
+    champs = record.get("fields") or record
+    for cle in ("dossier_number", "number", "avis_id", "id"):
+        if champs.get(cle) is not None:
+            return f"{cle}={champs[cle]}"
+
+    return "inconnu"
+
+
+def _aggregated_response(records: list[dict[str, Any]]) -> requests.Response:
+    """
+    Réponse 200 agrgeant les enregistrements renvoyés par plusieurs paquets.
+
+    Les enregistrements sont concaténés dans l'ordre d'envoi : l'appelant peut
+    ainsi continuer à associer les ids Grist aux dossiers qu'il a soumis.
+    """
+    reponse = requests.Response()
+    reponse.status_code = 200
+    reponse._content = json.dumps({"records": records}).encode("utf-8")
+    reponse.headers["Content-Type"] = "application/json"
+
+    return reponse
 
 
 class GristClient:
@@ -471,6 +548,51 @@ class GristClient:
 
         return response
 
+    def _warn_record_too_large(self, records: list[dict[str, Any]]) -> None:
+        """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""
+        poids = _records_payload_bytes(records)
+        if len(records) == 1 and poids > GRIST_MAX_BODY_BYTES:
+            log_error(
+                f"Enregistrement {_record_label(records[0])} trop volumineux pour Grist "
+                f"({poids} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
+                "envoi tenté, il sera refusé"
+            )
+
+    def _send_records(
+        self,
+        records: list[dict[str, Any]],
+        send: Callable[[list[dict[str, Any]]], requests.Response],
+    ) -> requests.Response:
+        """
+        Envoie `records` par paquets tenant sous la limite de taille de Grist.
+
+        Un paquet refusé arrête l'envoi et sa réponse est renvoyée telle quelle,
+        pour que les replis individuels des appelants restent possibles. Si tous
+        les paquets passent, la réponse renvoyée agrège leurs enregistrements.
+        """
+        packets = _split_records_by_size(records)
+        if len(packets) <= 1:
+            self._warn_record_too_large(records)
+            return send(records)
+
+        sent_records: list[dict[str, Any]] = []
+        for index, packet in enumerate(packets, start=1):
+            log(
+                f"  Payload découpé en {len(packets)} paquets : envoi du paquet "
+                f"{index}/{len(packets)} ({len(packet)} enregistrements)"
+            )
+            self._warn_record_too_large(packet)
+            response = send(packet)
+            if response.status_code not in (200, 201):
+                log_error(
+                    f"Erreur lors de l'envoi du paquet {index}/{len(packets)} : "
+                    f"{response.status_code} - {response.text}"
+                )
+                return response
+            sent_records.extend(response.json().get("records", []))
+
+        return _aggregated_response(sent_records)
+
     def post_records(
         self, table_id: str, records: list[dict[str, Any]]
     ) -> requests.Response:
@@ -483,9 +605,13 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"POST {url}")
-        response = self._get_session().post(url, headers=self.headers, json={"records": records})
 
-        return response
+        return self._send_records(
+            records,
+            lambda packet: self._get_session().post(
+                url, headers=self.headers, json={"records": packet}
+            ),
+        )
 
     def patch_records(
         self, table_id: str, records: list[dict[str, Any]]
@@ -499,9 +625,13 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"PATCH {url}")
-        response = self._get_session().patch(url, headers=self.headers, json={"records": records})
 
-        return response
+        return self._send_records(
+            records,
+            lambda packet: self._get_session().patch(
+                url, headers=self.headers, json={"records": packet}
+            ),
+        )
 
     def delete_records(
         self, table_id: str, record_ids: list[int]

@@ -68,6 +68,14 @@ def build_response(payload, status=200):
     return resp
 
 
+GRIST_MAX_BODY_BYTES = 1024 * 1024
+"""Taille maximale d'un corps de requête acceptée par l'API Grist."""
+
+
+def _payload_too_large(payload) -> bool:
+    return len(json.dumps(payload).encode("utf-8")) > GRIST_MAX_BODY_BYTES
+
+
 class FakeGristServer:
     """Mini serveur Grist en mémoire : tables, colonnes et **enregistrements**.
 
@@ -180,6 +188,12 @@ class FakeGristServer:
                     ]
                 }
             )
+
+        if method in ("POST", "PATCH") and parts[4:] == ["records"]:
+            # L'API Grist refuse au-delà de 1 Mio. Les corps ne sont pas
+            # journalisés : seule la taille compte.
+            if _payload_too_large(payload):
+                return build_response({"error": "Request body too large"}, status=413)
 
         if method == "POST" and parts[4:] == ["records"]:
             return build_response(
@@ -786,3 +800,59 @@ class TestSyncPipelineGrist:
         assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == attendus
         assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(attendus)
         assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "partial"
+
+    def test_oversized_dossier_does_not_block_other_dossiers(self):
+        """Un dossier dont la ligne dépasse à elle seule la limite de taille de
+        Grist ne doit pas priver les autres de leurs champs.
+
+        Scénario : 21 dossiers, le dernier porte une réponse de 1,5 Mo. Grist ne
+        peut pas l'accueillir ; les 20 autres doivent conserver leurs champs, et
+        la page doit être poursuivie (annotations et avis présents pour tous).
+
+        Régression : le refus d'une ligne fait perdre les champs de toute la page,
+        ou interrompt la synchro avant les tables suivantes.
+        """
+        dossiers = dossiers_de_test(21)
+        dossiers[20]["champs"][0]["stringValue"] = "x" * 1_500_000
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer(dossiers)
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == list(range(1, 22))
+        # Le dossier hors norme perd sa ligne de champs, les 20 autres non
+        assert server.column(CHAMPS_TABLE, "dossier_number") == list(range(1, 21))
+        assert set(server.column(ANNOTATIONS_TABLE, "dossier_number")) == set(
+            range(1, 22)
+        )
+        assert set(server.column(AVIS_TABLE, "dossier_number")) == set(range(1, 22))
+
+    def test_page_over_the_size_limit_is_fully_written(self):
+        """Une page dont les enregistrements dépassent la limite de taille de
+        Grist doit être intégralement écrite, sans troncature.
+
+        Scénario : 300 dossiers de 12 Ko, soit une page au-delà du Mio accepté par
+        Grist. Les trois pages doivent être présentes, valeurs complètes.
+
+        Régression : l'envoi d'un corps trop gros est refusé par Grist, et les
+        champs de la page sont perdus.
+        """
+        valeur_longue = "x" * 12_000
+        dossiers = dossiers_de_test(300)
+        for dossier in dossiers:
+            dossier["champs"][0]["stringValue"] = valeur_longue
+        numbers = list(range(1, 301))
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer(dossiers)
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == numbers
+        assert sorted(server.column(CHAMPS_TABLE, "dossier_number")) == numbers
+        assert set(server.column(ANNOTATIONS_TABLE, "dossier_number")) == set(numbers)
+        # Aucune valeur tronquée par un envoi refusé
+        assert set(server.column(CHAMPS_TABLE, "objet_de_la_demande")) == {
+            valeur_longue
+        }

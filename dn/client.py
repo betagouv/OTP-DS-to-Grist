@@ -685,18 +685,18 @@ def get_session_with_retries() -> RateLimitedSession:
 
 # Champs d'affichage uniquement : sans valeur métier, ils ne doivent pas
 # produire de colonnes dans Grist
-TYPES_CHAMPS_AFFICHAGE = ("HeaderSectionChamp", "ExplicationChamp")
+DISPLAY_CHAMP_TYPES = ("HeaderSectionChamp", "ExplicationChamp")
 
 
-def _filtrer_champs_presents(dossier: dict[str, Any]) -> dict[str, Any]:
+def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
     """Retire des `champs` et des `annotations` les éléments purement d'affichage."""
     filtered = dossier.copy()
-    for clé in ("champs", "annotations"):
-        if clé in filtered:
-            filtered[clé] = [
-                élément
-                for élément in filtered[clé]
-                if élément.get("__typename") not in TYPES_CHAMPS_AFFICHAGE
+    for collection in ("champs", "annotations"):
+        if collection in filtered:
+            filtered[collection] = [
+                element
+                for element in filtered[collection]
+                if element.get("__typename") not in DISPLAY_CHAMP_TYPES
             ]
 
     return filtered
@@ -779,7 +779,7 @@ def get_dossier(dossier_number: int) -> Dict[str, Any]:
 
     dossier = result["data"]["dossier"]
 
-    return _filtrer_champs_presents(dossier)
+    return _strip_display_champs(dossier)
 
 
 def get_demarche(demarche_number: int) -> Dict[str, Any]:
@@ -1208,7 +1208,7 @@ def get_demarche_dossiers(
     return filtered_dossiers
 
 
-def _noeuds_dossiers(data: dict[str, Any]) -> list[dict[str, Any]]:
+def _dossier_nodes(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Dossiers d'une page paginée (liste vide si la démarche est inaccessible)."""
     return (data.get("demarche") or {}).get("dossiers", {}).get("nodes") or []
 
@@ -1291,7 +1291,7 @@ def iter_demarche_dossier_pages(
 
         data = result.get("data") or {}
         has_next_page, cursor_suivant = _page_info(data)
-        page = [_filtrer_champs_presents(node) for node in _noeuds_dossiers(data)]
+        page = [_strip_display_champs(node) for node in _dossier_nodes(data)]
 
         if page:
             log(f"[DOSSIERS] Page {page_num} : {len(page)} dossier(s) reçu(s)")

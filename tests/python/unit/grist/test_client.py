@@ -1,3 +1,4 @@
+import json
 import time
 from unittest.mock import MagicMock, patch
 
@@ -8,9 +9,56 @@ from grist.client import (
     GRIST_FALLBACK_429_DELAY,
     GRIST_MAX_429_RETRIES,
     GRIST_MAX_RANDOM_DELAY_SECONDS,
+    GRIST_MAX_BODY_BYTES,
     GristClient,
+    _split_records_by_size,
 )
 from utils.rate_limited_session import RateLimitedSession
+
+
+def _poids(payload: dict) -> int:
+    """Taille du corps HTTP que `requests` produirait pour ce payload."""
+    return len(json.dumps(payload).encode("utf-8"))
+
+
+def _records_bulk(nombre: int, taille: int = 30_000) -> list[dict]:
+    """`nombre` enregistrements à créer, chacun d'environ `taille` octets."""
+    return [
+        {"fields": {"dossier_number": i, "texte": "a" * taille}}
+        for i in range(nombre)
+    ]
+
+
+def _reponse(status: int, records=None, text: str = "") -> MagicMock:
+    reponse = MagicMock()
+    reponse.status_code = status
+    reponse.text = text
+    reponse.json.return_value = {"records": records or []}
+    return reponse
+
+
+def _post_cree_les_ids(*args, **kwargs) -> MagicMock:
+    """POST simulé : renvoie un id par enregistrement, dans l'ordre envoyé."""
+    records = kwargs["json"]["records"]
+    return _reponse(201, [{"id": r["fields"]["dossier_number"]} for r in records])
+
+
+def _patch_renvoie_les_ids(*args, **kwargs) -> MagicMock:
+    """PATCH simulé : renvoie un id par enregistrement, dans l'ordre envoyé."""
+    return _reponse(200, [{"id": r["id"]} for r in kwargs["json"]["records"]])
+
+
+def _refus_au_second_appel(premier: callable, refus: dict) -> callable:
+    """Effet de bord : le premier envoi passe, le suivant est refusé."""
+
+    def side_effect(*args, **kwargs):
+        if side_effect.appels == 0:
+            side_effect.appels += 1
+            return premier(*args, **kwargs)
+        return _reponse(refus["status"], text=refus["text"])
+
+    side_effect.appels = 0
+    return side_effect
 
 
 def _mock_response(status_code=200, headers=None):
@@ -693,6 +741,36 @@ class TestAddColumns:
             client.add_columns("t", [{"id": "col1", "type": "Text"}])
 
 
+class TestSplitRecordsBySize:
+    """Tests unitaires pour le découpage des enregistrements sous la limite Grist"""
+
+    def test_liste_vide_reste_un_paquet(self):
+        assert _split_records_by_size([]) == [[]]
+
+    def test_corps_sous_la_limite_reste_un_paquet(self):
+        records = _records_bulk(10)
+        assert _split_records_by_size(records) == [records]
+
+    def test_corps_au_dessus_est_decoupe_sans_perte_ni_desordre(self):
+        records = _records_bulk(60)
+        packets = _split_records_by_size(records)
+        assert len(packets) > 1
+        assert all(_poids({"records": p}) <= GRIST_MAX_BODY_BYTES for p in packets)
+        assert [record for p in packets for record in p] == records
+
+    def test_enregistrement_plus_gros_que_la_limite_reste_seul(self):
+        records = _records_bulk(3) + [{"fields": {"texte": "a" * (2 << 20)}}]
+        packets = _split_records_by_size(records)
+        assert packets[-1] == [records[-1]]
+        assert [record for p in packets for record in p] == records
+
+    def test_limite_plus_basse_decoupe_davantage(self):
+        records = _records_bulk(10, taille=1000)
+        packets = _split_records_by_size(records, max_bytes=3000)
+        assert len(packets) > 1
+        assert all(_poids({"records": p}) <= 3000 for p in packets)
+
+
 class TestPostRecords:
     """Tests unitaires pour GristClient.post_records"""
 
@@ -730,6 +808,64 @@ class TestPostRecords:
             result = self.client.post_records("t", [{"fields": {"nom": "x"}}])
         assert result is mock_response
         assert result.status_code == 500
+
+    def test_payload_sous_la_limite_part_en_une_seule_requete(self):
+        """corps sous la limite -> une seule requête, inchangée"""
+        records = _records_bulk(10)
+        session = MagicMock()
+        session.post.side_effect = _post_cree_les_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.post_records("t", records)
+        session.post.assert_called_once()
+        assert session.post.call_args.kwargs["json"] == {"records": records}
+
+    def test_payload_volumineux_part_en_plusieurs_requetes(self):
+        """corps au-dessus de la limite -> une requête par morceau"""
+        records = _records_bulk(60)
+        session = MagicMock()
+        session.post.side_effect = _post_cree_les_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.post_records("t", records)
+        assert session.post.call_count > 1
+        for call in session.post.call_args_list:
+            assert _poids(call.kwargs["json"]) <= GRIST_MAX_BODY_BYTES
+        assert result.status_code == 200
+
+    def test_reponse_agregee_conserve_l_ordre_des_ids(self):
+        """tous les morceaux passés -> ids concaténés dans l'ordre d'envoi"""
+        records = _records_bulk(60)
+        session = MagicMock()
+        session.post.side_effect = _post_cree_les_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.post_records("t", records)
+        assert result.json() == {
+            "records": [{"id": record["fields"]["dossier_number"]} for record in records]
+        }
+
+    def test_paquet_refuse_arrete_l_envoi(self):
+        """un morceau refusé -> sa réponse est renvoyée, la suite n'est pas envoyée"""
+        records = _records_bulk(60)
+        refuse = {"status": 413, "text": "Request body too large"}
+        session = MagicMock()
+        session.post.side_effect = _refus_au_second_appel(_post_cree_les_ids, refuse)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.post_records("t", records)
+        assert result.status_code == 413
+        assert result.text == "Request body too large"
+        assert session.post.call_count == 2
+
+    def test_enregistrement_trop_gros_est_envoye_et_signale(self):
+        """enregistrement seul au-dessus de la limite -> envoyé, mais journalisé"""
+        records = [{"fields": {"dossier_number": 7, "texte": "a" * (2 << 20)}}]
+        session = MagicMock()
+        session.post.side_effect = _post_cree_les_ids
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            self.client.post_records("t", records)
+        session.post.assert_called_once()
+        assert "dossier_number=7" in mock_log_error.call_args[0][0]
 
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""
@@ -776,11 +912,40 @@ class TestPatchRecords:
         assert result is mock_response
         assert result.status_code == 500
 
+    def test_payload_volumineux_part_en_plusieurs_requetes(self):
+        """corps au-dessus de la limite -> une requête par morceau, réponse agrégée"""
+        records = [{"id": i, "fields": {"texte": "a" * 30_000}} for i in range(60)]
+        session = MagicMock()
+        session.patch.side_effect = _patch_renvoie_les_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.patch_records("t", records)
+        assert session.patch.call_count > 1
+        for call in session.patch.call_args_list:
+            assert _poids(call.kwargs["json"]) <= GRIST_MAX_BODY_BYTES
+        assert result.status_code == 200
+        assert result.json() == {
+            "records": [{"id": record["id"]} for record in records]
+        }
+
+    def test_paquet_refuse_arrete_l_envoi(self):
+        """un morceau refusé -> sa réponse est renvoyée, la suite n'est pas envoyée"""
+        records = [{"id": i, "fields": {"texte": "a" * 30_000}} for i in range(60)]
+        refuse = {"status": 413, "text": "Request body too large"}
+        session = MagicMock()
+        session.patch.side_effect = _refus_au_second_appel(
+            _patch_renvoie_les_ids, refuse
+        )
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.patch_records("t", records)
+        assert result.status_code == 413
+        assert session.patch.call_count == 2
+
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.patch_records("t", [{"id": 42, "fields": {}}])
+
 
 
 class TestDeleteRecords:
