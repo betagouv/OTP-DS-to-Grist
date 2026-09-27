@@ -1,3 +1,4 @@
+import re
 from unittest.mock import patch
 
 import pytest
@@ -5,6 +6,20 @@ import pytest
 from grist.formatter import format_value
 
 CTX = {"dossier_number": 1, "champ_label": "test"}
+
+# Contrat d'entrée : le schéma GraphQL de DS déclare deux types, ISO8601DateTime
+# (dates de dossier, champs datetime) et ISO8601Date (champs date).
+ECHANTILLONS_DS = [
+    "2026-06-19T15:59:36+02:00",  # forme observée sur l'API DS
+    "2024-01-01T00:00:00+01:00",  # fixtures dn
+    "2026-04-20T10:00:00+00:00",
+    "2023-12-25T10:30:00.123456Z",
+    "2024-01-15",  # ISO8601Date
+]
+
+# Contrat de sortie : Grist stocke un DateTime en secondes depuis epoch, en UTC
+# (documentation/grist-data-format.md) ; l'API REST accepte la forme ISO en Z.
+FORMAT_GRIST_DATETIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
 class TestFormatValue:
@@ -27,14 +42,36 @@ class TestFormatValue:
             == "2023-12-25T10:30:00Z"
         )
         assert (
-            format_value("2023-12-25 10:30:00", "DateTime", **CTX)
-            == "2023-12-25T10:30:00Z"
-        )
-        assert (
             format_value("2023-12-25", "DateTime", **CTX) == "2023-12-25T00:00:00Z"
         )
         # Test avec chaîne invalide
         assert format_value("invalid-date", "DateTime", **CTX) == "invalid-date"
+
+    def test_ds_datetime_with_offset_is_normalized_to_utc(self):
+        """Le fuseau renvoyé par DS est converti en UTC, l'instant est préservé"""
+        assert (
+            format_value("2026-06-19T15:59:36+02:00", "DateTime", **CTX)
+            == "2026-06-19T13:59:36Z"
+        )
+
+    def test_ds_datetime_with_microseconds_in_utc(self):
+        """Les microsecondes sont acceptées puis tronquées à la seconde"""
+        assert (
+            format_value("2023-12-25T10:30:00.123456Z", "DateTime", **CTX)
+            == "2023-12-25T10:30:00Z"
+        )
+
+    def test_ds_date_is_midnight_utc(self):
+        """Un champ date de DS (ISO8601Date) devient minuit UTC"""
+        assert format_value("2024-01-15", "DateTime", **CTX) == "2024-01-15T00:00:00Z"
+
+    @pytest.mark.parametrize("valeur_ds", ECHANTILLONS_DS)
+    def test_output_always_matches_grist_datetime_format(self, valeur_ds):
+        """Quelle que soit la forme reçue de DS, la valeur écrite respecte le
+        format attendu par une colonne DateTime de Grist"""
+        assert FORMAT_GRIST_DATETIME.match(
+            format_value(valeur_ds, "DateTime", **CTX)
+        )
 
     def test_format_value_text(self):
         """Test avec type Text"""
@@ -105,17 +142,23 @@ class TestFormatValue:
         assert "n/a" in message
 
     def test_unparseable_date_is_logged_with_dossier(self):
-        """Une date non reconnue part telle quelle, mais le log nomme le dossier"""
+        """Une date hors contrat d'entrée part telle quelle : le log d'erreur
+        nomme le dossier, car Grist risque de refuser la valeur"""
         with patch("grist.formatter.log_error") as mock_log_error:
             assert (
                 format_value(
-                    "hier", "DateTime", dossier_number=12345, champ_label="date_depot"
+                    "25/12/2023",
+                    "DateTime",
+                    dossier_number=12345,
+                    champ_label="date_depot",
                 )
-                == "hier"
+                == "25/12/2023"
             )
+        mock_log_error.assert_called_once()
         message = mock_log_error.call_args[0][0]
         assert "dossier 12345" in message
         assert "date_depot" in message
+        assert "25/12/2023" in message
 
     def test_valid_values_are_not_logged(self):
         """Une conversion réussie ne produit aucun log d'erreur"""

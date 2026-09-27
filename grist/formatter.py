@@ -1,7 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from utils.log import log_error
+
+# Format attendu par une colonne DateTime de Grist : ISO 8601 en UTC, à la seconde.
+FORMAT_GRIST_DATETIME = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def format_value(
@@ -13,6 +16,16 @@ def format_value(
 ) -> Any:
     """
     Convertit une valeur DS vers le type de colonne Grist attendu.
+
+    Deux contrats encadrent les dates :
+
+    - en entrée, DS renvoie de l'ISO 8601, sous deux types déclarés par son
+      schéma GraphQL : `ISO8601DateTime` (dates de dossier, champs datetime) et
+      `ISO8601Date` (champs date) ;
+    - en sortie, une colonne DateTime de Grist attend une date en UTC ; Grist la
+      stocke en secondes depuis epoch, le fuseau de la colonne ne servant qu'à
+      l'affichage. La forme canonique `…Z` est donc produite, ce qui rend les
+      valeurs comparables et supprime toute ambiguïté de fuseau.
 
     `dossier_number` et `champ_label` sont obligatoires : une valeur abandonnée ou
     transmise telle quelle est un échec silencieux, seulement visible en Grist ou
@@ -34,22 +47,21 @@ def format_value(
     if value_type == "DateTime":
         if isinstance(value, str):
             if value:
-                for fmt in [
-                    "%Y-%m-%dT%H:%M:%S.%fZ",
-                    "%Y-%m-%dT%H:%M:%SZ",
-                    "%Y-%m-%d %H:%M:%S",
-                    "%Y-%m-%d",
-                ]:
-                    try:
-                        dt = datetime.strptime(value, fmt)
-                        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except ValueError:
-                        continue
+                try:
+                    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except ValueError:
+                    dt = None
+                if dt is not None:
+                    if dt.tzinfo is not None:
+                        dt = dt.astimezone(timezone.utc)
+                    return dt.strftime(FORMAT_GRIST_DATETIME)
             log_error(
                 f"Date illisible pour le dossier {dossier_number}, champ "
                 f"{champ_label} : {str(value)[:80]!r} (transmise telle quelle)"
             )
+
             return value
+
         return value
 
     if value_type == "Text":

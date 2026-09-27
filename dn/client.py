@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from utils.constants import DEMARCHES_API_URL
 from utils.log import log, log_error
 from utils.rate_limited_session import RateLimitedSession, build_rate_limited_session
+from utils.timing import timed
 
 load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
@@ -504,6 +505,26 @@ def _page_info(data: dict[str, Any]) -> tuple[bool, str | None]:
     return bool(page_info["hasNextPage"]), page_info["endCursor"]
 
 
+@timed("get_dossier_per_page", "ds")
+def get_dossier_per_page(
+    session: requests.Session,
+    headers: dict[str, str],
+    variables: dict[str, Any],
+    cursor: str | None,
+) -> dict[str, Any]:
+    """Requête d'une page de dossiers détaillés, chronométrée par page."""
+    response = session.post(
+        DEMARCHES_API_URL,
+        json={
+            "query": query_dossiers_detaille,
+            "variables": {**variables, "afterCursor": cursor},
+        },
+        headers=headers,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def iter_demarche_dossier_pages(
     demarche_number: int,
     session: requests.Session | None = None,
@@ -553,16 +574,7 @@ def iter_demarche_dossier_pages(
     cursor = None
     while has_next_page:
         page_num += 1
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={
-                "query": query_dossiers_detaille,
-                "variables": {**variables, "afterCursor": cursor},
-            },
-            headers=headers,
-        )
-        response.raise_for_status()
-        result = response.json()
+        result = get_dossier_per_page(session, headers, variables, cursor)
 
         # Les dossiers en accès refusé n'apparaissent pas dans la page : on ignore
         # l'erreur et on poursuit, les autres dossiers restant exploitables.

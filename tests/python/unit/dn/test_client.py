@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
+from utils.timing import clear_timings, get_timings
 from dn.client import (
     DEMARCHES_FALLBACK_429_DELAY,
     DEMARCHES_MAX_429_RETRIES,
@@ -508,3 +509,25 @@ class TestIterDemarcheDossierPages:
 
         assert list(iter_demarche_dossier_pages(123)) == []
         assert session.post.call_count == 1
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_each_page_is_timed(self, mock_session):
+        """Chaque requête de page alimente le résumé [API]"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _page([_dossier(1)], has_next_page=True, end_cursor="c1"),
+            _page([_dossier(2)], has_next_page=False),
+        ]
+        mock_session.return_value = session
+
+        clear_timings()
+        try:
+            list(iter_demarche_dossier_pages(123))
+            pages = [
+                t for t in get_timings() if t["function"] == "get_dossier_per_page"
+            ]
+        finally:
+            clear_timings()
+
+        assert [t["service"] for t in pages] == ["ds", "ds"]
