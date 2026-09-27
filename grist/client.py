@@ -71,14 +71,9 @@ def _split_records_by_size(
     return packets
 
 
-def _record_label(record: dict[str, Any]) -> str:
-    """Désignation lisible d'un enregistrement, pour les messages d'erreur."""
-    champs = record.get("fields") or record
-    for cle in ("dossier_number", "number", "avis_id", "id"):
-        if champs.get(cle) is not None:
-            return f"{cle}={champs[cle]}"
-
-    return "inconnu"
+def _dossier_number(fields: dict[str, Any]) -> Any:
+    """Numéro de dossier porté par les champs d'un enregistrement, s'il existe."""
+    return fields.get("dossier_number") or fields.get("number")
 
 
 def _aggregated_response(records: list[dict[str, Any]]) -> requests.Response:
@@ -383,8 +378,10 @@ class GristClient:
         dossier_number = row_dict.get("dossier_number") or row_dict.get("number")
 
         if not dossier_number:
-            log_error("dossier_number ou number manquant dans les données")
-            log_verbose(f"Données disponibles: {row_dict.keys()}")
+            log_error(
+                f"dossier_number ou number manquant dans les données "
+                f"(table {table_id}, champs {sorted(row_dict)}): l'enregistrement est ignoré"
+            )
             return False
 
         # Convertir le numéro de dossier en chaîne pour les comparaisons
@@ -552,8 +549,11 @@ class GristClient:
         """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""
         poids = _records_payload_bytes(records)
         if len(records) == 1 and poids > GRIST_MAX_BODY_BYTES:
+            dossier_number = (
+                _dossier_number(records[0].get("fields") or records[0]) or "inconnu"
+            )
             log_error(
-                f"Enregistrement {_record_label(records[0])} trop volumineux pour Grist "
+                f"Dossier {dossier_number} trop volumineux pour Grist "
                 f"({poids} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
                 "envoi tenté, il sera refusé"
             )
@@ -801,11 +801,13 @@ class GristClient:
                     filtered_row_dict[key] = value
 
             # Obtenir le numéro de dossier
-            dossier_number = filtered_row_dict.get(
-                "dossier_number"
-            ) or filtered_row_dict.get("number")
+            dossier_number = _dossier_number(filtered_row_dict)
             if not dossier_number:
-                log_error("dossier_number ou number manquant dans les données")
+                log_error(
+                    f"dossier_number ou number manquant dans les données "
+                    f"(table {table_id}, champs {sorted(filtered_row_dict)}): "
+                    "l'enregistrement est ignoré"
+                )
                 continue
 
             dossier_number_str = str(dossier_number)
@@ -848,7 +850,9 @@ class GristClient:
                 total_success += len(normalized_updates)
             else:
                 log_error(
-                    f"Erreur lors de la mise à jour par lot: {update_response.status_code} - {update_response.text}"
+                    f"Erreur lors de la mise à jour par lot de la table {table_id} "
+                    f"({len(normalized_updates)} dossiers): "
+                    f"{update_response.status_code} - {update_response.text}"
                 )
 
                 # Fallback: essayer individuellement
@@ -863,7 +867,13 @@ class GristClient:
                         update_success += 1
                     else:
                         total_errors += 1
-                        log_error(f"Échec individuel pour {individual_record['id']}")
+                        dossier_number = _dossier_number(
+                            individual_record["fields"]
+                        )
+                        log_error(
+                            f"Échec individuel pour le dossier {dossier_number} "
+                            f"(ligne Grist {individual_record['id']})"
+                        )
 
                 total_success += update_success
                 log(
@@ -896,14 +906,16 @@ class GristClient:
                 created_ids = create_response.json().get("records", [])
                 for i, created in enumerate(created_ids):
                     if i < len(normalized_creations):
-                        dossier_num = normalized_creations[i]["fields"].get(
-                            "dossier_number"
-                        ) or normalized_creations[i]["fields"].get("number")
+                        dossier_num = _dossier_number(
+                            normalized_creations[i]["fields"]
+                        )
                         if dossier_num and existing_records is not None:
                             existing_records[str(dossier_num)] = created.get("id")
             else:
                 log_error(
-                    f"Erreur lors de la création par lot: {create_response.status_code} - {create_response.text}"
+                    f"Erreur lors de la création par lot de la table {table_id} "
+                    f"({len(normalized_creations)} dossiers): "
+                    f"{create_response.status_code} - {create_response.text}"
                 )
                 total_errors += len(normalized_creations)
 

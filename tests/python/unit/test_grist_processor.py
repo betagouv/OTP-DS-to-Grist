@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from grist_processor_working_all import (
     normalize_column_name,
@@ -146,6 +146,42 @@ class TestFormatValueForGrist:
         """Test avec type inconnu"""
         assert format_value_for_grist("value", "Unknown") == "value"
         assert format_value_for_grist(123, "Unknown") == 123
+
+    def test_valeur_int_abandonnee_est_journalisee_avec_son_dossier(self):
+        """Une valeur illisible en Int est écrite vide, mais le log nomme le dossier"""
+        with patch("grist_processor_working_all.log_error") as mock_log_error:
+            assert (
+                format_value_for_grist(
+                    "n/a", "Int", dossier_number=12345, champ_label="quantite"
+                )
+                is None
+            )
+        message = mock_log_error.call_args[0][0]
+        assert "dossier 12345" in message
+        assert "quantite" in message
+        assert "n/a" in message
+
+    def test_date_illisible_est_journalisee_avec_son_dossier(self):
+        """Une date non reconnue part telle quelle, mais le log nomme le dossier"""
+        with patch("grist_processor_working_all.log_error") as mock_log_error:
+            assert (
+                format_value_for_grist(
+                    "hier", "DateTime", dossier_number=12345, champ_label="date_depot"
+                )
+                == "hier"
+            )
+        message = mock_log_error.call_args[0][0]
+        assert "dossier 12345" in message
+        assert "date_depot" in message
+
+    def test_valeurs_valides_ne_journalisent_rien(self):
+        """Une conversion réussie ne produit aucun log d'erreur"""
+        with patch("grist_processor_working_all.log_error") as mock_log_error:
+            format_value_for_grist("42", "Int", dossier_number=1, champ_label="q")
+            format_value_for_grist("2023-12-25", "DateTime", dossier_number=1, champ_label="d")
+            format_value_for_grist("texte", "Text", dossier_number=1, champ_label="t")
+            format_value_for_grist(None, "Int", dossier_number=1, champ_label="q")
+        mock_log_error.assert_not_called()
 
 
 class TestFilterRecordToExistingColumns:

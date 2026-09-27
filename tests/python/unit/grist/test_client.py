@@ -854,8 +854,8 @@ class TestPostRecords:
         assert result.text == "Request body too large"
         assert session.post.call_count == 2
 
-    def test_enregistrement_trop_gros_est_envoye_et_signale(self):
-        """enregistrement seul au-dessus de la limite -> envoyé, mais journalisé"""
+    def test_dossier_trop_gros_est_envoye_et_signale(self):
+        """dossier seul au-dessus de la limite -> envoyé, mais journalisé"""
         records = [{"fields": {"dossier_number": 7, "texte": "a" * (2 << 20)}}]
         session = MagicMock()
         session.post.side_effect = _post_cree_les_ids
@@ -865,7 +865,7 @@ class TestPostRecords:
         ):
             self.client.post_records("t", records)
         session.post.assert_called_once()
-        assert "dossier_number=7" in mock_log_error.call_args[0][0]
+        assert "Dossier 7 trop volumineux" in mock_log_error.call_args[0][0]
 
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""
@@ -1210,6 +1210,75 @@ class TestUpsertMultipleDossiersInGrist:
         with pytest.raises(ValueError):
             client.upsert_multiple_dossiers_in_grist("dossiers", [])
 
+    def test_update_failure_names_table_and_dossier(self):
+        """échec du lot puis du repli -> la table et le dossier sont nommés"""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {
+            "columns": [{"id": "name"}, {"id": "dossier_number"}]
+        }
+        echec = _reponse(500, text="boom")
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.patch.return_value = echec
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": "1001", "name": "x"}],
+                existing_records={"1001": 5},
+            )
+        assert ok is False
+        logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
+        assert "mise à jour par lot de la table dossiers" in logs
+        assert "Échec individuel pour le dossier 1001 (ligne Grist 5)" in logs
+
+    def test_create_failure_names_table(self):
+        """échec de la création par lot -> la table et le nombre de dossiers"""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {
+            "columns": [{"id": "name"}, {"id": "dossier_number"}]
+        }
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.post.return_value = _reponse(413, text="x")
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "champs",
+                [{"dossier_number": 1, "name": "x"}, {"dossier_number": 2, "name": "y"}],
+                existing_records={},
+            )
+        assert ok is False
+        logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
+        assert "création par lot de la table champs (2 dossiers)" in logs
+
+    def test_record_without_dossier_number_is_logged_with_its_fields(self):
+        """enregistrement sans numéro de dossier -> ignoré, mais identifié"""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {"columns": [{"id": "name"}]}
+        session = MagicMock()
+        session.get.return_value = columns_response
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "champs", [{"name": "orphelin"}], existing_records={}
+            )
+        assert ok is False
+        session.patch.assert_not_called()
+        session.post.assert_not_called()
+        logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
+        assert "dossier_number ou number manquant" in logs
+        assert "table champs" in logs
+        assert "'name'" in logs
 
 class TestGristClientSession:
     """Tests unitaires pour GristClient._get_session (retry 429 + 5xx)"""

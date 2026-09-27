@@ -11,7 +11,6 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
-
 import requests
 from dotenv import load_dotenv
 
@@ -579,6 +578,10 @@ def format_value_for_grist(value, value_type):
                         return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
                     except ValueError:
                         continue
+            log_error(
+                f"Date illisible pour le dossier {dossier_number}, champ "
+                f"{champ_label} : {str(value)[:80]!r} (transmise telle quelle)"
+            )
             return value
         return value
 
@@ -591,6 +594,11 @@ def format_value_for_grist(value, value_type):
                 return int(float(value)) if value else None
             return float(value) if value else None
         except (ValueError, TypeError):
+            log_error(
+                f"Valeur non convertible en {value_type} pour le dossier "
+                f"{dossier_number}, champ {champ_label} : {str(value)[:80]!r} "
+                "(écrite vide)"
+            )
             return None
 
     if value_type == "Bool":
@@ -1079,7 +1087,12 @@ def process_demarche_for_grist_optimized(
                     else:
                         continue
 
-                    dossier_record[field_id] = format_value_for_grist(value, field_type)
+                    dossier_record[field_id] = format_value_for_grist(
+                        value,
+                        field_type,
+                        dossier_number=dossier_num,
+                        champ_label=field_id,
+                    )
 
                 if "dossier_number" not in dossier_record:
                     dossier_record["dossier_number"] = dossier_num
@@ -1128,7 +1141,10 @@ def process_demarche_for_grist_optimized(
 
                     column_type = champ_column_types.get(normalized_label, "Text")
                     champ_record[normalized_label] = format_value_for_grist(
-                        value, column_type
+                        value,
+                        column_type,
+                        dossier_number=dossier_num,
+                        champ_label=normalized_label,
                     )
 
                 # Préparer annotation_record
@@ -1171,7 +1187,10 @@ def process_demarche_for_grist_optimized(
 
                     column_type = annotation_column_types.get(normalized_label, "Text")
                     annotation_record[normalized_label] = format_value_for_grist(
-                        value, column_type
+                        value,
+                        column_type,
+                        dossier_number=dossier_num,
+                        champ_label=normalized_label,
                     )
 
                     if "id" in annotation:

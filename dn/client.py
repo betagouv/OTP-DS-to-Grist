@@ -1283,11 +1283,15 @@ def iter_demarche_dossier_pages(
 
         # Les dossiers en accès refusé n'apparaissent pas dans la page : on ignore
         # l'erreur et on poursuit, les autres dossiers restant exploitables.
+        # Le message de l'API nomme le dossier masqué, on le restitue tel quel.
         if "errors" in result:
             messages = [e.get("message", "") for e in result["errors"]]
             if any("permissions" not in message for message in messages):
                 raise Exception(f"GraphQL errors: {', '.join(messages)}")
-            log(f"[DOSSIERS] {len(messages)} dossier(s) en accès refusé, ignoré(s)")
+            log(
+                f"[DOSSIERS] {len(messages)} dossier(s) masqué(s) par les "
+                f"permissions : {', '.join(messages)}"
+            )
 
         data = result.get("data") or {}
         has_next_page, cursor_suivant = _page_info(data)

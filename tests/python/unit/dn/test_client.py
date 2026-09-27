@@ -758,7 +758,8 @@ class TestIterDemarcheDossierPages:
 
     @patch("dn.client.get_session_with_retries")
     @patch("dn.client.API_TOKEN", "test-token")
-    def test_permission_errors_are_ignored(self, mock_session):
+    @patch("dn.client.log")
+    def test_permission_errors_are_ignored(self, mock_log, mock_session):
         """Les dossiers masqués par les permissions n'interrompent pas la pagination"""
         session = MagicMock()
         session.post.side_effect = [
@@ -775,6 +776,9 @@ class TestIterDemarcheDossierPages:
         pages = list(iter_demarche_dossier_pages(123))
 
         assert [[dossier["number"] for dossier in page] for page in pages] == [[1], [3]]
+        # Le dossier masqué est nommé dans les logs, sinon il disparaît sans trace
+        messages = " ".join(str(call.args[0]) for call in mock_log.call_args_list)
+        assert "Dossier 2 hidden due to permissions" in messages
 
     @patch("dn.client.get_session_with_retries")
     @patch("dn.client.API_TOKEN", "test-token")
