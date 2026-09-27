@@ -18,6 +18,7 @@ import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient
 from grist.column_cache import ColumnCache
+from grist.formatter import format_value
 from hide_id_columns import IdColumnHider
 from dn.client import PAGE_SIZE_DOSSIERS_MAX, iter_demarche_dossier_pages
 from dn.extract import dossier_to_flat_data
@@ -560,57 +561,6 @@ def extract_demandeur_data(dossier, demandeur_type):
     }
 
 
-def format_value_for_grist(value, value_type):
-    if value is None:
-        return None
-
-    if value_type == "DateTime":
-        if isinstance(value, str):
-            if value:
-                for fmt in [
-                    "%Y-%m-%dT%H:%M:%S.%fZ",
-                    "%Y-%m-%dT%H:%M:%SZ",
-                    "%Y-%m-%d %H:%M:%S",
-                    "%Y-%m-%d",
-                ]:
-                    try:
-                        dt = datetime.strptime(value, fmt)
-                        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except ValueError:
-                        continue
-            log_error(
-                f"Date illisible pour le dossier {dossier_number}, champ "
-                f"{champ_label} : {str(value)[:80]!r} (transmise telle quelle)"
-            )
-            return value
-        return value
-
-    if value_type == "Text":
-        return str(value)
-
-    if value_type in ["Int", "Numeric"]:
-        try:
-            if value_type == "Int":
-                return int(float(value)) if value else None
-            return float(value) if value else None
-        except (ValueError, TypeError):
-            log_error(
-                f"Valeur non convertible en {value_type} pour le dossier "
-                f"{dossier_number}, champ {champ_label} : {str(value)[:80]!r} "
-                "(écrite vide)"
-            )
-            return None
-
-    if value_type == "Bool":
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.lower() in ["true", "1", "yes", "oui", "vrai"]
-        return bool(value)
-
-    return value
-
-
 # Fonction pour récupérer les labels d'un dossier spécifique
 def get_dossier_labels(dossier_number):
     """Récupère uniquement les labels d'un dossier spécifique"""
@@ -1087,7 +1037,7 @@ def process_demarche_for_grist_optimized(
                     else:
                         continue
 
-                    dossier_record[field_id] = format_value_for_grist(
+                    dossier_record[field_id] = format_value(
                         value,
                         field_type,
                         dossier_number=dossier_num,
@@ -1140,7 +1090,7 @@ def process_demarche_for_grist_optimized(
                             value = str(champ["json_value"])
 
                     column_type = champ_column_types.get(normalized_label, "Text")
-                    champ_record[normalized_label] = format_value_for_grist(
+                    champ_record[normalized_label] = format_value(
                         value,
                         column_type,
                         dossier_number=dossier_num,
@@ -1186,7 +1136,7 @@ def process_demarche_for_grist_optimized(
                             value = str(annotation["json_value"])
 
                     column_type = annotation_column_types.get(normalized_label, "Text")
-                    annotation_record[normalized_label] = format_value_for_grist(
+                    annotation_record[normalized_label] = format_value(
                         value,
                         column_type,
                         dossier_number=dossier_num,
