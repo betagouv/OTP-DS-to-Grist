@@ -708,7 +708,6 @@ class GristClient:
 
             # Créer la table des dossiers si elle n'existe pas
             if not dossier_table:
-                log(f"Création de la table {dossier_table_id}")
                 dossier_table_result = self.create_table(
                     dossier_table_id, column_types["dossier"]
                 )
@@ -717,7 +716,6 @@ class GristClient:
 
             # Créer la table des champs si elle n'existe pas
             if not champ_table:
-                log(f"Création de la table {champ_table_id}")
                 champ_table_result = self.create_table(
                     champ_table_id, column_types["champs"]
                 )
@@ -726,7 +724,6 @@ class GristClient:
 
             # Créer la table des annotations si elle n'existe pas
             if not annotation_table:
-                log(f"Création de la table {annotation_table_id}")
                 annotation_table_result = self.create_table(
                     annotation_table_id, column_types["annotations"]
                 )

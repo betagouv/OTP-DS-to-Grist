@@ -1034,7 +1034,6 @@ def update_grist_tables_from_schema(
 
         # Créer ou mettre à jour la table des dossiers
         if not dossier_table:
-            log(f"Création de la table {dossier_table_id}")
             dossier_table_result = client.create_table(
                 dossier_table_id, column_types["dossier"]
             )
@@ -1045,7 +1044,6 @@ def update_grist_tables_from_schema(
 
         # Créer ou mettre à jour la table des champs
         if not champ_table:
-            log(f"Création de la table {champ_table_id}")
             base_columns = [
                 {"id": "dossier_number", "type": "Int"},
                 {"id": "champ_id", "type": "Text"},
@@ -1065,7 +1063,6 @@ def update_grist_tables_from_schema(
             if (
                 len(column_types["annotations"]) > 1
             ):  # > 1 car il y a toujours dossier_number
-                log(f"Création de la table {annotation_table_id}")
                 base_columns = [{"id": "dossier_number", "type": "Int"}]
                 annotation_table_result = client.create_table(
                     annotation_table_id, base_columns
@@ -1129,7 +1126,6 @@ def update_grist_tables_from_schema(
 
         # Créer ou mettre à jour
         if not demandeurs_table:
-            log(f"Création de la table {demandeurs_table_id} (type: {demandeur_type})")
             demandeurs_table_result = client.create_table(
                 demandeurs_table_id, demandeurs_columns
             )
@@ -1147,7 +1143,6 @@ def update_grist_tables_from_schema(
         )
 
         if not instructeurs_table:
-            log(f"Création de la table {instructeurs_table_id}")
             instructeurs_columns = create_instructeurs_columns()
             instructeurs_table_result = client.create_table(
                 instructeurs_table_id, instructeurs_columns
@@ -1214,7 +1209,6 @@ def update_grist_tables_from_schema(
             (t for t in fresh_tables if t.get("id") == sync_metadata_table_id), None
         )
         if not sync_table:
-            log(f"Création de la table {sync_metadata_table_id}")
             client.create_table(sync_metadata_table_id, sync_metadata_columns)
         else:
             add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
@@ -1245,7 +1239,6 @@ def update_grist_tables_from_schema(
             (t for t in fresh_tables if t.get("id") == sync_metadata_table_id), None
         )
         if not sync_table:
-            log(f"Création de la table {sync_metadata_table_id}")
             client.create_table(sync_metadata_table_id, sync_metadata_columns)
         else:
             add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
