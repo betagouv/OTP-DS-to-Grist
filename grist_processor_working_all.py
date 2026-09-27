@@ -148,51 +148,6 @@ def normalize_column_name(name, max_length=150):
     return name
 
 
-# 1. D'abord, ajoutez la fonction filter_record_to_existing_columns après les autres fonctions utilitaires
-
-
-def filter_record_to_existing_columns(client, table_id, record):
-    """
-    Filtre un enregistrement pour ne garder que les colonnes existantes dans la table.
-
-    Args:
-        client: Instance de GristClient
-        table_id: ID de la table Grist
-        record: Dictionnaire de l'enregistrement à filtrer
-
-    Returns:
-        dict: Enregistrement filtré
-    """
-    # Récupérer les colonnes existantes
-    try:
-        existing_columns = client.get_columns(table_id)
-
-        if not existing_columns:
-            return record  # Retourner l'enregistrement tel quel en cas d'erreur
-
-        log_verbose(
-            f"Colonnes existantes dans la table {table_id}: {len(existing_columns)}"
-        )
-
-        # Filtrer l'enregistrement
-        filtered_record = {}
-        for key, value in record.items():
-            if key in existing_columns:
-                filtered_record[key] = value
-            else:
-                log_verbose(f"  Colonne {key} ignorée car inexistante dans la table")
-
-        # Toujours garder dossier_number pour les références
-        if "dossier_number" in record and "dossier_number" not in filtered_record:
-            filtered_record["dossier_number"] = record["dossier_number"]
-
-        return filtered_record
-
-    except Exception as e:
-        log_error(f"Erreur lors du filtrage de l'enregistrement: {str(e)}")
-        return record  # Retourner l'enregistrement tel quel en cas d'erreur
-
-
 def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=None):
     """
     Détecte les types de colonnes pour les tables Grist à partir des données de plusieurs dossiers.
@@ -559,50 +514,6 @@ def extract_demandeur_data(dossier, demandeur_type):
         "code_region": address.get("regionCode"),
         "connection_usager": dossier.get("connectionUsager"),
     }
-
-
-# Fonction pour récupérer les labels d'un dossier spécifique
-def get_dossier_labels(dossier_number):
-    """Récupère uniquement les labels d'un dossier spécifique"""
-
-    query = """
-    query GetDossierLabels($dossierNumber: Int!) {
-        dossier(number: $dossierNumber) {
-            id
-            number
-            labels {
-                id
-                name
-                color
-            }
-        }
-    }
-    """
-
-    variables = {"dossierNumber": int(dossier_number)}
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    response = requests.post(
-        API_URL, json={"query": query, "variables": variables}, headers=headers
-    )
-
-    if response.status_code != 200:
-        log_error(
-            f"Erreur HTTP lors de la récupération des labels: {response.status_code}"
-        )
-        return None
-
-    result = response.json()
-
-    if "errors" in result:
-        log_error("Erreurs GraphQL lors de la récupération des labels")
-        return None
-
-    return result.get("data", {}).get("dossier", {}).get("labels", [])
 
 
 def add_id_columns_based_on_annotations(client, table_id, annotations):
@@ -1172,11 +1083,6 @@ def process_demarche_for_grist_optimized(
         cache_demandeurs = client.get_existing_dossier_numbers(table_ids["demandeurs"])
         log(f"Cache global préchargé en {time.time() - start_cache:.1f}s")
 
-        # Construire les sets de dossiers à skipper par table
-        skip_dossiers = set()
-        skip_champs = set()
-        skip_annotations = set()
-
         # Traitement page par page : chaque page de dossiers est écrite dans Grist
         # avant que la suivante ne soit demandée à l'API, et la mémoire reste
         # bornée à une page quelle que soit la taille de la démarche.
@@ -1298,11 +1204,6 @@ def process_demarche_for_grist_optimized(
                     unique_annotations_list,  #  Passer la liste dédupliquée
                 )
             # Effectuer les opérations d'upsert par lot
-            dossier_records = [
-                r
-                for r in dossier_records
-                if str(r.get("dossier_number") or r.get("number")) not in skip_dossiers
-            ]
             if dossier_records:
                 log(f"  Upsert par lot de {len(dossier_records)} dossiers...")
                 success = client.upsert_multiple_dossiers_in_grist(
@@ -1321,11 +1222,6 @@ def process_demarche_for_grist_optimized(
                         else:
                             failed_dossiers.add(str(dossier_num))
 
-            champ_records = [
-                r
-                for r in champ_records
-                if str(r.get("dossier_number")) not in skip_champs
-            ]
             if champ_records:
                 log(
                     f"  Upsert par lot de {len(champ_records)} enregistrements de champs..."
@@ -1340,11 +1236,6 @@ def process_demarche_for_grist_optimized(
                 log(f"[TIMING] Après upsert champs: {time.time() - page_start:.1f}s")
                 log_progress.log("Mise à jour des enregistrements de champs")
 
-            annotation_records = [
-                r
-                for r in annotation_records
-                if str(r.get("dossier_number")) not in skip_annotations
-            ]
             if annotation_records and table_ids.get("annotations"):
                 log(
                     f"  Upsert par lot de {len(annotation_records)} enregistrements d'annotations..."
@@ -1374,8 +1265,6 @@ def process_demarche_for_grist_optimized(
                 demandeur_type = table_ids["demandeur_type"]
 
                 for dossier_num, dossier_data in page_dossiers.items():
-                    if str(dossier_num) in skip_dossiers:
-                        continue
                     try:
                         demandeur_data = extract_demandeur_data(
                             dossier_data, demandeur_type
@@ -1412,12 +1301,7 @@ def process_demarche_for_grist_optimized(
             ):
                 # Collecter toutes les lignes répétables
                 all_repetable_rows = []
-                filtered_repetable_dict = {
-                    num: data
-                    for num, data in page_dossiers.items()
-                    if str(num) not in skip_champs
-                }
-                for dossier_data in filtered_repetable_dict.values():
+                for dossier_data in page_dossiers.values():
                     exclude_repetition = False
                     flat_data = dossier_to_flat_data(
                         dossier_data,
@@ -1498,8 +1382,6 @@ def process_demarche_for_grist_optimized(
             # Libérer la mémoire de la page avant la page suivante
             del page_dossiers, all_avis_records
             del dossier_records, champ_records, annotation_records, all_annotations_for_columns
-            if "filtered_repetable_dict" in locals():
-                del filtered_repetable_dict
             if "all_repetable_rows" in locals():
                 del all_repetable_rows
             if "rows_by_block" in locals():

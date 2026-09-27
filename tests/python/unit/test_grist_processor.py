@@ -2,7 +2,6 @@ from unittest.mock import MagicMock
 
 from grist_processor_working_all import (
     normalize_column_name,
-    filter_record_to_existing_columns,
     add_id_columns_based_on_annotations,
     upsert_avis_records,
 )
@@ -63,45 +62,6 @@ class TestNormalizeColumnName:
         assert normalize_column_name("___multiple___") == "multiple"
 
 
-
-
-class TestFilterRecordToExistingColumns:
-    """Tests unitaires pour filter_record_to_existing_columns"""
-
-    def setup_method(self):
-        self.client = MagicMock()
-
-    def test_filters_unknown_columns(self):
-        """ne garde que les colonnes existantes"""
-        self.client.get_columns.return_value = {"name": "Text", "email": "Text"}
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x", "toto": 1}
-        )
-        assert result == {"name": "x"}
-
-    def test_keeps_dossier_number_even_if_absent(self):
-        """dossier_number est toujours conservé même s'il n'existe pas dans la table"""
-        self.client.get_columns.return_value = {"name": "Text"}
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x", "dossier_number": 5}
-        )
-        assert result == {"name": "x", "dossier_number": 5}
-
-    def test_returns_record_unchanged_on_http_error(self):
-        """erreur HTTP -> enregistrement inchangé"""
-        self.client.get_columns.return_value = {}
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x", "toto": 1}
-        )
-        assert result == {"name": "x", "toto": 1}
-
-    def test_returns_record_unchanged_on_exception(self):
-        """exception -> enregistrement inchangé"""
-        self.client.get_columns.side_effect = Exception("boom")
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x"}
-        )
-        assert result == {"name": "x"}
 
 
 class TestAddIdColumnsBasedOnAnnotations:
