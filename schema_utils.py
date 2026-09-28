@@ -1213,36 +1213,6 @@ def update_grist_tables_from_schema(
         else:
             add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
 
-        # Créer ou mettre à jour la table Sync_metadata
-        sync_metadata_table_id = "Sync_metadata"
-        sync_metadata_columns = [
-            {"id": "demarche_number", "type": "Int"},
-            {"id": "last_sync_at", "type": "Text"},
-            {"id": "updated_since_cursor", "type": "Text"},
-            {"id": "deleted_since_cursor", "type": "Text"},
-            {"id": "deleted_after_cursor", "type": "Text"},
-            {"id": "last_sync_status", "type": "Text"},
-            {"id": "last_sync_duration", "type": "Numeric"},
-            {
-                "id": "force_full_sync",
-                "type": "Bool",
-                "fields": {"type": "Bool", "isFormula": False, "formula": ""},
-            },
-            {"id": "filters_hash", "type": "Text"},
-        ]
-
-        # Recharger la liste des tables pour les inclure celles créées pendant cette exécution
-        fresh_tables = client.list_tables()
-        if isinstance(fresh_tables, dict) and "tables" in fresh_tables:
-            fresh_tables = fresh_tables["tables"]
-        sync_table = next(
-            (t for t in fresh_tables if t.get("id") == sync_metadata_table_id), None
-        )
-        if not sync_table:
-            client.create_table(sync_metadata_table_id, sync_metadata_columns)
-        else:
-            add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
-
         result["sync_metadata"] = sync_metadata_table_id
 
         log("Mise à jour des tables terminée avec succès")
