@@ -104,6 +104,9 @@ Conventions de nommage : standards Python (PEP 8) et JS.
 Typer les signatures des fonctions touchées lors d'une modification (approche incrémentale), en
 cohérence avec le style existant : types natifs (`dict[str, str]`, `set[str]`, ...) et unions
 `X | None`, sans type checker obligatoire.
+Organisation d'un module Python : l'API publique d'abord, les fonctions et méthodes privées
+(`_…`) regroupées après elle (fin de classe pour les méthodes, fin de module pour les fonctions),
+sous un marqueur de section. Les constantes, privées ou non, restent en tête de module.
 
 ## Tests
 

@@ -31,66 +31,6 @@ GRIST_MAX_BODY_BYTES = 1024 * 1024
 _RECORDS_PAYLOAD_BASE_BYTES = 13
 
 
-def _record_weight(record: dict[str, Any]) -> int:
-    """Poids d'un enregistrement dans un payload `{"records": [...]}`."""
-    return len(json.dumps(record).encode("utf-8")) + 2
-
-
-def _records_payload_bytes(records: list[dict[str, Any]]) -> int:
-    """Taille du corps HTTP que `requests` produira pour `records`."""
-    return len(json.dumps({"records": records}).encode("utf-8"))
-
-
-def _split_records_by_size(
-    records: list[dict[str, Any]], max_bytes: int = GRIST_MAX_BODY_BYTES
-) -> list[list[dict[str, Any]]]:
-    """
-    Découpe les enregistrements en paquets dont le corps tient sous `max_bytes`.
-
-    Un enregistrement plus volumineux que la limite forme son propre paquet : il
-    ne peut pas être fractionné davantage, son envoi est tenté et c'est Grist
-    qui décide de l'accepter ou de le refuser.
-    """
-    if _records_payload_bytes(records) <= max_bytes:
-        return [records]
-
-    packets: list[list[dict[str, Any]]] = []
-    packet: list[dict[str, Any]] = []
-    poids = _RECORDS_PAYLOAD_BASE_BYTES
-    for record in records:
-        poids_record = _record_weight(record)
-        if packet and poids + poids_record > max_bytes:
-            packets.append(packet)
-            packet = []
-            poids = _RECORDS_PAYLOAD_BASE_BYTES
-        packet.append(record)
-        poids += poids_record
-    if packet:
-        packets.append(packet)
-
-    return packets
-
-
-def _dossier_number(fields: dict[str, Any]) -> Any:
-    """Numéro de dossier porté par les champs d'un enregistrement, s'il existe."""
-    return fields.get("dossier_number") or fields.get("number")
-
-
-def _aggregated_response(records: list[dict[str, Any]]) -> requests.Response:
-    """
-    Réponse 200 agrgeant les enregistrements renvoyés par plusieurs paquets.
-
-    Les enregistrements sont concaténés dans l'ordre d'envoi : l'appelant peut
-    ainsi continuer à associer les ids Grist aux dossiers qu'il a soumis.
-    """
-    reponse = requests.Response()
-    reponse.status_code = 200
-    reponse._content = json.dumps({"records": records}).encode("utf-8")
-    reponse.headers["Content-Type"] = "application/json"
-
-    return reponse
-
-
 class GristClient:
     def __init__(
         self, base_url: str, api_key: str, doc_id: str | None = None
@@ -118,20 +58,6 @@ class GristClient:
 
     def set_doc_id(self, doc_id: str | None) -> None:
         self.doc_id = doc_id
-
-    def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
-        """
-        Extrait l'email primaire d'une réponse SCIM /Me.
-        primary > premier email > None. userName est ignoré (peut être un pseudo).
-        """
-        emails = data.get("emails")
-
-        if not emails:
-            return None
-
-        primary = next((email for email in emails if email.get("primary")), None)
-
-        return (primary or emails[0]).get("value")
 
     def get_grist_user_email(self) -> str | None:
         """Email Grist de l'utilisateur courant via SCIM /Me. None si indisponible."""
@@ -569,54 +495,6 @@ class GristClient:
 
         return response
 
-    def _warn_record_too_large(self, records: list[dict[str, Any]]) -> None:
-        """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""
-        poids = _records_payload_bytes(records)
-        if len(records) == 1 and poids > GRIST_MAX_BODY_BYTES:
-            dossier_number = (
-                _dossier_number(records[0].get("fields") or records[0]) or "inconnu"
-            )
-            log_error(
-                f"Dossier {dossier_number} trop volumineux pour Grist "
-                f"({poids} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
-                "envoi tenté, il sera refusé"
-            )
-
-    def _send_records(
-        self,
-        records: list[dict[str, Any]],
-        send: Callable[[list[dict[str, Any]]], requests.Response],
-    ) -> requests.Response:
-        """
-        Envoie `records` par paquets tenant sous la limite de taille de Grist.
-
-        Un paquet refusé arrête l'envoi et sa réponse est renvoyée telle quelle,
-        pour que les replis individuels des appelants restent possibles. Si tous
-        les paquets passent, la réponse renvoyée agrège leurs enregistrements.
-        """
-        packets = _split_records_by_size(records)
-        if len(packets) <= 1:
-            self._warn_record_too_large(records)
-            return send(records)
-
-        sent_records: list[dict[str, Any]] = []
-        for index, packet in enumerate(packets, start=1):
-            log(
-                f"  Payload découpé en {len(packets)} paquets : envoi du paquet "
-                f"{index}/{len(packets)} ({len(packet)} enregistrements)"
-            )
-            self._warn_record_too_large(packet)
-            response = send(packet)
-            if response.status_code not in (200, 201):
-                log_error(
-                    f"Erreur lors de l'envoi du paquet {index}/{len(packets)} : "
-                    f"{response.status_code} - {response.text}"
-                )
-                return response
-            sent_records.extend(response.json().get("records", []))
-
-        return _aggregated_response(sent_records)
-
     def post_records(
         self, table_id: str, records: list[dict[str, Any]]
     ) -> requests.Response:
@@ -970,3 +848,131 @@ class GristClient:
             )
 
         return success
+
+    # --- Helpers privés ---
+
+    def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
+        """
+        Extrait l'email primaire d'une réponse SCIM /Me.
+
+        primary > premier email > None. userName est ignoré (peut être un pseudo).
+        """
+        emails = data.get("emails")
+
+        if not emails:
+            return None
+
+        primary = next((email for email in emails if email.get("primary")), None)
+
+        return (primary or emails[0]).get("value")
+
+    def _warn_record_too_large(self, records: list[dict[str, Any]]) -> None:
+        """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""
+        poids = _records_payload_bytes(records)
+        if len(records) == 1 and poids > GRIST_MAX_BODY_BYTES:
+            dossier_number = (
+                _dossier_number(records[0].get("fields") or records[0]) or "inconnu"
+            )
+            log_error(
+                f"Dossier {dossier_number} trop volumineux pour Grist "
+                f"({poids} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
+                "envoi tenté, il sera refusé"
+            )
+
+    def _send_records(
+        self,
+        records: list[dict[str, Any]],
+        send: Callable[[list[dict[str, Any]]], requests.Response],
+    ) -> requests.Response:
+        """
+        Envoie `records` par paquets tenant sous la limite de taille de Grist.
+
+        Un paquet refusé arrête l'envoi et sa réponse est renvoyée telle quelle,
+        pour que les replis individuels des appelants restent possibles. Si tous
+        les paquets passent, la réponse renvoyée agrège leurs enregistrements.
+        """
+        packets = _split_records_by_size(records)
+        if len(packets) <= 1:
+            self._warn_record_too_large(records)
+            return send(records)
+
+        sent_records: list[dict[str, Any]] = []
+        for index, packet in enumerate(packets, start=1):
+            log(
+                f"  Payload découpé en {len(packets)} paquets : envoi du paquet "
+                f"{index}/{len(packets)} ({len(packet)} enregistrements)"
+            )
+            self._warn_record_too_large(packet)
+            response = send(packet)
+            if response.status_code not in (200, 201):
+                log_error(
+                    f"Erreur lors de l'envoi du paquet {index}/{len(packets)} : "
+                    f"{response.status_code} - {response.text}"
+                )
+                return response
+            sent_records.extend(response.json().get("records", []))
+
+        return _aggregated_response(sent_records)
+
+
+# --- Helpers privés (module) ---
+
+
+def _record_weight(record: dict[str, Any]) -> int:
+    """Poids d'un enregistrement dans un payload `{"records": [...]}`."""
+    return len(json.dumps(record).encode("utf-8")) + 2
+
+
+def _records_payload_bytes(records: list[dict[str, Any]]) -> int:
+    """Taille du corps HTTP que `requests` produira pour `records`."""
+    return len(json.dumps({"records": records}).encode("utf-8"))
+
+
+def _split_records_by_size(
+    records: list[dict[str, Any]], max_bytes: int = GRIST_MAX_BODY_BYTES
+) -> list[list[dict[str, Any]]]:
+    """
+    Découpe les enregistrements en paquets dont le corps tient sous `max_bytes`.
+
+    Un enregistrement plus volumineux que la limite forme son propre paquet : il
+    ne peut pas être fractionné davantage, son envoi est tenté et c'est Grist
+    qui décide de l'accepter ou de le refuser.
+    """
+    if _records_payload_bytes(records) <= max_bytes:
+        return [records]
+
+    packets: list[list[dict[str, Any]]] = []
+    packet: list[dict[str, Any]] = []
+    poids = _RECORDS_PAYLOAD_BASE_BYTES
+    for record in records:
+        poids_record = _record_weight(record)
+        if packet and poids + poids_record > max_bytes:
+            packets.append(packet)
+            packet = []
+            poids = _RECORDS_PAYLOAD_BASE_BYTES
+        packet.append(record)
+        poids += poids_record
+    if packet:
+        packets.append(packet)
+
+    return packets
+
+
+def _dossier_number(fields: dict[str, Any]) -> Any:
+    """Numéro de dossier porté par les champs d'un enregistrement, s'il existe."""
+    return fields.get("dossier_number") or fields.get("number")
+
+
+def _aggregated_response(records: list[dict[str, Any]]) -> requests.Response:
+    """
+    Réponse 200 agrgeant les enregistrements renvoyés par plusieurs paquets.
+
+    Les enregistrements sont concaténés dans l'ordre d'envoi : l'appelant peut
+    ainsi continuer à associer les ids Grist aux dossiers qu'il a soumis.
+    """
+    reponse = requests.Response()
+    reponse.status_code = 200
+    reponse._content = json.dumps({"records": records}).encode("utf-8")
+    reponse.headers["Content-Type"] = "application/json"
+
+    return reponse
