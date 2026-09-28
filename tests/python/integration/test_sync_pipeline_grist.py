@@ -17,8 +17,8 @@ abandonnerait les détails se verrait dans l'état final Grist.
 
 Sont mockés, pour isoler le périmètre : `get_optimized_schema` (schéma DS),
 `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
-`detect_demandeur_type` et `IdColumnHider` (dernière tâche de niveau démarche,
-dont on vérifie seulement qu'elle est exécutée).
+`detect_demandeur_type` et `hide_columns_with_id` (dernière tâche de niveau
+démarche, dont on vérifie seulement qu'elle est exécutée).
 
 Aucun service externe (DN, Grist, DB) n'est requis.
 """
@@ -26,7 +26,7 @@ Aucun service externe (DN, Grist, DB) n'est requis.
 import json
 import os
 import re
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
@@ -37,6 +37,7 @@ import dn.client as dn_client_module
 import grist_processor_working_all as gpa
 import schema_utils
 from grist.client import GristClient
+from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
 from sync.filters import build_filters_cache_key
 
 BASE_URL = "https://grist.test"
@@ -76,6 +77,17 @@ def _payload_too_large(payload) -> bool:
     return len(json.dumps(payload).encode("utf-8")) > GRIST_MAX_BODY_BYTES
 
 
+def _route_label(parts) -> str:
+    """Route normalisée d'une requête, pour compter les appels dans les assertions.
+
+    `/docs/{id}/sql` et `/docs/{id}/apply` sont ramenées à leur dernier segment,
+    les routes de table conservant le nom de la table.
+    """
+    if parts[2:3] == ["tables"]:
+        return "/".join(parts[2:])
+    return parts[2] if len(parts) > 2 else "/".join(parts)
+
+
 class FakeGristServer:
     """Mini serveur Grist en mémoire : tables, colonnes et **enregistrements**.
 
@@ -92,6 +104,7 @@ class FakeGristServer:
         self.tables = {}
         self.store = {}
         self._next_id = {}
+        self.calls = []
         self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
@@ -134,14 +147,46 @@ class FakeGristServer:
                 return fields
         return None
 
+    def seed_view_field(self, field_id, col_id, table_id, section_id=1):
+        """Enregistre un champ comme visible dans une section de vue."""
+        self.store.setdefault(VIEW_FIELDS_TABLE, {})[field_id] = {
+            "sectionId": section_id,
+            "fieldId": field_id,
+            "colId": col_id,
+            "tableId": table_id,
+        }
+
+    def view_fields(self):
+        """Colonnes encore visibles dans les sections de vue, par ordre d'id."""
+        return [
+            fields["colId"]
+            for _, fields in sorted(self.store.get(VIEW_FIELDS_TABLE, {}).items())
+        ]
+
+    def call_count(self, method, route):
+        """Nombre d'appels `(méthode, route)` reçus, route normalisée."""
+        return self.calls.count((method, route))
+
     def handle(self, method, url, payload=None):
         method = method.upper()
         parts = [p for p in urlparse(url).path.split("/") if p]
+        self.calls.append((method, _route_label(parts)))
         return self._route(method, parts, payload)
 
     def _route(self, method, parts, payload):
+        if parts[:2] != ["docs", DOC_ID]:
+            raise AssertionError(f"Requête non prévue : {method} {parts}")
+
         if method == "GET" and parts == ["docs", DOC_ID]:
             return build_response({"name": "Doc de test", "id": DOC_ID})
+
+        # `/sql` et `/apply` ne sont pas des routes de table : les actions
+        # utilisateur (`BulkRemoveRecord`) passent par `/apply`.
+        if method == "GET" and parts == ["docs", DOC_ID, "sql"]:
+            return self._sql()
+
+        if method == "POST" and parts == ["docs", DOC_ID, "apply"]:
+            return self._apply(payload)
 
         if parts[:3] != ["docs", DOC_ID, "tables"]:
             raise AssertionError(f"Requête non prévue : {method} {parts}")
@@ -173,9 +218,12 @@ class FakeGristServer:
             )
 
         if method == "POST" and parts[4:] == ["records", "delete"]:
-            for record_id in payload or []:
-                self.store.get(table_id, {}).pop(record_id, None)
-            return build_response({})
+            # Cette route n'est exposée par aucune surface d'API d'un document :
+            # c'est `/apply` qui porte les actions utilisateur. Le 404 est le
+            # comportement réel qui a fait passer le masquage par `/apply`.
+            return build_response(
+                {"error": f"not found: {'/'.join(parts[2:])}"}, status=404
+            )
 
         if method == "GET" and parts[4:] == ["records"]:
             return build_response(
@@ -227,6 +275,34 @@ class FakeGristServer:
             return build_response({})
 
         raise AssertionError(f"Requête non prévue : {method} {parts}")
+
+    def _sql(self):
+        """`GET /sql` : l'état des champs de vue, en lecture seule.
+
+        La requête SQL n'est pas interprétée — le filtre et la jointure sont
+        vérifiés par les tests unitaires de `grist.columns` ; seule la route et
+        son effet de bord (aucun) sont observés ici.
+        """
+        return build_response(
+            {
+                "records": [
+                    {"id": field_id, "fields": dict(fields)}
+                    for field_id, fields in sorted(
+                        self.store.get(VIEW_FIELDS_TABLE, {}).items()
+                    )
+                ]
+            }
+        )
+
+    def _apply(self, payload):
+        """`POST /apply` : seule l'action `BulkRemoveRecord` est servie."""
+        for action in payload or []:
+            name, table_id, record_ids = action
+            if name != "BulkRemoveRecord":
+                raise AssertionError(f"Action non servie : {name}")
+            for record_id in record_ids:
+                self.store.get(table_id, {}).pop(record_id, None)
+        return build_response({})
 
 
 def make_schema():
@@ -456,15 +532,9 @@ class FakeDemarchesSession:
         )
 
 
-def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
-    """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
-
-    La couche DN réelle est branchée sur `dn_server` (faux serveur GraphQL
-    paginé) ; seule la dernière tâche de niveau démarche est observée.
-
-    `filters` surcharge les variables de filtre neutralisées par défaut, afin
-    que les tests n dépendent pas du `.env` du poste.
-    """
+@contextmanager
+def grist_transport(server):
+    """`GristClient` branché sur `server` via le seam `grist.client.requests`."""
     client = GristClient(BASE_URL, "api-key", DOC_ID)
 
     with ExitStack() as stack:
@@ -475,6 +545,19 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
                     method, args[0], kwargs.get("json")
                 )
             )
+        yield client
+
+
+def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
+    """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
+
+    La couche DN réelle est branchée sur `dn_server` (faux serveur GraphQL
+    paginé) ; seule la dernière tâche de niveau démarche est observée.
+
+    `filters` surcharge les variables de filtre neutralisées par défaut, afin
+    que les tests n dépendent pas du `.env` du poste.
+    """
+    with ExitStack() as stack, grist_transport(server) as client:
         stack.enter_context(
             patch.object(GristClient, "_get_session", return_value=session)
         )
@@ -506,7 +589,7 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
                 return_value={"newly_marked": 0},
             )
         )
-        hider = stack.enter_context(patch.object(gpa, "IdColumnHider"))
+        masquage = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
 
         result = gpa.process_demarche_for_grist_optimized(
             client,
@@ -514,7 +597,7 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
             **pipeline_kwargs,
         )
 
-    mocks = SimpleNamespace(hider=hider)
+    mocks = SimpleNamespace(masquage=masquage)
     return result, mocks
 
 
@@ -577,7 +660,7 @@ class TestSyncPipelineGrist:
         assert metadata["last_sync_status"] == "success"
 
         # Le masquage des colonnes `_id` est toujours exécuté en fin de sync
-        mocks.hider.return_value.hide_id_columns.assert_called_once()
+        mocks.masquage.assert_called_once()
 
     def test_filter_change_forces_full_sync(self):
         """Un changement de filtres doit réintégrer dans le document les dossiers
@@ -856,3 +939,58 @@ class TestSyncPipelineGrist:
         assert set(server.column(CHAMPS_TABLE, "objet_de_la_demande")) == {
             valeur_longue
         }
+
+
+class TestMasquageDesColonnesId:
+    """Le masquage passe par `/apply` : `records/delete` n'existe pas.
+
+    Le faux serveur répond 404 sur `records/delete` comme Grist, et n'y supprime
+    rien : le masquage ne peut donc aboutir qu'en passant par `/apply`.
+    """
+
+    def _server_avec_vues(self):
+        server = FakeGristServer()
+        server.seed_view_field(65, "dossier_id", DOSSIERS_TABLE)
+        server.seed_view_field(66, "state", DOSSIERS_TABLE)
+        server._insert(DOSSIERS_TABLE, {"dossier_id": "abc", "state": "accepte"})
+        return server
+
+    def test_masque_les_colonnes_id_via_apply(self):
+        """Les colonnes `_id` sortent des sections de vue, colonne et données intactes."""
+        server = self._server_avec_vues()
+
+        with grist_transport(server) as client:
+            masquees = hide_columns_with_id(client)
+
+        assert masquees == 1
+        # La section de vue ne liste plus que le champ métier
+        assert server.view_fields() == ["state"]
+        # La colonne et sa valeur existent toujours dans le document
+        assert "dossier_id" in server.tables[DOSSIERS_TABLE]
+        assert server.column(DOSSIERS_TABLE, "dossier_id") == ["abc"]
+
+    def test_masquage_en_un_appel_par_sens(self):
+        """Une seule lecture SQL et une seule écriture, même avec 3 colonnes."""
+        server = self._server_avec_vues()
+        server.seed_view_field(67, "champs_id", CHAMPS_TABLE)
+        server.seed_view_field(68, "group_instructeur_id", DOSSIERS_TABLE)
+
+        with grist_transport(server) as client:
+            assert hide_columns_with_id(client) == 3
+
+        assert server.call_count("GET", "sql") == 1
+        assert server.call_count("POST", "apply") == 1
+        assert (
+            server.call_count("POST", f"tables/{VIEW_FIELDS_TABLE}/records/delete") == 0
+        )
+        assert server.view_fields() == ["state"]
+
+    def test_route_records_delete_absente(self):
+        """Le 404 de `records/delete` est reproduit, et rien n'est supprimé."""
+        server = self._server_avec_vues()
+
+        with grist_transport(server) as client:
+            response = client.delete_records(VIEW_FIELDS_TABLE, [65])
+
+        assert response.status_code == 404
+        assert server.view_fields() == ["dossier_id", "state"]
