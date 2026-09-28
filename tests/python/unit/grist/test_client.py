@@ -992,6 +992,111 @@ class TestDeleteRecords:
             client.delete_records("t", [1])
 
 
+class TestApplyUserActions:
+    """Tests unitaires pour GristClient.apply_user_actions"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+        self.actions = [["BulkRemoveRecord", "_grist_Views_section_field", [1, 2]]]
+
+    def test_posts_actions_without_envelope(self):
+        """POST /apply avec la liste brute des actions, renvoie la réponse brute"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        with patch(
+            "grist.client.requests.post",
+            return_value=mock_response,
+        ) as mock_post:
+            result = self.client.apply_user_actions(self.actions)
+        assert result is mock_response
+        mock_post.assert_called_once()
+        assert (
+            mock_post.call_args.args[0] == "https://grist.example.com/docs/doc123/apply"
+        )
+        assert mock_post.call_args.kwargs["headers"] == self.client.headers
+        assert mock_post.call_args.kwargs["json"] == self.actions
+
+    def test_does_not_use_the_records_delete_route(self):
+        """la route /records/delete n'existe pas sur toutes les surfaces d'API"""
+        with patch("grist.client.requests.post") as mock_post:
+            self.client.apply_user_actions(self.actions)
+        assert "records/delete" not in mock_post.call_args.args[0]
+
+    def test_non_200_returns_response(self):
+        """non-200 -> aucune exception, la réponse est renvoyée"""
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.text = "boom"
+        with patch(
+            "grist.client.requests.post",
+            return_value=mock_response,
+        ):
+            result = self.client.apply_user_actions(self.actions)
+        assert result is mock_response
+        assert result.status_code == 400
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.apply_user_actions(self.actions)
+
+
+class TestRunSql:
+    """Tests unitaires pour GristClient.run_sql"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_sends_query_as_q_param(self):
+        """200 -> la requête part dans le paramètre `q` de GET /sql"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"records": [{"id": 1, "fields": {"a": 1}}]}
+        with patch(
+            "grist.client.requests.get",
+            return_value=mock_response,
+        ) as mock_get:
+            result = self.client.run_sql("SELECT 1 AS a")
+        assert result == [{"a": 1}]
+        assert mock_get.call_args.args[0] == "https://grist.example.com/docs/doc123/sql"
+        assert mock_get.call_args.kwargs["headers"] == self.client.headers
+        assert mock_get.call_args.kwargs["params"] == {"q": "SELECT 1 AS a"}
+
+    def test_no_rows_returns_empty_list(self):
+        """200 sans ligne -> liste vide"""
+        with patch("grist.client.requests.get", return_value=_reponse(200)):
+            assert self.client.run_sql("SELECT 1") == []
+
+    def test_rows_without_fields_become_empty_dicts(self):
+        """une ligne sans champ ne fait pas échouer la lecture"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"records": [{"id": 7}]}
+        with patch("grist.client.requests.get", return_value=mock_response):
+            assert self.client.run_sql("SELECT 1") == [{}]
+
+    def test_error_raises(self):
+        """non-200 -> raise_for_status"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        mock_response.raise_for_status.side_effect = Exception("HTTP 500")
+        with patch("grist.client.requests.get", return_value=mock_response):
+            with pytest.raises(Exception):
+                self.client.run_sql("SELECT 1")
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.run_sql("SELECT 1")
+
+
 class TestCreateOrClearGristTables:
     """Tests unitaires pour GristClient.create_or_clear_grist_tables"""
 

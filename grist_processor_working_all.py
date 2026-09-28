@@ -18,8 +18,8 @@ import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient
 from grist.column_cache import ColumnCache
+from grist.columns import hide_columns_with_id
 from grist.formatter import format_value
-from hide_id_columns import IdColumnHider
 from dn.client import PAGE_SIZE_DOSSIERS_MAX, iter_demarche_dossier_pages
 from dn.extract import dossier_to_flat_data
 from utils.timing import get_timings
@@ -54,18 +54,6 @@ def print_api_timings():
     print("-" * 50)
     print(f"[API] Total: {len(timings)} requêtes en {total_duration:.2f}s")
     print("=" * 50 + "\n")
-
-
-def _flatten_table_ids(value, acc):
-    """Aplatit récursivement table_ids (dict/list/str imbriqués) en un set de tableId."""
-    if isinstance(value, str):
-        acc.add(value)
-    elif isinstance(value, dict):
-        for v in value.values():
-            _flatten_table_ids(v, acc)
-    elif isinstance(value, (list, tuple, set)):
-        for v in value:
-            _flatten_table_ids(v, acc)
 
 
 def get_optimized_schema(demarche_number):
@@ -617,10 +605,7 @@ def run_demarche_level_tasks(
     # 4. Masquage des colonnes _id (toujours en dernier)
     if schema_method_successful:
         try:
-            current_table_ids = set()
-            _flatten_table_ids(table_ids, current_table_ids)
-            hider = IdColumnHider(client)
-            hider.hide_id_columns(table_ids=current_table_ids)
+            hide_columns_with_id(client)
         except Exception as e:
             log_error(f"Erreur lors du masquage des colonnes _id: {e}")
 

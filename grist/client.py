@@ -447,6 +447,30 @@ class GristClient:
         data = response.json()
         return data
 
+    def run_sql(self, sql: str) -> list[dict[str, Any]]:
+        """
+        Exécute une requête SQL en lecture seule sur le document.
+
+        Grist n'accepte que des SELECT : le tri, le filtrage et l'agrégation
+        restent à la charge de l'appelant. Le format de la réponse Grist est
+        traduit ici en une simple liste de champs, un dict par ligne.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/sql"
+        log_verbose(f"GET {url} : {sql}")
+        response = requests.get(url, headers=self.headers, params={"q": sql})
+
+        if response.status_code != 200:
+            log_error(f"Erreur {response.status_code}: {response.text}")
+            response.raise_for_status()
+
+        records = response.json().get("records", [])
+        log_verbose(f"  {len(records)} ligne(s) renvoyée(s)")
+
+        return [record.get("fields", {}) for record in records]
+
     def list_tables(self) -> dict[str, Any]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
@@ -649,6 +673,26 @@ class GristClient:
         )
         log_verbose(f"POST {url}")
         response = self._get_session().post(url, headers=self.headers, json=record_ids)
+
+        return response
+
+    def apply_user_actions(self, actions: list[Any]) -> requests.Response:
+        """
+        Applique des actions utilisateur Grist (AddRecord, BulkRemoveRecord...).
+
+        Passe par `/apply` et non par la route `records/delete` des enregistrements :
+        celle-ci n'est pas exposée sur toutes les surfaces d'API d'un document, alors
+        que `/apply` l'est toujours, et c'est le seul point d'entrée des actions.
+
+        Le payload envoyé est la liste brute des actions (sans enveloppe).
+        Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/apply"
+        log_verbose(f"POST {url} : {len(actions)} action(s)")
+        response = requests.post(url, headers=self.headers, json=actions)
 
         return response
 
