@@ -32,6 +32,6 @@
     "baseline-browser-mapping": "^2.11.6",
     "eslint": "^10.10.0",
     "jest": "^30.5.1",
-    "jest-environment-jsdom": "^30.5.1"
+    "jest-environment-jsdom": "^30.5.2"
   }
 }
