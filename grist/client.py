@@ -155,7 +155,7 @@ class GristClient:
                     record_id = record.get("id")
                     fields = record.get("fields", {})
 
-                    # Vérifier si dossier_number ou number est présent
+                    # Vérifier si dossier_number est présent
                     dossier_num = None
                     if "dossier_number" in fields and fields["dossier_number"]:
                         dossier_num = fields["dossier_number"]
@@ -305,7 +305,7 @@ class GristClient:
 
         if not dossier_number:
             log_error(
-                f"dossier_number ou number manquant dans les données "
+                f"dossier_number manquant dans les données "
                 f"(table {table_id}, champs {sorted(row_dict)}): l'enregistrement est ignoré"
             )
             return False
@@ -558,10 +558,6 @@ class GristClient:
         """
         Applique des actions utilisateur Grist (AddRecord, BulkRemoveRecord...).
 
-        Passe par `/apply` et non par la route `records/delete` des enregistrements :
-        celle-ci n'est pas exposée sur toutes les surfaces d'API d'un document, alors
-        que `/apply` l'est toujours, et c'est le seul point d'entrée des actions.
-
         Le payload envoyé est la liste brute des actions (sans enveloppe).
         Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
         """
@@ -723,7 +719,7 @@ class GristClient:
             dossier_number = _dossier_number(filtered_row_dict)
             if not dossier_number:
                 log_error(
-                    f"dossier_number ou number manquant dans les données "
+                    f"dossier_number manquant dans les données "
                     f"(table {table_id}, champs {sorted(filtered_row_dict)}): "
                     "l'enregistrement est ignoré"
                 )
