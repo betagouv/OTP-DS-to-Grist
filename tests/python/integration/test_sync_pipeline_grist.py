@@ -52,7 +52,7 @@ SYNC_METADATA_TABLE = "Sync_metadata"
 # `.env` est chargé au import de `dn.client` : les variables de filtre sont
 # neutralisées par défaut pour que le `.env` du poste n'altère pas les tests.
 # `run_pipeline(filters=...)` permet de surcharger une partie de ces filtres.
-FILTRES_VIDES = {
+EMPTY_FILTERS = {
     "DATE_DEPOT_DEBUT": "",
     "DATE_DEPOT_FIN": "",
     "STATUTS_DOSSIERS": "",
@@ -396,15 +396,15 @@ def make_dossier(number, **overrides):
     }
 
 
-def dossiers_de_test(nombre):
-    """Les `nombre` premiers dossiers, numérotés de 1 à `nombre`."""
-    return [make_dossier(number) for number in range(1, nombre + 1)]
+def dossiers_de_test(count):
+    """Les `count` premiers dossiers, numérotés de 1 à `count`."""
+    return [make_dossier(number) for number in range(1, count + 1)]
 
 
-MARQUEUR_DETAIL = "champs"
+DETAIL_MARKER = "champs"
 """La query de résumé ne demande pas les `champs`, le fragment détaillé si."""
 
-RESUME_CLES = (
+RESUME_KEYS = (
     "id",
     "number",
     "state",
@@ -431,26 +431,26 @@ class FakeDemarchesServer:
     reçue (résumé ou détail détaillé), si bien qu'une query paginée qui
     abandonnerait les détails se voit dans l'état final Grist.
 
-    `page_en_erreur` (optionnel) fait répondre la page de ce numéro par une
+    `page_in_error` (optionnel) fait répondre la page de ce numéro par une
     erreur GraphQL, comme une API DN qui tombe en cours de parcours.
     """
 
-    def __init__(self, dossiers, page_en_erreur=None):
+    def __init__(self, dossiers, page_in_error=None):
         self.dossiers = dossiers
-        self.page_en_erreur = page_en_erreur
+        self.page_in_error = page_in_error
 
     def _offset(self, cursor):
-        prefixe, _, valeur = str(cursor).partition(":")
-        assert prefixe == "cursor" and valeur.isdigit(), f"Curseur inattendu : {cursor!r}"
-        return int(valeur)
+        prefix, _, value = str(cursor).partition(":")
+        assert prefix == "cursor" and value.isdigit(), f"Curseur inattendu : {cursor!r}"
+        return int(value)
 
     def _page_size(self, query, variables):
         if variables.get("first") is not None:
             return int(variables["first"])
-        trouve = re.search(r"first:\s*(\d+)", query)
-        return int(trouve.group(1)) if trouve else 100
+        found = re.search(r"first:\s*(\d+)", query)
+        return int(found.group(1)) if found else 100
 
-    def _filtres_serveur(self, variables):
+    def _server_filters(self, variables):
         dossiers = self.dossiers
         updated_since = variables.get("updatedSince")
         if updated_since:
@@ -465,11 +465,11 @@ class FakeDemarchesServer:
         return dossiers
 
     def _resume(self, dossier):
-        return {cle: dossier.get(cle) for cle in RESUME_CLES}
+        return {key: dossier.get(key) for key in RESUME_KEYS}
 
     def handle(self, query, variables):
         if "dossiers(" in query:
-            return self._liste_paginee(query, variables)
+            return self._paginated_list(query, variables)
         assert "dossier(number:" in query, f"Query DN non prévue : {query[:120]}"
         return self._dossier_unitaire(query, variables)
 
@@ -480,20 +480,20 @@ class FakeDemarchesServer:
             {"data": {"dossier": dossier if dossier is None else self._forme(query, dossier)}}
         )
 
-    def _liste_paginee(self, query, variables):
+    def _paginated_list(self, query, variables):
         first = self._page_size(query, variables)
         after = variables.get("after", variables.get("afterCursor"))
-        dossiers = self._filtres_serveur(variables)
-        debut = 0 if after is None else self._offset(after)
-        if self.page_en_erreur == debut // max(first, 1) + 1:
+        dossiers = self._server_filters(variables)
+        start = 0 if after is None else self._offset(after)
+        if self.page_in_error == start // max(first, 1) + 1:
             return build_response(
                 {"errors": [{"message": "Erreur interne du serveur DN"}]}
             )
-        fenetre = dossiers[debut : debut + first]
-        suite = debut + len(fenetre) < len(dossiers)
-        end_cursor = f"cursor:{debut + len(fenetre)}" if suite else None
+        window = dossiers[start : start + first]
+        has_next = start + len(window) < len(dossiers)
+        end_cursor = f"cursor:{start + len(window)}" if has_next else None
 
-        nodes = [self._forme(query, dossier) for dossier in fenetre]
+        nodes = [self._forme(query, dossier) for dossier in window]
         return build_response(
             {
                 "data": {
@@ -503,9 +503,9 @@ class FakeDemarchesServer:
                         "title": "Démarche test",
                         "dossiers": {
                             "pageInfo": {
-                                "hasPreviousPage": debut > 0,
-                                "hasNextPage": suite,
-                                "startCursor": f"cursor:{debut}",
+                                "hasPreviousPage": start > 0,
+                                "hasNextPage": has_next,
+                                "startCursor": f"cursor:{start}",
                                 "endCursor": end_cursor,
                             },
                             "nodes": nodes,
@@ -516,7 +516,7 @@ class FakeDemarchesServer:
         )
 
     def _forme(self, query, dossier):
-        return dict(dossier) if MARQUEUR_DETAIL in query else self._resume(dossier)
+        return dict(dossier) if DETAIL_MARKER in query else self._resume(dossier)
 
 
 class FakeDemarchesSession:
@@ -534,7 +534,7 @@ class FakeDemarchesSession:
 
 @contextmanager
 def grist_transport(server):
-    """`GristClient` branché sur `server` via le seam `grist.client.requests`."""
+    """`GristClient` branché sur `server` via le seam `GristClient._get_session`."""
     client = GristClient(BASE_URL, "api-key", DOC_ID)
 
     with ExitStack() as stack:
@@ -545,6 +545,9 @@ def grist_transport(server):
                     method, args[0], kwargs.get("json")
                 )
             )
+        stack.enter_context(
+            patch.object(GristClient, "_get_session", return_value=session)
+        )
         yield client
 
 
@@ -559,9 +562,6 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
     """
     with ExitStack() as stack, grist_transport(server) as client:
         stack.enter_context(
-            patch.object(GristClient, "_get_session", return_value=session)
-        )
-        stack.enter_context(
             patch.object(gpa, "get_optimized_schema", return_value=make_schema())
         )
         stack.enter_context(
@@ -575,7 +575,7 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
             )
         )
         stack.enter_context(
-            patch.dict(os.environ, {**FILTRES_VIDES, **(filters or {})})
+            patch.dict(os.environ, {**EMPTY_FILTERS, **(filters or {})})
         )
         stack.enter_context(
             patch.object(schema_utils, "detect_demandeur_type", return_value=None)
@@ -589,7 +589,7 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
                 return_value={"newly_marked": 0},
             )
         )
-        masquage = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
+        hiding = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
 
         result = gpa.process_demarche_for_grist_optimized(
             client,
@@ -597,7 +597,7 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
             **pipeline_kwargs,
         )
 
-    mocks = SimpleNamespace(masquage=masquage)
+    mocks = SimpleNamespace(hiding=hiding)
     return result, mocks
 
 
@@ -660,7 +660,7 @@ class TestSyncPipelineGrist:
         assert metadata["last_sync_status"] == "success"
 
         # Le masquage des colonnes `_id` est toujours exécuté en fin de sync
-        mocks.masquage.assert_called_once()
+        mocks.hiding.assert_called_once()
 
     def test_filter_change_forces_full_sync(self):
         """Un changement de filtres doit réintégrer dans le document les dossiers
@@ -720,10 +720,10 @@ class TestSyncPipelineGrist:
 
         assert result is True
 
-        lignes = server.rows(DOSSIERS_TABLE)
-        assert len(lignes) == 1
-        assert lignes[0]["state"] == "accepte"
-        assert lignes[0]["suivi_par"] == "inst@test.fr"
+        rows = server.rows(DOSSIERS_TABLE)
+        assert len(rows) == 1
+        assert rows[0]["state"] == "accepte"
+        assert rows[0]["suivi_par"] == "inst@test.fr"
 
     def test_dn_pagination_writes_every_dossier(self):
         """201 dossiers servis par l'API DN en plusieurs pages : l'état final
@@ -761,23 +761,23 @@ class TestSyncPipelineGrist:
         filtrée, ou borne de date devenue exclusive.
         """
         numbers = list(range(1, 202))
-        debut, fin = "2024-03-01", "2024-06-19"
-        hors_periode = "2024-01-05T09:00:00Z"  # avant DATE_DEPOT_DEBUT
-        dans_periode = "2024-06-15T09:00:00Z"
-        hors_fin = "2024-06-20T09:00:00Z"  # après DATE_DEPOT_FIN
+        start, end = "2024-03-01", "2024-06-19"
+        out_of_period = "2024-01-05T09:00:00Z"  # avant DATE_DEPOT_DEBUT
+        in_period = "2024-06-15T09:00:00Z"
+        after_end = "2024-06-20T09:00:00Z"  # après DATE_DEPOT_FIN
 
         dossiers = [
             make_dossier(
                 number,
-                dateDepot=dans_periode,
+                dateDepot=in_period,
                 groupeInstructeur={"id": "groupe_1", "number": 1, "label": "G1"},
             )
             for number in numbers
         ]
         # Page 1 : tous hors période, sauf le dossier 50 exactement sur la borne
         for dossier in dossiers[:100]:
-            dossier["dateDepot"] = hors_periode
-        dossiers[49]["dateDepot"] = debut + "T00:00:00Z"
+            dossier["dateDepot"] = out_of_period
+        dossiers[49]["dateDepot"] = start + "T00:00:00Z"
         # Un statut non filtré, un groupe non filtré, une date trop tardive
         dossiers[119]["state"] = "refuse"
         dossiers[129]["groupeInstructeur"] = {
@@ -785,14 +785,14 @@ class TestSyncPipelineGrist:
             "number": 2,
             "label": "G2",
         }
-        dossiers[150]["dateDepot"] = hors_fin
+        dossiers[150]["dateDepot"] = after_end
         # Le dossier 201 est déposé le jour même de la borne haute : conservé
-        dossiers[200]["dateDepot"] = fin + "T23:30:00Z"
+        dossiers[200]["dateDepot"] = end + "T23:30:00Z"
 
         # Sont attendus : le dossier 50 (borne basse inclusive) et 201 (borne
         # haute inclusive), tous les dossiers 101 à 200 sauf 120 (statut),
         # 130 (groupe) et 151 (borne haute).
-        attendus = {50, 201} | (set(range(101, 201)) - {120, 130, 151})
+        expected = {50, 201} | (set(range(101, 201)) - {120, 130, 151})
 
         dn_server = FakeDemarchesServer(dossiers)
         server = FakeGristServer()
@@ -801,8 +801,8 @@ class TestSyncPipelineGrist:
             server,
             dn_server,
             filters={
-                "DATE_DEPOT_DEBUT": debut,
-                "DATE_DEPOT_FIN": fin,
+                "DATE_DEPOT_DEBUT": start,
+                "DATE_DEPOT_FIN": end,
                 "STATUTS_DOSSIERS": "accepte",
                 "GROUPES_INSTRUCTEURS": "1",
             },
@@ -810,7 +810,7 @@ class TestSyncPipelineGrist:
         )
 
         assert result is True
-        assert set(server.column(DOSSIERS_TABLE, "dossier_number")) == attendus
+        assert set(server.column(DOSSIERS_TABLE, "dossier_number")) == expected
         assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
 
     def test_dn_page_error_keeps_resume_marker(self):
@@ -825,8 +825,8 @@ class TestSyncPipelineGrist:
         Régression : un repère avancé malgré la page perdue, qui effacerait
         définitivement les dossiers non reçus de l'API.
         """
-        with patch.dict(os.environ, FILTRES_VIDES):
-            hash_sans_filtre = build_filters_cache_key()
+        with patch.dict(os.environ, EMPTY_FILTERS):
+            hash_without_filter = build_filters_cache_key()
 
         cursor_initial = "2023-01-01T00:00:00Z"
         server = FakeGristServer(
@@ -836,13 +836,13 @@ class TestSyncPipelineGrist:
                         "demarche_number": DEMARCHE_NUMBER,
                         "updated_since_cursor": cursor_initial,
                         "deleted_since_cursor": cursor_initial,
-                        "filters_hash": hash_sans_filtre,
+                        "filters_hash": hash_without_filter,
                         "force_full_sync": False,
                     }
                 ]
             }
         )
-        dn_server = FakeDemarchesServer(dossiers_de_test(201), page_en_erreur=2)
+        dn_server = FakeDemarchesServer(dossiers_de_test(201), page_in_error=2)
 
         result, _ = run_pipeline(server, dn_server, parallel=False)
 
@@ -864,24 +864,24 @@ class TestSyncPipelineGrist:
         """
         server = FakeGristServer()
         dn_server = FakeDemarchesServer(dossiers_de_test(10))
-        preparation_reelle = gpa.dossier_to_flat_data
+        real_preparation = gpa.dossier_to_flat_data
 
-        def preparation_qui_casse_le_dossier_5(dossier, *args, **kwargs):
+        def preparation_that_breaks_dossier_5(dossier, *args, **kwargs):
             if dossier.get("number") == 5:
                 raise RuntimeError("extraction impossible")
-            return preparation_reelle(dossier, *args, **kwargs)
+            return real_preparation(dossier, *args, **kwargs)
 
         with patch.object(
             gpa,
             "dossier_to_flat_data",
-            side_effect=preparation_qui_casse_le_dossier_5,
+            side_effect=preparation_that_breaks_dossier_5,
         ):
             result, _ = run_pipeline(server, dn_server, parallel=False)
 
         assert result is True
-        attendus = [1, 2, 3, 4, 6, 7, 8, 9, 10]
-        assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == attendus
-        assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(attendus)
+        expected = [1, 2, 3, 4, 6, 7, 8, 9, 10]
+        assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == expected
+        assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(expected)
         assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "partial"
 
     def test_oversized_dossier_does_not_block_other_dossiers(self):
@@ -921,10 +921,10 @@ class TestSyncPipelineGrist:
         Régression : l'envoi d'un corps trop gros est refusé par Grist, et les
         champs de la page sont perdus.
         """
-        valeur_longue = "x" * 12_000
+        long_value = "x" * 12_000
         dossiers = dossiers_de_test(300)
         for dossier in dossiers:
-            dossier["champs"][0]["stringValue"] = valeur_longue
+            dossier["champs"][0]["stringValue"] = long_value
         numbers = list(range(1, 301))
         server = FakeGristServer()
         dn_server = FakeDemarchesServer(dossiers)
@@ -936,42 +936,40 @@ class TestSyncPipelineGrist:
         assert sorted(server.column(CHAMPS_TABLE, "dossier_number")) == numbers
         assert set(server.column(ANNOTATIONS_TABLE, "dossier_number")) == set(numbers)
         # Aucune valeur tronquée par un envoi refusé
-        assert set(server.column(CHAMPS_TABLE, "objet_de_la_demande")) == {
-            valeur_longue
-        }
+        assert set(server.column(CHAMPS_TABLE, "objet_de_la_demande")) == {long_value}
 
 
-class TestMasquageDesColonnesId:
+class TestHiddenIdColumns:
     """Le masquage passe par `/apply` : `records/delete` n'existe pas.
 
     Le faux serveur répond 404 sur `records/delete` comme Grist, et n'y supprime
     rien : le masquage ne peut donc aboutir qu'en passant par `/apply`.
     """
 
-    def _server_avec_vues(self):
+    def _server_with_views(self):
         server = FakeGristServer()
         server.seed_view_field(65, "dossier_id", DOSSIERS_TABLE)
         server.seed_view_field(66, "state", DOSSIERS_TABLE)
         server._insert(DOSSIERS_TABLE, {"dossier_id": "abc", "state": "accepte"})
         return server
 
-    def test_masque_les_colonnes_id_via_apply(self):
+    def test_hides_id_columns_via_apply(self):
         """Les colonnes `_id` sortent des sections de vue, colonne et données intactes."""
-        server = self._server_avec_vues()
+        server = self._server_with_views()
 
         with grist_transport(server) as client:
-            masquees = hide_columns_with_id(client)
+            hidden = hide_columns_with_id(client)
 
-        assert masquees == 1
+        assert hidden == 1
         # La section de vue ne liste plus que le champ métier
         assert server.view_fields() == ["state"]
         # La colonne et sa valeur existent toujours dans le document
         assert "dossier_id" in server.tables[DOSSIERS_TABLE]
         assert server.column(DOSSIERS_TABLE, "dossier_id") == ["abc"]
 
-    def test_masquage_en_un_appel_par_sens(self):
+    def test_hiding_in_one_call_per_direction(self):
         """Une seule lecture SQL et une seule écriture, même avec 3 colonnes."""
-        server = self._server_avec_vues()
+        server = self._server_with_views()
         server.seed_view_field(67, "champs_id", CHAMPS_TABLE)
         server.seed_view_field(68, "group_instructeur_id", DOSSIERS_TABLE)
 
@@ -987,7 +985,7 @@ class TestMasquageDesColonnesId:
 
     def test_route_records_delete_absente(self):
         """Le 404 de `records/delete` est reproduit, et rien n'est supprimé."""
-        server = self._server_avec_vues()
+        server = self._server_with_views()
 
         with grist_transport(server) as client:
             response = client.delete_records(VIEW_FIELDS_TABLE, [65])

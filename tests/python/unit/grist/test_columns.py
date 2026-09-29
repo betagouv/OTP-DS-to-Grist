@@ -19,9 +19,9 @@ def _client(*lines: tuple[str, str, int]) -> MagicMock:
         {"fieldId": field_id, "tableId": table_id, "colId": col_id}
         for table_id, col_id, field_id in lines
     ]
-    reponse = MagicMock()
-    reponse.status_code = 200
-    client.apply_user_actions.return_value = reponse
+    response = MagicMock()
+    response.status_code = 200
+    client.apply_user_actions.return_value = response
     return client
 
 
@@ -131,10 +131,10 @@ class TestHideColumnsEndingWith:
     def test_grist_error_is_reported_with_its_cause(self):
         """un refus de Grist remonte la cause, sans être avalé"""
         client = _client(("T1", "dossier_id", 65))
-        reponse = client.apply_user_actions.return_value
-        reponse.status_code = 500
-        reponse.text = "Cannot remove raw view section field"
-        reponse.raise_for_status.side_effect = Exception("HTTP 500")
+        response = client.apply_user_actions.return_value
+        response.status_code = 500
+        response.text = "Cannot remove raw view section field"
+        response.raise_for_status.side_effect = Exception("HTTP 500")
         with patch(f"{CHAMPS}.log"), patch(f"{CHAMPS}.log_error") as mock_error:
             with pytest.raises(Exception):
                 hide_columns_ending_with(client, suffix=ID_SUFFIX)

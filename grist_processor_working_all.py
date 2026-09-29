@@ -597,8 +597,8 @@ def run_demarche_level_tasks(
             log_error=log_error,
             deleted_since=deleted_since_cursor,
         )
-        nb_deleted = (deletion_result or {}).get("newly_marked", 0)
-        log(f"Nombre de dossiers marqués supprimés dans Grist : {nb_deleted}")
+        deleted_count = (deletion_result or {}).get("newly_marked", 0)
+        log(f"Nombre de dossiers marqués supprimés dans Grist : {deleted_count}")
     except Exception as e:
         log_error(f"Erreur vérification dossiers supprimés : {e}")
 
@@ -1416,15 +1416,19 @@ def process_demarche_for_grist_optimized(
 
         # Sauvegarder le curseur de sync
         sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        curseur_reprise = updated_since_cursor if pagination_error else sync_start_time
-        supprime_depuis = deleted_since_cursor if pagination_error else sync_start_time
+        updated_since_resume = (
+            updated_since_cursor if pagination_error else sync_start_time
+        )
+        deleted_since_resume = (
+            deleted_since_cursor if pagination_error else sync_start_time
+        )
         try:
             client.save_sync_metadata(
                 demarche_number,
                 {
                     "last_sync_at": sync_end_time,
-                    "updated_since_cursor": curseur_reprise,
-                    "deleted_since_cursor": supprime_depuis,
+                    "updated_since_cursor": updated_since_resume,
+                    "deleted_since_cursor": deleted_since_resume,
                     "last_sync_status": (
                         "partial" if (total_errors or pagination_error) else "success"
                     ),

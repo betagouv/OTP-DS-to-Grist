@@ -386,7 +386,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/sql"
         log_verbose(f"GET {url} : {sql}")
-        response = requests.get(url, headers=self.headers, params={"q": sql})
+        response = self._get_session().get(url, headers=self.headers, params={"q": sql})
 
         if response.status_code != 200:
             log_error(f"Erreur {response.status_code}: {response.text}")
@@ -570,7 +570,7 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/apply"
         log_verbose(f"POST {url} : {len(actions)} action(s)")
-        response = requests.post(url, headers=self.headers, json=actions)
+        response = self._get_session().post(url, headers=self.headers, json=actions)
 
         return response
 
@@ -868,14 +868,14 @@ class GristClient:
 
     def _warn_record_too_large(self, records: list[dict[str, Any]]) -> None:
         """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""
-        poids = _records_payload_bytes(records)
-        if len(records) == 1 and poids > GRIST_MAX_BODY_BYTES:
+        weight = _records_payload_bytes(records)
+        if len(records) == 1 and weight > GRIST_MAX_BODY_BYTES:
             dossier_number = (
                 _dossier_number(records[0].get("fields") or records[0]) or "inconnu"
             )
             log_error(
                 f"Dossier {dossier_number} trop volumineux pour Grist "
-                f"({poids} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
+                f"({weight} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
                 "envoi tenté, il sera refusé"
             )
 
@@ -943,15 +943,15 @@ def _split_records_by_size(
 
     packets: list[list[dict[str, Any]]] = []
     packet: list[dict[str, Any]] = []
-    poids = _RECORDS_PAYLOAD_BASE_BYTES
+    weight = _RECORDS_PAYLOAD_BASE_BYTES
     for record in records:
-        poids_record = _record_weight(record)
-        if packet and poids + poids_record > max_bytes:
+        record_weight = _record_weight(record)
+        if packet and weight + record_weight > max_bytes:
             packets.append(packet)
             packet = []
-            poids = _RECORDS_PAYLOAD_BASE_BYTES
+            weight = _RECORDS_PAYLOAD_BASE_BYTES
         packet.append(record)
-        poids += poids_record
+        weight += record_weight
     if packet:
         packets.append(packet)
 
@@ -970,9 +970,9 @@ def _aggregated_response(records: list[dict[str, Any]]) -> requests.Response:
     Les enregistrements sont concaténés dans l'ordre d'envoi : l'appelant peut
     ainsi continuer à associer les ids Grist aux dossiers qu'il a soumis.
     """
-    reponse = requests.Response()
-    reponse.status_code = 200
-    reponse._content = json.dumps({"records": records}).encode("utf-8")
-    reponse.headers["Content-Type"] = "application/json"
+    response = requests.Response()
+    response.status_code = 200
+    response._content = json.dumps({"records": records}).encode("utf-8")
+    response.headers["Content-Type"] = "application/json"
 
-    return reponse
+    return response
