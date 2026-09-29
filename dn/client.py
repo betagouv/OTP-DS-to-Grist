@@ -433,8 +433,6 @@ query getDossiersPage(
     + CHAMP_FRAGMENTS
 )
 
-# Requête pour un dossier spécifique
-# Requête pour une démarche OPTIMISÉE avec filtres côté serveur
 # SESSION GLOBALE (créée une seule fois)
 _session: RateLimitedSession | None = None
 
@@ -454,6 +452,10 @@ DEMARCHES_MAX_RANDOM_DELAY_SECONDS = int(
     os.getenv("DEMARCHES_MAX_RANDOM_DELAY_SECONDS", "5")
 )
 
+# Champs d'affichage uniquement : sans valeur métier, ils ne doivent pas
+# produire de colonnes dans Grist
+DISPLAY_CHAMP_TYPES = ("HeaderSectionChamp", "ExplicationChamp")
+
 
 def get_session_with_retries() -> RateLimitedSession:
     """
@@ -470,39 +472,6 @@ def get_session_with_retries() -> RateLimitedSession:
         )
 
     return _session
-
-
-# Champs d'affichage uniquement : sans valeur métier, ils ne doivent pas
-# produire de colonnes dans Grist
-DISPLAY_CHAMP_TYPES = ("HeaderSectionChamp", "ExplicationChamp")
-
-
-def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
-    """Retire des `champs` et des `annotations` les éléments purement d'affichage."""
-    filtered = dossier.copy()
-    for collection in ("champs", "annotations"):
-        if collection in filtered:
-            filtered[collection] = [
-                element
-                for element in filtered[collection]
-                if element.get("__typename") not in DISPLAY_CHAMP_TYPES
-            ]
-
-    return filtered
-
-
-# Fonctions d'API
-def _dossier_nodes(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Dossiers d'une page paginée (liste vide si la démarche est inaccessible)."""
-    return (data.get("demarche") or {}).get("dossiers", {}).get("nodes") or []
-
-
-def _page_info(data: dict[str, Any]) -> tuple[bool, str | None]:
-    """(hasNextPage, endCursor) d'une page paginée (démarche inaccessible = fin)."""
-    page_info = (data.get("demarche") or {}).get("dossiers", {}).get("pageInfo")
-    if not page_info:
-        return False, None
-    return bool(page_info["hasNextPage"]), page_info["endCursor"]
 
 
 @timed("get_dossier_per_page", "ds")
@@ -828,3 +797,31 @@ def get_groups(
     except Exception as e:
         log_error(f"Erreur lors de la récupération des groupes instructeurs: {e}")
         return []
+
+
+# --- Helpers privés (module) ---
+def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
+    """Retire des `champs` et des `annotations` les éléments purement d'affichage."""
+    filtered = dossier.copy()
+    for collection in ("champs", "annotations"):
+        if collection in filtered:
+            filtered[collection] = [
+                element
+                for element in filtered[collection]
+                if element.get("__typename") not in DISPLAY_CHAMP_TYPES
+            ]
+
+    return filtered
+
+
+def _dossier_nodes(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Dossiers d'une page paginée (liste vide si la démarche est inaccessible)."""
+    return (data.get("demarche") or {}).get("dossiers", {}).get("nodes") or []
+
+
+def _page_info(data: dict[str, Any]) -> tuple[bool, str | None]:
+    """(hasNextPage, endCursor) d'une page paginée (démarche inaccessible = fin)."""
+    page_info = (data.get("demarche") or {}).get("dossiers", {}).get("pageInfo")
+    if not page_info:
+        return False, None
+    return bool(page_info["hasNextPage"]), page_info["endCursor"]
