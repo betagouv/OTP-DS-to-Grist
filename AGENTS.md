@@ -107,6 +107,9 @@ cohérence avec le style existant : types natifs (`dict[str, str]`, `set[str]`, 
 Organisation d'un module Python : l'API publique d'abord, les fonctions et méthodes privées
 (`_…`) regroupées après elle (fin de classe pour les méthodes, fin de module pour les fonctions),
 sous un marqueur de section. Les constantes, privées ou non, restent en tête de module.
+Renommage de code : identifiants techniques en anglais ; le vocabulaire métier du
+service garde sa langue d'origine, sans traduction dans un sens ni dans l'autre
+(ex. dossier, demarche, champs). Commentaires, docstrings et messages de log en français.
 
 ## Tests
 
