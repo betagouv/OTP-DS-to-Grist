@@ -20,23 +20,6 @@ from typing import Any
 from utils.log import log, log_error
 
 
-def _read_date_filter(env_name: str) -> datetime | None:
-    """Date de filtre (YYYY-MM-DD) lue dans l'environnement, ignorée si invalide."""
-    value = (os.getenv(env_name) or "").strip()
-    if not value:
-        return None
-    try:
-        return datetime.strptime(value, "%Y-%m-%d")
-    except ValueError:
-        log_error(f"Format de date invalide pour {env_name}: {value}")
-        return None
-
-
-def _read_list_filter(env_name: str) -> list[str]:
-    """Liste de valeurs de filtre (séparées par des virgules) lue dans l'environnement."""
-    return [value for value in (os.getenv(env_name) or "").split(",") if value.strip()]
-
-
 def read_filters_from_env() -> dict[str, Any]:
     """
     Filtres de sélection des dossiers, lus dans les variables d'environnement.
@@ -133,6 +116,24 @@ def build_filters_cache_key() -> str:
     }
 
     return json.dumps(filters, sort_keys=True, ensure_ascii=False)
+
+
+# --- Helpers privés (module) ---
+def _read_date_filter(env_name: str) -> datetime | None:
+    """Date de filtre (YYYY-MM-DD) lue dans l'environnement, ignorée si invalide."""
+    value = (os.getenv(env_name) or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        log_error(f"Format de date invalide pour {env_name}: {value}")
+        return None
+
+
+def _read_list_filter(env_name: str) -> list[str]:
+    """Liste de valeurs de filtre (séparées par des virgules) lue dans l'environnement."""
+    return [value for value in (os.getenv(env_name) or "").split(",") if value.strip()]
 
 
 def _split_env_list(raw: str | None) -> list[str]:
