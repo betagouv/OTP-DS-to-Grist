@@ -1388,7 +1388,7 @@ class TestUpsertMultipleDossiersInGrist:
         session.patch.assert_not_called()
         session.post.assert_not_called()
         logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
-        assert "dossier_number ou number manquant" in logs
+        assert "dossier_number manquant" in logs
         assert "table champs" in logs
         assert "'name'" in logs
 

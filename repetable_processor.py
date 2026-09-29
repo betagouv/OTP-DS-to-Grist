@@ -10,20 +10,9 @@ import re
 import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
+
 from grist.formatter import format_value
-
-try:
-    from utils.log import log, log_verbose, log_error
-except ImportError:
-    # Définitions de secours en cas d'échec de l'import
-    def log(message, level=1):
-        print(message)
-
-    def log_verbose(message):
-        print(message)
-
-    def log_error(message):
-        print(f"ERREUR: {message}")
+from utils.log import log, log_verbose, log_error
 
 
 def ensure_repetable_columns_exist(client, table_id, repetable_data):
