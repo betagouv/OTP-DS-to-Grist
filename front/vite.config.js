@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: '/static/dist/',
   plugins: [vue()],
   define: {
     __BUNDLED_DEV__: 'false',
