@@ -69,9 +69,12 @@ def parse_whitelist(entries: Iterable[str]) -> tuple[object, ...]:
     Une entrée peut être une IP seule (`192.0.2.1`, réseau `192.0.2.1/32`
     implicite) ou un CIDR (`192.0.2.0/24`, `2001:db8::/32`).
 
-    Une entrée invalide lève une erreur au démarrage plutôt que d'être ignorée
-    silencieusement : une liste blanche tronquée est le moyen de se bannir
-    soi-même.
+    Une entrée vide est ignorée : une variable d'environnement non renseignée
+    donne une liste blanche vide, pas une erreur.
+
+    Une entrée mal formée lève une erreur au démarrage plutôt que d'être
+    ignorée silencieusement : une liste blanche tronquée est le moyen de se
+    bannir soi-même.
 
     Args:
         entries: Entrées brutes, séparées par des virgules si elles viennent

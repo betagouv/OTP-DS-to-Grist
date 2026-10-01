@@ -18,6 +18,11 @@ GITHUB_CHANGELOG_BASE_URL: str = "https://github.com/betagouv/OTP-DS-to-Grist/bl
 
 EXIT_CODE_EXTERNAL_API_ERROR: int = 2
 
+# Durée de validité du cache des bannissements d'IP, en secondes.
+IP_BLOCKLIST_CACHE_TTL_SECONDS: float = float(
+    os.getenv("IP_BLOCKLIST_CACHE_TTL_SECONDS", "60")
+)
+
 HELP_LINK_FAQ: str = os.getenv("HELP_LINK_FAQ", "")
 if not HELP_LINK_FAQ:
     raise ValueError("HELP_LINK_FAQ environment variable is required")
