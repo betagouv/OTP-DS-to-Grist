@@ -86,6 +86,23 @@ class TestParseWhitelist:
         with pytest.raises(ValueError):
             parse_whitelist(["pas-un-cidr"])
 
+    def test_liste_blanche_vide_renvoyee_vide(self):
+        # Cas d'une variable d'environnement non renseignee : "".split(",")
+        # donne [""] et ne doit produire ni erreur ni entree.
+        assert parse_whitelist([""]) == ()
+        assert parse_whitelist(["", "  "]) == ()
+
+    def test_erreur_nomme_l_entree_et_sa_raison(self):
+        with pytest.raises(ValueError) as excinfo:
+            parse_whitelist(["192.0.2.0/33"])
+        message = str(excinfo.value)
+        assert "192.0.2.0/33" in message
+        assert "IPv4 or IPv6 network" in message
+
+    def test_entree_malformee_presente_entre_deux_valides(self):
+        with pytest.raises(ValueError, match="192.0.2.1/24"):
+            parse_whitelist(["192.0.2.1", "192.0.2.1/24", "2001:db8::/32"])
+
 
 class TestIsWhitelisted:
     def test_ip_dans_le_cidr(self):

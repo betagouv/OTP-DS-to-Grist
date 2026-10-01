@@ -132,6 +132,14 @@ class DatabaseManager:
                 ADD COLUMN IF NOT EXISTS error_count INTEGER
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ip_blocklist (
+                    ip VARCHAR(45) PRIMARY KEY,
+                    ban_count INTEGER NOT NULL DEFAULT 0,
+                    banned_until TIMESTAMP
+                )
+            """)
+
             # Ajouter les colonnes manquantes aux tables existantes
             # (aucune pour le moment)
 
