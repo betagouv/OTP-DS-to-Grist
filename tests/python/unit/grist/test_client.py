@@ -1,7 +1,23 @@
-import pytest
+import time
 from unittest.mock import MagicMock, patch
 
-from grist.client import GristClient
+import pytest
+import requests
+
+from grist.client import (
+    GRIST_FALLBACK_429_DELAY,
+    GRIST_MAX_429_RETRIES,
+    GRIST_MAX_RANDOM_DELAY_SECONDS,
+    GristClient,
+)
+from utils.rate_limited_session import RateLimitedSession
+
+
+def _mock_response(status_code=200, headers=None):
+    response = MagicMock()
+    response.status_code = status_code
+    response.headers = headers or {}
+    return response
 
 
 class TestExtractEmailFromScim:
@@ -54,10 +70,9 @@ class TestGetGristUserEmail:
                 {"value": "primary@example.com", "primary": True},
             ]
         }
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             assert self.client.get_grist_user_email() == "primary@example.com"
 
     def test_success_no_primary(self):
@@ -65,28 +80,25 @@ class TestGetGristUserEmail:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"emails": [{"value": "first@example.com"}]}
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             assert self.client.get_grist_user_email() == "first@example.com"
 
     def test_http_error_returns_none(self):
         """401 -> None"""
         mock_response = MagicMock()
         mock_response.status_code = 401
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             assert self.client.get_grist_user_email() is None
 
     def test_timeout_returns_none(self):
         """Timeout -> None"""
-        with patch(
-            "grist.client.requests.get",
-            side_effect=Exception("timeout"),
-        ):
+        session = MagicMock()
+        session.get.side_effect = Exception("timeout")
+        with patch.object(GristClient, "_get_session", return_value=session):
             assert self.client.get_grist_user_email() is None
 
     def test_success_no_emails(self):
@@ -94,10 +106,9 @@ class TestGetGristUserEmail:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"userName": "john.doe@example.com"}
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             assert self.client.get_grist_user_email() is None
 
 
@@ -120,10 +131,9 @@ class TestGetExistingDossierNumbers:
                 {"id": 33, "fields": {}},
             ]
         }
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_existing_dossier_numbers("dossiers")
         assert result == {"1001": 11, "2002": 22}
 
@@ -132,10 +142,9 @@ class TestGetExistingDossierNumbers:
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "boom"
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_existing_dossier_numbers("dossiers")
         assert result == {}
 
@@ -170,10 +179,9 @@ class TestGetExistingDossierDates:
                 {"id": 22, "fields": {"number": "2002"}},
             ]
         }
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_existing_dossier_dates("dossiers")
         assert result["1001"]["grist_id"] == 11
         assert result["1001"]["date_derniere_modification"] == "2024-01-01"
@@ -183,10 +191,9 @@ class TestGetExistingDossierDates:
         """non-200 -> {}"""
         mock_response = MagicMock()
         mock_response.status_code = 500
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_existing_dossier_dates("dossiers")
         assert result == {}
 
@@ -222,10 +229,9 @@ class TestGetSyncMetadata:
                 },
             ]
         }
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_sync_metadata(123)
         assert result["grist_id"] == 1
         assert result["last_sync_at"] == "2024-01-01"
@@ -239,10 +245,9 @@ class TestGetSyncMetadata:
         mock_response.json.return_value = {
             "records": [{"id": 1, "fields": {"demarche_number": "999"}}]
         }
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_sync_metadata(123)
         assert result is None
 
@@ -250,10 +255,9 @@ class TestGetSyncMetadata:
         """non-200 -> None"""
         mock_response = MagicMock()
         mock_response.status_code = 500
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_sync_metadata(123)
         assert result is None
 
@@ -275,23 +279,16 @@ class TestSaveSyncMetadata:
         }
         patch_response = MagicMock()
         patch_response.status_code = 200
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.patch",
-                return_value=patch_response,
-            ) as mock_patch,
-            patch("grist.client.requests.post") as mock_post,
-        ):
+        session = MagicMock()
+        session.get.return_value = get_response
+        session.patch.return_value = patch_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             self.client.save_sync_metadata(
                 123, {"last_sync_at": "2024-01-01"}, existing_grist_id=7
             )
-        mock_patch.assert_called_once()
-        mock_post.assert_not_called()
-        payload = mock_patch.call_args.kwargs["json"]
+        session.patch.assert_called_once()
+        session.post.assert_not_called()
+        payload = session.patch.call_args.kwargs["json"]
         assert payload["records"][0]["id"] == 7
         assert payload["records"][0]["fields"]["demarche_number"] == 123
 
@@ -302,21 +299,14 @@ class TestSaveSyncMetadata:
         get_response.json.return_value = {"records": []}
         post_response = MagicMock()
         post_response.status_code = 201
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-            patch("grist.client.requests.patch") as mock_patch,
-        ):
+        session = MagicMock()
+        session.get.return_value = get_response
+        session.post.return_value = post_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             self.client.save_sync_metadata(123, {"last_sync_at": "2024-01-01"})
-        mock_post.assert_called_once()
-        mock_patch.assert_not_called()
-        payload = mock_post.call_args.kwargs["json"]
+        session.post.assert_called_once()
+        session.patch.assert_not_called()
+        payload = session.post.call_args.kwargs["json"]
         assert payload["records"][0]["fields"]["demarche_number"] == 123
 
 
@@ -337,24 +327,17 @@ class TestUpsertDossierInGrist:
         }
         patch_response = MagicMock()
         patch_response.status_code = 200
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.patch",
-                return_value=patch_response,
-            ) as mock_patch,
-            patch("grist.client.requests.post") as mock_post,
-        ):
+        session = MagicMock()
+        session.get.return_value = get_response
+        session.patch.return_value = patch_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_dossier_in_grist(
                 "dossiers", {"dossier_number": "1001", "name": "X"}
             )
         assert ok is True
-        mock_patch.assert_called_once()
-        mock_post.assert_not_called()
-        payload = mock_patch.call_args.kwargs["json"]
+        session.patch.assert_called_once()
+        session.post.assert_not_called()
+        payload = session.patch.call_args.kwargs["json"]
         assert payload["records"][0]["id"] == 5
 
     def test_inserts_new(self):
@@ -364,32 +347,26 @@ class TestUpsertDossierInGrist:
         get_response.json.return_value = {"records": []}
         post_response = MagicMock()
         post_response.status_code = 201
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.post",
-                return_value=post_response,
-            ) as mock_post,
-            patch("grist.client.requests.patch") as mock_patch,
-        ):
+        session = MagicMock()
+        session.get.return_value = get_response
+        session.post.return_value = post_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_dossier_in_grist(
                 "dossiers", {"dossier_number": "2002", "name": "Y"}
             )
         assert ok is True
-        mock_post.assert_called_once()
-        mock_patch.assert_not_called()
-        payload = mock_post.call_args.kwargs["json"]
+        session.post.assert_called_once()
+        session.patch.assert_not_called()
+        payload = session.post.call_args.kwargs["json"]
         assert payload["records"][0]["fields"]["dossier_number"] == "2002"
 
     def test_missing_dossier_number_returns_false(self):
         """sans dossier_number -> False, aucun appel réseau"""
-        with patch("grist.client.requests.get") as mock_get:
+        session = MagicMock()
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_dossier_in_grist("dossiers", {"name": "Z"})
         assert ok is False
-        mock_get.assert_not_called()
+        session.get.assert_not_called()
 
     def test_error_status_returns_false(self):
         """statut d'erreur -> False"""
@@ -399,16 +376,10 @@ class TestUpsertDossierInGrist:
         post_response = MagicMock()
         post_response.status_code = 500
         post_response.text = "err"
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=get_response,
-            ),
-            patch(
-                "grist.client.requests.post",
-                return_value=post_response,
-            ),
-        ):
+        session = MagicMock()
+        session.get.return_value = get_response
+        session.post.return_value = post_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_dossier_in_grist(
                 "dossiers", {"dossier_number": "3003"}
             )
@@ -426,10 +397,9 @@ class TestListDocuments:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"docs": [{"id": "a"}]}
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.list_documents()
         assert result == {"docs": [{"id": "a"}]}
 
@@ -439,10 +409,9 @@ class TestListDocuments:
         mock_response.status_code = 500
         mock_response.text = "boom"
         mock_response.raise_for_status.side_effect = Exception("HTTP 500")
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             with pytest.raises(Exception):
                 self.client.list_documents()
 
@@ -460,10 +429,9 @@ class TestGetDocumentInfo:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"id": "doc123"}
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_document_info()
         assert result == {"id": "doc123"}
 
@@ -479,10 +447,9 @@ class TestGetDocumentInfo:
         mock_response.status_code = 500
         mock_response.text = "boom"
         mock_response.raise_for_status.side_effect = Exception("HTTP 500")
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             with pytest.raises(Exception):
                 self.client.get_document_info()
 
@@ -500,10 +467,9 @@ class TestListTables:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"tables": [{"id": "dossiers"}]}
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.list_tables()
         assert result == {"tables": [{"id": "dossiers"}]}
 
@@ -519,10 +485,9 @@ class TestListTables:
         mock_response.status_code = 500
         mock_response.text = "boom"
         mock_response.raise_for_status.side_effect = Exception("HTTP 500")
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             with pytest.raises(Exception):
                 self.client.list_tables()
 
@@ -550,13 +515,12 @@ class TestCreateTable:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"tables": [{"id": "t", "columns": []}]}
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ) as mock_post:
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.create_table("t", [{"id": "col1", "type": "Text"}])
         assert result["tables"][0]["id"] == "t"
-        payload = mock_post.call_args.kwargs["json"]
+        payload = session.post.call_args.kwargs["json"]
         assert payload["tables"][0]["id"] == "t"
 
 
@@ -579,10 +543,9 @@ class TestGetColumns:
                 {"id": "memo"},
             ]
         }
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_columns("dossiers")
         assert result == {"name": "Text", "nb": "Int", "memo": "Text"}
 
@@ -593,10 +556,9 @@ class TestGetColumns:
         mock_response.json.return_value = {
             "columns": [{"id": "name", "type": "Text"}, {"type": "Text"}, {}]
         }
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_columns("dossiers")
         assert result == {"name": "Text"}
 
@@ -605,10 +567,9 @@ class TestGetColumns:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {}
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_columns("dossiers")
         assert result == {}
 
@@ -617,10 +578,9 @@ class TestGetColumns:
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "boom"
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_columns("dossiers")
         assert result == {}
 
@@ -643,28 +603,26 @@ class TestGetRecords:
         """GET /records avec le bon URL et headers, renvoie la réponse brute"""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ) as mock_get:
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_records("dossiers")
         assert result is mock_response
-        mock_get.assert_called_once()
+        session.get.assert_called_once()
         assert (
-            mock_get.call_args.args[0]
+            session.get.call_args.args[0]
             == "https://grist.example.com/docs/doc123/tables/dossiers/records"
         )
-        assert mock_get.call_args.kwargs["headers"] == self.client.headers
+        assert session.get.call_args.kwargs["headers"] == self.client.headers
 
     def test_non_200_returns_response(self):
         """non-200 -> aucune exception, la réponse est renvoyée"""
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "boom"
-        with patch(
-            "grist.client.requests.get",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_records("dossiers")
         assert result is mock_response
         assert result.status_code == 500
@@ -688,21 +646,20 @@ class TestAddColumns:
         """POST /columns avec le bon payload, renvoie la réponse brute"""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ) as mock_post:
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.add_columns(
                 "t", [{"id": "col1", "type": "Text"}]
             )
         assert result is mock_response
-        mock_post.assert_called_once()
+        session.post.assert_called_once()
         assert (
-            mock_post.call_args.args[0]
+            session.post.call_args.args[0]
             == "https://grist.example.com/docs/doc123/tables/t/columns"
         )
-        assert mock_post.call_args.kwargs["headers"] == self.client.headers
-        assert mock_post.call_args.kwargs["json"] == {
+        assert session.post.call_args.kwargs["headers"] == self.client.headers
+        assert session.post.call_args.kwargs["json"] == {
             "columns": [{"id": "col1", "type": "Text"}]
         }
 
@@ -710,10 +667,9 @@ class TestAddColumns:
         """accepte le format étendu {"id", "fields"}"""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             self.client.add_columns(
                 "t", [{"id": "col1", "fields": {"label": "X", "type": "Bool"}}]
             )
@@ -723,10 +679,9 @@ class TestAddColumns:
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "boom"
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.add_columns("t", [{"id": "col1", "type": "Text"}])
         assert result is mock_response
         assert result.status_code == 500
@@ -751,29 +706,27 @@ class TestPostRecords:
         mock_response = MagicMock()
         mock_response.status_code = 201
         records = [{"fields": {"nom": "x"}}, {"fields": {"nom": "y"}}]
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ) as mock_post:
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.post_records("t", records)
         assert result is mock_response
-        mock_post.assert_called_once()
+        session.post.assert_called_once()
         assert (
-            mock_post.call_args.args[0]
+            session.post.call_args.args[0]
             == "https://grist.example.com/docs/doc123/tables/t/records"
         )
-        assert mock_post.call_args.kwargs["headers"] == self.client.headers
-        assert mock_post.call_args.kwargs["json"] == {"records": records}
+        assert session.post.call_args.kwargs["headers"] == self.client.headers
+        assert session.post.call_args.kwargs["json"] == {"records": records}
 
     def test_non_200_returns_response(self):
         """non-200 -> aucune exception, la réponse est renvoyée"""
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "boom"
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.post_records("t", [{"fields": {"nom": "x"}}])
         assert result is mock_response
         assert result.status_code == 500
@@ -798,29 +751,27 @@ class TestPatchRecords:
         mock_response = MagicMock()
         mock_response.status_code = 200
         records = [{"id": 42, "fields": {"nom": "x"}}]
-        with patch(
-            "grist.client.requests.patch",
-            return_value=mock_response,
-        ) as mock_patch:
+        session = MagicMock()
+        session.patch.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.patch_records("t", records)
         assert result is mock_response
-        mock_patch.assert_called_once()
+        session.patch.assert_called_once()
         assert (
-            mock_patch.call_args.args[0]
+            session.patch.call_args.args[0]
             == "https://grist.example.com/docs/doc123/tables/t/records"
         )
-        assert mock_patch.call_args.kwargs["headers"] == self.client.headers
-        assert mock_patch.call_args.kwargs["json"] == {"records": records}
+        assert session.patch.call_args.kwargs["headers"] == self.client.headers
+        assert session.patch.call_args.kwargs["json"] == {"records": records}
 
     def test_non_200_returns_response(self):
         """non-200 -> aucune exception, la réponse est renvoyée"""
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "boom"
-        with patch(
-            "grist.client.requests.patch",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.patch.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.patch_records("t", [{"id": 42, "fields": {}}])
         assert result is mock_response
         assert result.status_code == 500
@@ -844,29 +795,27 @@ class TestDeleteRecords:
         """POST /records/delete avec la liste brute des ids, renvoie la réponse brute"""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ) as mock_post:
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.delete_records("t", [1, 2])
         assert result is mock_response
-        mock_post.assert_called_once()
+        session.post.assert_called_once()
         assert (
-            mock_post.call_args.args[0]
+            session.post.call_args.args[0]
             == "https://grist.example.com/docs/doc123/tables/t/records/delete"
         )
-        assert mock_post.call_args.kwargs["headers"] == self.client.headers
-        assert mock_post.call_args.kwargs["json"] == [1, 2]
+        assert session.post.call_args.kwargs["headers"] == self.client.headers
+        assert session.post.call_args.kwargs["json"] == [1, 2]
 
     def test_non_200_returns_response(self):
         """non-200 -> aucune exception, la réponse est renvoyée"""
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "boom"
-        with patch(
-            "grist.client.requests.post",
-            return_value=mock_response,
-        ):
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.delete_records("t", [1])
         assert result is mock_response
         assert result.status_code == 500
@@ -984,20 +933,11 @@ class TestUpsertMultipleDossiersInGrist:
         create_response = MagicMock()
         create_response.status_code = 201
         create_response.json.return_value = {"records": [{"id": 100}]}
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=columns_response,
-            ) as mock_get,
-            patch(
-                "grist.client.requests.patch",
-                return_value=update_response,
-            ) as mock_patch,
-            patch(
-                "grist.client.requests.post",
-                return_value=create_response,
-            ) as mock_post,
-        ):
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.patch.return_value = update_response
+        session.post.return_value = create_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [
@@ -1007,9 +947,9 @@ class TestUpsertMultipleDossiersInGrist:
                 existing_records={"1001": 5},
             )
         assert ok is True
-        mock_get.assert_called_once()
-        mock_patch.assert_called_once()
-        mock_post.assert_called_once()
+        session.get.assert_called_once()
+        session.patch.assert_called_once()
+        session.post.assert_called_once()
 
     def test_returns_false_on_update_failure(self):
         """échec de la mise à jour par lot -> fallback individuel, retourne False"""
@@ -1024,16 +964,10 @@ class TestUpsertMultipleDossiersInGrist:
         individual_response = MagicMock()
         individual_response.status_code = 500
         individual_response.text = "err"
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=columns_response,
-            ),
-            patch(
-                "grist.client.requests.patch",
-                side_effect=[update_response, individual_response],
-            ),
-        ):
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.patch.side_effect = [update_response, individual_response]
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x"}],
@@ -1050,24 +984,17 @@ class TestUpsertMultipleDossiersInGrist:
         }
         update_response = MagicMock()
         update_response.status_code = 200
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=columns_response,
-            ),
-            patch(
-                "grist.client.requests.patch",
-                return_value=update_response,
-            ) as mock_patch,
-            patch("grist.client.requests.post"),
-        ):
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.patch.return_value = update_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
                 existing_records={"1001": 5},
             )
         assert ok is True
-        fields = mock_patch.call_args.kwargs["json"]["records"][0]["fields"]
+        fields = session.patch.call_args.kwargs["json"]["records"][0]["fields"]
         assert set(fields.keys()) == {"name", "dossier_number"}
 
     def test_no_filtering_when_columns_fetch_fails(self):
@@ -1077,24 +1004,17 @@ class TestUpsertMultipleDossiersInGrist:
         columns_response.text = "boom"
         update_response = MagicMock()
         update_response.status_code = 200
-        with (
-            patch(
-                "grist.client.requests.get",
-                return_value=columns_response,
-            ),
-            patch(
-                "grist.client.requests.patch",
-                return_value=update_response,
-            ) as mock_patch,
-            patch("grist.client.requests.post"),
-        ):
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.patch.return_value = update_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
                 existing_records={"1001": 5},
             )
         assert ok is True
-        fields = mock_patch.call_args.kwargs["json"]["records"][0]["fields"]
+        fields = session.patch.call_args.kwargs["json"]["records"][0]["fields"]
         assert set(fields.keys()) == {"name", "dossier_number", "unknown_field"}
 
     def test_uses_column_cache_when_provided(self):
@@ -1103,14 +1023,9 @@ class TestUpsertMultipleDossiersInGrist:
         column_cache.get_columns.return_value = {"name", "dossier_number"}
         update_response = MagicMock()
         update_response.status_code = 200
-        with (
-            patch("grist.client.requests.get") as mock_get,
-            patch(
-                "grist.client.requests.patch",
-                return_value=update_response,
-            ) as mock_patch,
-            patch("grist.client.requests.post"),
-        ):
+        session = MagicMock()
+        session.patch.return_value = update_response
+        with patch.object(GristClient, "_get_session", return_value=session):
             ok = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
@@ -1118,10 +1033,10 @@ class TestUpsertMultipleDossiersInGrist:
                 column_cache=column_cache,
             )
         assert ok is True
-        mock_get.assert_not_called()
+        session.get.assert_not_called()
         column_cache.get_columns.assert_called_once_with("dossiers")
-        mock_patch.assert_called_once()
-        fields = mock_patch.call_args.kwargs["json"]["records"][0]["fields"]
+        session.patch.assert_called_once()
+        fields = session.patch.call_args.kwargs["json"]["records"][0]["fields"]
         assert set(fields.keys()) == {"name", "dossier_number"}
 
     def test_raises_without_doc_id(self):
@@ -1129,3 +1044,88 @@ class TestUpsertMultipleDossiersInGrist:
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.upsert_multiple_dossiers_in_grist("dossiers", [])
+
+
+class TestGristClientSession:
+    """Tests unitaires pour GristClient._get_session (retry 429 + 5xx)"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_session_is_rate_limited_and_parametrized(self):
+        """_get_session -> RateLimitedSession paramétré par les constantes GRIST_*"""
+        session = self.client._get_session()
+        assert isinstance(session, RateLimitedSession)
+        assert session.max_retries == GRIST_MAX_429_RETRIES
+        assert session.fallback_delay == GRIST_FALLBACK_429_DELAY
+        assert session.max_random_delay == GRIST_MAX_RANDOM_DELAY_SECONDS
+
+    def test_session_has_5xx_adapter_mounted(self):
+        """adapter 5xx monté sur https:// et http:// avec la config prévue"""
+        session = self.client._get_session()
+        https_adapter = session.get_adapter("https://grist.example.com")
+        assert https_adapter.max_retries.total == 3
+        assert https_adapter.max_retries.backoff_factor == 1
+        assert https_adapter.max_retries.status_forcelist == [500, 502, 503, 504]
+        assert https_adapter.max_retries.allowed_methods is None
+        assert https_adapter.max_retries.raise_on_status is False
+        http_adapter = session.get_adapter("http://grist.example.com")
+        assert http_adapter is https_adapter
+
+    def test_session_is_reused_and_distinct_per_client(self):
+        """même client -> session réutilisée ; client différent -> session distincte"""
+        first = self.client._get_session()
+        assert self.client._get_session() is first
+
+        other = GristClient("https://grist.example.com", "other_key", doc_id="doc123")
+        assert other._get_session() is not first
+
+    @patch.object(requests.Session, "request")
+    @patch("utils.rate_limited_session.log")
+    @patch("time.sleep")
+    def test_429_retries_then_succeeds(self, mock_sleep, mock_log, mock_request):
+        """429 sans en-tête -> retry après délai de repli puis succès"""
+        mock_request.side_effect = [
+            _mock_response(429),
+            _mock_response(200),
+        ]
+
+        with patch("random.uniform", return_value=0):
+            response = self.client.get_records("dossiers")
+
+        assert response.status_code == 200
+        assert mock_request.call_count == 2
+        mock_sleep.assert_called_once_with(GRIST_FALLBACK_429_DELAY)
+
+    @patch.object(requests.Session, "request")
+    @patch("utils.rate_limited_session.log")
+    @patch("time.sleep")
+    def test_429_exhausted_returns_429(self, mock_sleep, mock_log, mock_request):
+        """429 répétés -> épuisement des essais puis la réponse 429 remonte"""
+        mock_request.side_effect = [
+            _mock_response(429) for _ in range(GRIST_MAX_429_RETRIES)
+        ]
+
+        with patch("random.uniform", return_value=0):
+            response = self.client.get_records("dossiers")
+
+        assert response.status_code == 429
+        assert mock_request.call_count == GRIST_MAX_429_RETRIES
+        assert mock_sleep.call_count == GRIST_MAX_429_RETRIES - 1
+        assert mock_log.call_count == GRIST_MAX_429_RETRIES - 1
+
+    @patch.object(requests.Session, "request")
+    @patch("utils.rate_limited_session.log")
+    @patch("time.sleep")
+    def test_5xx_not_retried(self, mock_sleep, mock_log, mock_request):
+        """5xx -> renvoyé sans attente (géré par l'adapter urllib3)"""
+        mock_request.return_value = _mock_response(500)
+
+        response = self.client.get_records("dossiers")
+
+        assert response.status_code == 500
+        assert mock_request.call_count == 1
+        mock_sleep.assert_not_called()
+        mock_log.assert_not_called()
