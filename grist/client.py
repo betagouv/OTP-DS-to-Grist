@@ -1,5 +1,7 @@
+import json
 import os
 import traceback
+from collections.abc import Callable
 from typing import Any
 
 import requests
@@ -17,6 +19,16 @@ GRIST_FALLBACK_429_DELAY = int(os.getenv("GRIST_FALLBACK_429_DELAY", "60"))
 GRIST_MAX_RANDOM_DELAY_SECONDS = int(
     os.getenv("GRIST_MAX_RANDOM_DELAY_SECONDS", "5")
 )
+
+# L'API Grist refuse les corps de requête trop volumineux.
+# Au-delà, une écriture échoue en bloc :
+# les enregistrements sont donc découpés en paquets
+# pour que chaque requête reste acceptée.
+GRIST_MAX_BODY_BYTES = 1024 * 1024
+
+# Poids de l'enveloppe `{"records": [ … ]}` : le reste du corps vient des
+# enregistrements sérialisés et de leur virgule séparatrice (2 octets chacun).
+_RECORDS_PAYLOAD_BASE_BYTES = 13
 
 
 class GristClient:
@@ -46,20 +58,6 @@ class GristClient:
 
     def set_doc_id(self, doc_id: str | None) -> None:
         self.doc_id = doc_id
-
-    def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
-        """
-        Extrait l'email primaire d'une réponse SCIM /Me.
-        primary > premier email > None. userName est ignoré (peut être un pseudo).
-        """
-        emails = data.get("emails")
-
-        if not emails:
-            return None
-
-        primary = next((email for email in emails if email.get("primary")), None)
-
-        return (primary or emails[0]).get("value")
 
     def get_grist_user_email(self) -> str | None:
         """Email Grist de l'utilisateur courant via SCIM /Me. None si indisponible."""
@@ -157,7 +155,7 @@ class GristClient:
                     record_id = record.get("id")
                     fields = record.get("fields", {})
 
-                    # Vérifier si dossier_number ou number est présent
+                    # Vérifier si dossier_number est présent
                     dossier_num = None
                     if "dossier_number" in fields and fields["dossier_number"]:
                         dossier_num = fields["dossier_number"]
@@ -306,8 +304,10 @@ class GristClient:
         dossier_number = row_dict.get("dossier_number") or row_dict.get("number")
 
         if not dossier_number:
-            log_error("dossier_number ou number manquant dans les données")
-            log_verbose(f"Données disponibles: {row_dict.keys()}")
+            log_error(
+                f"dossier_number manquant dans les données "
+                f"(table {table_id}, champs {sorted(row_dict)}): l'enregistrement est ignoré"
+            )
             return False
 
         # Convertir le numéro de dossier en chaîne pour les comparaisons
@@ -372,6 +372,30 @@ class GristClient:
 
         data = response.json()
         return data
+
+    def run_sql(self, sql: str) -> list[dict[str, Any]]:
+        """
+        Exécute une requête SQL en lecture seule sur le document.
+
+        Grist n'accepte que des SELECT : le tri, le filtrage et l'agrégation
+        restent à la charge de l'appelant. Le format de la réponse Grist est
+        traduit ici en une simple liste de champs, un dict par ligne.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/sql"
+        log_verbose(f"GET {url} : {sql}")
+        response = self._get_session().get(url, headers=self.headers, params={"q": sql})
+
+        if response.status_code != 200:
+            log_error(f"Erreur {response.status_code}: {response.text}")
+            response.raise_for_status()
+
+        records = response.json().get("records", [])
+        log_verbose(f"  {len(records)} ligne(s) renvoyée(s)")
+
+        return [record.get("fields", {}) for record in records]
 
     def list_tables(self) -> dict[str, Any]:
         if not self.doc_id:
@@ -483,9 +507,13 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"POST {url}")
-        response = self._get_session().post(url, headers=self.headers, json={"records": records})
 
-        return response
+        return self._send_records(
+            records,
+            lambda packet: self._get_session().post(
+                url, headers=self.headers, json={"records": packet}
+            ),
+        )
 
     def patch_records(
         self, table_id: str, records: list[dict[str, Any]]
@@ -499,9 +527,13 @@ class GristClient:
 
         url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records"
         log_verbose(f"PATCH {url}")
-        response = self._get_session().patch(url, headers=self.headers, json={"records": records})
 
-        return response
+        return self._send_records(
+            records,
+            lambda packet: self._get_session().patch(
+                url, headers=self.headers, json={"records": packet}
+            ),
+        )
 
     def delete_records(
         self, table_id: str, record_ids: list[int]
@@ -519,6 +551,22 @@ class GristClient:
         )
         log_verbose(f"POST {url}")
         response = self._get_session().post(url, headers=self.headers, json=record_ids)
+
+        return response
+
+    def apply_user_actions(self, actions: list[Any]) -> requests.Response:
+        """
+        Applique des actions utilisateur Grist (AddRecord, BulkRemoveRecord...).
+
+        Le payload envoyé est la liste brute des actions (sans enveloppe).
+        Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/apply"
+        log_verbose(f"POST {url} : {len(actions)} action(s)")
+        response = self._get_session().post(url, headers=self.headers, json=actions)
 
         return response
 
@@ -578,7 +626,6 @@ class GristClient:
 
             # Créer la table des dossiers si elle n'existe pas
             if not dossier_table:
-                log(f"Création de la table {dossier_table_id}")
                 dossier_table_result = self.create_table(
                     dossier_table_id, column_types["dossier"]
                 )
@@ -587,7 +634,6 @@ class GristClient:
 
             # Créer la table des champs si elle n'existe pas
             if not champ_table:
-                log(f"Création de la table {champ_table_id}")
                 champ_table_result = self.create_table(
                     champ_table_id, column_types["champs"]
                 )
@@ -596,7 +642,6 @@ class GristClient:
 
             # Créer la table des annotations si elle n'existe pas
             if not annotation_table:
-                log(f"Création de la table {annotation_table_id}")
                 annotation_table_result = self.create_table(
                     annotation_table_id, column_types["annotations"]
                 )
@@ -671,11 +716,13 @@ class GristClient:
                     filtered_row_dict[key] = value
 
             # Obtenir le numéro de dossier
-            dossier_number = filtered_row_dict.get(
-                "dossier_number"
-            ) or filtered_row_dict.get("number")
+            dossier_number = _dossier_number(filtered_row_dict)
             if not dossier_number:
-                log_error("dossier_number ou number manquant dans les données")
+                log_error(
+                    f"dossier_number manquant dans les données "
+                    f"(table {table_id}, champs {sorted(filtered_row_dict)}): "
+                    "l'enregistrement est ignoré"
+                )
                 continue
 
             dossier_number_str = str(dossier_number)
@@ -718,7 +765,9 @@ class GristClient:
                 total_success += len(normalized_updates)
             else:
                 log_error(
-                    f"Erreur lors de la mise à jour par lot: {update_response.status_code} - {update_response.text}"
+                    f"Erreur lors de la mise à jour par lot de la table {table_id} "
+                    f"({len(normalized_updates)} dossiers): "
+                    f"{update_response.status_code} - {update_response.text}"
                 )
 
                 # Fallback: essayer individuellement
@@ -733,7 +782,13 @@ class GristClient:
                         update_success += 1
                     else:
                         total_errors += 1
-                        log_error(f"Échec individuel pour {individual_record['id']}")
+                        dossier_number = _dossier_number(
+                            individual_record["fields"]
+                        )
+                        log_error(
+                            f"Échec individuel pour le dossier {dossier_number} "
+                            f"(ligne Grist {individual_record['id']})"
+                        )
 
                 total_success += update_success
                 log(
@@ -766,14 +821,16 @@ class GristClient:
                 created_ids = create_response.json().get("records", [])
                 for i, created in enumerate(created_ids):
                     if i < len(normalized_creations):
-                        dossier_num = normalized_creations[i]["fields"].get(
-                            "dossier_number"
-                        ) or normalized_creations[i]["fields"].get("number")
+                        dossier_num = _dossier_number(
+                            normalized_creations[i]["fields"]
+                        )
                         if dossier_num and existing_records is not None:
                             existing_records[str(dossier_num)] = created.get("id")
             else:
                 log_error(
-                    f"Erreur lors de la création par lot: {create_response.status_code} - {create_response.text}"
+                    f"Erreur lors de la création par lot de la table {table_id} "
+                    f"({len(normalized_creations)} dossiers): "
+                    f"{create_response.status_code} - {create_response.text}"
                 )
                 total_errors += len(normalized_creations)
 
@@ -787,3 +844,131 @@ class GristClient:
             )
 
         return success
+
+    # --- Helpers privés ---
+
+    def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
+        """
+        Extrait l'email primaire d'une réponse SCIM /Me.
+
+        primary > premier email > None. userName est ignoré (peut être un pseudo).
+        """
+        emails = data.get("emails")
+
+        if not emails:
+            return None
+
+        primary = next((email for email in emails if email.get("primary")), None)
+
+        return (primary or emails[0]).get("value")
+
+    def _warn_record_too_large(self, records: list[dict[str, Any]]) -> None:
+        """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""
+        weight = _records_payload_bytes(records)
+        if len(records) == 1 and weight > GRIST_MAX_BODY_BYTES:
+            dossier_number = (
+                _dossier_number(records[0].get("fields") or records[0]) or "inconnu"
+            )
+            log_error(
+                f"Dossier {dossier_number} trop volumineux pour Grist "
+                f"({weight} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
+                "envoi tenté, il sera refusé"
+            )
+
+    def _send_records(
+        self,
+        records: list[dict[str, Any]],
+        send: Callable[[list[dict[str, Any]]], requests.Response],
+    ) -> requests.Response:
+        """
+        Envoie `records` par paquets tenant sous la limite de taille de Grist.
+
+        Un paquet refusé arrête l'envoi et sa réponse est renvoyée telle quelle,
+        pour que les replis individuels des appelants restent possibles. Si tous
+        les paquets passent, la réponse renvoyée agrège leurs enregistrements.
+        """
+        packets = _split_records_by_size(records)
+        if len(packets) <= 1:
+            self._warn_record_too_large(records)
+            return send(records)
+
+        sent_records: list[dict[str, Any]] = []
+        for index, packet in enumerate(packets, start=1):
+            log(
+                f"  Payload découpé en {len(packets)} paquets : envoi du paquet "
+                f"{index}/{len(packets)} ({len(packet)} enregistrements)"
+            )
+            self._warn_record_too_large(packet)
+            response = send(packet)
+            if response.status_code not in (200, 201):
+                log_error(
+                    f"Erreur lors de l'envoi du paquet {index}/{len(packets)} : "
+                    f"{response.status_code} - {response.text}"
+                )
+                return response
+            sent_records.extend(response.json().get("records", []))
+
+        return _aggregated_response(sent_records)
+
+
+# --- Helpers privés (module) ---
+
+
+def _record_weight(record: dict[str, Any]) -> int:
+    """Poids d'un enregistrement dans un payload `{"records": [...]}`."""
+    return len(json.dumps(record).encode("utf-8")) + 2
+
+
+def _records_payload_bytes(records: list[dict[str, Any]]) -> int:
+    """Taille du corps HTTP que `requests` produira pour `records`."""
+    return len(json.dumps({"records": records}).encode("utf-8"))
+
+
+def _split_records_by_size(
+    records: list[dict[str, Any]], max_bytes: int = GRIST_MAX_BODY_BYTES
+) -> list[list[dict[str, Any]]]:
+    """
+    Découpe les enregistrements en paquets dont le corps tient sous `max_bytes`.
+
+    Un enregistrement plus volumineux que la limite forme son propre paquet : il
+    ne peut pas être fractionné davantage, son envoi est tenté et c'est Grist
+    qui décide de l'accepter ou de le refuser.
+    """
+    if _records_payload_bytes(records) <= max_bytes:
+        return [records]
+
+    packets: list[list[dict[str, Any]]] = []
+    packet: list[dict[str, Any]] = []
+    weight = _RECORDS_PAYLOAD_BASE_BYTES
+    for record in records:
+        record_weight = _record_weight(record)
+        if packet and weight + record_weight > max_bytes:
+            packets.append(packet)
+            packet = []
+            weight = _RECORDS_PAYLOAD_BASE_BYTES
+        packet.append(record)
+        weight += record_weight
+    if packet:
+        packets.append(packet)
+
+    return packets
+
+
+def _dossier_number(fields: dict[str, Any]) -> Any:
+    """Numéro de dossier porté par les champs d'un enregistrement, s'il existe."""
+    return fields.get("dossier_number") or fields.get("number")
+
+
+def _aggregated_response(records: list[dict[str, Any]]) -> requests.Response:
+    """
+    Réponse 200 agrgeant les enregistrements renvoyés par plusieurs paquets.
+
+    Les enregistrements sont concaténés dans l'ordre d'envoi : l'appelant peut
+    ainsi continuer à associer les ids Grist aux dossiers qu'il a soumis.
+    """
+    response = requests.Response()
+    response.status_code = 200
+    response._content = json.dumps({"records": records}).encode("utf-8")
+    response.headers["Content-Type"] = "application/json"
+
+    return response

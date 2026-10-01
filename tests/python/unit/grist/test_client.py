@@ -1,3 +1,4 @@
+import json
 import time
 from unittest.mock import MagicMock, patch
 
@@ -8,9 +9,56 @@ from grist.client import (
     GRIST_FALLBACK_429_DELAY,
     GRIST_MAX_429_RETRIES,
     GRIST_MAX_RANDOM_DELAY_SECONDS,
+    GRIST_MAX_BODY_BYTES,
     GristClient,
+    _split_records_by_size,
 )
 from utils.rate_limited_session import RateLimitedSession
+
+
+def _weight(payload: dict) -> int:
+    """Taille du corps HTTP que `requests` produirait pour ce payload."""
+    return len(json.dumps(payload).encode("utf-8"))
+
+
+def _records_bulk(count: int, size: int = 30_000) -> list[dict]:
+    """`count` enregistrements à créer, chacun d'environ `size` octets."""
+    return [
+        {"fields": {"dossier_number": i, "texte": "a" * size}}
+        for i in range(count)
+    ]
+
+
+def _response(status: int, records=None, text: str = "") -> MagicMock:
+    response = MagicMock()
+    response.status_code = status
+    response.text = text
+    response.json.return_value = {"records": records or []}
+    return response
+
+
+def _post_creates_ids(*args, **kwargs) -> MagicMock:
+    """POST simulé : renvoie un id par enregistrement, dans l'ordre envoyé."""
+    records = kwargs["json"]["records"]
+    return _response(201, [{"id": r["fields"]["dossier_number"]} for r in records])
+
+
+def _patch_returns_ids(*args, **kwargs) -> MagicMock:
+    """PATCH simulé : renvoie un id par enregistrement, dans l'ordre envoyé."""
+    return _response(200, [{"id": r["id"]} for r in kwargs["json"]["records"]])
+
+
+def _refuses_on_second_call(first: callable, refused: dict) -> callable:
+    """Effet de bord : le premier envoi passe, le suivant est refusé."""
+
+    def side_effect(*args, **kwargs):
+        if side_effect.calls == 0:
+            side_effect.calls += 1
+            return first(*args, **kwargs)
+        return _response(refused["status"], text=refused["text"])
+
+    side_effect.calls = 0
+    return side_effect
 
 
 def _mock_response(status_code=200, headers=None):
@@ -693,6 +741,36 @@ class TestAddColumns:
             client.add_columns("t", [{"id": "col1", "type": "Text"}])
 
 
+class TestSplitRecordsBySize:
+    """Tests unitaires pour le découpage des enregistrements sous la limite Grist"""
+
+    def test_empty_list_stays_one_packet(self):
+        assert _split_records_by_size([]) == [[]]
+
+    def test_body_under_limit_stays_one_packet(self):
+        records = _records_bulk(10)
+        assert _split_records_by_size(records) == [records]
+
+    def test_body_above_limit_is_split_without_loss(self):
+        records = _records_bulk(60)
+        packets = _split_records_by_size(records)
+        assert len(packets) > 1
+        assert all(_weight({"records": p}) <= GRIST_MAX_BODY_BYTES for p in packets)
+        assert [record for p in packets for record in p] == records
+
+    def test_record_over_limit_stays_on_its_own(self):
+        records = _records_bulk(3) + [{"fields": {"texte": "a" * (2 << 20)}}]
+        packets = _split_records_by_size(records)
+        assert packets[-1] == [records[-1]]
+        assert [record for p in packets for record in p] == records
+
+    def test_lower_limit_splits_more(self):
+        records = _records_bulk(10, size=1000)
+        packets = _split_records_by_size(records, max_bytes=3000)
+        assert len(packets) > 1
+        assert all(_weight({"records": p}) <= 3000 for p in packets)
+
+
 class TestPostRecords:
     """Tests unitaires pour GristClient.post_records"""
 
@@ -730,6 +808,64 @@ class TestPostRecords:
             result = self.client.post_records("t", [{"fields": {"nom": "x"}}])
         assert result is mock_response
         assert result.status_code == 500
+
+    def test_small_payload_goes_in_one_request(self):
+        """corps sous la limite -> une seule requête, inchangée"""
+        records = _records_bulk(10)
+        session = MagicMock()
+        session.post.side_effect = _post_creates_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.post_records("t", records)
+        session.post.assert_called_once()
+        assert session.post.call_args.kwargs["json"] == {"records": records}
+
+    def test_large_payload_goes_in_several_requests(self):
+        """corps au-dessus de la limite -> une requête par morceau"""
+        records = _records_bulk(60)
+        session = MagicMock()
+        session.post.side_effect = _post_creates_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.post_records("t", records)
+        assert session.post.call_count > 1
+        for call in session.post.call_args_list:
+            assert _weight(call.kwargs["json"]) <= GRIST_MAX_BODY_BYTES
+        assert result.status_code == 200
+
+    def test_aggregated_response_keeps_id_order(self):
+        """tous les morceaux passés -> ids concaténés dans l'ordre d'envoi"""
+        records = _records_bulk(60)
+        session = MagicMock()
+        session.post.side_effect = _post_creates_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.post_records("t", records)
+        assert result.json() == {
+            "records": [{"id": record["fields"]["dossier_number"]} for record in records]
+        }
+
+    def test_refused_packet_stops_the_send(self):
+        """un morceau refusé -> sa réponse est renvoyée, la suite n'est pas envoyée"""
+        records = _records_bulk(60)
+        refused = {"status": 413, "text": "Request body too large"}
+        session = MagicMock()
+        session.post.side_effect = _refuses_on_second_call(_post_creates_ids, refused)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.post_records("t", records)
+        assert result.status_code == 413
+        assert result.text == "Request body too large"
+        assert session.post.call_count == 2
+
+    def test_oversized_dossier_is_sent_and_warned(self):
+        """dossier seul au-dessus de la limite -> envoyé, mais journalisé"""
+        records = [{"fields": {"dossier_number": 7, "texte": "a" * (2 << 20)}}]
+        session = MagicMock()
+        session.post.side_effect = _post_creates_ids
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            self.client.post_records("t", records)
+        session.post.assert_called_once()
+        assert "Dossier 7 trop volumineux" in mock_log_error.call_args[0][0]
 
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""
@@ -776,11 +912,40 @@ class TestPatchRecords:
         assert result is mock_response
         assert result.status_code == 500
 
+    def test_large_payload_goes_in_several_requests(self):
+        """corps au-dessus de la limite -> une requête par morceau, réponse agrégée"""
+        records = [{"id": i, "fields": {"texte": "a" * 30_000}} for i in range(60)]
+        session = MagicMock()
+        session.patch.side_effect = _patch_returns_ids
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.patch_records("t", records)
+        assert session.patch.call_count > 1
+        for call in session.patch.call_args_list:
+            assert _weight(call.kwargs["json"]) <= GRIST_MAX_BODY_BYTES
+        assert result.status_code == 200
+        assert result.json() == {
+            "records": [{"id": record["id"]} for record in records]
+        }
+
+    def test_refused_packet_stops_the_send(self):
+        """un morceau refusé -> sa réponse est renvoyée, la suite n'est pas envoyée"""
+        records = [{"id": i, "fields": {"texte": "a" * 30_000}} for i in range(60)]
+        refused = {"status": 413, "text": "Request body too large"}
+        session = MagicMock()
+        session.patch.side_effect = _refuses_on_second_call(
+            _patch_returns_ids, refused
+        )
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.patch_records("t", records)
+        assert result.status_code == 413
+        assert session.patch.call_count == 2
+
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.patch_records("t", [{"id": 42, "fields": {}}])
+
 
 
 class TestDeleteRecords:
@@ -825,6 +990,118 @@ class TestDeleteRecords:
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.delete_records("t", [1])
+
+
+class TestApplyUserActions:
+    """Tests unitaires pour GristClient.apply_user_actions"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+        self.actions = [["BulkRemoveRecord", "_grist_Views_section_field", [1, 2]]]
+
+    def test_posts_actions_without_envelope(self):
+        """POST /apply avec la liste brute des actions, renvoie la réponse brute"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.apply_user_actions(self.actions)
+        assert result is mock_response
+        session.post.assert_called_once()
+        assert (
+            session.post.call_args.args[0]
+            == "https://grist.example.com/docs/doc123/apply"
+        )
+        assert session.post.call_args.kwargs["headers"] == self.client.headers
+        assert session.post.call_args.kwargs["json"] == self.actions
+
+    def test_does_not_use_the_records_delete_route(self):
+        """la route /records/delete n'existe pas sur toutes les surfaces d'API"""
+        session = MagicMock()
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.apply_user_actions(self.actions)
+        assert "records/delete" not in session.post.call_args.args[0]
+
+    def test_non_200_returns_response(self):
+        """non-200 -> aucune exception, la réponse est renvoyée"""
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.text = "boom"
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.apply_user_actions(self.actions)
+        assert result is mock_response
+        assert result.status_code == 400
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.apply_user_actions(self.actions)
+
+
+class TestRunSql:
+    """Tests unitaires pour GristClient.run_sql"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_sends_query_as_q_param(self):
+        """200 -> la requête part dans le paramètre `q` de GET /sql"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"records": [{"id": 1, "fields": {"a": 1}}]}
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.run_sql("SELECT 1 AS a")
+        assert result == [{"a": 1}]
+        assert (
+            session.get.call_args.args[0] == "https://grist.example.com/docs/doc123/sql"
+        )
+        assert session.get.call_args.kwargs["headers"] == self.client.headers
+        assert session.get.call_args.kwargs["params"] == {"q": "SELECT 1 AS a"}
+
+    def test_no_rows_returns_empty_list(self):
+        """200 sans ligne -> liste vide"""
+        session = MagicMock()
+        session.get.return_value = _response(200)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            assert self.client.run_sql("SELECT 1") == []
+
+    def test_rows_without_fields_become_empty_dicts(self):
+        """une ligne sans champ ne fait pas échouer la lecture"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"records": [{"id": 7}]}
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            assert self.client.run_sql("SELECT 1") == [{}]
+
+    def test_error_raises(self):
+        """non-200 -> raise_for_status"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        mock_response.raise_for_status.side_effect = Exception("HTTP 500")
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(Exception):
+                self.client.run_sql("SELECT 1")
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.run_sql("SELECT 1")
 
 
 class TestCreateOrClearGristTables:
@@ -1045,6 +1322,75 @@ class TestUpsertMultipleDossiersInGrist:
         with pytest.raises(ValueError):
             client.upsert_multiple_dossiers_in_grist("dossiers", [])
 
+    def test_update_failure_names_table_and_dossier(self):
+        """échec du lot puis du repli -> la table et le dossier sont nommés"""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {
+            "columns": [{"id": "name"}, {"id": "dossier_number"}]
+        }
+        failure = _response(500, text="boom")
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.patch.return_value = failure
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": "1001", "name": "x"}],
+                existing_records={"1001": 5},
+            )
+        assert ok is False
+        logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
+        assert "mise à jour par lot de la table dossiers" in logs
+        assert "Échec individuel pour le dossier 1001 (ligne Grist 5)" in logs
+
+    def test_create_failure_names_table(self):
+        """échec de la création par lot -> la table et le nombre de dossiers"""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {
+            "columns": [{"id": "name"}, {"id": "dossier_number"}]
+        }
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.post.return_value = _response(413, text="x")
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "champs",
+                [{"dossier_number": 1, "name": "x"}, {"dossier_number": 2, "name": "y"}],
+                existing_records={},
+            )
+        assert ok is False
+        logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
+        assert "création par lot de la table champs (2 dossiers)" in logs
+
+    def test_record_without_dossier_number_is_logged_with_its_fields(self):
+        """enregistrement sans numéro de dossier -> ignoré, mais identifié"""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {"columns": [{"id": "name"}]}
+        session = MagicMock()
+        session.get.return_value = columns_response
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch("grist.client.log_error") as mock_log_error,
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "champs", [{"name": "orphelin"}], existing_records={}
+            )
+        assert ok is False
+        session.patch.assert_not_called()
+        session.post.assert_not_called()
+        logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
+        assert "dossier_number manquant" in logs
+        assert "table champs" in logs
+        assert "'name'" in logs
 
 class TestGristClientSession:
     """Tests unitaires pour GristClient._get_session (retry 429 + 5xx)"""

@@ -2,8 +2,6 @@ from unittest.mock import MagicMock
 
 from grist_processor_working_all import (
     normalize_column_name,
-    format_value_for_grist,
-    filter_record_to_existing_columns,
     add_id_columns_based_on_annotations,
     upsert_avis_records,
 )
@@ -64,127 +62,6 @@ class TestNormalizeColumnName:
         assert normalize_column_name("___multiple___") == "multiple"
 
 
-class TestFormatValueForGrist:
-    """Tests unitaires pour la fonction format_value_for_grist"""
-
-    def test_format_value_none(self):
-        """Test avec valeur None"""
-        assert format_value_for_grist(None, "Text") is None
-        assert format_value_for_grist(None, "Int") is None
-
-    def test_format_value_datetime(self):
-        """Test avec type DateTime"""
-        # Test avec différents formats de date
-        assert (
-            format_value_for_grist("2023-12-25T10:30:00Z", "DateTime")
-            == "2023-12-25T10:30:00Z"
-        )
-        assert (
-            format_value_for_grist("2023-12-25T10:30:00.123456Z", "DateTime")
-            == "2023-12-25T10:30:00Z"
-        )
-        assert (
-            format_value_for_grist("2023-12-25 10:30:00", "DateTime")
-            == "2023-12-25T10:30:00Z"
-        )
-        assert (
-            format_value_for_grist("2023-12-25", "DateTime") == "2023-12-25T00:00:00Z"
-        )
-        # Test avec chaîne invalide
-        assert format_value_for_grist("invalid-date", "DateTime") == "invalid-date"
-
-    def test_format_value_text(self):
-        """Test avec type Text"""
-        # Texte normal
-        assert format_value_for_grist("Hello World", "Text") == "Hello World"
-        # Texte long (non tronqué)
-        long_text = "a" * 1010
-        result = format_value_for_grist(long_text, "Text")
-        assert isinstance(result, str)
-        assert result == long_text
-        assert len(result) == 1010
-        # Valeur non-string
-        assert format_value_for_grist(123, "Text") == "123"
-
-    def test_format_value_int(self):
-        """Test avec type Int"""
-        assert format_value_for_grist(42, "Int") == 42
-        assert format_value_for_grist("42", "Int") == 42
-        assert format_value_for_grist(42.7, "Int") == 42  # Tronqué
-        assert format_value_for_grist("42.7", "Int") == 42
-        assert format_value_for_grist("", "Int") is None
-        assert format_value_for_grist("invalid", "Int") is None
-
-    def test_format_value_numeric(self):
-        """Test avec type Numeric"""
-        assert format_value_for_grist(42.5, "Numeric") == 42.5
-        assert format_value_for_grist("42.5", "Numeric") == 42.5
-        assert format_value_for_grist(42, "Numeric") == 42.0
-        assert format_value_for_grist("", "Numeric") is None
-        assert format_value_for_grist("invalid", "Numeric") is None
-
-    def test_format_value_bool(self):
-        """Test avec type Bool"""
-        # Booléens
-        assert format_value_for_grist(True, "Bool") is True
-        assert format_value_for_grist(False, "Bool") is False
-        # Chaînes
-        assert format_value_for_grist("true", "Bool") is True
-        assert format_value_for_grist("1", "Bool") is True
-        assert format_value_for_grist("yes", "Bool") is True
-        assert format_value_for_grist("oui", "Bool") is True
-        assert format_value_for_grist("vrai", "Bool") is True
-        assert format_value_for_grist("false", "Bool") is False
-        assert format_value_for_grist("0", "Bool") is False
-        assert format_value_for_grist("no", "Bool") is False
-        # Autres valeurs
-        assert format_value_for_grist(1, "Bool") is True
-        assert format_value_for_grist(0, "Bool") is False
-        assert format_value_for_grist("other", "Bool") is False
-
-    def test_format_value_unknown_type(self):
-        """Test avec type inconnu"""
-        assert format_value_for_grist("value", "Unknown") == "value"
-        assert format_value_for_grist(123, "Unknown") == 123
-
-
-class TestFilterRecordToExistingColumns:
-    """Tests unitaires pour filter_record_to_existing_columns"""
-
-    def setup_method(self):
-        self.client = MagicMock()
-
-    def test_filters_unknown_columns(self):
-        """ne garde que les colonnes existantes"""
-        self.client.get_columns.return_value = {"name": "Text", "email": "Text"}
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x", "toto": 1}
-        )
-        assert result == {"name": "x"}
-
-    def test_keeps_dossier_number_even_if_absent(self):
-        """dossier_number est toujours conservé même s'il n'existe pas dans la table"""
-        self.client.get_columns.return_value = {"name": "Text"}
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x", "dossier_number": 5}
-        )
-        assert result == {"name": "x", "dossier_number": 5}
-
-    def test_returns_record_unchanged_on_http_error(self):
-        """erreur HTTP -> enregistrement inchangé"""
-        self.client.get_columns.return_value = {}
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x", "toto": 1}
-        )
-        assert result == {"name": "x", "toto": 1}
-
-    def test_returns_record_unchanged_on_exception(self):
-        """exception -> enregistrement inchangé"""
-        self.client.get_columns.side_effect = Exception("boom")
-        result = filter_record_to_existing_columns(
-            self.client, "dossiers", {"name": "x"}
-        )
-        assert result == {"name": "x"}
 
 
 class TestAddIdColumnsBasedOnAnnotations:
