@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,6 +20,14 @@ from configuration.config_manager import ConfigManager
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from dn.client import get_groups
+from security.ip_blocklist import (
+    is_whitelisted,
+    parse_whitelist,
+    register_hit,
+    resolve_client_ip,
+    should_ignore_path,
+)
+from security.ip_blocklist_store import IpBlocklistStore
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
@@ -34,7 +43,11 @@ from utils.constants import (
     DATABASE_URL,
     HELP_LINK_FAQ,
     HELP_LINK_GRIST_API_KEY,
-    HELP_LINK_DN_TOKEN_API
+    HELP_LINK_DN_TOKEN_API,
+    IP_BLOCKLIST_CACHE_TTL_SECONDS,
+    IP_BLOCKLIST_THRESHOLD,
+    IP_BLOCKLIST_WINDOW_SECONDS,
+    IP_BLOCKLIST_WHITELIST,
 )
 from utils.socketio import socketio
 
@@ -71,6 +84,83 @@ socketio.init_app(app)
 # Configuration du logging pour Flask
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Protection anti-scanner : compte les 404 par IP et bannie au-delà du seuil.
+# Les compteurs vivent en mémoire, les bannissements en base : voir le dossier
+# `security/`.
+ip_blocklist_store = IpBlocklistStore(
+    DATABASE_URL, cache_ttl=IP_BLOCKLIST_CACHE_TTL_SECONDS
+)
+ip_blocklist_whitelist = parse_whitelist(IP_BLOCKLIST_WHITELIST.split(","))
+ip_blocklist_hits: dict[str, list[float]] = {}
+
+
+def _blocklist_target_ip() -> str | None:
+    """
+    Adresse IP à prendre en compte pour la blocklist.
+
+    Retourne None si elle n'est pas exploitable ou si elle est en liste
+    blanche, pour que les deux hooks partagent exactement le même filtre.
+    """
+    client_ip = resolve_client_ip(request.headers)
+
+    if client_ip is None or is_whitelisted(client_ip, ip_blocklist_whitelist):
+        return None
+
+    return client_ip
+
+
+@app.before_request
+def block_banned_clients():
+    """Refuse la requête si l'IP appelante est bannie."""
+    client_ip = _blocklist_target_ip()
+
+    if client_ip is not None and ip_blocklist_store.is_banned(client_ip):
+        logger.warning("Requête refusée : IP bannie %s", client_ip)
+        return jsonify({"error": "Forbidden"}), 403
+
+    return None
+
+
+@app.after_request
+def count_router_not_found(response):
+    """
+    Compte les 404 par IP et bannie au-delà du seuil.
+
+    Seul un 404 de routage compte, c'est-à-dire une requête qu'aucune route ne
+    sert : `request.url_rule` reste None. Un 404 renvoyé explicitement par une
+    vue est un comportement applicatif normal, pas une recherche de fichier
+    sensible.
+    """
+    if response.status_code != 404 or request.url_rule is not None:
+        return response
+
+    if should_ignore_path(request.path):
+        # Redondant aujourd'hui : `/static/<path:filename>` est une route, donc
+        # le garde précédent l'exclut déjà. Conservé comme filet indépendant,
+        # sur un signal différent (le chemin), le temps où le service des
+        # assets change de forme.
+        return response
+
+    client_ip = _blocklist_target_ip()
+
+    if client_ip is None:
+        return response
+
+    hits = register_hit(
+        ip_blocklist_hits, client_ip, time.time(), IP_BLOCKLIST_WINDOW_SECONDS
+    )
+
+    if hits >= IP_BLOCKLIST_THRESHOLD:
+        banned_until = ip_blocklist_store.apply_ban(client_ip)
+        logger.warning(
+            "IP bannie jusqu'au %s après %d hits dans la fenêtre : %s",
+            banned_until,
+            hits,
+            client_ip,
+        )
+
+    return response
 
 # Démarrage du scheduler au niveau module
 if not scheduler.running:

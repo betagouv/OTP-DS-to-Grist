@@ -23,6 +23,20 @@ IP_BLOCKLIST_CACHE_TTL_SECONDS: float = float(
     os.getenv("IP_BLOCKLIST_CACHE_TTL_SECONDS", "60")
 )
 
+# Nombre de 404 par IP, sur la fenêtre glissante, au-delà duquel l'IP est bannie.
+IP_BLOCKLIST_THRESHOLD: int = int(os.getenv("IP_BLOCKLIST_THRESHOLD", "3"))
+
+# Longueur de la fenêtre glissante de comptage des 404, en secondes.
+IP_BLOCKLIST_WINDOW_SECONDS: float = float(
+    os.getenv("IP_BLOCKLIST_WINDOW_SECONDS", "10")
+)
+
+# Liste blanche d'IP, séparée par des virgules : IP seules ou CIDR. Une
+# variable non renseignée donne une liste blanche vide, ce qui est valide. La
+# valeur reste brute ici, elle est analysée par `parse_whitelist` à
+# l'initialisation de l'application.
+IP_BLOCKLIST_WHITELIST: str = os.getenv("IP_BLOCKLIST_WHITELIST", "")
+
 HELP_LINK_FAQ: str = os.getenv("HELP_LINK_FAQ", "")
 if not HELP_LINK_FAQ:
     raise ValueError("HELP_LINK_FAQ environment variable is required")
