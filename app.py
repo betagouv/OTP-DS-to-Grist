@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, url_for
+from flask import Flask, Response, jsonify, render_template, request, url_for
 import requests
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -87,9 +87,9 @@ socketio.init_app(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Protection anti-scanner : compte les 404 par IP et bannie au-delà du seuil.
-# Les compteurs vivent en mémoire, les bannissements en base : voir le dossier
-# `security/`.
+# Protection anti-scanner : bannie les IP qui produisent trop de réponses 4xx.
+# Les compteurs vivent en mémoire, les bannissements en base :
+# voir le dossier `security/`.
 ip_blocklist_store = IpBlocklistStore(
     DATABASE_URL, cache_ttl=IP_BLOCKLIST_CACHE_TTL_SECONDS
 )
@@ -113,11 +113,16 @@ def _blocklist_target_ip() -> str | None:
 
 
 @app.before_request
-def block_banned_clients():
-    """Refuse la requête si l'IP appelante est bannie."""
+def check_banned_ip() -> tuple[Response, int] | None:
+    """
+    Refuse la requête si l'IP est bannie.
+    """
     client_ip = _blocklist_target_ip()
 
-    if client_ip is not None and ip_blocklist_store.is_banned(client_ip):
+    if client_ip is None:
+        return None
+
+    if ip_blocklist_store.is_banned(client_ip):
         logger.warning("Requête refusée : IP bannie %s", client_ip)
         return jsonify({"error": "Forbidden"}), 403
 
@@ -125,28 +130,26 @@ def block_banned_clients():
 
 
 @app.after_request
-def count_router_not_found(response):
+def check_and_count_id(response: Response) -> Response:
     """
-    Compte les 404 par IP et bannie au-delà du seuil.
+    Compte les réponses 4xx de l'IP, et la bannie si le seuil est atteint.
 
-    Seul un 404 de routage compte, c'est-à-dire une requête qu'aucune route ne
-    sert : `request.url_rule` reste None. Un 404 renvoyé explicitement par une
-    vue est un comportement applicatif normal, pas une recherche de fichier
-    sensible.
+    Le comptage se fait sur la réponse, donc il englobe tous les 4xx : ceux du
+    routage comme ceux produits par les vues. Il ne dépend pas des codes, donc
+    un 4xx qu'on ne peut pas encore prévoir compte aussi.
+
+    Une IP déjà bannie n'est pas comptée.
+    Son bannissement ne peut donc pas s'allonger pendant qu'il est actif.
     """
-    if response.status_code != 404 or request.url_rule is not None:
-        return response
-
-    if should_ignore_path(request.path):
-        # Redondant aujourd'hui : `/static/<path:filename>` est une route, donc
-        # le garde précédent l'exclut déjà. Conservé comme filet indépendant,
-        # sur un signal différent (le chemin), le temps où le service des
-        # assets change de forme.
+    if not 400 <= response.status_code < 500:
         return response
 
     client_ip = _blocklist_target_ip()
 
-    if client_ip is None:
+    if client_ip is None or should_ignore_path(request.path):
+        return response
+
+    if ip_blocklist_store.is_banned(client_ip):
         return response
 
     hits = register_hit(

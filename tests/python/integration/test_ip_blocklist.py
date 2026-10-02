@@ -1,32 +1,79 @@
+import time
+from datetime import datetime, timezone
+
 import pytest
-from flask import jsonify, request
+from flask import jsonify
 
 import app as app_module
 from app import app
-from security.ip_blocklist import parse_whitelist
+from security.ip_blocklist import ban_duration, parse_whitelist
 from utils.constants import IP_BLOCKLIST_THRESHOLD
 
 
 @app.route("/__blocklist-test__/absent")
 def blocklist_test_absent():
-    """404 applicatif : la route existe, la ressource est absente."""
+    """404 rendu par une vue : la route existe, la ressource est absente."""
     return jsonify({"error": "not found"}), 404
 
 
+@app.route("/__blocklist-test__/refus")
+def blocklist_test_refus():
+    """403 rendu par une vue : la vue refuse la requête."""
+    return jsonify({"error": "Forbidden"}), 403
+
+
+@app.route("/__blocklist-test__/requete-invalide")
+def blocklist_test_requete_invalide():
+    """400 rendu par une vue : paramètres manquants."""
+    return jsonify({"error": "Bad Request"}), 400
+
+
+@app.route("/__blocklist-test__/panne")
+def blocklist_test_panne():
+    """500 rendu par une vue : erreur côté serveur."""
+    return jsonify({"error": "Internal Server Error"}), 500
+
+
+@app.route("/__blocklist-test__/slash/")
+def blocklist_test_slash():
+    """Route à slash final : `/__blocklist-test__/slash` déclenche une 308."""
+    return jsonify({"ok": True})
+
+
 class FakeStore:
-    """Store de bannissements sans base de données."""
+    """
+    Store de bannissements sans base de données, avec expiration.
+
+    Comme le store réel, il retient la fin de chaque bannissement et la durée
+    est calculée par `ban_duration`, pas recopiée : le test exerce donc la
+    vraie règle de croissance.
+    """
 
     def __init__(self):
-        self.banned = set()
+        self.banned_until = {}
         self.applied = []
 
     def is_banned(self, ip, now=None):
-        return ip in self.banned
+        moment = time.time() if now is None else now
+        return self.banned_until.get(ip, 0.0) > moment
 
     def apply_ban(self, ip, now=None):
+        moment = time.time() if now is None else now
         self.applied.append(ip)
-        self.banned.add(ip)
-        return None
+        ban_count = self.applied.count(ip)
+        banned_until = moment + ban_duration(ban_count).total_seconds()
+        self.banned_until[ip] = banned_until
+        return datetime.fromtimestamp(banned_until, timezone.utc).replace(tzinfo=None)
+
+
+def expire(store, ip):
+    """Simule l'écoulement de la durée du bannissement de `ip`."""
+    store.banned_until[ip] = time.time() - 1.0
+
+
+def set_ban(store, ip):
+    """Met `ip` en état de bannie, pour la durée d'un premier bannissement."""
+    store.banned_until[ip] = time.time() + ban_duration(1).total_seconds()
 
 
 @pytest.fixture
@@ -47,7 +94,11 @@ def client():
         yield test_client
 
 
-def get(client, path, ip="203.0.113.9"):
+_IP = "203.0.113.9"
+_HEADERS = {"X-Real-IP": _IP}
+
+
+def get(client, path, ip=_IP):
     return client.get(path, headers={"X-Real-IP": ip})
 
 
@@ -56,11 +107,11 @@ class TestBannissement:
         assert get(client, "/").status_code == 200
 
     def test_ip_bannie_recue_403(self, store, client):
-        store.banned.add("203.0.113.9")
+        set_ban(store, "203.0.113.9")
         assert get(client, "/").status_code == 403
 
     def test_403_intervient_avant_la_route(self, store, client):
-        store.banned.add("203.0.113.9")
+        set_ban(store, "203.0.113.9")
         assert get(client, "/__blocklist-test__/absent").status_code == 403
 
     def test_sans_entete_ip_aucun_blocage(self, store, client):
@@ -85,14 +136,67 @@ class TestBannissement:
         assert get(client, "/").status_code == 200
 
     def test_une_ip_bannie_ne_bloque_pas_les_autres(self, store, client):
-        store.banned.add("203.0.113.9")
+        set_ban(store, "203.0.113.9")
         assert get(client, "/", ip="203.0.113.10").status_code == 200
 
 
-class TestComptageDes404:
+class TestRequetesEnEchec:
+    """Toutes les réponses 4xx comptent, où qu'elles soient produites."""
+
     def test_404_de_routage_compte(self, store, client):
         get(client, "/.env")
         assert "203.0.113.9" in app_module.ip_blocklist_hits
+
+    def test_405_de_routage_compte(self, store, client):
+        """Un scanner teste aussi les méthodes autorisées."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            assert client.put("/api/sync-report", headers=_HEADERS).status_code == 405
+        assert store.applied == ["203.0.113.9"]
+
+    def test_redirection_ne_compte_pas(self, store, client):
+        """Une 308 est une redirection, pas un échec."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
+            assert (
+                client.get("/__blocklist-test__/slash", headers=_HEADERS).status_code
+                == 308
+            )
+        assert app_module.ip_blocklist_hits == {}
+        assert store.applied == []
+
+    def test_404_de_vue_compte(self, store, client):
+        """Une 404 rendue par une vue compte aussi."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            assert get(client, "/__blocklist-test__/absent").status_code == 404
+        assert store.applied == ["203.0.113.9"]
+
+    def test_403_de_vue_compte(self, store, client):
+        """Une 403 rendue par une vue compte aussi."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            assert get(client, "/__blocklist-test__/refus").status_code == 403
+        assert store.applied == ["203.0.113.9"]
+
+    def test_400_de_vue_compte(self, store, client):
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            get(client, "/__blocklist-test__/requete-invalide")
+        assert store.applied == ["203.0.113.9"]
+
+    def test_500_ne_compte_pas(self, store, client):
+        """Une erreur du serveur n'est pas la faute du client qui la reçoit."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
+            assert get(client, "/__blocklist-test__/panne").status_code == 500
+        assert app_module.ip_blocklist_hits == {}
+        assert store.applied == []
+
+    def test_404_static_ne_compte_pas(self, store, client):
+        """`should_ignore_path` exclut maintenant `/static/`, et lui seul."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
+            assert get(client, "/static/nexiste-pas.js").status_code == 404
+        assert app_module.ip_blocklist_hits == {}
+        assert store.applied == []
+
+    def test_200_ne_compte_pas(self, store, client):
+        get(client, "/")
+        assert app_module.ip_blocklist_hits == {}
 
     def test_sous_le_seuil_aucun_ban(self, store, client):
         for _ in range(IP_BLOCKLIST_THRESHOLD - 1):
@@ -104,48 +208,58 @@ class TestComptageDes404:
             get(client, "/.env")
         assert store.applied == ["203.0.113.9"]
 
-    def test_404_applicatif_ne_compte_pas(self, store, client):
-        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
-            assert get(client, "/__blocklist-test__/absent").status_code == 404
-        assert app_module.ip_blocklist_hits == {}
-        assert store.applied == []
-
-    def test_404_static_ne_compte_pas(self, store, client):
-        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
-            assert get(client, "/static/nexiste-pas.js").status_code == 404
-        assert app_module.ip_blocklist_hits == {}
-        assert store.applied == []
-
-    def test_200_ne_compte_pas(self, store, client):
-        get(client, "/")
-        assert app_module.ip_blocklist_hits == {}
-
     def test_compte_par_ip(self, store, client):
         get(client, "/.env", ip="203.0.113.9")
         get(client, "/.env", ip="203.0.113.10")
         assert sorted(app_module.ip_blocklist_hits) == ["203.0.113.10", "203.0.113.9"]
 
-    def test_ban_puis_compte_reinitialise(self, store, client):
-        for _ in range(IP_BLOCKLIST_THRESHOLD):
-            get(client, "/.env")
-        assert store.applied == ["203.0.113.9"]
-        store.applied.clear()
-        for _ in range(IP_BLOCKLIST_THRESHOLD - 1):
-            get(client, "/.env")
+
+class TestBannieQuiInsiste:
+    """Une IP bannie n'est pas recomptée, et son bannissement ne s'allonge pas."""
+
+    def test_403_bannie_ne_compte_pas(self, store, client):
+        set_ban(store, _IP)
+
+        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
+            assert get(client, "/.env").status_code == 403
+
+        assert app_module.ip_blocklist_hits == {}
         assert store.applied == []
 
+    def test_ban_n_est_pas_allonge_par_les_requetes(self, store, client):
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            get(client, "/.env")
+        assert store.applied == [_IP]
 
-class TestDiscriminantDeRoutage:
-    """Contrat sur lequel repose l'exclusion des 404 applicatifs."""
+        banned_until = store.banned_until[_IP]
 
-    def test_url_rule_renseigne_pour_une_route_existante(self):
-        with app.test_request_context("/api/sync-report"):
-            assert request.url_rule is not None
+        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
+            assert get(client, "/.env").status_code == 403
 
-    def test_url_rule_renseigne_pour_un_asset_manquant(self):
-        with app.test_request_context("/static/nexiste-pas.js"):
-            assert request.url_rule is not None
+        assert store.applied == [_IP]
+        assert store.banned_until[_IP] == banned_until
 
-    def test_url_rule_none_pour_un_chemin_inconnu(self):
-        with app.test_request_context("/.env"):
-            assert request.url_rule is None
+    def test_escalade_seulement_apres_expiration(self, store, client):
+        """Le bannissement s'allonge au retour de l'IP, une fois la durée écoulée."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            get(client, "/.env")
+        assert store.applied == [_IP]
+        premiere_fin = store.banned_until[_IP]
+        assert premiere_fin == pytest.approx(
+            time.time() + ban_duration(1).total_seconds(), abs=10
+        )
+
+        for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
+            assert get(client, "/.env").status_code == 403
+
+        assert store.banned_until[_IP] == premiere_fin
+
+        expire(store, _IP)
+
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            get(client, "/.env")
+
+        assert store.applied == [_IP, _IP]
+        assert store.banned_until[_IP] == pytest.approx(
+            time.time() + ban_duration(2).total_seconds(), abs=10
+        )

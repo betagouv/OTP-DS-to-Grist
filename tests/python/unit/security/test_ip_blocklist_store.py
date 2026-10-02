@@ -253,25 +253,6 @@ class TestCacheDesBannissements:
 
         db.close.assert_called_once()
 
-    def test_clear_cache(self):
-        store = _store_with_cache({"203.0.113.7": 5000.0})
-
-        store.clear_cache()
-
-        assert store._active_bans is None
-        assert store._cache_loaded_at is None
-
-    def test_clear_cache_oblige_a_recharger(self):
-        store = _store_with_cache({"203.0.113.7": 5000.0})
-        store.clear_cache()
-        db = MagicMock()
-        db.query.return_value.filter.return_value = []
-        store._new_session = MagicMock(return_value=db)
-
-        store._get_active_bans()
-
-        store._new_session.assert_called_once()
-
 
 class TestMoteurParesseux:
     @patch("security.ip_blocklist_store.create_engine")

@@ -16,11 +16,12 @@ def resolve_client_ip(headers: Mapping[str, str] | None) -> str | None:
     """
     Détermine l'adresse IP du client derrière le reverse proxy Scalingo.
 
-    Scalingo ajoute sa propre adresse à la fin du `X-Forwarded-For` et écrase
-    `X-Real-IP`, qui est donc la source la plus fiable. Les en-têtes sont
-    insensibles à la casse. Un en-tête mal formé est ignoré plutôt que
-    fatal : on préfère ne rien compter (fail-open) plutôt que bloquer tout
-    le trafic.
+    Scalingo ajoute ou met à jour `X-Real-IP` et `X-Forwarded-For` avec
+    l'adresse IP d'origine du client (documentation Scalingo, « Routing »).
+    `X-Real-IP` ne contient qu'une adresse, c'est donc la source la plus
+    fiable. Les en-têtes sont insensibles à la casse. Un en-tête mal formé est
+    ignoré plutôt que fatal : on préfère ne rien compter (fail-open) plutôt que
+    bloquer tout le trafic.
 
     `request.remote_addr` n'est jamais utilisé : c'est une adresse interne
     (`10.0.0.x`) partagée par tous les dynos, elle ne distingue pas les
@@ -121,11 +122,11 @@ def is_whitelisted(ip: str, whitelist: Iterable[object]) -> bool:
 
 def should_ignore_path(path: str | None) -> bool:
     """
-    Indique si un chemin doit être exclu du comptage des 404.
+    Indique si un chemin doit être exclu du comptage.
 
     Les fichiers servis par Flask sous `/static/` sont fournis sans
-    contrainte (le client peut demander n'importe quel nom), donc un 404
-    `/static/...` ne prouve pas du tout une intention malveillante. Les
+    contrainte (le client peut demander n'importe quel nom), donc une absence
+    sous `/static/...` ne prouve pas du tout une intention malveillante. Les
     assets front sont stables et ne changent pas de nom entre deux requêtes.
 
     Args:
@@ -148,25 +149,12 @@ def register_hit(
     window: float,
 ) -> int:
     """
-    Enregistre un 404 pour une IP et renvoie le nombre de hits dans la fenêtre.
+    Enregistre un événement pour cette IP à cet instant et renvoie le nombre
+    d'événements dans la fenêtre.
 
     Fenêtre glissante : les timestamps plus vieux que `now - window` sont
     retirés avant le comptage. Le dictionnaire `hits` est modifié en place et
     fourni par l'appelant, ce qui évite un état global implicite.
-
-    Une IP qui ne produit plus de 404 reste dans `hits` : le dictionnaire est
-    donc borné par le nombre d'IP distinctes ayant déjà fait un 404, jamais
-    purgé.
-
-    Args:
-        hits: Timestamps des 404 par IP, muté en place
-        ip: Adresse IP normalisée
-        now: Timestamp courant (epoch, en secondes)
-        window: Durée de la fenêtre glissante, en secondes
-
-    Returns:
-        Nombre de hits de cette IP dans la fenêtre, `now` compris. La
-        comparaison au seuil relève de l'appelant.
     """
     timestamps = hits.setdefault(ip, [])
     cutoff = now - window
@@ -187,13 +175,6 @@ def ban_duration(ban_count: int, base_seconds: int = BAN_BASE_SECONDS) -> timede
     Aucun plafond n'est appliqué, la seule limite est celle de la
     représentation : au-delà du 19e bannissement la durée sature à
     `BAN_MAX_SECONDS` (~2,7 millions d'années).
-
-    Args:
-        ban_count: Numéro du bannissement, à partir de 1
-        base_seconds: Durée du premier bannissement
-
-    Returns:
-        Durée du bannissement
     """
     if ban_count < 1:
         raise ValueError(f"ban_count doit être >= 1, reçu {ban_count}")

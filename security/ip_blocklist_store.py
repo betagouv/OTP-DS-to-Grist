@@ -149,13 +149,3 @@ class IpBlocklistStore:
         self._cache_loaded_at = time.monotonic()
 
         return bans
-
-    def clear_cache(self) -> None:
-        """
-        Vide le cache des bannissements.
-
-        À utiliser après un déblocage manuel en base, le délai maximal avant
-        prise en compte est alors la durée du cache.
-        """
-        self._active_bans = None
-        self._cache_loaded_at = None
