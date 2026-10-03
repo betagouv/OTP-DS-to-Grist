@@ -98,7 +98,9 @@ class IpBlocklistStore:
         db = self._new_session()
 
         try:
-            row = db.get(IpBlocklist, ip)
+            # `ip` n'est plus la clé primaire, `db.get` ne conviendrait pas : la
+            # ligne est cherchée par son index unique.
+            row = db.query(IpBlocklist).filter_by(ip=ip).one_or_none()
             ban_count = (row.ban_count if row else 0) + 1
             banned_until = now_naive + ban_duration(ban_count)
 

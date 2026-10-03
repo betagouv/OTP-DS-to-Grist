@@ -58,6 +58,7 @@ class SyncLog(Base):
 
 class IpBlocklist(Base):
     __tablename__: str = "ip_blocklist"
-    ip: Mapped[str] = mapped_column(String(45), primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
     ban_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     banned_until: Mapped[datetime | None] = mapped_column(DateTime)

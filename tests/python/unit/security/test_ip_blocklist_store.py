@@ -36,6 +36,13 @@ def _make_row(ip, ban_count, banned_until):
     return row
 
 
+def _db_with_row(row):
+    """Session mockée dont la recherche par IP renvoie `row`, None pour créer."""
+    db = MagicMock()
+    db.query.return_value.filter_by.return_value.one_or_none.return_value = row
+    return db
+
+
 class TestIsBanned:
     def test_ip_bannie(self):
         store = _store_with_cache({"203.0.113.7": 2000.0})
@@ -71,20 +78,19 @@ class TestIsBanned:
 
 class TestApplyBan:
     def test_cree_la_ligne_si_absente(self):
-        db = MagicMock()
-        db.get.return_value = None
+        db = _db_with_row(None)
         store = _store_with_db(db)
 
         store.apply_ban("203.0.113.7", now=1000.0)
 
-        db.get.assert_called_once_with(IpBlocklist, "203.0.113.7")
+        db.query.assert_called_once_with(IpBlocklist)
+        db.query.return_value.filter_by.assert_called_once_with(ip="203.0.113.7")
         db.add.assert_called_once()
         db.commit.assert_called_once()
 
     def test_incremente_le_compteur_d_une_ip_deja_bannie(self):
         existing = _make_row("203.0.113.7", 2, None)
-        db = MagicMock()
-        db.get.return_value = existing
+        db = _db_with_row(existing)
         store = _store_with_db(db)
 
         store.apply_ban("203.0.113.7", now=1000.0)
@@ -94,8 +100,7 @@ class TestApplyBan:
 
     def test_reutilise_la_ligne_existante(self):
         existing = _make_row("203.0.113.7", 1, None)
-        db = MagicMock()
-        db.get.return_value = existing
+        db = _db_with_row(existing)
         store = _store_with_db(db)
 
         banned_until = store.apply_ban("203.0.113.7", now=1000.0)
@@ -103,8 +108,7 @@ class TestApplyBan:
         assert existing.banned_until == banned_until
 
     def test_premier_bannissement_dure_une_heure(self):
-        db = MagicMock()
-        db.get.return_value = None
+        db = _db_with_row(None)
         store = _store_with_db(db)
 
         banned_until = store.apply_ban("203.0.113.7", now=0.0)
@@ -114,8 +118,7 @@ class TestApplyBan:
     def test_duree_croissant_avec_le_nombre_de_bannissements(self):
         durations = []
         for previous_count in (0, 1, 2):
-            db = MagicMock()
-            db.get.return_value = _make_row("203.0.113.7", previous_count, None)
+            db = _db_with_row(_make_row("203.0.113.7", previous_count, None))
             store = _store_with_db(db)
 
             durations.append(store.apply_ban("203.0.113.7", now=0.0))
@@ -126,8 +129,7 @@ class TestApplyBan:
         assert durations[2] - base == timedelta(hours=16)
 
     def test_banned_until_en_utc_naive(self):
-        db = MagicMock()
-        db.get.return_value = None
+        db = _db_with_row(None)
         store = _store_with_db(db)
 
         banned_until = store.apply_ban("203.0.113.7", now=0.0)
@@ -136,8 +138,7 @@ class TestApplyBan:
         assert banned_until == datetime(1970, 1, 1, 1, 0, 0)
 
     def test_ferme_la_session(self):
-        db = MagicMock()
-        db.get.return_value = None
+        db = _db_with_row(None)
         store = _store_with_db(db)
 
         store.apply_ban("203.0.113.7", now=1000.0)
@@ -145,8 +146,8 @@ class TestApplyBan:
         db.close.assert_called_once()
 
     def test_ferme_la_session_meme_en_cas_d_erreur(self):
-        db = MagicMock()
-        db.get.side_effect = RuntimeError("base injoignable")
+        db = _db_with_row(None)
+        db.query.side_effect = RuntimeError("base injoignable")
         store = _store_with_db(db)
 
         with pytest.raises(RuntimeError):
@@ -155,8 +156,7 @@ class TestApplyBan:
         db.close.assert_called_once()
 
     def test_invalide_le_cache(self):
-        db = MagicMock()
-        db.get.return_value = None
+        db = _db_with_row(None)
         store = _store_with_db(db)
         store._active_bans = {"203.0.113.7": 5000.0}
         store._cache_loaded_at = time.monotonic()

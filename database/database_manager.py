@@ -134,7 +134,8 @@ class DatabaseManager:
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ip_blocklist (
-                    ip VARCHAR(45) PRIMARY KEY,
+                    id SERIAL PRIMARY KEY,
+                    ip VARCHAR(45) NOT NULL UNIQUE,
                     ban_count INTEGER NOT NULL DEFAULT 0,
                     banned_until TIMESTAMP
                 )
