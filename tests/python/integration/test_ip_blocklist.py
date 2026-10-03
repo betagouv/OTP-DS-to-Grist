@@ -53,12 +53,11 @@ class FakeStore:
         self.banned_until = {}
         self.applied = []
 
-    def is_banned(self, ip, now=None):
-        moment = time.time() if now is None else now
-        return self.banned_until.get(ip, 0.0) > moment
+    def is_banned(self, ip):
+        return self.banned_until.get(ip, 0.0) > time.time()
 
-    def apply_ban(self, ip, now=None):
-        moment = time.time() if now is None else now
+    def apply_ban(self, ip):
+        moment = time.time()
         self.applied.append(ip)
         ban_count = self.applied.count(ip)
         banned_until = moment + ban_duration(ban_count).total_seconds()

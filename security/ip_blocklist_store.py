@@ -1,13 +1,23 @@
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Float, create_engine, func
+from sqlalchemy.orm import InstrumentedAttribute, sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from database.models import IpBlocklist
 from security.ip_blocklist import ban_duration
 
 DEFAULT_CACHE_TTL = 60.0
+
+
+def _as_epoch(
+    column: InstrumentedAttribute[datetime | None]
+) -> ColumnElement[float]:
+    """
+    Convertit une colonne DateTime en secondes via PostgreSQL.
+    """
+    return func.extract("epoch", column).cast(Float)
 
 
 class IpBlocklistStore:
@@ -59,53 +69,36 @@ class IpBlocklistStore:
 
         return self._session_factory()
 
-    def is_banned(self, ip: str, now: float | None = None) -> bool:
-        """
-        Indique si une IP est actuellement bannie.
+    def is_banned(self, ip: str) -> bool:
+        banned_until = self._get_active_bans().get(ip)
 
-        Args:
-            ip: Adresse IP normalisée
-            now: Timestamp de référence (epoch, en secondes), par défaut
-                l'heure courante
+        return banned_until is not None and banned_until > time.time()
 
-        Returns:
-            True si un bannissement est encore actif
-        """
-        moment = time.time() if now is None else now
-        bans = self._get_active_bans()
-        banned_until = bans.get(ip)
-
-        return banned_until is not None and banned_until > moment
-
-    def apply_ban(self, ip: str, now: float | None = None) -> datetime:
+    def apply_ban(self, ip: str) -> datetime:
         """
         Bannis une IP pour une durée dépendant de son nombre de bannissements.
 
         Le compteur est lu puis incrémenté : la durée vient de `ban_duration`,
         jamais d'un calcul SQL, pour ne pas dupliquer la règle en base.
-
-        Args:
-            ip: Adresse IP normalisée
-            now: Timestamp du bannissement (epoch, en secondes), par défaut
-                l'heure courante
-
-        Returns:
-            Fin du bannissement, en UTC naïve
         """
-        moment = time.time() if now is None else now
-        now_naive = self._as_naive_utc(datetime.fromtimestamp(moment, timezone.utc))
+        moment = self._as_naive_utc(datetime.fromtimestamp(
+            time.time(),
+            timezone.utc
+        ))
 
         db = self._new_session()
 
         try:
-            # `ip` n'est plus la clé primaire, `db.get` ne conviendrait pas : la
-            # ligne est cherchée par son index unique.
             row = db.query(IpBlocklist).filter_by(ip=ip).one_or_none()
             ban_count = (row.ban_count if row else 0) + 1
-            banned_until = now_naive + ban_duration(ban_count)
+            banned_until = moment + ban_duration(ban_count)
 
             if row is None:
-                row = IpBlocklist(ip=ip, ban_count=ban_count, banned_until=banned_until)
+                row = IpBlocklist(
+                    ip=ip,
+                    ban_count=ban_count,
+                    banned_until=banned_until
+                )
                 db.add(row)
             else:
                 row.ban_count = ban_count
@@ -120,30 +113,22 @@ class IpBlocklistStore:
         return banned_until
 
     def _get_active_bans(self) -> dict[str, float]:
-        """
-        Bannissements encore actifs, sous forme d'un cache ip -> fin de ban (epoch).
-
-        Le cache est reconstruit dès qu'il a plus de `cache_ttl`. Un
-        bannissement appliqué entre deux rechargements invalide le cache, donc
-        il s'applique immédiatement sans attendre l'expiration.
-        """
         if self._active_bans is not None:
             age = time.monotonic() - self._cache_loaded_at
             if age < self._cache_ttl:
                 return self._active_bans
 
+        moment = time.time()
+        epoch = _as_epoch(IpBlocklist.banned_until)
+
         db = self._new_session()
         try:
-            now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
-            bans = {}
-            query = db.query(IpBlocklist).filter(IpBlocklist.banned_until.isnot(None))
-
-            for row in query:
-                if row.banned_until is None or row.banned_until <= now_naive:
-                    continue
-                bans[row.ip] = row.banned_until.replace(
-                    tzinfo=timezone.utc
-                ).timestamp()
+            # La sélection se fait en epoch : PostgreSQL compare
+            # et le store ne voit que des `float`.
+            # Les lignes sans bannissement donnent NULL
+            # et sont donc exclues par la comparaison
+            query = db.query(IpBlocklist.ip, epoch).filter(epoch > moment)
+            bans = dict(query)
         finally:
             db.close()
 

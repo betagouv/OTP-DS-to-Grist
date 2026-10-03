@@ -1,11 +1,28 @@
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql.elements import ColumnElement
 
 from database.models import IpBlocklist
-from security.ip_blocklist_store import IpBlocklistStore
+from security.ip_blocklist_store import IpBlocklistStore, _as_epoch
+
+
+@contextmanager
+def _frozen_time(moment):
+    """
+    Fige l'heure lue par le store, le temps du bloc.
+
+    `security.ip_blocklist_store` utilise le module `time` : c'est donc
+    l'horloge du processus qui est figée, pas une horloge locale au store.
+    `time.monotonic` reste réel, les tests de validité du cache sont donc
+    préservés.
+    """
+    with patch("time.time", return_value=moment):
+        yield
 
 
 def _naive_utc(epoch):
@@ -44,34 +61,58 @@ def _db_with_row(row):
 
 
 class TestIsBanned:
+    """
+    La lecture passe par le cache, la comparaison se fait sur l'heure courante.
+    """
+
     def test_ip_bannie(self):
-        store = _store_with_cache({"203.0.113.7": 2000.0})
-        assert store.is_banned("203.0.113.7", now=1000.0) is True
+        with _frozen_time(1000.0):
+            store = _store_with_cache({"203.0.113.7": 2000.0})
+
+            assert store.is_banned("203.0.113.7") is True
 
     def test_ban_expire(self):
-        store = _store_with_cache({"203.0.113.7": 1000.0})
-        assert store.is_banned("203.0.113.7", now=2000.0) is False
+        with _frozen_time(1000.0):
+            store = _store_with_cache({"203.0.113.7": 900.0})
 
-    def test_ip_non_bannie(self):
-        store = _store_with_cache({"203.0.113.7": 5000.0})
-        assert store.is_banned("198.51.100.1", now=1000.0) is False
-
-    def test_cache_vide(self):
-        store = _store_with_cache({})
-        assert store.is_banned("203.0.113.7", now=1000.0) is False
+            assert store.is_banned("203.0.113.7") is False
 
     def test_ban_expirant_exactement_maintenant(self):
-        store = _store_with_cache({"203.0.113.7": 1000.0})
-        assert store.is_banned("203.0.113.7", now=1000.0) is False
+        with _frozen_time(1000.0):
+            store = _store_with_cache({"203.0.113.7": 1000.0})
+
+            assert store.is_banned("203.0.113.7") is False
+
+    def test_ip_sans_ban(self):
+        with _frozen_time(1000.0):
+            store = _store_with_cache({})
+
+            assert store.is_banned("203.0.113.7") is False
+
+    def test_autre_ip_non_bannie(self):
+        with _frozen_time(1000.0):
+            store = _store_with_cache({"203.0.113.7": 2000.0})
+
+            assert store.is_banned("198.51.100.1") is False
+
+    def test_sert_le_cache_sans_relire_la_base(self):
+        """Le chemin de production ne relit pas la base à chaque appel."""
+        with _frozen_time(1000.0):
+            store = _store_with_cache({"203.0.113.7": 2000.0})
+
+            store.is_banned("203.0.113.7")
+
+            store._new_session.assert_not_called()
 
     def test_recharge_la_base_quand_le_cache_a_expire(self):
-        store = _store_with_cache({"203.0.113.7": 5000.0}, cache_ttl=60.0)
+        store = _store_with_cache({"203.0.113.7": 2000.0}, cache_ttl=60.0)
         store._cache_loaded_at = time.monotonic() - 61.0
         db = MagicMock()
-        store._new_session = MagicMock(return_value=db)
         db.query.return_value.filter.return_value = []
+        store._new_session = MagicMock(return_value=db)
 
-        store.is_banned("203.0.113.7", now=1000.0)
+        with _frozen_time(1000.0):
+            store.is_banned("203.0.113.7")
 
         store._new_session.assert_called_once()
 
@@ -81,7 +122,8 @@ class TestApplyBan:
         db = _db_with_row(None)
         store = _store_with_db(db)
 
-        store.apply_ban("203.0.113.7", now=1000.0)
+        with _frozen_time(1000.0):
+            store.apply_ban("203.0.113.7")
 
         db.query.assert_called_once_with(IpBlocklist)
         db.query.return_value.filter_by.assert_called_once_with(ip="203.0.113.7")
@@ -93,7 +135,8 @@ class TestApplyBan:
         db = _db_with_row(existing)
         store = _store_with_db(db)
 
-        store.apply_ban("203.0.113.7", now=1000.0)
+        with _frozen_time(1000.0):
+            store.apply_ban("203.0.113.7")
 
         assert existing.ban_count == 3
         db.add.assert_not_called()
@@ -103,7 +146,8 @@ class TestApplyBan:
         db = _db_with_row(existing)
         store = _store_with_db(db)
 
-        banned_until = store.apply_ban("203.0.113.7", now=1000.0)
+        with _frozen_time(1000.0):
+            banned_until = store.apply_ban("203.0.113.7")
 
         assert existing.banned_until == banned_until
 
@@ -111,17 +155,20 @@ class TestApplyBan:
         db = _db_with_row(None)
         store = _store_with_db(db)
 
-        banned_until = store.apply_ban("203.0.113.7", now=0.0)
+        with _frozen_time(0.0):
+            banned_until = store.apply_ban("203.0.113.7")
 
         assert banned_until - _naive_utc(0.0) == timedelta(hours=1)
 
     def test_duree_croissant_avec_le_nombre_de_bannissements(self):
         durations = []
-        for previous_count in (0, 1, 2):
-            db = _db_with_row(_make_row("203.0.113.7", previous_count, None))
-            store = _store_with_db(db)
 
-            durations.append(store.apply_ban("203.0.113.7", now=0.0))
+        with _frozen_time(0.0):
+            for previous_count in (0, 1, 2):
+                db = _db_with_row(_make_row("203.0.113.7", previous_count, None))
+                store = _store_with_db(db)
+
+                durations.append(store.apply_ban("203.0.113.7"))
 
         base = _naive_utc(0.0)
         assert durations[0] - base == timedelta(hours=1)
@@ -132,7 +179,8 @@ class TestApplyBan:
         db = _db_with_row(None)
         store = _store_with_db(db)
 
-        banned_until = store.apply_ban("203.0.113.7", now=0.0)
+        with _frozen_time(0.0):
+            banned_until = store.apply_ban("203.0.113.7")
 
         assert banned_until.tzinfo is None
         assert banned_until == datetime(1970, 1, 1, 1, 0, 0)
@@ -141,7 +189,8 @@ class TestApplyBan:
         db = _db_with_row(None)
         store = _store_with_db(db)
 
-        store.apply_ban("203.0.113.7", now=1000.0)
+        with _frozen_time(1000.0):
+            store.apply_ban("203.0.113.7")
 
         db.close.assert_called_once()
 
@@ -150,70 +199,61 @@ class TestApplyBan:
         db.query.side_effect = RuntimeError("base injoignable")
         store = _store_with_db(db)
 
-        with pytest.raises(RuntimeError):
-            store.apply_ban("203.0.113.7", now=1000.0)
+        with _frozen_time(1000.0), pytest.raises(RuntimeError):
+            store.apply_ban("203.0.113.7")
 
         db.close.assert_called_once()
 
     def test_invalide_le_cache(self):
+        """Seule garantie de fraîcheur : un ban appliqué invalide le cache."""
         db = _db_with_row(None)
         store = _store_with_db(db)
         store._active_bans = {"203.0.113.7": 5000.0}
         store._cache_loaded_at = time.monotonic()
 
-        store.apply_ban("203.0.113.9", now=1000.0)
+        with _frozen_time(1000.0):
+            store.apply_ban("203.0.113.9")
 
         assert store._active_bans is None
 
 
 class TestCacheDesBannissements:
-    def test_charge_les_bannissements_actifs_depuis_la_base(self):
-        now = time.time()
+    def test_transforme_les_lignes_en_dictionnaire(self):
+        moment = 1000.0
         db = MagicMock()
         db.query.return_value.filter.return_value = [
-            _make_row("203.0.113.7", 1, _naive_utc(now + 3600)),
-            _make_row("198.51.100.1", 1, _naive_utc(now - 3600)),
-            _make_row("192.0.2.1", 1, _naive_utc(now + 7200)),
+            ("203.0.113.7", moment + 3600),
+            ("192.0.2.1", moment + 7200),
         ]
         store = _store_with_db(db)
 
-        bans = store._get_active_bans()
+        with _frozen_time(moment):
+            bans = store._get_active_bans()
 
-        assert set(bans) == {"203.0.113.7", "192.0.2.1"}
+        assert bans == {"203.0.113.7": moment + 3600, "192.0.2.1": moment + 7200}
 
-    def test_les_fins_de_ban_sont_des_timestamps(self):
-        now = time.time()
-        db = MagicMock()
-        db.query.return_value.filter.return_value = [
-            _make_row("203.0.113.7", 1, _naive_utc(now + 3600)),
-        ]
-        store = _store_with_db(db)
-
-        bans = store._get_active_bans()
-
-        assert bans["203.0.113.7"] == pytest.approx(now + 3600, abs=1)
-
-    def test_ignore_les_lignes_sans_ban(self):
-        db = MagicMock()
-        db.query.return_value.filter.return_value = [
-            _make_row("203.0.113.7", 1, None),
-        ]
-        store = _store_with_db(db)
-
-        assert store._get_active_bans() == {}
-
-    def test_ignore_les_bans_expires(self):
+    def test_le_filtre_compare_le_meme_epoch_que_la_projection(self):
+        """Divergents, le cache garderait des fins de ban que SQL a écartées."""
+        moment = 1000.0
         db = MagicMock()
         db.query.return_value.filter.return_value = []
         store = _store_with_db(db)
 
-        assert store._get_active_bans() == {}
+        with _frozen_time(moment):
+            store._get_active_bans()
+
+        _, projete = db.query.call_args.args
+        compare = db.query.return_value.filter.call_args.args[0]
+        dialect = postgresql.dialect()
+        assert str(compare.left.compile(dialect=dialect)) == str(
+            projete.compile(dialect=dialect)
+        )
+        assert compare.right.value == moment
 
     def test_sert_le_cache_sans_relire_la_base(self):
         store = _store_with_cache({"203.0.113.7": 5000.0}, cache_ttl=60.0)
 
         assert store._get_active_bans() == {"203.0.113.7": 5000.0}
-        store._new_session.assert_not_called()
 
     def test_recharge_apres_expiration_du_cache(self):
         store = _store_with_cache({"203.0.113.7": 5000.0}, cache_ttl=60.0)
@@ -252,6 +292,24 @@ class TestCacheDesBannissements:
             store._get_active_bans()
 
         db.close.assert_called_once()
+
+
+class TestExpressionEpoch:
+    """La conversion en epoch est faite par PostgreSQL, pas par Python."""
+
+    def test_compilie_en_sql_postgresql(self):
+        sql = str(
+            _as_epoch(IpBlocklist.banned_until).compile(dialect=postgresql.dialect())
+        )
+
+        assert sql == "CAST(EXTRACT(epoch FROM ip_blocklist.banned_until) AS FLOAT)"
+
+    def test_rend_une_expression_de_type_float(self):
+        """L'annotation de retour annonce un `ColumnElement[float]`."""
+        expression = _as_epoch(IpBlocklist.banned_until)
+
+        assert isinstance(expression, ColumnElement)
+        assert expression.type.python_type is float
 
 
 class TestMoteurParesseux:
