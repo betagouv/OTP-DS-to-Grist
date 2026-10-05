@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from grist import base_url
+from grist.base_url import GristBaseUrlNotAllowedError
 from grist.client import (
     GRIST_FALLBACK_429_DELAY,
     GRIST_MAX_429_RETRIES,
@@ -66,6 +68,60 @@ def _mock_response(status_code=200, headers=None):
     response.status_code = status_code
     response.headers = headers or {}
     return response
+
+
+class TestInitBaseUrlWhitelist:
+    """Tests unitaires pour le contrôle de la liste blanche dans GristClient.__init__"""
+
+    def test_allowed_base_url(self):
+        client = GristClient("https://grist.example.com", "test_key")
+        assert client.base_url == "https://grist.example.com"
+
+    def test_trailing_slash_stripped_after_validation(self):
+        client = GristClient("https://grist.example.com/api/", "test_key")
+        assert client.base_url == "https://grist.example.com/api"
+
+    def test_local_url_with_port_and_path_allowed(self):
+        client = GristClient("http://localhost:8484/o/docs/api", "test_key")
+        assert client.base_url == "http://localhost:8484/o/docs/api"
+
+    def test_base_url_outside_whitelist_refused(self, monkeypatch):
+        monkeypatch.setattr(base_url, "BASE_URL_WHITELIST", ("grist.example.com",))
+
+        with pytest.raises(GristBaseUrlNotAllowedError) as excinfo:
+            GristClient("https://grist.evil.example", "test_key")
+
+        assert "grist.evil.example" in str(excinfo.value)
+
+    def test_refusal_message_does_not_reveal_whitelist(self, monkeypatch):
+        monkeypatch.setattr(
+            base_url,
+            "BASE_URL_WHITELIST",
+            ("grist.example.com", "grist.interdit.example"),
+        )
+
+        with pytest.raises(GristBaseUrlNotAllowedError) as excinfo:
+            GristClient("https://grist.evil.example", "test_key")
+
+        message = str(excinfo.value)
+        assert "GRIST_BASE_URL_WHITELIST" in message
+        assert "grist.interdit.example" not in message
+        assert "grist.example.com" not in message
+
+    def test_empty_base_url_refused(self):
+        with pytest.raises(GristBaseUrlNotAllowedError):
+            GristClient("", "test_key")
+
+    def test_refused_before_any_http_session(self, monkeypatch):
+        monkeypatch.setattr(base_url, "BASE_URL_WHITELIST", ("grist.example.com",))
+        mock_build = MagicMock()
+
+        with patch(
+            "grist.client.build_rate_limited_session", mock_build
+        ), pytest.raises(GristBaseUrlNotAllowedError):
+            GristClient("https://grist.evil.example", "test_key")
+
+        mock_build.assert_not_called()
 
 
 class TestExtractEmailFromScim:
