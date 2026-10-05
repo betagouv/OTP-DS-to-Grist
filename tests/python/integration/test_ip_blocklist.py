@@ -221,6 +221,29 @@ class TestRequetesEnEchec:
             get(client, "/__blocklist-test__/requete-invalide")
         assert store.applied == ["203.0.113.9"]
 
+    def test_heure_de_fin_de_ban_est_exacte(self, store, client, caplog):
+        """
+        L'heure de fin de bannissement est stockée en UTC naïve.
+
+        Le log doit la rendre avec son fuseau, sinon il affiche une heure
+        antérieure à celle des lignes qui l'entourent, puisque celles-ci
+        sont en heure locale.
+        """
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            get(client, "/.env")
+
+        assert store.applied == ["203.0.113.9"]
+
+        message = caplog.records[-1].getMessage()
+        fin_affichee = datetime.fromisoformat(
+            message.split("jusqu'au ")[1].split(" après")[0]
+        )
+
+        assert fin_affichee.utcoffset() is not None
+        assert fin_affichee.timestamp() == pytest.approx(
+            store.banned_until["203.0.113.9"], abs=1
+        )
+
     def test_500_ne_compte_pas(self, store, client):
         """Une erreur du serveur n'est pas la faute du client qui la reçoit."""
         for _ in range(IP_BLOCKLIST_THRESHOLD + 2):

@@ -171,9 +171,11 @@ def check_and_count_ip(response: Response) -> Response:
 
     if hits >= IP_BLOCKLIST_THRESHOLD:
         banned_until = ip_blocklist_store.apply_ban(client_ip)
+        banned_until_local = banned_until.replace(tzinfo=timezone.utc).astimezone()
+
         logger.warning(
             "IP bannie jusqu'au %s après %d hits dans la fenêtre : %s",
-            banned_until,
+            banned_until_local,
             hits,
             client_ip,
         )
