@@ -25,6 +25,7 @@ from grist.client import GristClient
 from security.ip_blocklist import (
     is_whitelisted,
     parse_whitelist,
+    purge_stale_hits,
     register_hit,
     resolve_client_ip,
     should_ignore_path,
@@ -130,7 +131,7 @@ def check_banned_ip() -> tuple[Response, int] | None:
 
 
 @app.after_request
-def check_and_count_id(response: Response) -> Response:
+def check_and_count_ip(response: Response) -> Response:
     """
     Compte les réponses 4xx de l'IP, et la bannie si le seuil est atteint.
 
@@ -140,7 +141,11 @@ def check_and_count_id(response: Response) -> Response:
 
     Une IP déjà bannie n'est pas comptée.
     Son bannissement ne peut donc pas s'allonger pendant qu'il est actif.
+
+    À chaque comptage, les IP dont plus aucune erreur n'est récente sont oubliées.
     """
+    global ip_blocklist_hits
+
     if not 400 <= response.status_code < 500:
         return response
 
@@ -152,8 +157,16 @@ def check_and_count_id(response: Response) -> Response:
     if ip_blocklist_store.is_banned(client_ip):
         return response
 
-    hits = register_hit(
-        ip_blocklist_hits, client_ip, time.time(), IP_BLOCKLIST_WINDOW_SECONDS
+    now = time.time()
+    ip_blocklist_hits, hits = register_hit(
+        purge_stale_hits(
+            ip_blocklist_hits,
+            now,
+            IP_BLOCKLIST_WINDOW_SECONDS
+        ),
+        client_ip,
+        now,
+        IP_BLOCKLIST_WINDOW_SECONDS
     )
 
     if hits >= IP_BLOCKLIST_THRESHOLD:

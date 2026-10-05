@@ -7,7 +7,7 @@ from flask import jsonify
 import app as app_module
 from app import app
 from security.ip_blocklist import ban_duration, parse_whitelist
-from utils.constants import IP_BLOCKLIST_THRESHOLD
+from utils.constants import IP_BLOCKLIST_THRESHOLD, IP_BLOCKLIST_WINDOW_SECONDS
 
 
 @app.route("/__blocklist-test__/absent")
@@ -93,6 +93,35 @@ def client():
         yield test_client
 
 
+class _Clock:
+    """
+    Horloge gelée pour app.py.
+
+    Seule `time.time()` y est définie, qui est la seule horloge lue par app.py :
+    la remplacer dans l'espace de noms du module suffit donc, et le reste du
+    processus, horloge comprise, continue d'avancer.
+    """
+
+    def __init__(self, moment):
+        self.moment = moment
+
+    def time(self):
+        return self.moment
+
+    def advance(self, seconds):
+        """Fait écouler `seconds` secondes."""
+        self.moment += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Fige l'horloge d'app.py, pour faire écouler la fenêtre des compteurs."""
+    gelee = _Clock(time.time())
+    monkeypatch.setattr(app_module, "time", gelee)
+
+    return gelee
+
+
 _IP = "203.0.113.9"
 _HEADERS = {"X-Real-IP": _IP}
 
@@ -132,6 +161,19 @@ class TestBannissement:
         for _ in range(IP_BLOCKLIST_THRESHOLD + 2):
             get(client, "/.env", ip="203.0.113.9")
         assert store.applied == []
+        assert get(client, "/").status_code == 200
+
+    def test_une_ip_en_liste_blanche_passe_meme_bannie(
+        self, store, client, monkeypatch
+    ):
+        """La liste blanche sert aussi à se débloquer d'un bannissement."""
+        monkeypatch.setattr(
+            app_module,
+            "ip_blocklist_whitelist",
+            parse_whitelist(["203.0.113.0/24"]),
+        )
+        set_ban(store, _IP)
+
         assert get(client, "/").status_code == 200
 
     def test_une_ip_bannie_ne_bloque_pas_les_autres(self, store, client):
@@ -262,3 +304,36 @@ class TestBannieQuiInsiste:
         assert store.banned_until[_IP] == pytest.approx(
             time.time() + ban_duration(2).total_seconds(), abs=10
         )
+
+
+class TestMenageDesCompteurs:
+    """Les IP dont plus aucune erreur n'est récente finissent par être oubliées."""
+
+    def test_les_ips_expirees_sont_oubliees(self, store, client, clock):
+        for index in range(3):
+            get(client, "/.env", ip=f"203.0.113.{index}")
+        assert len(app_module.ip_blocklist_hits) == 3
+
+        clock.advance(IP_BLOCKLIST_WINDOW_SECONDS + 1)
+        get(client, "/.env", ip="203.0.113.200")
+
+        assert list(app_module.ip_blocklist_hits) == ["203.0.113.200"]
+
+    def test_les_ips_sont_conservees_avant_la_frontiere(self, store, client, clock):
+        for index in range(3):
+            get(client, "/.env", ip=f"203.0.113.{index}")
+
+        clock.advance(IP_BLOCKLIST_WINDOW_SECONDS / 2)
+        get(client, "/.env", ip="203.0.113.200")
+
+        assert len(app_module.ip_blocklist_hits) == 4
+
+    def test_une_ip_qui_pause_repart_de_zero(self, store, client, clock):
+        """Oublier une IP expirée ne peut pas non plus déclencher un ban."""
+        for _ in range(IP_BLOCKLIST_THRESHOLD - 1):
+            get(client, "/.env")
+
+        clock.advance(IP_BLOCKLIST_WINDOW_SECONDS + 1)
+        get(client, "/.env")
+
+        assert store.applied == []

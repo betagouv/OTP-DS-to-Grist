@@ -1,15 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
 from database.models import (
-    Base,
     IpBlocklist,
     OtpConfiguration,
     SyncLog,
     UserSchedule,
 )
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 
 class TestOtpConfiguration:
     """Tests unitaires pour le modèle OtpConfiguration"""

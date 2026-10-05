@@ -8,6 +8,7 @@ from security.ip_blocklist import (
     ban_duration,
     is_whitelisted,
     parse_whitelist,
+    purge_stale_hits,
     register_hit,
     resolve_client_ip,
     should_ignore_path,
@@ -166,72 +167,109 @@ class TestShouldIgnorePath:
         assert should_ignore_path(None) is False
 
 
+def _strikes(
+    ip: str, moments: list[float], window: float = 10.0
+) -> tuple[dict[str, list[float]], list[int]]:
+    """Enregistre une série de hits pour une IP, rend les compteurs et les comptes."""
+    hits: dict[str, list[float]] = {}
+    counts = []
+
+    for moment in moments:
+        hits, count = register_hit(hits, ip, moment, window)
+        counts.append(count)
+
+    return hits, counts
+
+
 class TestRegisterHit:
     def test_premier_hit(self):
-        hits = {}
-        assert register_hit(hits, "192.0.2.1", 1000.0, window=10.0) == 1
+        hits, counts = _strikes("192.0.2.1", [1000.0])
+        assert counts == [1]
 
     def test_trois_hits_dans_la_fenetre_franchissent_le_seuil(self):
-        hits = {}
-        counts = [
-            register_hit(hits, "192.0.2.1", t, 10.0)
-            for t in (1000.0, 1001.0, 1002.0)
-        ]
+        hits, counts = _strikes("192.0.2.1", [1000.0, 1001.0, 1002.0])
         assert counts == [1, 2, 3]
         assert max(counts) >= 3
 
     def test_trois_hits_sur_une_heure_ne_franchissent_pas(self):
-        hits = {}
-        counts = [
-            register_hit(hits, "192.0.2.1", t, 10.0)
-            for t in (1000.0, 2000.0, 3000.0)
-        ]
+        hits, counts = _strikes("192.0.2.1", [1000.0, 2000.0, 3000.0])
         assert counts == [1, 1, 1]
         assert max(counts) < 3
 
     def test_la_fenetre_glisse(self):
-        hits = {}
-        assert register_hit(hits, "192.0.2.1", 1000.0, 10.0) == 1
-        assert register_hit(hits, "192.0.2.1", 1005.0, 10.0) == 2
-        assert register_hit(hits, "192.0.2.1", 1020.0, 10.0) == 1
+        hits, counts = _strikes("192.0.2.1", [1000.0, 1005.0, 1020.0])
+        assert counts == [1, 2, 1]
 
     def test_borne_inferieure_de_la_fenetre_incluse(self):
-        hits = {}
-        register_hit(hits, "192.0.2.1", 1000.0, 10.0)
-        assert register_hit(hits, "192.0.2.1", 1010.0, 10.0) == 2
+        hits, counts = _strikes("192.0.2.1", [1000.0, 1010.0])
+        assert counts == [1, 2]
 
     def test_les_ips_sont_independantes(self):
-        hits = {}
-        register_hit(hits, "192.0.2.1", 1000.0, 10.0)
-        register_hit(hits, "192.0.2.1", 1001.0, 10.0)
-        assert register_hit(hits, "198.51.100.1", 1001.0, 10.0) == 1
+        hits, _ = _strikes("192.0.2.1", [1000.0, 1001.0])
+        hits, count = register_hit(hits, "198.51.100.1", 1001.0, 10.0)
+        assert count == 1
 
-    def test_le_dictionnaire_est_modifie_en_place(self):
-        hits = {}
-        register_hit(hits, "192.0.2.1", 1000.0, 10.0)
-        register_hit(hits, "192.0.2.1", 1005.0, 10.0)
-        assert hits == {"192.0.2.1": [1000.0, 1005.0]}
+    def test_le_dictionnaire_recu_n_est_pas_modifie(self):
+        avant = {}
+        hits, count = register_hit(avant, "192.0.2.1", 1000.0, 10.0)
+        assert hits == {"192.0.2.1": [1000.0]}
+        assert count == 1
+        assert avant == {}
 
     def test_les_timestamps_hors_fenetre_sont_retires(self):
-        hits = {}
-        register_hit(hits, "192.0.2.1", 1000.0, 10.0)
-        register_hit(hits, "192.0.2.1", 1001.0, 10.0)
-        register_hit(hits, "192.0.2.1", 1020.0, 10.0)
+        hits, _ = _strikes("192.0.2.1", [1000.0, 1001.0, 1020.0])
         assert hits == {"192.0.2.1": [1020.0]}
 
     def test_rafale_du_scanner_mesuree(self):
-        hits = {}
-        counts = [
-            register_hit(hits, "212.28.181.217", t, 10.0)
-            for t in (1000.0, 1000.4, 1001.2)
-        ]
+        hits, counts = _strikes("212.28.181.217", [1000.0, 1000.4, 1001.2])
         assert counts == [1, 2, 3]
 
     def test_la_memoire_croit_seulement_avec_les_ips_qui_ont_strike(self):
-        hits = {}
-        assert hits == {}
-        register_hit(hits, "192.0.2.1", 1000.0, 10.0)
+        hits, _ = _strikes("192.0.2.1", [1000.0])
         assert list(hits) == ["192.0.2.1"]
+
+
+class TestPurgeStaleHits:
+    def test_une_ip_hors_fenetre_est_oubliee(self):
+        hits, _ = _strikes("192.0.2.1", [1000.0])
+        assert purge_stale_hits(hits, 1011.0, 10.0) == {}
+
+    def test_plusieurs_evenements_tous_hors_fenetre_oublient_l_ip(self):
+        hits, _ = _strikes("192.0.2.1", [1000.0, 1001.0, 1002.0])
+        assert purge_stale_hits(hits, 1030.0, 10.0) == {}
+
+    def test_une_ip_dans_la_fenetre_est_conservee(self):
+        hits, _ = _strikes("192.0.2.1", [1000.0])
+        assert purge_stale_hits(hits, 1005.0, 10.0) == {"192.0.2.1": [1000.0]}
+
+    def test_la_frontiere_inferieure_est_incluse(self):
+        hits, _ = _strikes("192.0.2.1", [1000.0])
+        assert purge_stale_hits(hits, 1010.0, 10.0) == {"192.0.2.1": [1000.0]}
+
+    def test_le_dernier_evenement_decide(self):
+        hits, _ = _strikes("192.0.2.1", [1000.0, 1008.0])
+        rendu = purge_stale_hits(hits, 1012.0, 10.0)
+        assert rendu == {"192.0.2.1": [1000.0, 1008.0]}
+
+    def test_seules_les_ips_hors_fenetre_sont_oubliees(self):
+        hits = {}
+        hits, _ = register_hit(hits, "192.0.2.1", 1000.0, 10.0)
+        hits, _ = register_hit(hits, "198.51.100.1", 1005.0, 10.0)
+        assert list(purge_stale_hits(hits, 1012.0, 10.0)) == ["198.51.100.1"]
+
+    def test_un_dictionnaire_vide_reste_vide(self):
+        assert purge_stale_hits({}, 1000.0, 10.0) == {}
+
+    def test_le_dictionnaire_recu_n_est_pas_modifie(self):
+        hits, _ = _strikes("192.0.2.1", [1000.0])
+        purge_stale_hits(hits, 1011.0, 10.0)
+        assert hits == {"192.0.2.1": [1000.0]}
+
+    def test_une_ip_oubliee_repart_de_zero(self):
+        hits, _ = _strikes("192.0.2.1", [1000.0, 1001.0])
+        restants = purge_stale_hits(hits, 1020.0, 10.0)
+        hits, count = register_hit(restants, "192.0.2.1", 1020.0, 10.0)
+        assert count == 1
 
 
 class TestBanDuration:

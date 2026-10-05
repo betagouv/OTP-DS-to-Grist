@@ -147,21 +147,40 @@ def register_hit(
     ip: str,
     now: float,
     window: float,
-) -> int:
+) -> tuple[dict[str, list[float]], int]:
     """
-    Enregistre un événement pour cette IP à cet instant et renvoie le nombre
-    d'événements dans la fenêtre.
+    Rend les compteurs avec un événement de plus pour cette IP à cet instant,
+    et le nombre d'événements dans la fenêtre.
 
     Fenêtre glissante : les timestamps plus vieux que `now - window` sont
-    retirés avant le comptage. Le dictionnaire `hits` est modifié en place et
-    fourni par l'appelant, ce qui évite un état global implicite.
+    retirés avant le comptage. Le dictionnaire `hits` n'est pas modifié,
+    l'appelant affecte le rendu.
     """
-    timestamps = hits.setdefault(ip, [])
     cutoff = now - window
-    timestamps[:] = [timestamp for timestamp in timestamps if timestamp >= cutoff]
+    timestamps = [timestamp for timestamp in hits.get(ip, []) if timestamp >= cutoff]
     timestamps.append(now)
 
-    return len(timestamps)
+    return {**hits, ip: timestamps}, len(timestamps)
+
+
+def purge_stale_hits(
+    hits: dict[str, list[float]],
+    now: float,
+    window: float,
+) -> dict[str, list[float]]:
+    """
+    Rend les compteurs sans les IP dont le dernier événement est plus vieux que
+    `now - window`.
+
+    Une IP sans événement dans la fenêtre serait comptée à un de toute façon :
+    la mémoriser ne change aucune décision. Le dictionnaire `hits` n'est pas
+    modifié, l'appelant affecte le rendu.
+    """
+    cutoff = now - window
+
+    return {
+        ip: timestamps for ip, timestamps in hits.items() if timestamps[-1] >= cutoff
+    }
 
 
 def ban_duration(ban_count: int, base_seconds: int = BAN_BASE_SECONDS) -> timedelta:
