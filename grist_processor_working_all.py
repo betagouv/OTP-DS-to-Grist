@@ -1066,6 +1066,14 @@ def process_demarche_for_grist_optimized(
                 table_ids.get("annotations")
             )
         cache_demandeurs = client.get_existing_dossier_numbers(table_ids["demandeurs"])
+        # Lignes existantes des blocs répétables : chargées une fois ici plutôt
+        # qu'à chaque page dans process_repetables_batch (GET complet de la table)
+        cache_repetables = {}
+        if column_types.get("has_repetable_blocks", False):
+            for block_key, block_table_id in table_ids.get("repetable_blocks", {}).items():
+                cache_repetables[block_key] = rp.get_existing_repetable_rows_improved_no_filter(
+                    client, block_table_id, None
+                )
         log(f"Cache global préchargé en {time.time() - start_cache:.1f}s")
 
         # Traitement page par page : chaque page de dossiers est écrite dans Grist
@@ -1312,10 +1320,14 @@ def process_demarche_for_grist_optimized(
                         block_table_id = table_ids["repetable_blocks"][normalized_block]
 
                         try:
-                            from repetable_processor import process_repetables_batch
+                            if normalized_block not in cache_repetables:
+                                cache_repetables[normalized_block] = (
+                                    rp.get_existing_repetable_rows_improved_no_filter(
+                                        client, block_table_id, None
+                                    )
+                                )
 
-                            # Préparer les données pour le batch
-                            success_count, error_count = process_repetables_batch(
+                            success_count, error_count = rp.process_repetables_batch(
                                 client,
                                 list(page_dossiers.values()),
                                 {normalized_block: block_table_id},
@@ -1326,6 +1338,9 @@ def process_demarche_for_grist_optimized(
                                 },
                                 problematic_ids=problematic_descriptor_ids,
                                 batch_size=50,
+                                existing_rows_cache={
+                                    normalized_block: cache_repetables[normalized_block]
+                                },
                             )
                             log(
                                 f"  Bloc '{block_label}': {success_count} réussis, {error_count} échecs"
