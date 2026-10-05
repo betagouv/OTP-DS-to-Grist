@@ -7,11 +7,12 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, url_for
+from flask import Flask, Response, jsonify, render_template, request, url_for
 import requests
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -21,6 +22,15 @@ from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from dn.client import get_groups
 from grist.client import GristClient
+from security.ip_blocklist import (
+    is_whitelisted,
+    parse_whitelist,
+    purge_stale_hits,
+    register_hit,
+    resolve_client_ip,
+    should_ignore_path,
+)
+from security.ip_blocklist_store import IpBlocklistStore
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
@@ -36,7 +46,11 @@ from utils.constants import (
     DATABASE_URL,
     HELP_LINK_FAQ,
     HELP_LINK_GRIST_API_KEY,
-    HELP_LINK_DN_TOKEN_API
+    HELP_LINK_DN_TOKEN_API,
+    IP_BLOCKLIST_CACHE_TTL_SECONDS,
+    IP_BLOCKLIST_THRESHOLD,
+    IP_BLOCKLIST_WINDOW_SECONDS,
+    IP_BLOCKLIST_WHITELIST,
 )
 from utils.socketio import socketio
 
@@ -73,6 +87,100 @@ socketio.init_app(app)
 # Configuration du logging pour Flask
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Protection anti-scanner : bannie les IP qui produisent trop de réponses 4xx.
+# Les compteurs vivent en mémoire, les bannissements en base :
+# voir le dossier `security/`.
+ip_blocklist_store = IpBlocklistStore(
+    DATABASE_URL, cache_ttl=IP_BLOCKLIST_CACHE_TTL_SECONDS
+)
+ip_blocklist_whitelist = parse_whitelist(IP_BLOCKLIST_WHITELIST.split(","))
+ip_blocklist_hits: dict[str, list[float]] = {}
+
+
+def _blocklist_target_ip() -> str | None:
+    """
+    Adresse IP à prendre en compte pour la blocklist.
+
+    Retourne None si elle n'est pas exploitable ou si elle est en liste
+    blanche, pour que les deux hooks partagent exactement le même filtre.
+    """
+    client_ip = resolve_client_ip(request.headers)
+
+    if client_ip is None or is_whitelisted(client_ip, ip_blocklist_whitelist):
+        return None
+
+    return client_ip
+
+
+@app.before_request
+def check_banned_ip() -> tuple[Response, int] | None:
+    """
+    Refuse la requête si l'IP est bannie.
+    """
+    client_ip = _blocklist_target_ip()
+
+    if client_ip is None:
+        return None
+
+    if ip_blocklist_store.is_banned(client_ip):
+        logger.warning("Requête refusée : IP bannie %s", client_ip)
+        return jsonify({"error": "Forbidden"}), 403
+
+    return None
+
+
+@app.after_request
+def check_and_count_ip(response: Response) -> Response:
+    """
+    Compte les réponses 4xx de l'IP, et la bannie si le seuil est atteint.
+
+    Le comptage se fait sur la réponse, donc il englobe tous les 4xx : ceux du
+    routage comme ceux produits par les vues. Il ne dépend pas des codes, donc
+    un 4xx qu'on ne peut pas encore prévoir compte aussi.
+
+    Une IP déjà bannie n'est pas comptée.
+    Son bannissement ne peut donc pas s'allonger pendant qu'il est actif.
+
+    À chaque comptage, les IP dont plus aucune erreur n'est récente sont oubliées.
+    """
+    global ip_blocklist_hits
+
+    if not 400 <= response.status_code < 500:
+        return response
+
+    client_ip = _blocklist_target_ip()
+
+    if client_ip is None or should_ignore_path(request.path):
+        return response
+
+    if ip_blocklist_store.is_banned(client_ip):
+        return response
+
+    now = time.time()
+    ip_blocklist_hits, hits = register_hit(
+        purge_stale_hits(
+            ip_blocklist_hits,
+            now,
+            IP_BLOCKLIST_WINDOW_SECONDS
+        ),
+        client_ip,
+        now,
+        IP_BLOCKLIST_WINDOW_SECONDS
+    )
+
+    if hits >= IP_BLOCKLIST_THRESHOLD:
+        banned_until = ip_blocklist_store.apply_ban(client_ip)
+        banned_until_local = banned_until.replace(tzinfo=timezone.utc).astimezone()
+
+        logger.warning(
+            "IP bannie jusqu'au %s après %d hits dans la fenêtre : %s",
+            banned_until_local,
+            hits,
+            client_ip,
+        )
+
+    return response
 
 # Démarrage du scheduler au niveau module
 if not scheduler.running:

@@ -11,3 +11,4 @@ Permet de gérer la configuration utilisateur et l'historique des synchronisatio
 - `otp_configurations` : Configuration de chaque utilisateur (tokens, filtres)
 - `user_schedules` : Planification des synchronisations automatiques
 - `sync_logs` : Historique des executions de synchronisation
+- `ip_blocklist` : Bannissements d'IP en cours (nombre de bannissements, fin de ban)

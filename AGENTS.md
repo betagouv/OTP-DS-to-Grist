@@ -111,6 +111,8 @@ Renommage de code : identifiants techniques en anglais ; le vocabulaire métier 
 service garde sa langue d'origine, sans traduction dans un sens ni dans l'autre
 (ex. dossier, demarche, champs). Commentaires, docstrings et messages de log en français.
 
+Préférer des affectations explicites plutôt que des modification de variables passée en référence tant que c'est possible.
+
 ## Tests
 
 Voir `tests/README.md` pour les commandes et conventions.

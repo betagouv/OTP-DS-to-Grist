@@ -54,3 +54,11 @@ class SyncLog(Base):
     auto: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     success_count: Mapped[int | None] = mapped_column(Integer)
     error_count: Mapped[int | None] = mapped_column(Integer)
+
+
+class IpBlocklist(Base):
+    __tablename__: str = "ip_blocklist"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    ban_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    banned_until: Mapped[datetime | None] = mapped_column(DateTime)

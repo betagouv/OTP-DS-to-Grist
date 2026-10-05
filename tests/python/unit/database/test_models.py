@@ -1,9 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from database.models import OtpConfiguration, UserSchedule, SyncLog, Base
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
+from database.models import (
+    IpBlocklist,
+    OtpConfiguration,
+    SyncLog,
+    UserSchedule,
+)
 
 class TestOtpConfiguration:
     """Tests unitaires pour le modèle OtpConfiguration"""
@@ -139,6 +140,41 @@ class TestSyncLog:
     def test_sync_log_table_name(self):
         """Test que le nom de table est correct"""
         assert SyncLog.__tablename__ == "sync_logs"
+
+
+class TestIpBlocklist:
+    """Tests unitaires pour le modèle IpBlocklist"""
+
+    def test_ip_blocklist_creation(self):
+        """Test de création d'une instance IpBlocklist"""
+        from datetime import datetime
+
+        banned_until = datetime(2026, 1, 1, 12, 0, 0)
+        entry = IpBlocklist(
+            ip="203.0.113.7",
+            ban_count=2,
+            banned_until=banned_until,
+        )
+
+        assert entry.ip == "203.0.113.7"
+        assert entry.ban_count == 2
+        assert entry.banned_until == banned_until
+
+    def test_ip_blocklist_table_name(self):
+        """Test que le nom de table est correct"""
+        assert IpBlocklist.__tablename__ == "ip_blocklist"
+
+    def test_ip_blocklist_banned_until_nullable(self):
+        """Test qu'une IP sans bannissement actif a banned_until à None"""
+        entry = IpBlocklist(ip="203.0.113.7", ban_count=0)
+
+        assert entry.banned_until is None
+
+    def test_ip_blocklist_accepte_une_ipv6(self):
+        """Test que le champ ip accepte une IPv6"""
+        entry = IpBlocklist(ip="2001:db8::1", ban_count=1)
+
+        assert entry.ip == "2001:db8::1"
 
 
 class TestModelsIntegration:
