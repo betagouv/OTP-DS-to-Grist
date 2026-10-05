@@ -84,3 +84,39 @@ class TestParseOutput:
         assert result["success_count"] == 0
         assert result["error_count"] == 0
         assert result["total_processed"] == 0
+
+
+class TestParseOutputWithDetailedErrorLogs:
+    """Les logs d'erreur détaillés (table, dossier) ne doivent pas fausser les
+    compteurs, que `sync_result_parser` extrait de phrases précises."""
+
+    def test_logs_detailles_laissent_intacts_les_compteurs(self):
+        lignes = [
+            "ERREUR: [DOSSIERS] 2 dossier(s) masqué(s) par les permissions : "
+            "Dossier 2 hidden due to permissions",
+            "ERREUR: Erreur lors de la création par lot de la table champs "
+            "(20 dossiers): 413 - Request body too large",
+            "ERREUR: Échec individuel pour le dossier 1001 (ligne Grist 5)",
+            "ERREUR: Dossier 7 trop volumineux pour Grist (2000000 octets "
+            "pour une limite de 1048576) : envoi tenté, il sera refusé",
+            "ERREUR: Erreur préparation dossier 1002: champ illisible",
+            "ERREUR: dossier_number ou number manquant dans les données "
+            "(table champs, champs ['name']): l'enregistrement est ignoré",
+            "Dossiers traités avec succès: 18",
+            "Dossiers en échec: 2",
+        ]
+        result = parse_output(lignes)
+        assert result["success_count"] == 18
+        assert result["error_count"] == 2
+        assert result["total_processed"] == 20
+        assert result["success"] is False
+
+    def test_phrase_reservee_avec_dossiers_ne_trompe_pas_le_parser(self):
+        """Documente la contrainte : les phrases de bilan ne doivent porter que
+        le nombre, sinon `parse_output` renverrait None et l'UI afficherait 0."""
+        lignes = [
+            "ERREUR: Dossiers en échec: 3 (dossiers 5, 7, 9)",
+            "Dossiers traités avec succès: 18",
+        ]
+        result = parse_output(lignes)
+        assert result["error_count"] == 0

@@ -11,18 +11,8 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
-try:
-    from utils.log import log, log_verbose, log_error
-except ImportError:
-    # Définitions de secours en cas d'échec de l'import
-    def log(message, level=1):
-        print(message)
-
-    def log_verbose(message):
-        print(message)
-
-    def log_error(message):
-        print(f"ERREUR: {message}")
+from grist.formatter import format_value
+from utils.log import log, log_verbose, log_error
 
 
 def ensure_repetable_columns_exist(client, table_id, repetable_data):
@@ -349,52 +339,6 @@ def normalize_column_name(name, max_length=150):
     return name
 
 
-def format_value_for_grist(value, value_type):
-    """
-    Formate une valeur selon le type de colonne Grist.
-
-    Args:
-        value: Valeur à formater
-        value_type: Type de colonne Grist ('Text', 'Int', 'Numeric', 'Bool', 'DateTime')
-
-    Returns:
-        Valeur formatée selon le type spécifié
-    """
-    if value is None:
-        return None
-
-    if value_type == "DateTime":
-        if isinstance(value, str):
-            if value:
-                # Importer datetime seulement si nécessaire
-                for fmt in ["%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]:
-                    try:
-                        dt = datetime.strptime(value, fmt)
-                        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except ValueError:
-                        continue
-            return value
-        return value
-
-    if value_type == "Text":
-        return str(value)
-
-    if value_type in ["Int", "Numeric"]:
-        try:
-            if value_type == "Int":
-                return int(float(value)) if value else None
-            return float(value) if value else None
-        except (ValueError, TypeError):
-            return None
-
-    if value_type == "Bool":
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.lower() in ["true", "1", "yes", "oui", "vrai"]
-        return bool(value)
-
-    return value
 
 
 def extract_field_value(
@@ -928,7 +872,12 @@ def process_repetables_for_grist(
                                     # Ajouter la valeur au dictionnaire des données de la ligne
                                     if normalized_label in repetable_columns and normalized_label in valid_columns:
                                         column_type = repetable_columns[normalized_label]
-                                        row_data[normalized_label] = format_value_for_grist(value, column_type)
+                                        row_data[normalized_label] = format_value(
+                                            value,
+                                            column_type,
+                                            dossier_number=dossier_number,
+                                            champ_label=normalized_label,
+                                        )
 
                                     # Traitement spécial pour les champs de type carte (CarteChamp)
                                     if field["__typename"] == "CarteChamp" and field.get("geoAreas"):
@@ -967,7 +916,12 @@ def process_repetables_for_grist(
                                 # Ajouter les données géographiques
                                 for key, value in geo_data.items():
                                     if key in repetable_columns and key in valid_columns:
-                                        geo_record[key] = format_value_for_grist(value, repetable_columns[key])
+                                        geo_record[key] = format_value(
+                                    value,
+                                    repetable_columns[key],
+                                    dossier_number=dossier_number,
+                                    champ_label=key,
+                                )
 
                                 # Créer différentes clés de recherche pour trouver des correspondances
                                 search_keys = []
@@ -1178,7 +1132,12 @@ def process_repetable_data_batch(
 
                             # Ajouter au dictionnaire
                             column_type = repetable_columns.get(normalized_label, "Text")
-                            row_data[normalized_label] = format_value_for_grist(value, column_type)
+                            row_data[normalized_label] = format_value(
+                                            value,
+                                            column_type,
+                                            dossier_number=dossier_number,
+                                            champ_label=normalized_label,
+                                        )
 
                             # Traitement des champs cartographiques
                             if field["__typename"] == "CarteChamp" and field.get("geoAreas"):
@@ -1213,7 +1172,12 @@ def process_repetable_data_batch(
                             # Ajouter les données géographiques
                             for key, value in geo_data.items():
                                 column_type = repetable_columns.get(key, "Text")
-                                geo_record[key] = format_value_for_grist(value, column_type)
+                                geo_record[key] = format_value(
+                                    value,
+                                    column_type,
+                                    dossier_number=dossier_number,
+                                    champ_label=key,
+                                )
 
                             records_to_process.append((geo_record, [
                                 f"{dossier_number}_{block_label}_{geo_identifier}",
@@ -1376,7 +1340,12 @@ def process_repetables_batch(
 
                                 # Ajouter au dictionnaire
                                 column_type = block_column_types.get(normalized_label, "Text")
-                                row_data[normalized_label] = format_value_for_grist(value, column_type)
+                                row_data[normalized_label] = format_value(
+                                            value,
+                                            column_type,
+                                            dossier_number=dossier_number,
+                                            champ_label=normalized_label,
+                                        )
 
                                 # Traitement des champs cartographiques
                                 if field["__typename"] == "CarteChamp" and field.get("geoAreas"):
@@ -1409,7 +1378,12 @@ def process_repetables_batch(
                                 # Ajouter les données géographiques
                                 for key, value in geo_data.items():
                                     column_type = block_column_types.get(key, "Text")
-                                    geo_record[key] = format_value_for_grist(value, column_type)
+                                    geo_record[key] = format_value(
+                                    value,
+                                    column_type,
+                                    dossier_number=dossier_number,
+                                    champ_label=key,
+                                )
 
                                 # Clés de recherche
                                 search_keys = [
