@@ -639,6 +639,23 @@ def extract_geo_data(geo_area: Dict[str, Any]) -> Dict[str, Any]:
     return geo_data
 
 
+def repetable_row_key(dossier_number, block_row_id):
+    """
+    Clé unique d'une ligne de bloc répétable dans la table de son bloc :
+    couple (numéro de dossier, block_row_id).
+
+    Le block_row_id seul ne suffit pas : deux dossiers peuvent partager le même
+    id de ligne DN (ex. dossier dupliqué par l'usager), et la ligne de l'un
+    écraserait celle de l'autre. Le numéro est normalisé pour que 123 et 123.0
+    (valeur relue depuis Grist) donnent la même clé.
+    """
+    try:
+        number = str(int(float(dossier_number)))
+    except (TypeError, ValueError):
+        number = str(dossier_number)
+    return f"{number}:{block_row_id}"
+
+
 def get_existing_repetable_rows_improved_no_filter(
     client,
     table_id,
@@ -714,9 +731,12 @@ def get_existing_repetable_rows_improved_no_filter(
                     key5 = f"{current_dossier_number}_{clean_label}_{row_identifier}"
                     records_dict[key5] = record_id
 
-                    # Enregistrer le record_id par l'ID seul pour vérification directe
+                    # Clé de référence (dossier, block_row_id). Pas de clé sur le
+                    # block_row_id seul : il peut être partagé entre deux dossiers.
                     if 'block_row_id' in fields and fields['block_row_id']:
-                        records_dict[fields['block_row_id']] = record_id
+                        records_dict[
+                            repetable_row_key(fields['dossier_number'], fields['block_row_id'])
+                        ] = record_id
 
                     # Gestion spéciale des géométries
                     if 'field_name' in fields and 'geo_id' in fields and fields['geo_id']:
@@ -1444,16 +1464,8 @@ def process_repetables_batch(
                                     champ_label=key,
                                 )
 
-                                # Clés de recherche
-                                search_keys = [
-                                    f"{dossier_number}_{block_label}_{geo_identifier}".lower(),
-                                    f"{dossier_number}_{block_label}_{row_id}_geo{geo_index+1}".lower()
-                                ]
-
-                                field_name = geo_data.get("field_name", "")
-                                geo_id = geo_data.get("geo_id", "")
-                                if field_name and geo_id:
-                                    search_keys.append(f"{dossier_number}_{block_label}_{field_name}_{geo_id}".lower())
+                                # Clé de recherche : (dossier, block_row_id de la géométrie)
+                                search_keys = [repetable_row_key(dossier_number, geo_identifier)]
 
                                 # Chercher si existe
                                 found_id = None
@@ -1473,12 +1485,8 @@ def process_repetables_batch(
                             record = base_record.copy()
                             record.update(row_data)
 
-                            # Clés de recherche
-                            search_keys = [
-                                f"{dossier_number}_{block_label}_{row_id}".lower(),
-                                f"{dossier_number}_{block_label}_index_{row_index+1}".lower(),
-                                row_id
-                            ]
+                            # Clé de recherche : (dossier, block_row_id)
+                            search_keys = [repetable_row_key(dossier_number, row_id)]
 
                             # Chercher si existe
                             found_id = None
