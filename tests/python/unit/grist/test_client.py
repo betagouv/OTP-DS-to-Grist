@@ -538,6 +538,11 @@ class TestGetDocumentInfo:
         with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.get_document_info()
         assert result == {"id": "doc123"}
+        session.get.assert_called_once_with(
+            "https://grist.example.com/docs/doc123",
+            headers=self.client.headers,
+            timeout=10,
+        )
 
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""

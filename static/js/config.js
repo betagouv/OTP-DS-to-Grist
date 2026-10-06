@@ -122,7 +122,7 @@ const loadConfiguration = async () => {
     document.getElementById('grist_user_id').value = gristUserId || ''
 
     // Set default base url
-    document.getElementById('grist_base_url').value = gristBaseUrl || 'https://grist.numerique.gouv.fr/api'
+    document.getElementById('grist_base_url').value = gristBaseUrl || ''
 
     const configs = await getConfiguration()
 

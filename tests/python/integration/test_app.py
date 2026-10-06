@@ -701,6 +701,26 @@ class TestErrorHandling:
             "https://grist.server.com", "server-key", "server-doc"
         )
 
+    def test_api_test_connection_grist_base_url_hors_liste(self, client):
+        """URL de base hors liste blanche → 200 success:false, aucune requête émise"""
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "grist",
+                    "base_url": "https://grist.hors-liste.example",
+                    "api_key": "key",
+                    "doc_id": "doc123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "grist.hors-liste.example" in data["message"]
+
     @patch.object(ConfigManager, "load_config_by_id")
     @patch("app.test_grist_api")
     def test_api_test_connection_grist_with_both_key_and_otp_id(

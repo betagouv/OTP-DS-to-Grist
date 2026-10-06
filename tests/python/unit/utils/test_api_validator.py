@@ -2,7 +2,10 @@
 Tests unitaires pour api_validator.py
 """
 
+import requests
 from unittest.mock import patch, MagicMock
+
+from grist.base_url import GristBaseUrlNotAllowedError
 from utils.api_validator import (
     test_demarches_api as demarches_api_tester,
     test_grist_api as grist_api_tester,
@@ -99,65 +102,106 @@ class TestTestDemarchesApi:
 class TestTestGristApi:
     """Tests pour test_grist_api"""
 
-    @patch("utils.api_validator.requests.get")
-    def test_success(self, mock_get):
+    def test_success(self):
         """Test réussi"""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"name": "Mon Document"}
-        mock_get.return_value = mock_response
+        mock_client = MagicMock()
+        mock_client.get_document_info.return_value = {"name": "Mon Document"}
 
-        success, message = grist_api_tester(
-            "https://grist.example.com", "api-key", "doc123"
-        )
+        with patch("utils.api_validator.GristClient", return_value=mock_client):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "api-key", "doc123"
+            )
 
         assert success is True
         assert "Connexion à Grist réussie" in message
         assert "Mon Document" in message
 
-    @patch("utils.api_validator.requests.get")
-    def test_success_without_name(self, mock_get):
+    def test_success_without_name(self):
         """Test réussi sans nom de document"""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {}  # Pas de champ 'name'
-        mock_get.return_value = mock_response
+        mock_client = MagicMock()
+        mock_client.get_document_info.return_value = {}
 
-        success, message = grist_api_tester(
-            "https://grist.example.com", "api-key", "doc123"
-        )
+        with patch("utils.api_validator.GristClient", return_value=mock_client):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "api-key", "doc123"
+            )
 
         assert success is True
         assert "doc123" in message
 
-    @patch("utils.api_validator.requests.get")
-    def test_http_error(self, mock_get):
+    def test_http_error(self):
         """Test avec erreur HTTP"""
-        mock_response = MagicMock()
-        mock_response.status_code = 404
-        mock_response.text = "Not Found"
-        mock_get.return_value = mock_response
-
-        success, message = grist_api_tester(
-            "https://grist.example.com", "api-key", "doc123"
+        mock_client = MagicMock()
+        mock_client.get_document_info.side_effect = requests.exceptions.HTTPError(
+            response=MagicMock(status_code=404, text="Not Found")
         )
+
+        with patch("utils.api_validator.GristClient", return_value=mock_client):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "api-key", "doc123"
+            )
 
         assert success is False
         assert "404" in message
 
-    @patch("utils.api_validator.requests.get")
-    def test_timeout(self, mock_get):
+    def test_timeout(self):
         """Test avec timeout"""
-        from requests.exceptions import Timeout
-
-        mock_get.side_effect = Timeout("Connection timed out")
-
-        success, message = grist_api_tester(
-            "https://grist.example.com", "api-key", "doc123"
+        mock_client = MagicMock()
+        mock_client.get_document_info.side_effect = requests.exceptions.Timeout(
+            "Connection timed out"
         )
+
+        with patch("utils.api_validator.GristClient", return_value=mock_client):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "api-key", "doc123"
+            )
 
         assert success is False
         assert "Timeout" in message
+
+    def test_client_built_with_parameters(self):
+        """GristClient reçoit base_url, api_key et doc_id"""
+        with patch("utils.api_validator.GristClient") as mock_class:
+            mock_class.return_value.get_document_info.return_value = {"name": "Doc"}
+            grist_api_tester("https://grist.example.com", "api-key", "doc123")
+
+        mock_class.assert_called_once_with(
+            "https://grist.example.com", "api-key", "doc123"
+        )
+
+    def test_base_url_outside_whitelist(self):
+        """URL hors liste blanche → (False, message), aucune requête émise"""
+        refusal = GristBaseUrlNotAllowedError(
+            "URL de base Grist non autorisée : grist.evil.example "
+            "(liste des instances autorisées définie par GRIST_BASE_URL_WHITELIST)"
+        )
+        mock_class = MagicMock(side_effect=refusal)
+
+        with patch("utils.api_validator.GristClient", mock_class):
+            success, message = grist_api_tester(
+                "https://grist.evil.example", "api-key", "doc123"
+            )
+
+        assert success is False
+        assert "grist.evil.example" in message
+        mock_class.assert_called_once_with(
+            "https://grist.evil.example", "api-key", "doc123"
+        )
+
+    def test_unparseable_json_returns_success(self):
+        """Réponse 200 illisible en JSON → succès avec l'ID du document"""
+        mock_client = MagicMock()
+        mock_client.get_document_info.side_effect = (
+            requests.exceptions.JSONDecodeError("Expecting value", "doc", 0)
+        )
+
+        with patch("utils.api_validator.GristClient", return_value=mock_client):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "api-key", "doc123"
+            )
+
+        assert success is True
+        assert "doc123" in message
 
 
 class TestVerifyApiConnections:

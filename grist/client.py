@@ -364,12 +364,12 @@ class GristClient:
         data = response.json()
         return data
 
-    def get_document_info(self) -> dict[str, Any]:
+    def get_document_info(self, timeout: float | None = 10) -> dict[str, Any]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
         url = f"{self.base_url}/docs/{self.doc_id}"
         log_verbose(f"GET {url}")
-        response = self._get_session().get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers, timeout=timeout)
         if response.status_code != 200:
             log_error(f"Erreur {response.status_code}: {response.text}")
             response.raise_for_status()

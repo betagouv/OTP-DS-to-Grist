@@ -8,6 +8,8 @@ from typing import Literal, TypedDict
 import logging
 
 from .constants import DEMARCHES_API_URL
+from grist.base_url import GristBaseUrlNotAllowedError
+from grist.client import GristClient
 
 logger = logging.getLogger(__name__)
 
@@ -119,22 +121,31 @@ def test_grist_api(base_url: str, api_key: str, doc_id: str) -> tuple[bool, str]
         tuple: (success: bool, message: str)
     """
     try:
-        headers = {"Authorization": f"Bearer {api_key}"}
-        url = f"{base_url}/docs/{doc_id}"
+        client = GristClient(base_url, api_key, doc_id)
+        doc_info = client.get_document_info()
+        doc_name = (
+            doc_info.get("name", doc_id) if isinstance(doc_info, dict) else doc_id
+        )
 
-        response = requests.get(url, headers=headers, timeout=10)
+        return True, f"Connexion à Grist réussie! Document: {doc_name}"
 
-        if response.status_code != 200:
-            return (
-                False,
-                f"Erreur de connexion à Grist: {response.status_code} - {response.text}",
-            )
-        try:
-            doc_info = response.json()
-            doc_name = doc_info.get("name", doc_id)
-            return True, f"Connexion à Grist réussie! Document: {doc_name}"
-        except Exception:
-            return True, f"Connexion à Grist réussie! Document ID: {doc_id}"
+    except GristBaseUrlNotAllowedError as error:
+        # Instance hors liste blanche : aucune requête n'a été émise. Le message
+        # est renvoyé tel quel à l'appelant, qui répond en 200 avec success=false.
+        return False, str(error)
+
+    except requests.exceptions.JSONDecodeError:
+        # Réponse 200 mais corps illisible : la connectivité est établie.
+        return True, f"Connexion à Grist réussie! Document ID: {doc_id}"
+
+    except requests.exceptions.HTTPError as error:
+        response = error.response
+        if response is None:
+            return False, f"Erreur de connexion à Grist: {error}"
+        return (
+            False,
+            f"Erreur de connexion à Grist: {response.status_code} - {response.text}",
+        )
 
     except requests.exceptions.Timeout:
         return False, "Timeout: L'API Grist met trop de temps à répondre"

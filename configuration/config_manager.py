@@ -75,9 +75,7 @@ class ConfigManager:
         )
         normalized["ds_api_token"] = str(raw.get("ds_api_token") or "")
         normalized["demarche_number"] = str(raw.get("demarche_number") or "")
-        normalized["grist_base_url"] = str(
-            raw.get("grist_base_url") or "https://grist.numerique.gouv.fr/api"
-        )
+        normalized["grist_base_url"] = str(raw.get("grist_base_url") or "")
         normalized["grist_api_key"] = str(raw.get("grist_api_key") or "")
         normalized["grist_doc_id"] = str(raw.get("grist_doc_id") or "")
         normalized["grist_user_id"] = str(raw.get("grist_user_id") or "")

@@ -153,7 +153,7 @@ class TestConfigManager:
         assert config["otp_config_id"] is None
         assert config["ds_api_token"] == ""
         assert config["demarche_number"] == ""
-        assert config["grist_base_url"] == "https://grist.numerique.gouv.fr/api"
+        assert config["grist_base_url"] == ""
         assert config["grist_api_key"] == ""
         assert config["grist_doc_id"] == ""
         assert config["grist_user_id"] == ""
