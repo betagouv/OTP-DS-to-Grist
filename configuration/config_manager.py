@@ -2,6 +2,11 @@ import os
 import logging
 from cryptography.fernet import Fernet
 from database.database_manager import DatabaseManager
+from grist.base_url import (
+    GristBaseUrlImmutableError,
+    GristBaseUrlNotAllowedError,
+    assert_base_url_allowed,
+)
 from grist.client import GristClient
 from utils.constants import DEMARCHES_API_URL
 
@@ -276,7 +281,7 @@ class ConfigManager:
                     # Charger l'existant pour gérer les tokens vides
                     cursor.execute(
                         """
-                        SELECT ds_api_token, grist_api_key
+                        SELECT ds_api_token, grist_api_key, grist_base_url
                         FROM otp_configurations
                         WHERE id = %s
                     """,
@@ -289,6 +294,17 @@ class ConfigManager:
                             f"Configuration non trouvée pour id={otp_config_id}"
                         )
                         return False
+
+                    # L'URL de base Grist est immuable : un champ vide signifie
+                    # « pas de changement demandé », toute autre valeur doit
+                    # être identique à celle en base.
+                    existing_base_url = row[2] or ""
+                    new_base_url = config.get("grist_base_url") or ""
+                    if new_base_url and new_base_url != existing_base_url:
+                        raise GristBaseUrlImmutableError(
+                            "L'URL de base Grist ne peut pas être modifiée"
+                        )
+                    effective_base_url = existing_base_url
 
                     # Gérer ds_api_token
                     ds_api_token = config.get("ds_api_token", "")
@@ -312,7 +328,6 @@ class ConfigManager:
                         UPDATE otp_configurations SET
                         ds_api_token = %s,
                         demarche_number = %s,
-                        grist_base_url = %s,
                         grist_api_key = %s,
                         grist_doc_id = %s,
                         grist_user_id = %s,
@@ -325,7 +340,6 @@ class ConfigManager:
                         (
                             ds_api_token_encrypted,
                             config["demarche_number"],
-                            config["grist_base_url"],
                             grist_api_key_encrypted,
                             config["grist_doc_id"],
                             config["grist_user_id"],
@@ -351,6 +365,10 @@ class ConfigManager:
                         if not config.get(field):
                             logger.error(f"Champ requis manquant: {field}")
                             return False
+
+                    # L'URL de base Grist doit désigner une instance autorisée.
+                    assert_base_url_allowed(config["grist_base_url"])
+                    effective_base_url = config["grist_base_url"]
 
                     # Gérer ds_api_token
                     ds_api_token = config.get("ds_api_token", "")
@@ -423,8 +441,16 @@ class ConfigManager:
                         grist_api_key_encrypted
                     )
                     self.fetch_and_store_grist_user_email(
-                        otp_config_id, config["grist_base_url"], grist_api_key_decrypted
+                        otp_config_id, effective_base_url, grist_api_key_decrypted
                     )
+        except GristBaseUrlImmutableError:
+            if conn:
+                conn.close()
+            raise
+        except GristBaseUrlNotAllowedError:
+            if conn:
+                conn.close()
+            raise
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
             if conn:

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app import ConfigManager, app, sync_manager
+from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 
 
 @pytest.fixture
@@ -198,6 +199,92 @@ class TestEndpoints:
         assert isinstance(normalized["batch_size"], int)
         assert isinstance(normalized["max_workers"], int)
         assert isinstance(normalized["parallel"], bool)
+
+    @patch.object(ConfigManager, "save_config")
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_config_update_base_url_unchanged_success(
+        self, mock_load, mock_save, client
+    ):
+        """Update avec la même base URL → 200"""
+        mock_load.return_value = {
+            "grist_user_id": "user456",
+            "grist_doc_id": "doc123",
+            "grist_base_url": "https://grist.test.com/api",
+        }
+        mock_save.return_value = True
+
+        response = client.post(
+            "/api/config",
+            json={
+                "otp_config_id": 1,
+                "ds_api_token": "token123",
+                "demarche_number": "12345",
+                "grist_base_url": "https://grist.test.com/api",
+                "grist_doc_id": "doc123",
+                "grist_user_id": "user456",
+            },
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is True
+
+    @patch.object(ConfigManager, "save_config")
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_config_update_base_url_different_forbidden(
+        self, mock_load, mock_save, client
+    ):
+        """Update avec une base URL différente → 403 immuable"""
+        mock_load.return_value = {
+            "grist_user_id": "user456",
+            "grist_doc_id": "doc123",
+            "grist_base_url": "https://grist.test.com/api",
+        }
+        mock_save.side_effect = GristBaseUrlImmutableError(
+            "L'URL de base Grist ne peut pas être modifiée"
+        )
+
+        response = client.post(
+            "/api/config",
+            json={
+                "otp_config_id": 1,
+                "ds_api_token": "token123",
+                "demarche_number": "12345",
+                "grist_base_url": "https://grist.numerique.gouv.fr/api",
+                "grist_doc_id": "doc123",
+                "grist_user_id": "user456",
+            },
+        )
+
+        assert response.status_code == 403
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "ne peut pas être modifiée" in data["message"]
+
+    @patch.object(ConfigManager, "save_config")
+    def test_api_config_insert_base_url_hors_liste_bad_request(
+        self, mock_save, client
+    ):
+        """Création vers une instance hors liste blanche → 400"""
+        mock_save.side_effect = GristBaseUrlNotAllowedError(
+            "URL de base Grist non autorisée : grist.hors-liste.example"
+        )
+
+        response = client.post(
+            "/api/config",
+            json={
+                "ds_api_token": "token123",
+                "demarche_number": "12345",
+                "grist_base_url": "https://grist.hors-liste.example/api",
+                "grist_doc_id": "doc123",
+                "grist_user_id": "user456",
+            },
+        )
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "grist.hors-liste.example" in data["message"]
 
     @patch("app.test_demarches_api")
     def test_api_test_connection_demarches(self, mock_test, client):
