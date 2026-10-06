@@ -9,7 +9,8 @@
   "remoteEnv": {
     "ENCRYPTION_KEY": "${localEnv:ENCRYPTION_KEY}",
     "FLASK_SECRET_KEY": "${localEnv:FLASK_SECRET_KEY}",
-    "DOCKER_DATABASE_URL": "${localEnv:DOCKER_DATABASE_URL}"
+    "DOCKER_DATABASE_URL": "${localEnv:DOCKER_DATABASE_URL}",
+    "GRIST_BASE_URL_WHITELIST": "${localEnv:GRIST_BASE_URL_WHITELIST}"
   },
   "secrets": {
     "ENCRYPTION_KEY": {
@@ -20,6 +21,9 @@
     },
     "DOCKER_DATABASE_URL": {
       "description": "Database connection URL"
+    },
+    "GRIST_BASE_URL_WHITELIST": {
+      "description": "Liste blanche des domaines Grist autorisés, séparés par des virgules"
     }
   },
   "customizations": {

@@ -104,7 +104,6 @@ class TestInitBaseUrlWhitelist:
             GristClient("https://grist.evil.example", "test_key")
 
         message = str(excinfo.value)
-        assert "GRIST_BASE_URL_WHITELIST" in message
         assert "grist.interdit.example" not in message
         assert "grist.example.com" not in message
 

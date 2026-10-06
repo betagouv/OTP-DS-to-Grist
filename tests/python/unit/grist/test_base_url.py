@@ -16,7 +16,7 @@ from grist.base_url import (
 # instance déployée doit être ajoutée ici, et la liste blanche de production
 # (WHITELIST_PRODUCTION) doit être revue en conséquence.
 URLS_PRODUCTION: tuple[str, ...] = (
-    "https://dleges.getgrist.com/api",
+    "https://drajes.getgrist.com/api",
     "https://grist.dataregion.fr/o/ditp-piapi/api",
     "https://grist.dataregion.fr/o/docs/api",
     "https://grist.dataregion.fr/o/draaf-bretagne-sg/api",
@@ -103,7 +103,7 @@ URLS_PRODUCTION: tuple[str, ...] = (
 # Les 7 domaines qui hébergent ces instances.
 DOMAINES_PRODUCTION: frozenset[str] = frozenset(
     {
-        "dleges.getgrist.com",
+        "drajes.getgrist.com",
         "grist.dataregion.fr",
         "grist.incubateur.anct.gouv.fr",
         "grist.incubateur.dnum.din.developpement-durable.gouv.fr",
@@ -117,7 +117,7 @@ DOMAINES_PRODUCTION: frozenset[str] = frozenset(
 # l'État, un domaine pour chaque hébergeur extérieur à gouv.fr.
 WHITELIST_PRODUCTION: tuple[str, ...] = (
     "*.gouv.fr",
-    "dleges.getgrist.com",
+    "drajes.getgrist.com",
     "grist.dataregion.fr",
     "grist.toutatice.fr",
     "igrist.sdis66.fr",
@@ -282,7 +282,7 @@ class TestAssertBaseUrlAllowed:
         assert issubclass(GristBaseUrlNotAllowedError, ValueError)
         assert issubclass(GristBaseUrlImmutableError, ValueError)
 
-    def test_message_nomme_l_hote_refuse_et_la_variable(self):
+    def test_message_nomme_le_hote_refuse(self):
         with pytest.raises(GristBaseUrlNotAllowedError) as excinfo:
             assert_base_url_allowed(
                 "https://grist.autre.fr/api", ("grist.exemple.fr",)
@@ -290,7 +290,6 @@ class TestAssertBaseUrlAllowed:
 
         message = str(excinfo.value)
         assert "grist.autre.fr" in message
-        assert "GRIST_BASE_URL_WHITELIST" in message
 
     def test_message_ne_révèle_pas_la_liste(self):
         with pytest.raises(GristBaseUrlNotAllowedError) as excinfo:
@@ -298,7 +297,9 @@ class TestAssertBaseUrlAllowed:
                 "https://grist.autre.fr/api", ("grist.exemple.fr",)
             )
 
-        assert "grist.exemple.fr" not in str(excinfo.value)
+        message = str(excinfo.value)
+        assert "grist.exemple.fr" not in message
+        assert "GRIST_BASE_URL_WHITELIST" not in message
 
     def test_url_vide_refusee(self):
         with pytest.raises(GristBaseUrlNotAllowedError, match="vide"):
@@ -361,7 +362,7 @@ class TestListeDeProduction:
         }
 
         assert hors_gouv == {
-            "dleges.getgrist.com",
+            "drajes.getgrist.com",
             "grist.dataregion.fr",
             "grist.toutatice.fr",
             "igrist.sdis66.fr",

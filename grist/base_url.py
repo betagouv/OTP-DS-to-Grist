@@ -143,16 +143,11 @@ def assert_base_url_allowed(
 ) -> None:
     """
     Vérifie qu'une URL de base est autorisée, ou lève une erreur.
-
-    Le message ne reprend que l'hôte refusé et le nom de la variable
-    d'environnement : `/api/config` n'est pas authentifié, y répondre avec la
-    liste des instances en révélerait le contenu à l'appelant.
     """
     if is_base_url_allowed(url, whitelist):
         return
 
     host = normalize_base_url(url) or "(vide)"
     raise GristBaseUrlNotAllowedError(
-        f"URL de base Grist non autorisée : {host} "
-        "(liste des instances autorisées définie par GRIST_BASE_URL_WHITELIST)"
+        f"URL de base Grist non autorisée : {host}"
     )

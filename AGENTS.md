@@ -110,6 +110,10 @@ sous un marqueur de section. Les constantes, privées ou non, restent en tête d
 Renommage de code : identifiants techniques en anglais ; le vocabulaire métier du
 service garde sa langue d'origine, sans traduction dans un sens ni dans l'autre
 (ex. dossier, demarche, champs). Commentaires, docstrings et messages de log en français.
+Docstrings : les nouvelles se rédigent en français, sans sections
+`Args:` / `Returns:` / `Raises:` dès que la signature est typée (le typage
+suffit). Lorsque la signature n'est pas typée, ces sections restent utiles.
+Ne pas réécrire les docstrings existantes.
 
 Préférer des affectations explicites plutôt que des modification de variables passée en référence tant que c'est possible.
 
