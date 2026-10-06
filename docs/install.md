@@ -60,7 +60,7 @@ Configuration PostgreSQL (Docker)
 POSTGRES_DB=db_name
 POSTGRES_USER=user
 POSTGRES_PASSWORD=
-DOCKER_DATABASE_URL=postgresql://user@localhorst:5432/db_name
+DOCKER_DATABASE_URL=postgresql://user@localhost:5432/db_name
 ```
 
 Configuration PostgreSQL (sans Docker)
@@ -92,6 +92,8 @@ DEMARCHE_NUMBER=123456
 GRIST_API_KEY=VotreCleAPI
 GRIST_BASE_URL=https://docs.getgrist.com/api
 GRIST_DOC_ID=VotreDocID
+# Liste blanche des domaines Grist autorisés (obligatoire, voir plus bas)
+GRIST_BASE_URL_WHITELIST=*.gouv.fr,0.0.0.0
 ```
 
 ### FLASK_SECRET_KEY
@@ -222,6 +224,7 @@ Avant de créer un Codespace, configurez les secrets nécessaires :
 | `DOCKER_DATABASE_URL` |
 | `ENCRYPTION_KEY` |
 | `FLASK_SECRET_KEY` |
+| `GRIST_BASE_URL_WHITELIST` |
 
 ### Création d'un Codespace
 
@@ -245,6 +248,25 @@ Avant de créer un Codespace, configurez les secrets nécessaires :
 
 
 # 🔧 Configuration avancée
+
+## Liste blanche des instances Grist
+
+`GRIST_BASE_URL_WHITELIST` est **obligatoire** : l'application refuse de démarrer
+si elle est absente. Elle limite les domaines Grist.
+
+Format : domaines séparés par des virgules.
+
+- `*.suffixe` couvre tous les sous-domaines (ex : `*.gouv.fr` couvre
+  `grist.numerique.gouv.fr`)
+- une instance Grist auto-hébergée en local rapporte au widget son adresse
+  d'écoute (ex : `0.0.0.0` si Grist écoute sur toutes les interfaces) ;
+  ajouter l'hôte réellement rapporté par Grist, distinct de `localhost`
+
+Exemple minimal :
+
+```env
+GRIST_BASE_URL_WHITELIST=*.gouv.fr,0.0.0.0
+```
 
 ## Paramètres de performance
 

@@ -2,6 +2,7 @@ import pytest
 import os
 from unittest.mock import patch, MagicMock
 from configuration.config_manager import ConfigManager
+from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 
 
 class TestConfigManager:
@@ -153,7 +154,7 @@ class TestConfigManager:
         assert config["otp_config_id"] is None
         assert config["ds_api_token"] == ""
         assert config["demarche_number"] == ""
-        assert config["grist_base_url"] == "https://grist.numerique.gouv.fr/api"
+        assert config["grist_base_url"] == ""
         assert config["grist_api_key"] == ""
         assert config["grist_doc_id"] == ""
         assert config["grist_user_id"] == ""
@@ -191,6 +192,7 @@ class TestConfigManager:
         mock_cursor.fetchone.return_value = [
             "existing_encrypted_token",
             "existing_encrypted_key",
+            "https://test.grist.com",
         ]
 
         with (
@@ -443,6 +445,7 @@ class TestConfigManager:
         mock_cursor.fetchone.return_value = [
             "existing_encrypted_token",
             "existing_encrypted_key",
+            "https://test.grist.com",
         ]
 
         with (
@@ -487,7 +490,7 @@ class TestConfigManager:
         assert "UPDATE otp_configurations SET" in update_call[0][0]
         call_args = update_call[0][1]
         assert call_args[0] == "existing_encrypted_token"  # token existant gardé
-        assert call_args[3] == "existing_encrypted_key"  # key existante gardée
+        assert call_args[2] == "existing_encrypted_key"  # key existante gardée
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(
@@ -504,6 +507,7 @@ class TestConfigManager:
         mock_cursor.fetchone.return_value = [
             "existing_encrypted_token",
             "existing_encrypted_key",
+            "https://test.grist.com",
         ]
 
         with (
@@ -547,7 +551,7 @@ class TestConfigManager:
         assert "UPDATE otp_configurations SET" in update_call[0][0]
         call_args = update_call[0][1]
         assert call_args[0] == "existing_encrypted_token"  # DS existant conservé
-        assert call_args[3] == "encrypted_new_key"  # nouvelle clé Grist chiffrée
+        assert call_args[2] == "encrypted_new_key"  # nouvelle clé Grist chiffrée
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(
@@ -564,6 +568,7 @@ class TestConfigManager:
         mock_cursor.fetchone.return_value = [
             "existing_encrypted_token",
             "existing_encrypted_key",
+            "https://test.grist.com",
         ]
 
         with (
@@ -607,7 +612,7 @@ class TestConfigManager:
         assert "UPDATE otp_configurations SET" in update_call[0][0]
         call_args = update_call[0][1]
         assert call_args[0] == "encrypted_new_token"  # nouveau token DS chiffré
-        assert call_args[3] == "existing_encrypted_key"  # clé Grist existante conservée
+        assert call_args[2] == "existing_encrypted_key"  # clé Grist existante conservée
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(
@@ -642,6 +647,112 @@ class TestConfigManager:
 
         assert result is False
         mock_fetch.assert_not_called()
+
+
+class TestSaveConfigBaseUrl:
+    """Tests de l'immutabilité et de la liste blanche du grist_base_url"""
+
+    def _conn(self, mock_db_manager):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+        return mock_conn, mock_cursor
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_update_base_url_different_raises(self, mock_db_manager):
+        """UPDATE avec une autre URL → GristBaseUrlImmutableError, aucun UPDATE"""
+        _, mock_cursor = self._conn(mock_db_manager)
+        mock_cursor.fetchone.return_value = [
+            "existing_encrypted_token",
+            "existing_encrypted_key",
+            "https://test.grist.com",
+        ]
+
+        config_manager = ConfigManager("dummy_url")
+        with pytest.raises(
+            GristBaseUrlImmutableError, match="ne peut pas être modifiée"
+        ):
+            config_manager.save_config(
+                {
+                    "otp_config_id": 1,
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://new.grist.com",
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                }
+            )
+
+        assert mock_cursor.execute.call_count == 1  # SELECT uniquement
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_update_base_url_empty_keeps_existing(self, mock_db_manager):
+        """UPDATE sans grist_base_url → valeur en base conservée et pas écrite"""
+        _, mock_cursor = self._conn(mock_db_manager)
+        mock_cursor.fetchone.return_value = [
+            "existing_encrypted_token",
+            "existing_encrypted_key",
+            "https://test.grist.com",
+        ]
+
+        with patch.object(
+            ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+        ), patch.object(
+            ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+        ), patch.object(
+            ConfigManager, "fetch_and_store_grist_user_email"
+        ) as mock_fetch:
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "otp_config_id": 1,
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    # grist_base_url absent ou vide → pas de changement demandé
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                }
+            )
+
+        assert result is True
+        assert mock_cursor.execute.call_count == 2  # SELECT + UPDATE
+        update_call = mock_cursor.execute.call_args_list[1]
+        assert "grist_base_url" not in update_call[0][0]
+        mock_fetch.assert_called_once_with(
+            1, "https://test.grist.com", "decrypted_encrypted_test_key"
+        )
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_insert_base_url_hors_liste_raises(self, mock_db_manager):
+        """INSERT vers une instance hors liste blanche → GristBaseUrlNotAllowedError"""
+        _, mock_cursor = self._conn(mock_db_manager)
+
+        config_manager = ConfigManager("dummy_url")
+        with pytest.raises(GristBaseUrlNotAllowedError, match="hors-whitelist"):
+            config_manager.save_config(
+                {
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://grist.hors-whitelist.fr",
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                }
+            )
+
+        assert mock_cursor.execute.call_count == 0  # rien écrit
 
 
 class TestConfigNormalization:

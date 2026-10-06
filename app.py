@@ -21,6 +21,10 @@ from configuration.config_manager import ConfigManager
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from dn.client import get_groups
+from grist.base_url import (
+    GristBaseUrlImmutableError,
+    GristBaseUrlNotAllowedError
+)
 from grist.client import GristClient
 from security.ip_blocklist import (
     is_whitelisted,
@@ -418,6 +422,15 @@ def api_config():
                         {"success": False, "message": "Erreur lors de la sauvegarde"}
                     ), 500
 
+        except GristBaseUrlImmutableError:
+            return jsonify(
+                {
+                    "success": False,
+                    "message": "L'URL de base Grist ne peut pas être modifiée",
+                }
+            ), 403
+        except GristBaseUrlNotAllowedError as e:
+            return jsonify({"success": False, "message": str(e)}), 400
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
             return jsonify(

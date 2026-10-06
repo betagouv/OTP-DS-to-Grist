@@ -162,7 +162,7 @@ class DatabaseManager:
                     ) VALUES (
                         '',
                         '',
-                        'https://grist.numerique.gouv.fr/api',
+                        '',
                         '',
                         '',
                         '',

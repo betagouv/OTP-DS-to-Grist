@@ -13,6 +13,19 @@ if not DATABASE_URL:
 
 DEMARCHES_API_URL: str = "https://www.demarches-simplifiees.fr/api/v2/graphql"
 
+# Liste blanche des instances Grist joignables, séparée par des virgules :
+# domaines seuls (le schéma, le port et le chemin sont ignorés), un joker
+# `*.suffixe` couvre tous les sous-domaines de `suffixe`. La variable est
+# requise : sans elle, aucune instance ne serait autorisée et l'application
+# refuserait toute synchronisation. La valeur reste brute ici, elle est analysée
+# par `grist/base_url.py` au chargement du module.
+GRIST_BASE_URL_WHITELIST: str = os.getenv("GRIST_BASE_URL_WHITELIST", "")
+if not GRIST_BASE_URL_WHITELIST:
+    raise ValueError(
+        "GRIST_BASE_URL_WHITELIST environment variable is required "
+        "(comma-separated list of allowed Grist domains)"
+    )
+
 CHANGELOG_PATH: str = os.path.join(os.path.dirname(__file__), "CHANGELOG.md")
 GITHUB_CHANGELOG_BASE_URL: str = "https://github.com/betagouv/OTP-DS-to-Grist/blob/main/CHANGELOG.md"
 

@@ -21,6 +21,23 @@ Ajouter les variables d'environnement :
 * LOG_LEVEL
 * DATABASE_URL (**automatiquement renseigné par Scalingo**)
 * SCALINGO_POSTGRESQL_URL (**automatiquement renseigné par Scalingo**)
+* GRIST_BASE_URL_WHITELIST
+
+### Liste blanche des instances Grist
+
+`GRIST_BASE_URL_WHITELIST` est **obligatoire** : l'application refuse de démarrer
+si elle est absente. Elle limite les documents Grist utilisables aux domaines
+autorisés.
+
+Format : domaines séparés par des virgules. `*.suffixe` couvre tous les
+sous-domaines. Le schéma, le port et le chemin sont ignorés (comparaison sur
+l'hôte seul).
+
+Valeur recommandée (instances connues du réseau) :
+
+```
+GRIST_BASE_URL_WHITELIST=*.gouv.fr,drajes.getgrist.com,grist.dataregion.fr,grist.toutatice.fr,igrist.sdis66.fr
+```
 
 ### Fuseau horaire et synchronisation automatique
 

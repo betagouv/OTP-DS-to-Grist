@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 
+from grist.base_url import assert_base_url_allowed
 from utils.log import log, log_verbose, log_error, log_progress
 from utils.rate_limited_session import RateLimitedSession, build_rate_limited_session
 
@@ -35,7 +36,10 @@ class GristClient:
     def __init__(
         self, base_url: str, api_key: str, doc_id: str | None = None
     ) -> None:
-        self.base_url: str = base_url.rstrip("/")  # Enlever le / final s'il y en a un
+        self.base_url: str = base_url.rstrip("/")
+        # Point d'entrée unique vers une instance Grist :
+        # aucune requête ne part vers une instance absente de la liste blanche.
+        assert_base_url_allowed(self.base_url)
         self.api_key: str = api_key
         self.doc_id: str | None = doc_id
         self.headers: dict[str, str] = {
@@ -360,12 +364,12 @@ class GristClient:
         data = response.json()
         return data
 
-    def get_document_info(self) -> dict[str, Any]:
+    def get_document_info(self, timeout: float | None = 10) -> dict[str, Any]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
         url = f"{self.base_url}/docs/{self.doc_id}"
         log_verbose(f"GET {url}")
-        response = self._get_session().get(url, headers=self.headers)
+        response = self._get_session().get(url, headers=self.headers, timeout=timeout)
         if response.status_code != 200:
             log_error(f"Erreur {response.status_code}: {response.text}")
             response.raise_for_status()
