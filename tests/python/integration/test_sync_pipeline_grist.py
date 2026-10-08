@@ -103,14 +103,19 @@ class FakeGristServer:
     `failing_reads` liste les tables dont la lecture des enregistrements échoue,
     comme un document saturé (400 [Sandbox] MemoryError) ; les écritures, elles,
     passent.
+
+    `failing_writes` liste les tables dont l'écriture d'enregistrements (POST et
+    PATCH) échoue en 500 ; modifiable entre deux runs pour simuler un retour à
+    la normale.
     """
 
-    def __init__(self, initial_records=None, failing_reads=()):
+    def __init__(self, initial_records=None, failing_reads=(), failing_writes=()):
         self.tables = {}
         self.store = {}
         self._next_id = {}
         self.calls = []
         self.failing_reads = set(failing_reads)
+        self.failing_writes = set(failing_writes)
         self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
@@ -248,6 +253,8 @@ class FakeGristServer:
             )
 
         if method in ("POST", "PATCH") and parts[4:] == ["records"]:
+            if table_id in self.failing_writes:
+                return build_response({"error": "Erreur interne"}, status=500)
             # L'API Grist refuse au-delà de 1 Mio. Les corps ne sont pas
             # journalisés : seule la taille compte.
             if _payload_too_large(payload):
@@ -920,6 +927,9 @@ class TestSyncPipelineGrist:
             range(1, 22)
         )
         assert set(server.column(AVIS_TABLE, "dossier_number")) == set(range(1, 22))
+        # Refusé à chaque run, le dossier hors norme ne bloque pas le repère
+        # de reprise (il n'est pas compté en échec)
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
 
     def test_page_over_the_size_limit_is_fully_written(self):
         """Une page dont les enregistrements dépassent la limite de taille de
@@ -1012,6 +1022,71 @@ class TestGristReadError:
         assert error.value.table_id == AVIS_TABLE
         assert server.rows(AVIS_TABLE) == []
         metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+
+
+class TestResumeMarkerOnFailedDossiers:
+    """Un dossier en échec sur n'importe quelle table bloque le repère de
+    reprise, pour être redemandé à DN au run suivant."""
+
+    CURSOR = "2023-01-01T00:00:00Z"
+
+    def _server(self, failing_writes):
+        with patch.dict(os.environ, EMPTY_FILTERS):
+            hash_without_filter = build_filters_cache_key()
+        return FakeGristServer(
+            initial_records={
+                SYNC_METADATA_TABLE: [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": self.CURSOR,
+                        "deleted_since_cursor": self.CURSOR,
+                        "filters_hash": hash_without_filter,
+                        "force_full_sync": False,
+                    }
+                ]
+            },
+            failing_writes=failing_writes,
+        )
+
+    def test_champs_failure_keeps_marker_then_next_run_recovers(self):
+        """Échec d'écriture sur la table champs seule : synchro partielle,
+        repères inchangés ; au run suivant, les champs sont écrits.
+
+        Régression : seul l'échec de la table dossiers était compté, le run
+        marqué `success` et le repère avancé, et les champs manquants n'étaient
+        plus jamais redemandés à DN.
+        """
+        server = self._server(failing_writes={CHAMPS_TABLE})
+        dn_server = FakeDemarchesServer(dossiers_de_test(3))
+
+        run_pipeline(server, dn_server, parallel=False)
+
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [1, 2, 3]
+        assert server.rows(CHAMPS_TABLE) == []
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "partial"
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+
+        server.failing_writes.clear()
+        run_pipeline(server, dn_server, parallel=False)
+
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [1, 2, 3]
+        assert sorted(server.column(CHAMPS_TABLE, "dossier_number")) == [1, 2, 3]
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "success"
+        assert metadata["updated_since_cursor"] != self.CURSOR
+
+    def test_annotations_failure_keeps_marker(self):
+        """Échec d'écriture sur la table annotations : repères inchangés."""
+        server = self._server(failing_writes={ANNOTATIONS_TABLE})
+
+        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(2)), parallel=False)
+
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "partial"
         assert metadata["updated_since_cursor"] == self.CURSOR
         assert metadata["deleted_since_cursor"] == self.CURSOR
 

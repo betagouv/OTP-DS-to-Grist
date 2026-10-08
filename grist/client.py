@@ -716,6 +716,7 @@ class GristClient:
         # Préparer les listes pour les opérations de création et de mise à jour
         to_create = []
         to_update = []
+        total_rejected = 0
 
         for row_dict in dossiers_list:
             # Filtrer les colonnes qui existent dans la table
@@ -739,6 +740,19 @@ class GristClient:
                 continue
 
             dossier_number_str = str(dossier_number)
+
+            # Une ligne qui dépasse à elle seule la limite de Grist serait refusée
+            # à chaque run : rejet définitif, compté à part pour ne pas bloquer
+            # le repère de reprise comme le ferait un échec transitoire.
+            weight = _records_payload_bytes([{"fields": filtered_row_dict}])
+            if weight > GRIST_MAX_BODY_BYTES:
+                log_error(
+                    f"Dossier {dossier_number_str} trop volumineux pour Grist "
+                    f"({weight} octets pour une limite de {GRIST_MAX_BODY_BYTES}) : "
+                    f"ignoré dans la table {table_id}"
+                )
+                total_rejected += 1
+                continue
 
             if dossier_number_str in existing_records:
                 # Mise à jour d'un enregistrement existant
@@ -841,8 +855,9 @@ class GristClient:
                 )
                 total_errors += len(normalized_creations)
 
-        # Retourner le succès global
-        success = total_success > 0 and total_errors == 0
+        # Retourner le succès global : un dossier rejeté car trop volumineux
+        # n'est pas un échec (le réessayer ne changerait rien)
+        success = total_errors == 0 and (total_success > 0 or total_rejected > 0)
 
         # Log du résumé
         if total_success > 0 or total_errors > 0:

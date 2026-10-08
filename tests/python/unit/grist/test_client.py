@@ -1540,6 +1540,30 @@ class TestUpsertMultipleDossiersCache:
         session.get.assert_called_once()
         assert cache == {"1": 12}
 
+    def test_oversized_dossier_is_rejected_not_failed(self):
+        """ligne au-delà de la limite de Grist -> non envoyée (refusée à chaque
+        run), les autres sont écrites, et le lot n'est pas en échec"""
+        session = MagicMock()
+        session.post.side_effect = _post_creates_ids
+        cache = {}
+
+        with patch("grist.client.log_error") as mock_log_error:
+            ok = self._upsert(
+                session,
+                [
+                    {"dossier_number": 1, "name": "ok"},
+                    {"dossier_number": 2, "name": "a" * (2 << 20)},
+                ],
+                cache,
+            )
+
+        assert ok is True
+        sent = session.post.call_args.kwargs["json"]["records"]
+        assert [r["fields"]["dossier_number"] for r in sent] == [1]
+        assert cache == {"1": 1}
+        assert "Dossier 2 trop volumineux pour Grist" in mock_log_error.call_args[0][0]
+        assert "ignoré dans la table dossiers" in mock_log_error.call_args[0][0]
+
     def test_reload_read_error_raises_and_keeps_cache(self):
         """rechargement en échec de lecture -> GristReadError, clés connues
         conservées"""

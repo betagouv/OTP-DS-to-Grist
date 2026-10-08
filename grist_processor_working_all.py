@@ -1224,12 +1224,14 @@ def process_demarche_for_grist_optimized(
                 log(
                     f"  Upsert par lot de {len(champ_records)} enregistrements de champs..."
                 )
-                client.upsert_multiple_dossiers_in_grist(
+                success = client.upsert_multiple_dossiers_in_grist(
                     table_ids["champ_table_id"],
                     champ_records,
                     existing_records=cache_champs,
                     column_cache=column_cache,
                 )
+                if not success:
+                    failed_dossiers.update(_dossier_numbers(champ_records))
 
                 log(f"[TIMING] Après upsert champs: {time.time() - page_start:.1f}s")
                 log_progress.log("Mise à jour des enregistrements de champs")
@@ -1244,6 +1246,8 @@ def process_demarche_for_grist_optimized(
                     existing_records=cache_annotations,
                     column_cache=column_cache,
                 )
+                if not success:
+                    failed_dossiers.update(_dossier_numbers(annotation_records))
 
                 log(
                     f"[TIMING] Après upsert annotations: {time.time() - page_start:.1f}s"
@@ -1272,6 +1276,7 @@ def process_demarche_for_grist_optimized(
                         log_error(
                             f"  Erreur extraction demandeur dossier {dossier_num}: {str(e)}"
                         )
+                        failed_dossiers.add(str(dossier_num))
 
                 if demandeur_records:
                     log(f"  Upsert par lot de {len(demandeur_records)} demandeurs...")
@@ -1287,6 +1292,7 @@ def process_demarche_for_grist_optimized(
                         )
                     else:
                         log_error("   Erreur lors du traitement des demandeurs")
+                        failed_dossiers.update(_dossier_numbers(demandeur_records))
 
                 log(
                     f"[TIMING] Après upsert demandeurs: {time.time() - page_start:.1f}s"
@@ -1350,12 +1356,15 @@ def process_demarche_for_grist_optimized(
                             log(
                                 f"  Bloc '{block_label}': {success_count} réussis, {error_count} échecs"
                             )
+                            if error_count:
+                                failed_dossiers.update(_dossier_numbers(rows))
                         except GristReadError:
                             raise
                         except Exception as e:
                             log_error(
                                 f"  Erreur traitement bloc '{block_label}': {str(e)}"
                             )
+                            failed_dossiers.update(_dossier_numbers(rows))
 
             log(f"[TIMING] Après blocs répétables: {time.time() - page_start:.1f}s")
             log_progress.log("Traitement des champs répétables")
@@ -1401,8 +1410,9 @@ def process_demarche_for_grist_optimized(
         minutes = int(elapsed_time // 60)
         seconds = elapsed_time % 60
 
-        # Calculer les nombres à partir des ensembles
-        total_success = len(successful_dossiers)
+        # Calculer les nombres à partir des ensembles : un dossier écrit dans la
+        # table dossiers mais en échec sur une autre table est compté en échec
+        total_success = len(successful_dossiers - failed_dossiers)
         total_errors = len(failed_dossiers)
 
         log("\nTraitement terminé!")
@@ -1436,13 +1446,23 @@ def process_demarche_for_grist_optimized(
             else:
                 log("Aucun dossier ne correspond aux critères de filtrage")
 
+        if failed_dossiers:
+            # Le delta ne redemande à DN que les dossiers modifiés après le repère :
+            # l'avancer perdrait les dossiers en échec non modifiés depuis.
+            log_error(
+                f"{len(failed_dossiers)} dossier(s) en échec "
+                f"({_format_numbers(failed_dossiers)}) : le repère de reprise est "
+                "conservé, ils seront repris au prochain run"
+            )
+
         # Sauvegarder le curseur de sync
         sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        keep_resume_marker = pagination_error or bool(failed_dossiers)
         updated_since_resume = (
-            updated_since_cursor if pagination_error else sync_start_time
+            updated_since_cursor if keep_resume_marker else sync_start_time
         )
         deleted_since_resume = (
-            deleted_since_cursor if pagination_error else sync_start_time
+            deleted_since_cursor if keep_resume_marker else sync_start_time
         )
         try:
             client.save_sync_metadata(
@@ -1585,6 +1605,27 @@ def main():
         log_error(f"Échec du traitement de la démarche {demarche_number}")
         print_api_timings()
         return 1
+
+
+# --- Helpers privés (module) ---
+
+
+def _dossier_numbers(records: list[dict[str, Any]]) -> set[str]:
+    """Numéros des dossiers portés par des enregistrements (`dossier_number`)."""
+    return {
+        str(record["dossier_number"])
+        for record in records
+        if record.get("dossier_number")
+    }
+
+
+def _format_numbers(numbers: set[str], limit: int = 20) -> str:
+    """Numéros triés, tronqués au-delà de `limit` pour garder un log lisible."""
+    ordered = sorted(numbers, key=lambda number: (len(number), number))
+    shown = ", ".join(ordered[:limit])
+    if len(ordered) > limit:
+        shown += f", … (+{len(ordered) - limit})"
+    return shown
 
 
 if __name__ == "__main__":
