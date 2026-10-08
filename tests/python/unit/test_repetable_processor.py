@@ -252,7 +252,9 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
         assert result["123_Maquettes_row_1"] == 42
         assert result["123_maquettes_row_1"] == 42
         assert result["123_Maquettes_index_1"] == 42
-        assert result["row_1"] == 42
+        assert result["123:row_1"] == 42
+        # pas de clé sur le block_row_id seul (partageable entre dossiers)
+        assert "row_1" not in result
 
     def test_success_builds_geo_keys(self):
         """200 avec géométrie -> clés géo"""
@@ -272,6 +274,28 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
         result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
         assert result["123_Maquettes_row_1_geo1"] == 7
         assert result["123_maquettes_carte_g1"] == 7
+        assert result["123:row_1_geo1"] == 7
+
+    def test_same_block_row_id_in_two_dossiers_gives_distinct_keys(self):
+        """même block_row_id dans deux dossiers -> deux clés distinctes"""
+        records = [
+            {"id": 1, "fields": {"dossier_number": 123, "block_row_id": "row_1"}},
+            {"id": 2, "fields": {"dossier_number": 456, "block_row_id": "row_1"}},
+        ]
+        self.client.get_records.return_value = self._mock_response(200, records)
+        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        assert result["123:row_1"] == 1
+        assert result["456:row_1"] == 2
+        assert "row_1" not in result
+
+    def test_float_dossier_number_is_normalized(self):
+        """dossier_number relu en 123.0 -> même clé que 123"""
+        records = [
+            {"id": 1, "fields": {"dossier_number": 123.0, "block_row_id": "row_1"}},
+        ]
+        self.client.get_records.return_value = self._mock_response(200, records)
+        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        assert result["123:row_1"] == 1
 
 
 class TestProcessRepetableDataBatchRecords:
@@ -498,7 +522,7 @@ class TestProcessRepetablesBatchRecords:
 
     def test_update_batch_records(self):
         """ligne existante -> PATCH lot avec les ids trouvés"""
-        existing_rows = {"123_maquettes_row_1": 42}
+        existing_rows = {"123:row_1": 42}
         self.client.patch_records.return_value = self._mock_response(200)
         with (
             patch(
@@ -519,7 +543,7 @@ class TestProcessRepetablesBatchRecords:
 
     def test_update_batch_error_falls_back_to_individual(self):
         """PATCH lot en échec -> repli sur des PATCH individuels"""
-        existing_rows = {"123_maquettes_row_1": 42}
+        existing_rows = {"123:row_1": 42}
         self.client.patch_records.side_effect = [
             self._mock_response(400),
             self._mock_response(200),
@@ -597,7 +621,7 @@ class TestProcessRepetablesBatchRecords:
                 [self._dossier()],
                 self._table_ids(),
                 self._column_types(),
-                existing_rows_cache={"maquettes": {"123_maquettes_row_1": 42}},
+                existing_rows_cache={"maquettes": {"123:row_1": 42}},
             )
         assert (success, errors) == (1, 0)
         mock_fetch.assert_not_called()
@@ -625,9 +649,7 @@ class TestProcessRepetablesBatchRecords:
         assert self.client.post_records.call_args.args[1] == [
             {"fields": self._expected_record()}
         ]
-        assert shared_cache["123_maquettes_row_1"] == 99
-        assert shared_cache["123_maquettes_index_1"] == 99
-        assert shared_cache["row_1"] == 99
+        assert shared_cache == {"123:row_1": 99}
 
     def test_create_ids_count_mismatch_reloads_cache(self):
         """nombre d'IDs reçus != lignes envoyées -> pas d'appariement deviné,
@@ -686,7 +708,95 @@ class TestProcessRepetablesBatchRecords:
                 existing_rows_cache={"maquettes": shared_cache},
             )
         assert (success, errors) == (1, 0)
-        assert shared_cache["row_1"] == 5
+        assert shared_cache["123:row_1"] == 5
+
+    def test_same_row_id_in_another_dossier_is_created_not_updated(self):
+        """dossier 456 avec le même id de ligne que le dossier 123 déjà créé
+        -> création, pas de MAJ (la ligne du dossier 123 n'est pas écrasée)"""
+        shared_cache = {"123:row_1": 99}
+        self.client.post_records.return_value = self._created_response([{"id": 100}])
+        other_dossier = self._dossier()
+        other_dossier["number"] = 456
+        success, errors = process_repetables_batch(
+            self.client,
+            [other_dossier],
+            self._table_ids(),
+            self._column_types(),
+            existing_rows_cache={"maquettes": shared_cache},
+        )
+        assert (success, errors) == (1, 0)
+        self.client.patch_records.assert_not_called()
+        self.client.post_records.assert_called_once()
+        assert shared_cache == {"123:row_1": 99, "456:row_1": 100}
+
+    def test_resync_matches_rows_preloaded_from_grist(self):
+        """resynchro : ligne relue depuis Grist (sans block_label, numéro en
+        float) -> MAJ de cette ligne, pas de nouvelle création"""
+        grist_rows = MagicMock()
+        grist_rows.status_code = 200
+        grist_rows.json.return_value = {
+            "records": [
+                {"id": 42, "fields": {"dossier_number": 123.0, "block_row_id": "row_1"}}
+            ]
+        }
+        self.client.get_records.return_value = grist_rows
+        cache = {
+            "maquettes": get_existing_repetable_rows_improved_no_filter(
+                self.client, "Demarche_123_maquettes", None
+            )
+        }
+        self.client.patch_records.return_value = self._mock_response(200)
+        success, errors = process_repetables_batch(
+            self.client,
+            [self._dossier()],
+            self._table_ids(),
+            self._column_types(),
+            existing_rows_cache=cache,
+        )
+        assert (success, errors) == (1, 0)
+        self.client.post_records.assert_not_called()
+        assert self.client.patch_records.call_args.args[1] == [
+            {"id": 42, "fields": self._expected_record()}
+        ]
+
+    def test_resync_matches_geo_rows(self):
+        """resynchro d'une ligne avec géométrie -> MAJ via (dossier, row_id_geoN)"""
+        dossier = self._dossier()
+        dossier["champs"][0]["rows"][0]["champs"] = [
+            {
+                "__typename": "CarteChamp",
+                "label": "Carte",
+                "geoAreas": [
+                    {
+                        "id": "g1",
+                        "description": "zone A",
+                        "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+                        "surface": 150,
+                    }
+                ],
+            }
+        ]
+        column_types = {
+            "maquettes": {
+                "columns": [
+                    {"id": "carte", "type": "Text"},
+                    {"id": "geo_id", "type": "Text"},
+                ]
+            }
+        }
+        self.client.patch_records.return_value = self._mock_response(200)
+        success, errors = process_repetables_batch(
+            self.client,
+            [dossier],
+            self._table_ids(),
+            column_types,
+            existing_rows_cache={"maquettes": {"123:row_1_geo1": 7}},
+        )
+        assert (success, errors) == (1, 0)
+        self.client.post_records.assert_not_called()
+        patched = self.client.patch_records.call_args.args[1]
+        assert patched[0]["id"] == 7
+        assert patched[0]["fields"]["block_row_id"] == "row_1_geo1"
 
 
 class TestProcessRepetablesForGristRecords:
