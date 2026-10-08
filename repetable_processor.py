@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
+from grist.client import GristReadError
 from grist.formatter import format_value
 from utils.log import log, log_verbose, log_error
 
@@ -674,8 +675,7 @@ def get_existing_repetable_rows_improved_no_filter(
     response = client.get_records(table_id)
 
     if response.status_code != 200:
-        log_error(f"Erreur lors de la récupération des enregistrements: {response.status_code} - {response.text}")
-        return {}
+        raise GristReadError(table_id, response)
 
     data = response.json()
 
@@ -1303,8 +1303,8 @@ def _update_cache_after_create(client, table_id, batch, response, existing_rows)
 def _reload_cache(client, table_id, existing_rows):
     """
     Recharge le cache depuis Grist, en place (le dict est partagé avec
-    l'appelant). Pas de clear() : si le GET échoue, il renvoie {} et on ne
-    veut pas perdre les clés connues (risque de doublons).
+    l'appelant). Pas de clear() : les clés connues sont conservées.
+    Si le GET échoue, GristReadError est propagée.
     """
     existing_rows.update(
         get_existing_repetable_rows_improved_no_filter(client, table_id, None)

@@ -2,6 +2,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from grist.client import GristReadError
+
 from repetable_processor import (
     ensure_repetable_columns_exist,
     auto_fix_missing_columns_optimized,
@@ -227,11 +229,13 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
             get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
         self.client.get_records.assert_not_called()
 
-    def test_http_error_returns_empty_dict(self):
-        """réponse non-200 -> {}"""
+    def test_http_error_raises_read_error(self):
+        """réponse non-200 -> GristReadError (un dict vide ferait recréer
+        toutes les lignes répétables du run)"""
         self.client.get_records.return_value = self._mock_response(500)
-        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
-        assert result == {}
+        with pytest.raises(GristReadError) as error:
+            get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        assert error.value.table_id == "blocs"
         self.client.get_records.assert_called_once_with("blocs")
 
     def test_success_builds_composite_keys(self):
@@ -671,6 +675,27 @@ class TestProcessRepetablesBatchRecords:
             self.client, "Demarche_123_maquettes", None
         )
         assert shared_cache == {"autre_cle": 1, "row_1": 77}
+
+    def test_reload_read_error_propagates_and_keeps_cache(self):
+        """rechargement après création en échec de lecture -> GristReadError
+        propagée, clés déjà connues conservées"""
+        self.client.post_records.return_value = self._created_response([])
+        shared_cache = {"autre_cle": 1}
+        response = self._mock_response(400)
+        response.json.return_value = {"error": "[Sandbox] MemoryError"}
+        with patch(
+            "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+            side_effect=GristReadError("Demarche_123_maquettes", response),
+        ):
+            with pytest.raises(GristReadError):
+                process_repetables_batch(
+                    self.client,
+                    [self._dossier()],
+                    self._table_ids(),
+                    self._column_types(),
+                    existing_rows_cache={"maquettes": shared_cache},
+                )
+        assert shared_cache == {"autre_cle": 1}
 
     def test_create_missing_id_reloads_cache(self):
         """ID absent dans la réponse -> rechargement, pas d'ID None dans le cache"""
