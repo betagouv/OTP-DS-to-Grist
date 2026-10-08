@@ -581,6 +581,113 @@ class TestProcessRepetablesBatchRecords:
             {"fields": self._expected_record()}
         ]
 
+    def _created_response(self, records):
+        response = self._mock_response(201)
+        response.json.return_value = {"records": records}
+        return response
+
+    def test_existing_rows_cache_skips_refetch(self):
+        """existing_rows_cache fourni -> pas de GET de la table"""
+        self.client.patch_records.return_value = self._mock_response(200)
+        with patch(
+            "repetable_processor.get_existing_repetable_rows_improved_no_filter"
+        ) as mock_fetch:
+            success, errors = process_repetables_batch(
+                self.client,
+                [self._dossier()],
+                self._table_ids(),
+                self._column_types(),
+                existing_rows_cache={"maquettes": {"123_maquettes_row_1": 42}},
+            )
+        assert (success, errors) == (1, 0)
+        mock_fetch.assert_not_called()
+        assert self.client.patch_records.call_args.args[1] == [
+            {"id": 42, "fields": self._expected_record()}
+        ]
+
+    def test_create_updates_cache_in_place(self):
+        """création réussie -> le dict de l'appelant reçoit le nouvel id,
+        et search_keys n'est pas envoyé à Grist"""
+        self.client.post_records.return_value = self._created_response([{"id": 99}])
+        shared_cache = {}
+        with patch(
+            "repetable_processor.get_existing_repetable_rows_improved_no_filter"
+        ) as mock_fetch:
+            success, errors = process_repetables_batch(
+                self.client,
+                [self._dossier()],
+                self._table_ids(),
+                self._column_types(),
+                existing_rows_cache={"maquettes": shared_cache},
+            )
+        assert (success, errors) == (1, 0)
+        mock_fetch.assert_not_called()
+        assert self.client.post_records.call_args.args[1] == [
+            {"fields": self._expected_record()}
+        ]
+        assert shared_cache["123_maquettes_row_1"] == 99
+        assert shared_cache["123_maquettes_index_1"] == 99
+        assert shared_cache["row_1"] == 99
+
+    def test_create_ids_count_mismatch_reloads_cache(self):
+        """nombre d'IDs reçus != lignes envoyées -> pas d'appariement deviné,
+        rechargement de la table dans le dict partagé"""
+        self.client.post_records.return_value = self._created_response([])
+        shared_cache = {"autre_cle": 1}
+        with patch(
+            "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+            return_value={"row_1": 77},
+        ) as mock_fetch:
+            process_repetables_batch(
+                self.client,
+                [self._dossier()],
+                self._table_ids(),
+                self._column_types(),
+                existing_rows_cache={"maquettes": shared_cache},
+            )
+        mock_fetch.assert_called_once_with(
+            self.client, "Demarche_123_maquettes", None
+        )
+        assert shared_cache == {"autre_cle": 1, "row_1": 77}
+
+    def test_create_missing_id_reloads_cache(self):
+        """ID absent dans la réponse -> rechargement, pas d'ID None dans le cache"""
+        self.client.post_records.return_value = self._created_response([{}])
+        shared_cache = {}
+        with patch(
+            "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+            return_value={},
+        ) as mock_fetch:
+            process_repetables_batch(
+                self.client,
+                [self._dossier()],
+                self._table_ids(),
+                self._column_types(),
+                existing_rows_cache={"maquettes": shared_cache},
+            )
+        mock_fetch.assert_called_once()
+        assert None not in shared_cache.values()
+
+    def test_auto_fix_success_updates_cache(self):
+        """création via auto-fix -> le cache reçoit aussi les nouveaux IDs"""
+        self.client.post_records.return_value = self._mock_response(
+            400, text="Invalid column"
+        )
+        shared_cache = {}
+        with patch(
+            "repetable_processor.auto_fix_missing_columns_optimized",
+            return_value=(True, self._created_response([{"id": 5}])),
+        ):
+            success, errors = process_repetables_batch(
+                self.client,
+                [self._dossier()],
+                self._table_ids(),
+                self._column_types(),
+                existing_rows_cache={"maquettes": shared_cache},
+            )
+        assert (success, errors) == (1, 0)
+        assert shared_cache["row_1"] == 5
+
 
 class TestProcessRepetablesForGristRecords:
     """Tests unitaires des opérations records (upsert) de process_repetables_for_grist"""

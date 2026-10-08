@@ -1240,13 +1240,65 @@ def process_repetable_data_batch(
         return 0, 0
 
 
+def _update_cache_after_create(client, table_id, batch, response, existing_rows):
+    """
+    Reporte dans `existing_rows` (mis à jour en place) les IDs des lignes que
+    Grist vient de créer, pour que les pages suivantes les retrouvent sans
+    refetch de la table.
+
+    `POST /records` ne renvoie que des IDs ({"records": [{"id": ...}]}), dans
+    l'ordre des enregistrements envoyés (ordre conservé par
+    GristClient._send_records quand il découpe le payload). L'appariement est
+    donc positionnel, mais vérifié : en cas d'écart de longueur ou d'ID
+    manquant, on ne devine pas, on recharge la table.
+    """
+    try:
+        created_records = response.json().get("records", [])
+    except Exception:
+        created_records = []
+
+    if len(created_records) != len(batch):
+        log_error(
+            f"  [CACHE] {table_id} : {len(batch)} lignes envoyées, "
+            f"{len(created_records)} IDs reçus, rechargement de la table"
+        )
+        _reload_cache(client, table_id, existing_rows)
+        return
+
+    for index, record_input in enumerate(batch):
+        new_id = created_records[index].get("id")
+        if new_id is None:
+            block_row_id = record_input["fields"].get("block_row_id")
+            log_error(
+                f"  [CACHE] {table_id} : ID absent pour la ligne {block_row_id} "
+                f"(dossier {record_input['fields'].get('dossier_number')}), "
+                "rechargement de la table"
+            )
+            _reload_cache(client, table_id, existing_rows)
+            return
+        for key in record_input["search_keys"]:
+            existing_rows[key] = new_id
+
+
+def _reload_cache(client, table_id, existing_rows):
+    """
+    Recharge le cache depuis Grist, en place (le dict est partagé avec
+    l'appelant). Pas de clear() : si le GET échoue, il renvoie {} et on ne
+    veut pas perdre les clés connues (risque de doublons).
+    """
+    existing_rows.update(
+        get_existing_repetable_rows_improved_no_filter(client, table_id, None)
+    )
+
+
 def process_repetables_batch(
     client,
     dossiers_data,
     table_ids_dict,
     column_types_dict,
     problematic_ids=None,
-    batch_size=50
+    batch_size=50,
+    existing_rows_cache=None,
 ):
     """
     Traite les blocs répétables par lot pour plusieurs dossiers.
@@ -1259,6 +1311,10 @@ def process_repetables_batch(
         column_types_dict: Dict {block_label_normalized: {"columns": [...]}}
         problematic_ids: IDs à filtrer
         batch_size: Taille du lot
+        existing_rows_cache: dict optionnel {block_key: {search_key: record_id}},
+            préchargé par l'appelant et partagé entre les appels. S'il est fourni,
+            aucun GET de la table n'est fait et il est mis à jour en place après
+            chaque création.
 
     Returns:
         tuple: (success_count, error_count)
@@ -1266,14 +1322,17 @@ def process_repetables_batch(
     total_success = 0
     total_errors = 0
 
-    # ✅ NOUVEAU : Récupérer TOUTES les lignes existantes AVANT la boucle
-    existing_rows_by_block = {}
-    for block_key, table_id in table_ids_dict.items():
-        existing_rows_by_block[block_key] = get_existing_repetable_rows_improved_no_filter(
-            client,
-            table_id,
-            None  # ✅ None = récupérer TOUTES les lignes de tous les dossiers
-        )
+    if existing_rows_cache is not None:
+        existing_rows_by_block = existing_rows_cache
+    else:
+        # Comportement historique : GET complet de chaque table à chaque appel
+        existing_rows_by_block = {}
+        for block_key, table_id in table_ids_dict.items():
+            existing_rows_by_block[block_key] = get_existing_repetable_rows_improved_no_filter(
+                client,
+                table_id,
+                None  # None = récupérer TOUTES les lignes de tous les dossiers
+            )
 
     # Grouper les dossiers et extraire les lignes par bloc
     rows_by_block = {}  # {block_label_normalized: {"to_update": [], "to_create": [], "existing_rows": {}}}
@@ -1406,7 +1465,9 @@ def process_repetables_batch(
                                 if found_id:
                                     rows_by_block[normalized_block]["to_update"].append({"id": found_id, "fields": geo_record})
                                 else:
-                                    rows_by_block[normalized_block]["to_create"].append({"fields": geo_record})
+                                    rows_by_block[normalized_block]["to_create"].append(
+                                        {"fields": geo_record, "search_keys": search_keys}
+                                    )
                         else:
                             # Ligne simple sans géométrie
                             record = base_record.copy()
@@ -1429,7 +1490,9 @@ def process_repetables_batch(
                             if found_id:
                                 rows_by_block[normalized_block]["to_update"].append({"id": found_id, "fields": record})
                             else:
-                                rows_by_block[normalized_block]["to_create"].append({"fields": record})
+                                rows_by_block[normalized_block]["to_create"].append(
+                                    {"fields": record, "search_keys": search_keys}
+                                )
 
                     except Exception as e:
                         log_error(f"Erreur extraction ligne {row_index+1} du bloc '{block_label}': {str(e)}")
@@ -1486,11 +1549,16 @@ def process_repetables_batch(
             for i in range(0, len(data["to_create"]), batch_size):
                 batch = data["to_create"][i:i+batch_size]
 
-                create_payload = {"records": batch}
-                response = client.post_records(table_id, batch)
+                # "search_keys" est une métadonnée interne : on ne l'envoie pas à Grist
+                clean_records = [{"fields": r["fields"]} for r in batch]
+                create_payload = {"records": clean_records}
+                response = client.post_records(table_id, clean_records)
 
                 if response.status_code in [200, 201]:
                     total_success += len(batch)
+                    _update_cache_after_create(
+                        client, table_id, batch, response, data["existing_rows"]
+                    )
                 else:
                     # AUTO-FIX pour colonnes manquantes
                     if (
@@ -1498,7 +1566,7 @@ def process_repetables_batch(
                         and "Invalid column" in response.text
                     ):
                         log("[AUTO-FIX] Correction colonnes manquantes...")
-                        success, _ = auto_fix_missing_columns_optimized(
+                        success, fix_response = auto_fix_missing_columns_optimized(
                             client,
                             table_id,
                             create_payload
@@ -1506,6 +1574,9 @@ def process_repetables_batch(
 
                         if success:
                             total_success += len(batch)
+                            _update_cache_after_create(
+                                client, table_id, batch, fix_response, data["existing_rows"]
+                            )
                         else:
                             total_errors += len(batch)
                     else:
