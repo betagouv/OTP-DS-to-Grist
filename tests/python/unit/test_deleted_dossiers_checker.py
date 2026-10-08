@@ -1,4 +1,6 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from deleted_dossiers_checker import (
     COLUMN_ID,
@@ -6,6 +8,7 @@ from deleted_dossiers_checker import (
     REASON_COLUMN_ID,
     _ensure_deletion_columns,
     _mark_deleted_in_grist,
+    check_deleted_dossiers,
 )
 
 
@@ -135,17 +138,33 @@ class TestMarkDeletedInGrist:
         assert result == 0
         self.client.patch_records.assert_not_called()
 
-    def test_patch_error_returns_zero(self):
-        """PATCH en échec -> 0"""
+    def test_patch_error_raises(self):
+        """PATCH en échec -> RuntimeError (et non 0, confondu avec « rien à
+        marquer » : le repère deleted_since avancerait)"""
         self.client.patch_records.return_value = self._mock_patch(status=500)
         grist_dict = {"123": 45}
         deleted_dossiers = [{"number": 123}]
-        result = _mark_deleted_in_grist(
-            self.client,
-            "dossiers",
-            grist_dict,
-            deleted_dossiers,
-            self.log,
-            self.log_error,
-        )
-        assert result == 0
+        with pytest.raises(RuntimeError, match="PATCH Grist en échec"):
+            _mark_deleted_in_grist(
+                self.client,
+                "dossiers",
+                grist_dict,
+                deleted_dossiers,
+                self.log,
+                self.log_error,
+            )
+
+
+class TestCheckDeletedDossiers:
+    """Tests unitaires pour check_deleted_dossiers"""
+
+    def test_columns_failure_raises(self):
+        """colonnes de suppression impossibles à créer -> RuntimeError,
+        sans appel à l'API DN"""
+        client = MagicMock()
+        with patch(
+            "deleted_dossiers_checker._ensure_deletion_columns", return_value=False
+        ), patch("deleted_dossiers_checker.get_deleted_dossiers") as mock_dn:
+            with pytest.raises(RuntimeError, match="Colonnes de suppression"):
+                check_deleted_dossiers(client, "dossiers", 123, MagicMock(), MagicMock())
+        mock_dn.assert_not_called()

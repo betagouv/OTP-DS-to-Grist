@@ -568,7 +568,9 @@ def grist_transport(server):
         yield client
 
 
-def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
+def run_pipeline(
+    server, dn_server, filters=None, deletion_error=None, **pipeline_kwargs
+):
     """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
 
     La couche DN réelle est branchée sur `dn_server` (faux serveur GraphQL
@@ -604,6 +606,7 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
                 gpa,
                 "check_deleted_dossiers",
                 return_value={"newly_marked": 0},
+                side_effect=deletion_error,
             )
         )
         hiding = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
@@ -1027,8 +1030,9 @@ class TestGristReadError:
 
 
 class TestResumeMarkerOnFailedDossiers:
-    """Un dossier en échec sur n'importe quelle table bloque le repère de
-    reprise, pour être redemandé à DN au run suivant."""
+    """Un dossier en échec sur n'importe quelle table bloque les repères de
+    reprise, pour être redemandé à DN au run suivant ; une vérification des
+    suppressions en échec bloque le repère `deleted_since`."""
 
     CURSOR = "2023-01-01T00:00:00Z"
 
@@ -1077,6 +1081,38 @@ class TestResumeMarkerOnFailedDossiers:
         assert sorted(server.column(CHAMPS_TABLE, "dossier_number")) == [1, 2, 3]
         metadata = server.metadata(DEMARCHE_NUMBER)
         assert metadata["last_sync_status"] == "success"
+        assert metadata["updated_since_cursor"] != self.CURSOR
+
+    def test_deletion_check_failure_keeps_only_deleted_marker(self):
+        """Vérification des suppressions en échec : seul le repère
+        `deleted_since` est conservé, `updated_since` avance.
+
+        Régression : le repère `deleted_since` sauvegardé avant la
+        vérification, qui avançait même quand elle échouait ; les suppressions
+        de la fenêtre n'étaient plus jamais redemandées à DN.
+        """
+        server = self._server(failing_writes=())
+
+        run_pipeline(
+            server,
+            FakeDemarchesServer(dossiers_de_test(2)),
+            deletion_error=RuntimeError("API DN indisponible"),
+            parallel=False,
+        )
+
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+        assert metadata["updated_since_cursor"] != self.CURSOR
+        assert metadata["last_sync_status"] == "success"
+
+    def test_deletion_check_success_advances_both_markers(self):
+        """Vérification des suppressions réussie : les deux repères avancent."""
+        server = self._server(failing_writes=())
+
+        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(2)), parallel=False)
+
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["deleted_since_cursor"] != self.CURSOR
         assert metadata["updated_since_cursor"] != self.CURSOR
 
     def test_annotations_failure_keeps_marker(self):

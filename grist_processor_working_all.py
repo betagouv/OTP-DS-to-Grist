@@ -549,14 +549,14 @@ def add_id_columns_based_on_annotations(client, table_id, annotations):
 
 
 def run_demarche_level_tasks(
-    client,
-    table_ids,
-    demarche_number,
-    updated_since_cursor=None,
-    force_full_sync=False,
-    deleted_since_cursor=None,
-    schema_method_successful=False,
-):
+    client: GristClient,
+    table_ids: dict[str, Any],
+    demarche_number: int,
+    updated_since_cursor: str | None = None,
+    force_full_sync: bool = False,
+    deleted_since_cursor: str | None = None,
+    schema_method_successful: bool = False,
+) -> bool:
     """
     Opérations de niveau démarche, indépendantes des dossiers effectivement traités.
 
@@ -568,6 +568,9 @@ def run_demarche_level_tasks(
 
     Chaque tâche est isolée dans son propre try/except : un échec n'empêche pas
     les suivantes.
+
+    Renvoie True si la vérification des dossiers supprimés a abouti : sinon, le
+    repère `deleted_since` ne doit pas avancer.
     """
     # 1. Instructeurs (niveau démarche, à chaque sync)
     if table_ids.get("instructeurs"):
@@ -592,6 +595,7 @@ def run_demarche_level_tasks(
         log("Sync complète — rafraîchissement des labels ignoré (déjà à jour).")
 
     # 3. Dossiers supprimés (API DN, curseur dédié)
+    deletions_checked = False
     try:
         deletion_result = check_deleted_dossiers(
             client=client,
@@ -603,6 +607,7 @@ def run_demarche_level_tasks(
         )
         deleted_count = (deletion_result or {}).get("newly_marked", 0)
         log(f"Nombre de dossiers marqués supprimés dans Grist : {deleted_count}")
+        deletions_checked = True
     except Exception as e:
         log_error(f"Erreur vérification dossiers supprimés : {e}")
 
@@ -612,6 +617,8 @@ def run_demarche_level_tasks(
             hide_columns_with_id(client)
         except Exception as e:
             log_error(f"Erreur lors du masquage des colonnes _id: {e}")
+
+    return deletions_checked
 
 
 def upsert_avis_records(
@@ -1455,6 +1462,23 @@ def process_demarche_for_grist_optimized(
                 "conservé, ils seront repris au prochain run"
             )
 
+        # Tâches de niveau démarche avant la sauvegarde des repères : le repère
+        # `deleted_since` n'avance que si la vérification des suppressions a abouti
+        deletions_checked = run_demarche_level_tasks(
+            client,
+            table_ids,
+            demarche_number,
+            updated_since_cursor=updated_since_cursor,
+            force_full_sync=force_full_sync,
+            deleted_since_cursor=deleted_since_cursor,
+            schema_method_successful=schema_method_successful,
+        )
+        if not deletions_checked:
+            log_error(
+                "Vérification des dossiers supprimés en échec : le repère "
+                "deleted_since est conservé, elle sera reprise au prochain run"
+            )
+
         # Sauvegarder le curseur de sync
         sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         keep_resume_marker = pagination_error or bool(failed_dossiers)
@@ -1462,7 +1486,9 @@ def process_demarche_for_grist_optimized(
             updated_since_cursor if keep_resume_marker else sync_start_time
         )
         deleted_since_resume = (
-            deleted_since_cursor if keep_resume_marker else sync_start_time
+            deleted_since_cursor
+            if keep_resume_marker or not deletions_checked
+            else sync_start_time
         )
         try:
             client.save_sync_metadata(
@@ -1485,15 +1511,6 @@ def process_demarche_for_grist_optimized(
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
-        run_demarche_level_tasks(
-            client,
-            table_ids,
-            demarche_number,
-            updated_since_cursor=updated_since_cursor,
-            force_full_sync=force_full_sync,
-            deleted_since_cursor=deleted_since_cursor,
-            schema_method_successful=schema_method_successful,
-        )
         return total_success > 0 or schema_method_successful or selected_count == 0
 
     except GristReadError:
