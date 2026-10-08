@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
-from grist.client import GristClient
+from grist.client import GristClient, GristReadError
 from grist.column_cache import ColumnCache
 from grist.columns import hide_columns_with_id
 from grist.formatter import format_value
@@ -629,11 +629,12 @@ def upsert_avis_records(
     # Récupérer existants pour upsert par avis_id
     existing_avis = {}
     response = client.get_records(table_id)
-    if response.status_code == 200:
-        for record in response.json().get("records", []):
-            avis_id = record.get("fields", {}).get("avis_id")
-            if avis_id:
-                existing_avis[avis_id] = record.get("id")
+    if response.status_code != 200:
+        raise GristReadError(table_id, response)
+    for record in response.json().get("records", []):
+        avis_id = record.get("fields", {}).get("avis_id")
+        if avis_id:
+            existing_avis[avis_id] = record.get("id")
 
     to_create = []
     to_update = []

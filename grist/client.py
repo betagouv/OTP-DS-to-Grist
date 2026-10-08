@@ -31,6 +31,25 @@ GRIST_MAX_BODY_BYTES = 1024 * 1024
 # enregistrements sérialisés et de leur virgule séparatrice (2 octets chacun).
 _RECORDS_PAYLOAD_BASE_BYTES = 13
 
+SYNC_METADATA_TABLE_ID = "Sync_metadata"
+
+
+class GristReadError(Exception):
+    """
+    Lecture d'une table Grist en échec.
+
+    Une lecture en échec ne doit jamais être confondue avec une table vide :
+    l'appelant créerait alors en doublon tout ce qui existe déjà.
+    """
+
+    def __init__(self, table_id: str, response: requests.Response) -> None:
+        self.table_id: str = table_id
+        self.status_code: int = response.status_code
+        super().__init__(
+            f"Grist n'a pas pu lire la table {table_id} "
+            f"({response.status_code} : {_error_detail(response)})"
+        )
+
 
 class GristClient:
     def __init__(
@@ -137,10 +156,7 @@ class GristClient:
 
         response = self.get_records(table_id)
         if response.status_code != 200:
-            log_error(
-                f"Erreur lors de la récupération des enregistrements existants: {response.status_code} - {response.text}"
-            )
-            return {}
+            raise GristReadError(table_id, response)
         data = response.json()
 
         log_verbose(
@@ -220,14 +236,7 @@ class GristClient:
         Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.
         Retourne un dict ou None si pas encore de sync enregistrée.
         """
-        url = f"{self.base_url}/docs/{self.doc_id}/tables/Sync_metadata/records"
-        response = self._get_session().get(url, headers=self.headers)
-
-        if response.status_code != 200:
-            log_error(f"Erreur get_sync_metadata: {response.status_code}")
-            return None
-
-        for record in response.json().get("records", []):
+        for record in self._sync_metadata_records():
             fields = record.get("fields", {})
             if str(fields.get("demarche_number") or "") == str(demarche_number):
                 return {
@@ -258,19 +267,17 @@ class GristClient:
             metadata: dict avec les champs à sauvegarder
             existing_grist_id: ID Grist de la ligne existante (None = créer)
         """
-        url = f"{self.base_url}/docs/{self.doc_id}/tables/Sync_metadata/records"
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{SYNC_METADATA_TABLE_ID}/records"
         fields = {"demarche_number": int(demarche_number), **metadata}
 
         # Chercher si une ligne existe déjà pour cette démarche
-        get_response = self._get_session().get(url, headers=self.headers)
         existing_id = None
-        if get_response.status_code == 200:
-            for record in get_response.json().get("records", []):
-                if int(record.get("fields", {}).get("demarche_number") or 0) == int(
-                    demarche_number
-                ):
-                    existing_id = record.get("id")
-                    break
+        for record in self._sync_metadata_records():
+            if int(record.get("fields", {}).get("demarche_number") or 0) == int(
+                demarche_number
+            ):
+                existing_id = record.get("id")
+                break
 
         if existing_id:
             payload = {"records": [{"id": existing_id, "fields": fields}]}
@@ -851,6 +858,21 @@ class GristClient:
 
     # --- Helpers privés ---
 
+    def _sync_metadata_records(self) -> list[dict[str, Any]]:
+        """
+        Lignes de la table Sync_metadata ; liste vide si la table n'existe pas
+        encore (404). Toute autre erreur lève GristReadError : la confondre
+        avec une table vide ferait repartir d'une synchro complète, ou créer
+        une seconde ligne pour la démarche.
+        """
+        response = self.get_records(SYNC_METADATA_TABLE_ID)
+        if response.status_code == 404:
+            return []
+        if response.status_code != 200:
+            raise GristReadError(SYNC_METADATA_TABLE_ID, response)
+
+        return response.json().get("records", [])
+
     def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
         """
         Extrait l'email primaire d'une réponse SCIM /Me.
@@ -956,6 +978,18 @@ def _split_records_by_size(
         packets.append(packet)
 
     return packets
+
+
+def _error_detail(response: requests.Response) -> str:
+    """Message d'erreur renvoyé par Grist (champ `error`), sinon début du corps."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict) and body.get("error"):
+        return str(body["error"])
+
+    return str(response.text)[:200]
 
 
 def _dossier_number(fields: dict[str, Any]) -> Any:

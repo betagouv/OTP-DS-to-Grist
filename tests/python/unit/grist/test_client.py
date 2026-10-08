@@ -13,6 +13,7 @@ from grist.client import (
     GRIST_MAX_RANDOM_DELAY_SECONDS,
     GRIST_MAX_BODY_BYTES,
     GristClient,
+    GristReadError,
     _split_records_by_size,
 )
 from utils.rate_limited_session import RateLimitedSession
@@ -240,16 +241,35 @@ class TestGetExistingDossierNumbers:
             result = self.client.get_existing_dossier_numbers("dossiers")
         assert result == {"1001": 11, "2002": 22}
 
-    def test_non_200_returns_empty(self):
-        """non-200 -> {}"""
+    def test_non_200_raises_read_error(self):
+        """400 [Sandbox] MemoryError -> GristReadError, jamais un dict vide
+        (pris pour « aucun dossier existant », tout serait recréé en doublon)"""
         mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = "boom"
+        mock_response.status_code = 400
+        mock_response.json.return_value = {"error": "[Sandbox] MemoryError"}
         session = MagicMock()
         session.get.return_value = mock_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            result = self.client.get_existing_dossier_numbers("dossiers")
-        assert result == {}
+            with pytest.raises(GristReadError) as error:
+                self.client.get_existing_dossier_numbers("dossiers")
+        assert error.value.table_id == "dossiers"
+        assert error.value.status_code == 400
+        assert str(error.value) == (
+            "Grist n'a pas pu lire la table dossiers (400 : [Sandbox] MemoryError)"
+        )
+
+    def test_non_json_error_body_is_truncated(self):
+        """corps d'erreur non JSON -> début du texte dans le message"""
+        mock_response = MagicMock()
+        mock_response.status_code = 502
+        mock_response.json.side_effect = ValueError
+        mock_response.text = "x" * 500
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(GristReadError) as error:
+                self.client.get_existing_dossier_numbers("dossiers")
+        assert str(error.value).endswith(f"(502 : {'x' * 200})")
 
     def test_raises_without_doc_id(self):
         """sans doc_id -> ValueError"""
@@ -354,10 +374,22 @@ class TestGetSyncMetadata:
             result = self.client.get_sync_metadata(123)
         assert result is None
 
-    def test_non_200_returns_none(self):
-        """non-200 -> None"""
+    def test_non_200_raises_read_error(self):
+        """non-200 -> GristReadError (None déclencherait une synchro complète)"""
         mock_response = MagicMock()
         mock_response.status_code = 500
+        mock_response.text = "boom"
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(GristReadError) as error:
+                self.client.get_sync_metadata(123)
+        assert error.value.table_id == "Sync_metadata"
+
+    def test_missing_table_returns_none(self):
+        """404 (table Sync_metadata pas encore créée) -> None, première synchro"""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
         session = MagicMock()
         session.get.return_value = mock_response
         with patch.object(GristClient, "_get_session", return_value=session):
@@ -411,6 +443,34 @@ class TestSaveSyncMetadata:
         session.patch.assert_not_called()
         payload = session.post.call_args.kwargs["json"]
         assert payload["records"][0]["fields"]["demarche_number"] == 123
+
+    def test_read_error_raises_without_writing(self):
+        """GET en échec -> GristReadError, ni POST (2e ligne pour la démarche)
+        ni PATCH"""
+        get_response = MagicMock()
+        get_response.status_code = 400
+        get_response.json.return_value = {"error": "[Sandbox] MemoryError"}
+        session = MagicMock()
+        session.get.return_value = get_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(GristReadError):
+                self.client.save_sync_metadata(123, {"last_sync_at": "2024-01-01"})
+        session.post.assert_not_called()
+        session.patch.assert_not_called()
+
+    def test_missing_table_posts(self):
+        """404 (table absente) -> aucune ligne existante, POST tenté"""
+        get_response = MagicMock()
+        get_response.status_code = 404
+        post_response = MagicMock()
+        post_response.status_code = 201
+        session = MagicMock()
+        session.get.return_value = get_response
+        session.post.return_value = post_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.save_sync_metadata(123, {"last_sync_at": "2024-01-01"})
+        session.post.assert_called_once()
+        session.patch.assert_not_called()
 
 
 class TestUpsertDossierInGrist:
