@@ -168,10 +168,11 @@ class TestScheduledSyncJob:
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager")
-    def test_unexpected_exception_disables_schedule(
+    def test_unexpected_exception_keeps_schedule_enabled(
         self, mock_cm, mock_sessionmaker, mock_create_engine
     ):
-        """Exception inattendue : schedule désactivé"""
+        """Exception inattendue : journalisée, schedule toujours actif
+        (seule une erreur définitive désactive le planning)"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
 
@@ -207,7 +208,49 @@ class TestScheduledSyncJob:
 
             scheduled_sync_job(1, sync_manager)
 
-            assert mock_user_schedule.enabled is False
+            assert mock_user_schedule.enabled is not False
+
+    @patch("sync.scheduled_sync.create_engine")
+    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.config_manager")
+    def test_grist_read_error_keeps_schedule_enabled(
+        self, mock_cm, mock_sessionmaker, mock_create_engine
+    ):
+        """Lecture Grist en échec (EXIT_CODE_GRIST_READ_ERROR) : erreur
+        transitoire, schedule toujours actif, last_status='error', next_run
+        calculé"""
+        from sync.scheduled_sync import scheduled_sync_job
+        from sync.sync_manager import SyncManager
+        from utils.constants import EXIT_CODE_GRIST_READ_ERROR
+
+        mock_db, mock_session_class = _make_session_mock()
+        mock_sessionmaker.return_value = mock_session_class
+
+        mock_user_schedule = MagicMock()
+        mock_user_schedule.otp_config_id = 1
+        mock_user_schedule.next_run = None
+        mock_db.query.return_value.filter_by.return_value.first.return_value = (
+            mock_user_schedule
+        )
+
+        mock_cm.load_config_by_id.return_value = {"otp_config_id": 1}
+
+        sync_manager = SyncManager(notify_callback=MagicMock())
+
+        with patch.object(
+            sync_manager, "run_synchronization_task"
+        ) as mock_sync:
+            mock_sync.return_value = {
+                "success": False,
+                "error_code": EXIT_CODE_GRIST_READ_ERROR,
+                "message": "Grist n'a pas pu lire la table Demarche_1_dossiers",
+            }
+
+            scheduled_sync_job(1, sync_manager)
+
+            assert mock_user_schedule.enabled is not False
+            assert mock_user_schedule.last_status == "error"
+            assert mock_user_schedule.next_run is not None
 
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")

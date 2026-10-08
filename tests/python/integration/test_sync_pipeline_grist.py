@@ -31,12 +31,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
+import pytest
 import requests
 
 import dn.client as dn_client_module
 import grist_processor_working_all as gpa
 import schema_utils
-from grist.client import GristClient
+from grist.client import GristClient, GristReadError
 from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
 from sync.filters import build_filters_cache_key
 
@@ -98,13 +99,23 @@ class FakeGristServer:
     `initial_records` permet de pré-remplir une table (ex: un dossier déjà
     synchronisé, une ligne Sync_metadata).
     Format : {table_id: [{champ: valeur, ...}, ...]}
+
+    `failing_reads` liste les tables dont la lecture des enregistrements échoue,
+    comme un document saturé (400 [Sandbox] MemoryError) ; les écritures, elles,
+    passent.
+
+    `failing_writes` liste les tables dont l'écriture d'enregistrements (POST et
+    PATCH) échoue en 500 ; modifiable entre deux runs pour simuler un retour à
+    la normale.
     """
 
-    def __init__(self, initial_records=None):
+    def __init__(self, initial_records=None, failing_reads=(), failing_writes=()):
         self.tables = {}
         self.store = {}
         self._next_id = {}
         self.calls = []
+        self.failing_reads = set(failing_reads)
+        self.failing_writes = set(failing_writes)
         self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
@@ -226,6 +237,10 @@ class FakeGristServer:
             )
 
         if method == "GET" and parts[4:] == ["records"]:
+            if table_id in self.failing_reads:
+                return build_response(
+                    {"error": "[Sandbox] MemoryError"}, status=400
+                )
             return build_response(
                 {
                     "records": [
@@ -238,6 +253,8 @@ class FakeGristServer:
             )
 
         if method in ("POST", "PATCH") and parts[4:] == ["records"]:
+            if table_id in self.failing_writes:
+                return build_response({"error": "Erreur interne"}, status=500)
             # L'API Grist refuse au-delà de 1 Mio. Les corps ne sont pas
             # journalisés : seule la taille compte.
             if _payload_too_large(payload):
@@ -551,7 +568,9 @@ def grist_transport(server):
         yield client
 
 
-def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
+def run_pipeline(
+    server, dn_server, filters=None, deletion_error=None, **pipeline_kwargs
+):
     """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
 
     La couche DN réelle est branchée sur `dn_server` (faux serveur GraphQL
@@ -587,6 +606,7 @@ def run_pipeline(server, dn_server, filters=None, **pipeline_kwargs):
                 gpa,
                 "check_deleted_dossiers",
                 return_value={"newly_marked": 0},
+                side_effect=deletion_error,
             )
         )
         hiding = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
@@ -910,6 +930,9 @@ class TestSyncPipelineGrist:
             range(1, 22)
         )
         assert set(server.column(AVIS_TABLE, "dossier_number")) == set(range(1, 22))
+        # Refusé à chaque run, le dossier hors norme ne bloque pas le repère
+        # de reprise (il n'est pas compté en échec)
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
 
     def test_page_over_the_size_limit_is_fully_written(self):
         """Une page dont les enregistrements dépassent la limite de taille de
@@ -937,6 +960,171 @@ class TestSyncPipelineGrist:
         assert set(server.column(ANNOTATIONS_TABLE, "dossier_number")) == set(numbers)
         # Aucune valeur tronquée par un envoi refusé
         assert set(server.column(CHAMPS_TABLE, "objet_de_la_demande")) == {long_value}
+
+
+class TestGristReadError:
+    """Lecture Grist en échec : aucune écriture en doublon, repère de reprise
+    inchangé, erreur remontée à l'appelant pour un code de sortie dédié."""
+
+    CURSOR = "2023-01-01T00:00:00Z"
+
+    def _server(self, failing_reads):
+        with patch.dict(os.environ, EMPTY_FILTERS):
+            hash_without_filter = build_filters_cache_key()
+        return FakeGristServer(
+            initial_records={
+                DOSSIERS_TABLE: [
+                    {"dossier_id": "dossier_1", "dossier_number": 1, "state": "en_instruction"}
+                ],
+                SYNC_METADATA_TABLE: [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": self.CURSOR,
+                        "deleted_since_cursor": self.CURSOR,
+                        "last_sync_status": "success",
+                        "filters_hash": hash_without_filter,
+                        "force_full_sync": False,
+                    }
+                ],
+            },
+            failing_reads=failing_reads,
+        )
+
+    def test_preload_read_error_writes_nothing(self):
+        """Constat 1 (doc ADN, 24-27/09) : la lecture de la table dossiers
+        renvoie 400 alors que les écritures passent.
+
+        Régression : la lecture en échec prise pour une table vide, le dossier
+        déjà présent recréé en doublon et le repère de reprise avancé.
+        """
+        server = self._server(failing_reads={DOSSIERS_TABLE})
+        dn_server = FakeDemarchesServer(dossiers_de_test(2))
+
+        with pytest.raises(GristReadError) as error:
+            run_pipeline(server, dn_server, parallel=False)
+
+        assert error.value.table_id == DOSSIERS_TABLE
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [1]
+        for table_id in (DOSSIERS_TABLE, CHAMPS_TABLE, ANNOTATIONS_TABLE):
+            assert server.call_count("POST", f"tables/{table_id}/records") == 0
+            assert server.call_count("PATCH", f"tables/{table_id}/records") == 0
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+        assert metadata["last_sync_status"] == "success"
+
+    def test_read_error_during_run_is_not_swallowed(self):
+        """Lecture en échec en cours de run (avis) : l'erreur interrompt la
+        synchro au lieu d'être avalée, aucun avis créé, repère inchangé."""
+        server = self._server(failing_reads={AVIS_TABLE})
+        dn_server = FakeDemarchesServer(dossiers_de_test(2))
+
+        with pytest.raises(GristReadError) as error:
+            run_pipeline(server, dn_server, parallel=False)
+
+        assert error.value.table_id == AVIS_TABLE
+        assert server.rows(AVIS_TABLE) == []
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+
+
+class TestResumeMarkerOnFailedDossiers:
+    """Un dossier en échec sur n'importe quelle table bloque les repères de
+    reprise, pour être redemandé à DN au run suivant ; une vérification des
+    suppressions en échec bloque le repère `deleted_since`."""
+
+    CURSOR = "2023-01-01T00:00:00Z"
+
+    def _server(self, failing_writes):
+        with patch.dict(os.environ, EMPTY_FILTERS):
+            hash_without_filter = build_filters_cache_key()
+        return FakeGristServer(
+            initial_records={
+                SYNC_METADATA_TABLE: [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": self.CURSOR,
+                        "deleted_since_cursor": self.CURSOR,
+                        "filters_hash": hash_without_filter,
+                        "force_full_sync": False,
+                    }
+                ]
+            },
+            failing_writes=failing_writes,
+        )
+
+    def test_champs_failure_keeps_marker_then_next_run_recovers(self):
+        """Échec d'écriture sur la table champs seule : synchro partielle,
+        repères inchangés ; au run suivant, les champs sont écrits.
+
+        Régression : seul l'échec de la table dossiers était compté, le run
+        marqué `success` et le repère avancé, et les champs manquants n'étaient
+        plus jamais redemandés à DN.
+        """
+        server = self._server(failing_writes={CHAMPS_TABLE})
+        dn_server = FakeDemarchesServer(dossiers_de_test(3))
+
+        run_pipeline(server, dn_server, parallel=False)
+
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [1, 2, 3]
+        assert server.rows(CHAMPS_TABLE) == []
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "partial"
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+
+        server.failing_writes.clear()
+        run_pipeline(server, dn_server, parallel=False)
+
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [1, 2, 3]
+        assert sorted(server.column(CHAMPS_TABLE, "dossier_number")) == [1, 2, 3]
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "success"
+        assert metadata["updated_since_cursor"] != self.CURSOR
+
+    def test_deletion_check_failure_keeps_only_deleted_marker(self):
+        """Vérification des suppressions en échec : seul le repère
+        `deleted_since` est conservé, `updated_since` avance.
+
+        Régression : le repère `deleted_since` sauvegardé avant la
+        vérification, qui avançait même quand elle échouait ; les suppressions
+        de la fenêtre n'étaient plus jamais redemandées à DN.
+        """
+        server = self._server(failing_writes=())
+
+        run_pipeline(
+            server,
+            FakeDemarchesServer(dossiers_de_test(2)),
+            deletion_error=RuntimeError("API DN indisponible"),
+            parallel=False,
+        )
+
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+        assert metadata["updated_since_cursor"] != self.CURSOR
+        assert metadata["last_sync_status"] == "success"
+
+    def test_deletion_check_success_advances_both_markers(self):
+        """Vérification des suppressions réussie : les deux repères avancent."""
+        server = self._server(failing_writes=())
+
+        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(2)), parallel=False)
+
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["deleted_since_cursor"] != self.CURSOR
+        assert metadata["updated_since_cursor"] != self.CURSOR
+
+    def test_annotations_failure_keeps_marker(self):
+        """Échec d'écriture sur la table annotations : repères inchangés."""
+        server = self._server(failing_writes={ANNOTATIONS_TABLE})
+
+        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(2)), parallel=False)
+
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "partial"
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
 
 
 class TestHiddenIdColumns:

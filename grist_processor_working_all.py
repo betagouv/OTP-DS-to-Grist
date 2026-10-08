@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
-from grist.client import GristClient
+from grist.client import GristClient, GristReadError
 from grist.column_cache import ColumnCache
 from grist.columns import hide_columns_with_id
 from grist.formatter import format_value
@@ -33,7 +33,11 @@ from sync.filters import build_filters_cache_key, filter_dossiers, read_filters_
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
-from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
+from utils.constants import (
+    DEMARCHES_API_URL,
+    EXIT_CODE_EXTERNAL_API_ERROR,
+    EXIT_CODE_GRIST_READ_ERROR,
+)
 from utils.log import log, log_verbose, log_error, log_progress
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -545,14 +549,14 @@ def add_id_columns_based_on_annotations(client, table_id, annotations):
 
 
 def run_demarche_level_tasks(
-    client,
-    table_ids,
-    demarche_number,
-    updated_since_cursor=None,
-    force_full_sync=False,
-    deleted_since_cursor=None,
-    schema_method_successful=False,
-):
+    client: GristClient,
+    table_ids: dict[str, Any],
+    demarche_number: int,
+    updated_since_cursor: str | None = None,
+    force_full_sync: bool = False,
+    deleted_since_cursor: str | None = None,
+    schema_method_successful: bool = False,
+) -> bool:
     """
     Opérations de niveau démarche, indépendantes des dossiers effectivement traités.
 
@@ -564,6 +568,9 @@ def run_demarche_level_tasks(
 
     Chaque tâche est isolée dans son propre try/except : un échec n'empêche pas
     les suivantes.
+
+    Renvoie True si la vérification des dossiers supprimés a abouti : sinon, le
+    repère `deleted_since` ne doit pas avancer.
     """
     # 1. Instructeurs (niveau démarche, à chaque sync)
     if table_ids.get("instructeurs"):
@@ -588,6 +595,7 @@ def run_demarche_level_tasks(
         log("Sync complète — rafraîchissement des labels ignoré (déjà à jour).")
 
     # 3. Dossiers supprimés (API DN, curseur dédié)
+    deletions_checked = False
     try:
         deletion_result = check_deleted_dossiers(
             client=client,
@@ -599,6 +607,7 @@ def run_demarche_level_tasks(
         )
         deleted_count = (deletion_result or {}).get("newly_marked", 0)
         log(f"Nombre de dossiers marqués supprimés dans Grist : {deleted_count}")
+        deletions_checked = True
     except Exception as e:
         log_error(f"Erreur vérification dossiers supprimés : {e}")
 
@@ -608,6 +617,8 @@ def run_demarche_level_tasks(
             hide_columns_with_id(client)
         except Exception as e:
             log_error(f"Erreur lors du masquage des colonnes _id: {e}")
+
+    return deletions_checked
 
 
 def upsert_avis_records(
@@ -629,11 +640,12 @@ def upsert_avis_records(
     # Récupérer existants pour upsert par avis_id
     existing_avis = {}
     response = client.get_records(table_id)
-    if response.status_code == 200:
-        for record in response.json().get("records", []):
-            avis_id = record.get("fields", {}).get("avis_id")
-            if avis_id:
-                existing_avis[avis_id] = record.get("id")
+    if response.status_code != 200:
+        raise GristReadError(table_id, response)
+    for record in response.json().get("records", []):
+        avis_id = record.get("fields", {}).get("avis_id")
+        if avis_id:
+            existing_avis[avis_id] = record.get("id")
 
     to_create = []
     to_update = []
@@ -1219,12 +1231,14 @@ def process_demarche_for_grist_optimized(
                 log(
                     f"  Upsert par lot de {len(champ_records)} enregistrements de champs..."
                 )
-                client.upsert_multiple_dossiers_in_grist(
+                success = client.upsert_multiple_dossiers_in_grist(
                     table_ids["champ_table_id"],
                     champ_records,
                     existing_records=cache_champs,
                     column_cache=column_cache,
                 )
+                if not success:
+                    failed_dossiers.update(_dossier_numbers(champ_records))
 
                 log(f"[TIMING] Après upsert champs: {time.time() - page_start:.1f}s")
                 log_progress.log("Mise à jour des enregistrements de champs")
@@ -1239,6 +1253,8 @@ def process_demarche_for_grist_optimized(
                     existing_records=cache_annotations,
                     column_cache=column_cache,
                 )
+                if not success:
+                    failed_dossiers.update(_dossier_numbers(annotation_records))
 
                 log(
                     f"[TIMING] Après upsert annotations: {time.time() - page_start:.1f}s"
@@ -1267,6 +1283,7 @@ def process_demarche_for_grist_optimized(
                         log_error(
                             f"  Erreur extraction demandeur dossier {dossier_num}: {str(e)}"
                         )
+                        failed_dossiers.add(str(dossier_num))
 
                 if demandeur_records:
                     log(f"  Upsert par lot de {len(demandeur_records)} demandeurs...")
@@ -1282,6 +1299,7 @@ def process_demarche_for_grist_optimized(
                         )
                     else:
                         log_error("   Erreur lors du traitement des demandeurs")
+                        failed_dossiers.update(_dossier_numbers(demandeur_records))
 
                 log(
                     f"[TIMING] Après upsert demandeurs: {time.time() - page_start:.1f}s"
@@ -1345,10 +1363,15 @@ def process_demarche_for_grist_optimized(
                             log(
                                 f"  Bloc '{block_label}': {success_count} réussis, {error_count} échecs"
                             )
+                            if error_count:
+                                failed_dossiers.update(_dossier_numbers(rows))
+                        except GristReadError:
+                            raise
                         except Exception as e:
                             log_error(
                                 f"  Erreur traitement bloc '{block_label}': {str(e)}"
                             )
+                            failed_dossiers.update(_dossier_numbers(rows))
 
             log(f"[TIMING] Après blocs répétables: {time.time() - page_start:.1f}s")
             log_progress.log("Traitement des champs répétables")
@@ -1394,8 +1417,9 @@ def process_demarche_for_grist_optimized(
         minutes = int(elapsed_time // 60)
         seconds = elapsed_time % 60
 
-        # Calculer les nombres à partir des ensembles
-        total_success = len(successful_dossiers)
+        # Calculer les nombres à partir des ensembles : un dossier écrit dans la
+        # table dossiers mais en échec sur une autre table est compté en échec
+        total_success = len(successful_dossiers - failed_dossiers)
         total_errors = len(failed_dossiers)
 
         log("\nTraitement terminé!")
@@ -1429,13 +1453,42 @@ def process_demarche_for_grist_optimized(
             else:
                 log("Aucun dossier ne correspond aux critères de filtrage")
 
+        if failed_dossiers:
+            # Le delta ne redemande à DN que les dossiers modifiés après le repère :
+            # l'avancer perdrait les dossiers en échec non modifiés depuis.
+            log_error(
+                f"{len(failed_dossiers)} dossier(s) en échec "
+                f"({_format_numbers(failed_dossiers)}) : le repère de reprise est "
+                "conservé, ils seront repris au prochain run"
+            )
+
+        # Tâches de niveau démarche avant la sauvegarde des repères : le repère
+        # `deleted_since` n'avance que si la vérification des suppressions a abouti
+        deletions_checked = run_demarche_level_tasks(
+            client,
+            table_ids,
+            demarche_number,
+            updated_since_cursor=updated_since_cursor,
+            force_full_sync=force_full_sync,
+            deleted_since_cursor=deleted_since_cursor,
+            schema_method_successful=schema_method_successful,
+        )
+        if not deletions_checked:
+            log_error(
+                "Vérification des dossiers supprimés en échec : le repère "
+                "deleted_since est conservé, elle sera reprise au prochain run"
+            )
+
         # Sauvegarder le curseur de sync
         sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        keep_resume_marker = pagination_error or bool(failed_dossiers)
         updated_since_resume = (
-            updated_since_cursor if pagination_error else sync_start_time
+            updated_since_cursor if keep_resume_marker else sync_start_time
         )
         deleted_since_resume = (
-            deleted_since_cursor if pagination_error else sync_start_time
+            deleted_since_cursor
+            if keep_resume_marker or not deletions_checked
+            else sync_start_time
         )
         try:
             client.save_sync_metadata(
@@ -1453,20 +1506,17 @@ def process_demarche_for_grist_optimized(
                 },
                 existing_grist_id=sync_meta_grist_id,
             )
+        except GristReadError:
+            raise
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
-        run_demarche_level_tasks(
-            client,
-            table_ids,
-            demarche_number,
-            updated_since_cursor=updated_since_cursor,
-            force_full_sync=force_full_sync,
-            deleted_since_cursor=deleted_since_cursor,
-            schema_method_successful=schema_method_successful,
-        )
         return total_success > 0 or schema_method_successful or selected_count == 0
 
+    except GristReadError:
+        # Remontée telle quelle à main() : code de sortie dédié, sans trace
+        # d'appels (elle finirait dans le message affiché à l'utilisateur).
+        raise
     except Exception as e:
         log_error(f"Erreur lors du traitement de la démarche pour Grist: {e}")
         traceback.print_exc()
@@ -1546,13 +1596,25 @@ def main():
     max_workers = int(os.getenv("MAX_WORKERS", "3"))
 
     # Traiter la démarche avec la fonction optimisée
-    if process_demarche_for_grist_optimized(
-        client,
-        demarche_number,
-        parallel=parallel,
-        batch_size=batch_size,
-        max_workers=max_workers,
-    ):
+    try:
+        success = process_demarche_for_grist_optimized(
+            client,
+            demarche_number,
+            parallel=parallel,
+            batch_size=batch_size,
+            max_workers=max_workers,
+        )
+    except GristReadError as e:
+        # Lecture en échec : on s'arrête sans enregistrer Sync_metadata, le
+        # repère de reprise n'avance pas et le prochain run rejoue le delta.
+        log_error(
+            f"{e}. Synchronisation interrompue pour ne pas créer de doublons ; "
+            "elle reprendra au prochain lancement."
+        )
+        print_api_timings()
+        return EXIT_CODE_GRIST_READ_ERROR
+
+    if success:
         log(f"Traitement de la démarche {demarche_number} terminé avec succès")
         print_api_timings()
         return 0
@@ -1560,6 +1622,27 @@ def main():
         log_error(f"Échec du traitement de la démarche {demarche_number}")
         print_api_timings()
         return 1
+
+
+# --- Helpers privés (module) ---
+
+
+def _dossier_numbers(records: list[dict[str, Any]]) -> set[str]:
+    """Numéros des dossiers portés par des enregistrements (`dossier_number`)."""
+    return {
+        str(record["dossier_number"])
+        for record in records
+        if record.get("dossier_number")
+    }
+
+
+def _format_numbers(numbers: set[str], limit: int = 20) -> str:
+    """Numéros triés, tronqués au-delà de `limit` pour garder un log lisible."""
+    ordered = sorted(numbers, key=lambda number: (len(number), number))
+    shown = ", ".join(ordered[:limit])
+    if len(ordered) > limit:
+        shown += f", … (+{len(ordered) - limit})"
+    return shown
 
 
 if __name__ == "__main__":

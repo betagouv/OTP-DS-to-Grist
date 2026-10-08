@@ -485,6 +485,42 @@ class TestSyncManager:
 
         assert result["error_code"] == 1
 
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_grist_read_error_message(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Lecture Grist en échec (code 3) : message affiché à l'utilisateur
+        limité à l'erreur, sans trace d'appels"""
+        mock_subprocess.return_value = create_mock_process(
+            "Traitement de la démarche: 128651\n"
+            "Préchargement des enregistrements existants (global)...\n"
+            "ERREUR: Grist n'a pas pu lire la table Demarche_128651_dossiers "
+            "(400 : [Sandbox] MemoryError). Synchronisation interrompue pour ne "
+            "pas créer de doublons ; elle reprendra au prochain lancement.",
+            returncode=3,
+        )
+        mock_sessionmaker.return_value = MagicMock(return_value=MagicMock())
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "128651",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is False
+        assert result["error_code"] == 3
+        assert result["message"] == (
+            "Erreur lors de la synchronisation: Grist n'a pas pu lire la table "
+            "Demarche_128651_dossiers (400 : [Sandbox] MemoryError). "
+            "Synchronisation interrompue pour ne pas créer de doublons ; "
+            "elle reprendra au prochain lancement."
+        )
+
     def test_run_synchronization_task_exception_handling(self):
         """Test run_synchronization_task avec exception générale"""
         config = {
