@@ -1,7 +1,9 @@
 import { fileURLToPath } from 'node:url'
 import { mergeConfig } from 'vitest/config'
 import { configDefaults, defineConfig } from 'vitest/config'
-import viteConfig from './vite.config'
+import viteConfigFactory from './vite.config'
+
+const viteConfig = viteConfigFactory({ command: 'test', mode: 'test' })
 
 export default mergeConfig(
   viteConfig,

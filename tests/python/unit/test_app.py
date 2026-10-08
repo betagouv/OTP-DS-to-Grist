@@ -31,6 +31,16 @@ class TestViteAsset:
             "css": None,
         }
 
+    def test_debug_mode_custom_origin(self):
+        """Mode DEBUG : origine du serveur de dev lue dans VITE_DEV_ORIGIN"""
+        with patch("app.VITE_DEV_ORIGIN", "http://vite.test:4242"):
+            with patch.dict(app.config, {"DEBUG": True}):
+                result = vite_asset()
+        assert result == {
+            "js": "http://vite.test:4242/src/main.js",
+            "css": None,
+        }
+
     @patch("app.url_for")
     def test_production_with_css(self, mock_url_for):
         """Mode production avec CSS dans le manifest"""

@@ -61,6 +61,8 @@ from utils.socketio import socketio
 # Déterminer le répertoire du script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
+VITE_DEV_ORIGIN = "http://localhost:5173"
+
 # Chargement des variables d'environnement
 load_dotenv()
 
@@ -994,9 +996,9 @@ def wip():
     return render_template("wip.html")
 
 
-def vite_asset(entry="src/main.js"):
+def vite_asset(entry: str = "src/main.js") -> dict[str, str | None]:
     if app.debug:
-        return {"js": f"http://localhost:5173/{entry}", "css": None}
+        return {"js": f"{VITE_DEV_ORIGIN}/{entry}", "css": None}
 
     manifest_path = Path("static/dist/.vite/manifest.json")
     manifest = json.loads(manifest_path.read_text())
