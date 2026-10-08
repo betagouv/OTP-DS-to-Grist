@@ -33,7 +33,11 @@ from sync.filters import build_filters_cache_key, filter_dossiers, read_filters_
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
-from utils.constants import DEMARCHES_API_URL, EXIT_CODE_EXTERNAL_API_ERROR
+from utils.constants import (
+    DEMARCHES_API_URL,
+    EXIT_CODE_EXTERNAL_API_ERROR,
+    EXIT_CODE_GRIST_READ_ERROR,
+)
 from utils.log import log, log_verbose, log_error, log_progress
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -1346,6 +1350,8 @@ def process_demarche_for_grist_optimized(
                             log(
                                 f"  Bloc '{block_label}': {success_count} réussis, {error_count} échecs"
                             )
+                        except GristReadError:
+                            raise
                         except Exception as e:
                             log_error(
                                 f"  Erreur traitement bloc '{block_label}': {str(e)}"
@@ -1454,6 +1460,8 @@ def process_demarche_for_grist_optimized(
                 },
                 existing_grist_id=sync_meta_grist_id,
             )
+        except GristReadError:
+            raise
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
@@ -1468,6 +1476,10 @@ def process_demarche_for_grist_optimized(
         )
         return total_success > 0 or schema_method_successful or selected_count == 0
 
+    except GristReadError:
+        # Remontée telle quelle à main() : code de sortie dédié, sans trace
+        # d'appels (elle finirait dans le message affiché à l'utilisateur).
+        raise
     except Exception as e:
         log_error(f"Erreur lors du traitement de la démarche pour Grist: {e}")
         traceback.print_exc()
@@ -1547,13 +1559,25 @@ def main():
     max_workers = int(os.getenv("MAX_WORKERS", "3"))
 
     # Traiter la démarche avec la fonction optimisée
-    if process_demarche_for_grist_optimized(
-        client,
-        demarche_number,
-        parallel=parallel,
-        batch_size=batch_size,
-        max_workers=max_workers,
-    ):
+    try:
+        success = process_demarche_for_grist_optimized(
+            client,
+            demarche_number,
+            parallel=parallel,
+            batch_size=batch_size,
+            max_workers=max_workers,
+        )
+    except GristReadError as e:
+        # Lecture en échec : on s'arrête sans enregistrer Sync_metadata, le
+        # repère de reprise n'avance pas et le prochain run rejoue le delta.
+        log_error(
+            f"{e}. Synchronisation interrompue pour ne pas créer de doublons ; "
+            "elle reprendra au prochain lancement."
+        )
+        print_api_timings()
+        return EXIT_CODE_GRIST_READ_ERROR
+
+    if success:
         log(f"Traitement de la démarche {demarche_number} terminé avec succès")
         print_api_timings()
         return 0
