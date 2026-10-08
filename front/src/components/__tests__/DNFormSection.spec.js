@@ -1023,7 +1023,7 @@ describe('Auto-sync toggle', () => {
     expect(wrapper.vm.getData().auto_sync_enabled).toBe(false)
   })
 
-  it('keeps server state (scheduleEnabled) unchanged after toggling locally', async () => {
+  it('updates scheduleEnabled immediately when toggling (before save)', async () => {
     mockFetchForSchedule({ success: true, enabled: false })
     const wrapper = mount(DNFormSection, {
       props: {
@@ -1038,7 +1038,7 @@ describe('Auto-sync toggle', () => {
 
     await wrapper.find('[data-test-id="auto-sync-toggle"]').setChecked(true)
 
-    expect(wrapper.vm.scheduleEnabled).toBe(false)
+    expect(wrapper.vm.scheduleEnabled).toBe(true)
     expect(wrapper.vm.getData().auto_sync_enabled).toBe(true)
   })
 
@@ -1150,10 +1150,13 @@ describe('Auto-sync badge in accordion title', () => {
     expect(badge.text()).toBe('Manuelle')
   })
 
-  it('stays on server state after toggling locally', async () => {
+  it('updates the badge and the next-run hint immediately when toggling to manual', async () => {
     globalThis.fetch = vi.fn((url, opts) => {
       if (String(url).includes('/api/schedule'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: true }) })
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ success: true, enabled: true, next_run: '2026-09-03T09:14:00+00:00' })
+        })
       if (String(url).includes('/api/groups'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
@@ -1168,12 +1171,14 @@ describe('Auto-sync badge in accordion title', () => {
     await flushPromises()
 
     expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
+    expect(wrapper.find('p.fr-hint-text').exists()).toBe(true)
 
     const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
     await checkbox.setChecked(false)
     await flushPromises()
 
-    expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
+    expect(wrapper.find('.fr-badge').text()).toBe('Manuelle')
+    expect(wrapper.find('p.fr-hint-text').exists()).toBe(false)
   })
 })
 
@@ -1240,5 +1245,80 @@ describe('Auto-sync next run display', () => {
     const hint = wrapper.find('p.fr-hint-text')
     expect(hint.exists()).toBe(true)
     expect(hint.text()).toContain('Prochaine synchronisation')
+  })
+})
+
+describe('Schedule refresh on reload', () => {
+  const mockFetchForSchedule = (scheduleResponse) => {
+    globalThis.fetch = vi.fn((url) => {
+      if (String(url).includes('/api/schedule'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
+      if (String(url).includes('/api/groups'))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    })
+  }
+
+  afterEach(() => {
+    delete globalThis.fetch
+  })
+
+  it('refreshes schedule state from the server on reload (existingConfig change)', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.fr-badge').text()).toBe('Manuelle')
+
+    mockFetchForSchedule({
+      success: true,
+      enabled: true,
+      next_run: '2026-09-03T09:14:00+00:00'
+    })
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.scheduleEnabled).toBe(true)
+    expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
+    expect(wrapper.find('p.fr-hint-text').text()).toContain('Prochaine synchronisation')
+  })
+
+  it('still refreshes the schedule when a section has unsaved local edits', async () => {
+    mockFetchForSchedule({ success: true, enabled: false })
+    const wrapper = mount(DNFormSection, {
+      props: {
+        index: 0,
+        gristError: '',
+        existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+      },
+      global: globalComponents
+    })
+    await flushPromises()
+
+    await wrapper.find('[data-test-id="dn-token"]').setValue('edit-local')
+    expect(wrapper.vm.isDirty).toBe(true)
+
+    const scheduleCalls = () => globalThis.fetch.mock.calls.filter(
+      ([url]) => String(url).includes('/api/schedule')
+    )
+    const callsBefore = scheduleCalls().length
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, has_grist_key: true, demarche_number: DEMARCHE_NUMBER }
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.isDirty).toBe(true)
+    expect(wrapper.vm.getData().token).toBe('edit-local')
+    expect(scheduleCalls().length).toBe(callsBefore + 1)
   })
 })

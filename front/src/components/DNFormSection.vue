@@ -117,6 +117,7 @@ const handleDNFiltersChange = () => {
 const handleAutoSyncToggle = (event) => {
   isDirty.value = true
   scheduleToggle.value = event.target.checked
+  setScheduleEnabled(event.target.checked)
   debouncedAutoSave()
 }
 
@@ -154,20 +155,23 @@ const resetConfig = () => {
 watch(() => props.existingConfig, async (config) => {
   dnErrorMessage.value = null
 
-  // Une sauvegarde en cours a terminé son reload : ne pas écraser des
-  // éditions locales pas encore sauvegardées (frappes pendant la requête).
-  // Parité avec le legacy (risque assumé) ; la section se re-sauvegardera
-  // d'elle-même à la prochaine interruption de saisie.
-  if (isDirty.value) return
+  // La garde ci-dessous protège les champs des réécritures du reload (frappes
+  // pendant une sauvegarde en vol), mais le rafraîchissement du schedule
+  // (badge + prochaine synchronisation) a toujours lieu pour refléter l'état
+  // côté serveur.
+  const hasLocalEdits = isDirty.value
 
-  config ? applyExistingConfig(config) : resetConfig()
-  isDirty.value = false
   if (config?.otp_config_id) {
     await fetchSchedule(config.otp_config_id)
   } else {
     setScheduleEnabled(false)
   }
-  scheduleToggle.value = scheduleEnabled.value
+
+  if (!hasLocalEdits) {
+    config ? applyExistingConfig(config) : resetConfig()
+    isDirty.value = false
+    scheduleToggle.value = scheduleEnabled.value
+  }
 }, {immediate: true})
 </script>
 
