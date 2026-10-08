@@ -31,12 +31,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
+import pytest
 import requests
 
 import dn.client as dn_client_module
 import grist_processor_working_all as gpa
 import schema_utils
-from grist.client import GristClient
+from grist.client import GristClient, GristReadError
 from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
 from sync.filters import build_filters_cache_key
 
@@ -98,13 +99,18 @@ class FakeGristServer:
     `initial_records` permet de pré-remplir une table (ex: un dossier déjà
     synchronisé, une ligne Sync_metadata).
     Format : {table_id: [{champ: valeur, ...}, ...]}
+
+    `failing_reads` liste les tables dont la lecture des enregistrements échoue,
+    comme un document saturé (400 [Sandbox] MemoryError) ; les écritures, elles,
+    passent.
     """
 
-    def __init__(self, initial_records=None):
+    def __init__(self, initial_records=None, failing_reads=()):
         self.tables = {}
         self.store = {}
         self._next_id = {}
         self.calls = []
+        self.failing_reads = set(failing_reads)
         self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
@@ -226,6 +232,10 @@ class FakeGristServer:
             )
 
         if method == "GET" and parts[4:] == ["records"]:
+            if table_id in self.failing_reads:
+                return build_response(
+                    {"error": "[Sandbox] MemoryError"}, status=400
+                )
             return build_response(
                 {
                     "records": [
@@ -937,6 +947,73 @@ class TestSyncPipelineGrist:
         assert set(server.column(ANNOTATIONS_TABLE, "dossier_number")) == set(numbers)
         # Aucune valeur tronquée par un envoi refusé
         assert set(server.column(CHAMPS_TABLE, "objet_de_la_demande")) == {long_value}
+
+
+class TestGristReadError:
+    """Lecture Grist en échec : aucune écriture en doublon, repère de reprise
+    inchangé, erreur remontée à l'appelant pour un code de sortie dédié."""
+
+    CURSOR = "2023-01-01T00:00:00Z"
+
+    def _server(self, failing_reads):
+        with patch.dict(os.environ, EMPTY_FILTERS):
+            hash_without_filter = build_filters_cache_key()
+        return FakeGristServer(
+            initial_records={
+                DOSSIERS_TABLE: [
+                    {"dossier_id": "dossier_1", "dossier_number": 1, "state": "en_instruction"}
+                ],
+                SYNC_METADATA_TABLE: [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": self.CURSOR,
+                        "deleted_since_cursor": self.CURSOR,
+                        "last_sync_status": "success",
+                        "filters_hash": hash_without_filter,
+                        "force_full_sync": False,
+                    }
+                ],
+            },
+            failing_reads=failing_reads,
+        )
+
+    def test_preload_read_error_writes_nothing(self):
+        """Constat 1 (doc ADN, 24-27/09) : la lecture de la table dossiers
+        renvoie 400 alors que les écritures passent.
+
+        Régression : la lecture en échec prise pour une table vide, le dossier
+        déjà présent recréé en doublon et le repère de reprise avancé.
+        """
+        server = self._server(failing_reads={DOSSIERS_TABLE})
+        dn_server = FakeDemarchesServer(dossiers_de_test(2))
+
+        with pytest.raises(GristReadError) as error:
+            run_pipeline(server, dn_server, parallel=False)
+
+        assert error.value.table_id == DOSSIERS_TABLE
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [1]
+        for table_id in (DOSSIERS_TABLE, CHAMPS_TABLE, ANNOTATIONS_TABLE):
+            assert server.call_count("POST", f"tables/{table_id}/records") == 0
+            assert server.call_count("PATCH", f"tables/{table_id}/records") == 0
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
+        assert metadata["last_sync_status"] == "success"
+
+    def test_read_error_during_run_is_not_swallowed(self):
+        """Lecture en échec en cours de run (avis) : l'erreur interrompt la
+        synchro au lieu d'être avalée, aucun avis créé, repère inchangé."""
+        server = self._server(failing_reads={AVIS_TABLE})
+        dn_server = FakeDemarchesServer(dossiers_de_test(2))
+
+        with pytest.raises(GristReadError) as error:
+            run_pipeline(server, dn_server, parallel=False)
+
+        assert error.value.table_id == AVIS_TABLE
+        assert server.rows(AVIS_TABLE) == []
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["updated_since_cursor"] == self.CURSOR
+        assert metadata["deleted_since_cursor"] == self.CURSOR
 
 
 class TestHiddenIdColumns:

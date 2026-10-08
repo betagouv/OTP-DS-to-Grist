@@ -31,6 +31,10 @@ GITHUB_CHANGELOG_BASE_URL: str = "https://github.com/betagouv/OTP-DS-to-Grist/bl
 
 EXIT_CODE_EXTERNAL_API_ERROR: int = 2
 
+# Lecture d'une table Grist en échec (GristReadError) : erreur transitoire,
+# la synchro planifiée n'est pas désactivée et reprendra au prochain run.
+EXIT_CODE_GRIST_READ_ERROR: int = 3
+
 # Durée de validité du cache des bannissements d'IP, en secondes.
 IP_BLOCKLIST_CACHE_TTL_SECONDS: float = float(
     os.getenv("IP_BLOCKLIST_CACHE_TTL_SECONDS", "60")
