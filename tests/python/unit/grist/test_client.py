@@ -1442,6 +1442,117 @@ class TestUpsertMultipleDossiersInGrist:
         with pytest.raises(ValueError):
             client.upsert_multiple_dossiers_in_grist("dossiers", [])
 
+
+class TestUpsertMultipleDossiersCache:
+    """Cache des dossiers existants passé par l'appelant à
+    GristClient.upsert_multiple_dossiers_in_grist"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+        self.column_cache = MagicMock()
+        self.column_cache.get_columns.return_value = {"dossier_number", "name"}
+
+    def _upsert(self, session, records, existing_records):
+        with patch.object(GristClient, "_get_session", return_value=session):
+            return self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                records,
+                existing_records=existing_records,
+                column_cache=self.column_cache,
+            )
+
+    def test_empty_cache_is_used_and_updated_in_place(self):
+        """cache {} (table neuve) -> pas de relecture, le dict de l'appelant
+        reçoit les ids créés (constat 2 : relecture complète à chaque page)"""
+        session = MagicMock()
+        session.post.side_effect = _post_creates_ids
+        cache = {}
+
+        ok = self._upsert(
+            session, [{"dossier_number": 1}, {"dossier_number": 2}], cache
+        )
+
+        assert ok is True
+        session.get.assert_not_called()
+        assert cache == {"1": 1, "2": 2}
+
+    def test_next_page_updates_instead_of_creating(self):
+        """même dossier sur une page suivante -> PATCH de la ligne créée,
+        pas de doublon"""
+        session = MagicMock()
+        session.post.side_effect = _post_creates_ids
+        session.patch.side_effect = _patch_returns_ids
+        cache = {}
+
+        self._upsert(session, [{"dossier_number": 7, "name": "a"}], cache)
+        self._upsert(session, [{"dossier_number": 7, "name": "b"}], cache)
+
+        session.post.assert_called_once()
+        session.patch.assert_called_once()
+        assert session.patch.call_args.kwargs["json"]["records"][0]["id"] == 7
+
+    def test_none_cache_reads_table(self):
+        """cache None -> une lecture de la table (comportement conservé)"""
+        session = MagicMock()
+        session.get.return_value = _response(
+            200, [{"id": 5, "fields": {"dossier_number": "1"}}]
+        )
+        session.patch.side_effect = _patch_returns_ids
+
+        ok = self._upsert(session, [{"dossier_number": 1}], None)
+
+        assert ok is True
+        session.get.assert_called_once()
+        session.post.assert_not_called()
+
+    def test_ids_count_mismatch_reloads_table(self):
+        """nombre d'ids reçus != dossiers créés -> pas d'appariement deviné,
+        la table est relue dans le dict de l'appelant"""
+        session = MagicMock()
+        session.post.return_value = _response(201, [{"id": 10}])
+        session.get.return_value = _response(
+            200,
+            [
+                {"id": 10, "fields": {"dossier_number": "2"}},
+                {"id": 11, "fields": {"dossier_number": "1"}},
+            ],
+        )
+        cache = {"9": 90}
+
+        self._upsert(session, [{"dossier_number": 1}, {"dossier_number": 2}], cache)
+
+        session.get.assert_called_once()
+        assert cache == {"9": 90, "1": 11, "2": 10}
+
+    def test_missing_id_reloads_table(self):
+        """id absent dans la réponse -> rechargement, aucun id None en cache"""
+        session = MagicMock()
+        session.post.return_value = _response(201, [{}])
+        session.get.return_value = _response(
+            200, [{"id": 12, "fields": {"dossier_number": "1"}}]
+        )
+        cache = {}
+
+        self._upsert(session, [{"dossier_number": 1}], cache)
+
+        session.get.assert_called_once()
+        assert cache == {"1": 12}
+
+    def test_reload_read_error_raises_and_keeps_cache(self):
+        """rechargement en échec de lecture -> GristReadError, clés connues
+        conservées"""
+        session = MagicMock()
+        session.post.return_value = _response(201, [])
+        session.get.return_value = _response(400, text="[Sandbox] MemoryError")
+        cache = {"9": 90}
+
+        with pytest.raises(GristReadError):
+            self._upsert(session, [{"dossier_number": 1}], cache)
+
+        assert cache == {"9": 90}
+
     def test_update_failure_names_table_and_dossier(self):
         """échec du lot puis du repli -> la table et le dossier sont nommés"""
         columns_response = MagicMock()

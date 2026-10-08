@@ -690,8 +690,10 @@ class GristClient:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
-        # Utiliser le cache si fourni, sinon récupérer
-        if not existing_records:
+        # Utiliser le cache s'il est fourni, même vide (table encore vide) :
+        # le relire ici remplacerait le dict de l'appelant, qui ne recevrait
+        # jamais les ids créés et relirait toute la table à chaque page.
+        if existing_records is None:
             existing_records = self.get_existing_dossier_numbers(table_id)
             log_verbose(
                 f"Récupération de {len(existing_records)} enregistrements existants pour traitement par lot"
@@ -828,15 +830,9 @@ class GristClient:
                     f"Création par lot: {len(normalized_creations)} enregistrements créés avec succès"
                 )
                 total_success += len(normalized_creations)
-                # Mettre à jour le cache in-place avec les IDs Grist créés
-                created_ids = create_response.json().get("records", [])
-                for i, created in enumerate(created_ids):
-                    if i < len(normalized_creations):
-                        dossier_num = _dossier_number(
-                            normalized_creations[i]["fields"]
-                        )
-                        if dossier_num and existing_records is not None:
-                            existing_records[str(dossier_num)] = created.get("id")
+                self._update_cache_after_create(
+                    table_id, normalized_creations, create_response, existing_records
+                )
             else:
                 log_error(
                     f"Erreur lors de la création par lot de la table {table_id} "
@@ -872,6 +868,39 @@ class GristClient:
             raise GristReadError(SYNC_METADATA_TABLE_ID, response)
 
         return response.json().get("records", [])
+
+    def _update_cache_after_create(
+        self,
+        table_id: str,
+        created_records: list[dict[str, Any]],
+        response: requests.Response,
+        existing_records: dict[str, int],
+    ) -> None:
+        """
+        Reporte dans `existing_records` (dict de l'appelant, mis à jour en place)
+        les ids des dossiers que Grist vient de créer, pour que les pages
+        suivantes les mettent à jour au lieu de les recréer.
+
+        `POST /records` renvoie les ids dans l'ordre des enregistrements envoyés
+        (ordre conservé par `_send_records` quand il découpe le payload) :
+        l'appariement est positionnel, mais vérifié. En cas d'écart de longueur
+        ou d'id manquant, on ne devine pas : la table est relue.
+        """
+        returned = response.json().get("records", [])
+        ids = [record.get("id") for record in returned]
+        if len(ids) != len(created_records) or None in ids:
+            log_error(
+                f"  [CACHE] {table_id} : {len(created_records)} dossiers créés, "
+                f"{len([i for i in ids if i is not None])} ids reçus, "
+                "rechargement de la table"
+            )
+            existing_records.update(self.get_existing_dossier_numbers(table_id))
+            return
+
+        for record, record_id in zip(created_records, ids):
+            dossier_number = _dossier_number(record["fields"])
+            if dossier_number:
+                existing_records[str(dossier_number)] = record_id
 
     def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
         """
