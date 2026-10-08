@@ -7,9 +7,8 @@ from typing import Any
 import requests
 
 from grist.base_url import assert_base_url_allowed
-from utils.log import log, log_verbose, log_error, log_progress
+from utils.log import log, log_error, log_progress, log_verbose
 from utils.rate_limited_session import RateLimitedSession, build_rate_limited_session
-
 
 # Configuration du rate limiting réactif des appels à l'API Grist,
 # surchargeable via variables d'environnement.
@@ -17,9 +16,7 @@ from utils.rate_limited_session import RateLimitedSession, build_rate_limited_se
 # RateLimitedSession retombe alors sur GRIST_FALLBACK_429_DELAY.
 GRIST_MAX_429_RETRIES = max(1, int(os.getenv("GRIST_MAX_429_RETRIES", "3")))
 GRIST_FALLBACK_429_DELAY = int(os.getenv("GRIST_FALLBACK_429_DELAY", "60"))
-GRIST_MAX_RANDOM_DELAY_SECONDS = int(
-    os.getenv("GRIST_MAX_RANDOM_DELAY_SECONDS", "5")
-)
+GRIST_MAX_RANDOM_DELAY_SECONDS = int(os.getenv("GRIST_MAX_RANDOM_DELAY_SECONDS", "5"))
 
 # L'API Grist refuse les corps de requête trop volumineux.
 # Au-delà, une écriture échoue en bloc :
@@ -33,9 +30,7 @@ _RECORDS_PAYLOAD_BASE_BYTES = 13
 
 
 class GristClient:
-    def __init__(
-        self, base_url: str, api_key: str, doc_id: str | None = None
-    ) -> None:
+    def __init__(self, base_url: str, api_key: str, doc_id: str | None = None) -> None:
         self.base_url: str = base_url.rstrip("/")
         # Point d'entrée unique vers une instance Grist :
         # aucune requête ne part vers une instance absente de la liste blanche.
@@ -213,9 +208,7 @@ class GristClient:
         log(f"  Cache dates: {len(dates_dict)} dossiers chargés depuis {table_id}")
         return dates_dict
 
-    def get_sync_metadata(
-        self, demarche_number: int | str
-    ) -> dict[str, Any] | None:
+    def get_sync_metadata(self, demarche_number: int | str) -> dict[str, Any] | None:
         """
         Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.
         Retourne un dict ou None si pas encore de sync enregistrée.
@@ -274,7 +267,9 @@ class GristClient:
 
         if existing_id:
             payload = {"records": [{"id": existing_id, "fields": fields}]}
-            response = self._get_session().patch(url, headers=self.headers, json=payload)
+            response = self._get_session().patch(
+                url, headers=self.headers, json=payload
+            )
         else:
             payload = {"records": [{"fields": fields}]}
             response = self._get_session().post(url, headers=self.headers, json=payload)
@@ -539,9 +534,7 @@ class GristClient:
             ),
         )
 
-    def delete_records(
-        self, table_id: str, record_ids: list[int]
-    ) -> requests.Response:
+    def delete_records(self, table_id: str, record_ids: list[int]) -> requests.Response:
         """
         Supprime des enregistrements d'une table Grist.
         Le payload envoyé est la liste brute des ids (sans enveloppe).
@@ -550,9 +543,7 @@ class GristClient:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
-        url = (
-            f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records/delete"
-        )
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/records/delete"
         log_verbose(f"POST {url}")
         response = self._get_session().post(url, headers=self.headers, json=record_ids)
 
@@ -683,8 +674,10 @@ class GristClient:
         if not self.doc_id:
             raise ValueError("Document ID is required")
 
-        # Utiliser le cache si fourni, sinon récupérer
-        if not existing_records:
+        # Utiliser le cache s'il est fourni, même vide (table encore vide) :
+        # le relire ici remplacerait le dict de l'appelant, qui ne recevrait
+        # jamais les ids créés et relirait toute la table à chaque page.
+        if existing_records is None:
             existing_records = self.get_existing_dossier_numbers(table_id)
             log_verbose(
                 f"Récupération de {len(existing_records)} enregistrements existants pour traitement par lot"
@@ -786,9 +779,7 @@ class GristClient:
                         update_success += 1
                     else:
                         total_errors += 1
-                        dossier_number = _dossier_number(
-                            individual_record["fields"]
-                        )
+                        dossier_number = _dossier_number(individual_record["fields"])
                         log_error(
                             f"Échec individuel pour le dossier {dossier_number} "
                             f"(ligne Grist {individual_record['id']})"
@@ -825,9 +816,7 @@ class GristClient:
                 created_ids = create_response.json().get("records", [])
                 for i, created in enumerate(created_ids):
                     if i < len(normalized_creations):
-                        dossier_num = _dossier_number(
-                            normalized_creations[i]["fields"]
-                        )
+                        dossier_num = _dossier_number(normalized_creations[i]["fields"])
                         if dossier_num and existing_records is not None:
                             existing_records[str(dossier_num)] = created.get("id")
             else:

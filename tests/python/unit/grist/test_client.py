@@ -1,5 +1,4 @@
 import json
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,8 +9,8 @@ from grist.base_url import GristBaseUrlNotAllowedError
 from grist.client import (
     GRIST_FALLBACK_429_DELAY,
     GRIST_MAX_429_RETRIES,
-    GRIST_MAX_RANDOM_DELAY_SECONDS,
     GRIST_MAX_BODY_BYTES,
+    GRIST_MAX_RANDOM_DELAY_SECONDS,
     GristClient,
     _split_records_by_size,
 )
@@ -26,8 +25,7 @@ def _weight(payload: dict) -> int:
 def _records_bulk(count: int, size: int = 30_000) -> list[dict]:
     """`count` enregistrements à créer, chacun d'environ `size` octets."""
     return [
-        {"fields": {"dossier_number": i, "texte": "a" * size}}
-        for i in range(count)
+        {"fields": {"dossier_number": i, "texte": "a" * size}} for i in range(count)
     ]
 
 
@@ -115,9 +113,10 @@ class TestInitBaseUrlWhitelist:
         monkeypatch.setattr(base_url, "BASE_URL_WHITELIST", ("grist.example.com",))
         mock_build = MagicMock()
 
-        with patch(
-            "grist.client.build_rate_limited_session", mock_build
-        ), pytest.raises(GristBaseUrlNotAllowedError):
+        with (
+            patch("grist.client.build_rate_limited_session", mock_build),
+            pytest.raises(GristBaseUrlNotAllowedError),
+        ):
             GristClient("https://grist.evil.example", "test_key")
 
         mock_build.assert_not_called()
@@ -757,9 +756,7 @@ class TestAddColumns:
         session = MagicMock()
         session.post.return_value = mock_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            result = self.client.add_columns(
-                "t", [{"id": "col1", "type": "Text"}]
-            )
+            result = self.client.add_columns("t", [{"id": "col1", "type": "Text"}])
         assert result is mock_response
         session.post.assert_called_once()
         assert (
@@ -899,7 +896,9 @@ class TestPostRecords:
         with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.post_records("t", records)
         assert result.json() == {
-            "records": [{"id": record["fields"]["dossier_number"]} for record in records]
+            "records": [
+                {"id": record["fields"]["dossier_number"]} for record in records
+            ]
         }
 
     def test_refused_packet_stops_the_send(self):
@@ -992,9 +991,7 @@ class TestPatchRecords:
         records = [{"id": i, "fields": {"texte": "a" * 30_000}} for i in range(60)]
         refused = {"status": 413, "text": "Request body too large"}
         session = MagicMock()
-        session.patch.side_effect = _refuses_on_second_call(
-            _patch_returns_ids, refused
-        )
+        session.patch.side_effect = _refuses_on_second_call(_patch_returns_ids, refused)
         with patch.object(GristClient, "_get_session", return_value=session):
             result = self.client.patch_records("t", records)
         assert result.status_code == 413
@@ -1005,7 +1002,6 @@ class TestPatchRecords:
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.patch_records("t", [{"id": 42, "fields": {}}])
-
 
 
 class TestDeleteRecords:
@@ -1423,7 +1419,10 @@ class TestUpsertMultipleDossiersInGrist:
         ):
             ok = self.client.upsert_multiple_dossiers_in_grist(
                 "champs",
-                [{"dossier_number": 1, "name": "x"}, {"dossier_number": 2, "name": "y"}],
+                [
+                    {"dossier_number": 1, "name": "x"},
+                    {"dossier_number": 2, "name": "y"},
+                ],
                 existing_records={},
             )
         assert ok is False
@@ -1451,6 +1450,71 @@ class TestUpsertMultipleDossiersInGrist:
         assert "dossier_number manquant" in logs
         assert "table champs" in logs
         assert "'name'" in logs
+
+    def test_empty_cache_is_used_without_refetching_records(self):
+        """cache vide (table vide) -> pas de relecture des enregistrements"""
+        session = self._session_with_columns()
+        with patch.object(GristClient, "_get_session", return_value=session):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": 1001, "name": "x"}],
+                existing_records={},
+            )
+        assert ok is True
+        urls = [call.args[0] for call in session.get.call_args_list]
+        assert not any(url.endswith("/records") for url in urls)
+
+    def test_created_ids_are_added_to_caller_cache(self):
+        """cache partagé entre deux pages -> dossier créé puis mis à jour, pas recréé"""
+        session = self._session_with_columns()
+        cache: dict[str, int] = {}
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": 1001, "name": "x"}],
+                existing_records=cache,
+            )
+            self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": 1001, "name": "y"}],
+                existing_records=cache,
+            )
+        assert cache == {"1001": 1001}
+        session.post.assert_called_once()
+        session.patch.assert_called_once()
+        patched = session.patch.call_args.kwargs["json"]["records"][0]
+        assert patched["id"] == 1001
+
+    def test_missing_cache_fetches_existing_records(self):
+        """sans cache (None) -> les enregistrements existants sont relus"""
+        session = self._session_with_columns()
+        with (
+            patch.object(GristClient, "_get_session", return_value=session),
+            patch.object(
+                GristClient, "get_existing_dossier_numbers", return_value={"1001": 5}
+            ) as mock_existing,
+        ):
+            ok = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers", [{"dossier_number": 1001, "name": "x"}]
+            )
+        assert ok is True
+        mock_existing.assert_called_once_with("dossiers")
+        assert session.patch.call_args.kwargs["json"]["records"][0]["id"] == 5
+        session.post.assert_not_called()
+
+    def _session_with_columns(self) -> MagicMock:
+        """Session simulée : colonnes connues, création renvoyant un id par dossier."""
+        columns_response = MagicMock()
+        columns_response.status_code = 200
+        columns_response.json.return_value = {
+            "columns": [{"id": "name"}, {"id": "dossier_number"}]
+        }
+        session = MagicMock()
+        session.get.return_value = columns_response
+        session.post.side_effect = _post_creates_ids
+        session.patch.side_effect = _patch_returns_ids
+        return session
+
 
 class TestGristClientSession:
     """Tests unitaires pour GristClient._get_session (retry 429 + 5xx)"""
