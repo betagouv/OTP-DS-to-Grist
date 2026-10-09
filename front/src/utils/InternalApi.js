@@ -10,7 +10,8 @@ const ROUTES = {
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 const request = async (url, options) => {
-  const response = options === undefined ? await fetch(url) : await fetch(url, options)
+  const doFetch = typeof apiFetch !== 'undefined' ? apiFetch : fetch
+  const response = options === undefined ? await doFetch(url) : await doFetch(url, options)
   if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
 
   return response.json()

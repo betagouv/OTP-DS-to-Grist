@@ -7,7 +7,7 @@ if (typeof testExternalConnections === 'undefined')
 const getConfiguration = async () => {
   // Récupérer le contexte Grist
   const gristContext = await getGristContext()
-  const response = await fetch(`/api/config${gristContext.params}`)
+  const response = await apiFetch(`/api/config${gristContext.params}`)
   if (!response.ok)
     throw new Error(`Erreur HTTP ${response.status}`)
 
@@ -289,7 +289,7 @@ const saveConfiguration = async () => {
       }
     }
 
-    const response = await fetch('/api/config', {
+    const response = await apiFetch('/api/config', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -347,7 +347,7 @@ const deleteConfig = async (configId = null) => {
   clearTimeout(window.saveTimeout)
 
   try {
-    const response = await fetch(`/api/config/${configId}`, {
+    const response = await apiFetch(`/api/config/${configId}`, {
       method: 'DELETE'
     })
 

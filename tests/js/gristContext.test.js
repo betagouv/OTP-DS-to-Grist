@@ -1,4 +1,10 @@
-const { getGristContext, getApiBaseUrlFromDocBaseUrl }  = require('../../static/js/gristContext.js')
+const {
+  getGristContext,
+  getApiBaseUrlFromDocBaseUrl,
+  getWidgetToken,
+  clearWidgetToken,
+  decodeWidgetTokenClaims
+} = require('../../static/js/gristContext.js')
 
 beforeEach(() => {
   consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {}) // Supprime console.warn
@@ -66,3 +72,50 @@ it(
     ).toBe('https://grist.numerique.gouv.fr/o/docs/api')
   }
 )
+
+const createTokenWithExp = (expInSecondsFromNow, userId = '1', docId = 'd') => {
+  const payload = { userId, docId, exp: Math.floor(Date.now() / 1000) + expInSecondsFromNow }
+  return `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
+}
+
+it('decodes widget token claims', () => {
+  expect(decodeWidgetTokenClaims(createTokenWithExp(900, '7', 'docz')))
+    .toMatchObject({ userId: '7', docId: 'docz' })
+})
+
+describe('getWidgetToken', () => {
+  beforeEach(() => {
+    clearWidgetToken()
+    delete global.grist
+  })
+
+  it('returns null when grist is unavailable', async () => {
+    expect(await getWidgetToken()).toBeNull()
+  })
+
+  it('mints a token once and serves it from cache', async () => {
+    const token = createTokenWithExp(900)
+    const getAccessToken = jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 })
+    global.grist = { ready: jest.fn(), docApi: { getAccessToken } }
+
+    const first = await getWidgetToken()
+    const second = await getWidgetToken()
+
+    expect(first.token).toBe(token)
+    expect(second).toBe(first)
+    expect(getAccessToken).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-mints when the cached token is close to expiry', async () => {
+    const getAccessToken = jest.fn()
+      .mockResolvedValueOnce({ token: createTokenWithExp(30), baseUrl: 'http://x/api', ttlMsecs: 900000 })
+      .mockResolvedValueOnce({ token: createTokenWithExp(900), baseUrl: 'http://x/api', ttlMsecs: 900000 })
+    global.grist = { ready: jest.fn(), docApi: { getAccessToken } }
+
+    const first = await getWidgetToken()
+    const second = await getWidgetToken()
+
+    expect(getAccessToken).toHaveBeenCalledTimes(2)
+    expect(second.token).not.toBe(first.token)
+  })
+})

@@ -58,7 +58,7 @@ const startSync = async (otpConfigId) => {
   const gristUserId = gristContext.userId
 
   try {
-    const response = await fetch('/api/start-sync', {
+    const response = await apiFetch('/api/start-sync', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -294,7 +294,7 @@ const toggleAutoSync = async (enabled) => {
     }
 
     const method = enabled ? 'POST' : 'DELETE'
-    const response = await fetch('/api/schedule', {
+    const response = await apiFetch('/api/schedule', {
       method: method,
       headers: {
         'Content-Type': 'application/json'
@@ -343,7 +343,7 @@ const loadAutoSyncState = async () => {
 
     checkbox.disabled = false
 
-    const scheduleResponse = await fetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
+    const scheduleResponse = await apiFetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
     const scheduleResult = await scheduleResponse.json()
 
     checkbox.checked = scheduleResult.enabled || false
@@ -357,10 +357,10 @@ const displaySyncStatus = async (otpConfigId) => {
 
     let syncLogResponse
     if (otpConfigId)
-      syncLogResponse = await fetch(`/api/sync-log/latest?otp_config_id=${otpConfigId}`)
+      syncLogResponse = await apiFetch(`/api/sync-log/latest?otp_config_id=${otpConfigId}`)
     else {
       const gristContext = await getGristContext()
-      syncLogResponse = await fetch(`/api/sync-log/latest?grist_doc_id=${gristContext.docId}`)
+      syncLogResponse = await apiFetch(`/api/sync-log/latest?grist_doc_id=${gristContext.docId}`)
     }
 
     const syncLogResult = await syncLogResponse.json()
