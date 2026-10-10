@@ -20,7 +20,11 @@ from grist.client import GristClient
 from grist.column_cache import ColumnCache
 from grist.columns import hide_columns_with_id
 from grist.formatter import format_value
-from dn.client import PAGE_SIZE_DOSSIERS_MAX, iter_demarche_dossier_pages
+from dn.client import (
+    PAGE_SIZE_DOSSIERS_MAX,
+    iter_demarche_dossier_pages,
+    iter_filtered_dossier_pages,
+)
 from dn.extract import dossier_to_flat_data
 from utils.timing import get_timings
 from schema_utils import (
@@ -29,7 +33,12 @@ from schema_utils import (
     get_demarche_schema_enhanced,
     update_grist_tables_from_schema,
 )
-from sync.filters import build_filters_cache_key, filter_dossiers, read_filters_from_env
+from sync.filters import (
+    build_filters_cache_key,
+    build_server_filters,
+    filter_dossiers,
+    read_filters_from_env,
+)
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
@@ -1079,10 +1088,14 @@ def process_demarche_for_grist_optimized(
         # Traitement page par page : chaque page de dossiers est écrite dans Grist
         # avant que la suivante ne soit demandée à l'API, et la mémoire reste
         # bornée à une page quelle que soit la taille de la démarche.
-        pages = iter_demarche_dossier_pages(
+        # DN applique les filtres qu'il sait appliquer ; `filter_dossiers` les
+        # réapplique tous à chaque page reçue (date de fin, date de début en
+        # synchronisation incrémentale).
+        pages = iter_filtered_dossier_pages(
             demarche_number,
             updated_since=updated_since_cursor,
             page_size=batch_size,
+            **build_server_filters(filters, updated_since_cursor),
         )
         received_count = 0
         selected_count = 0

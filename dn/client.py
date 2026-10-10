@@ -454,6 +454,18 @@ query_groupe_dossiers_detaille = (
     + _DOSSIERS_DETAILLE_FRAGMENTS
 )
 
+# Numéros de tous les groupes instructeurs d'une démarche (sans argument
+# `closed` : groupes actifs et fermés)
+query_demarche_groupe_numbers = """
+query getDemarcheGroupeNumbers($demarcheNumber: Int!) {
+    demarche(number: $demarcheNumber) {
+        groupeInstructeurs {
+            number
+        }
+    }
+}
+"""
+
 # SESSION GLOBALE (créée une seule fois)
 _session: RateLimitedSession | None = None
 
@@ -640,11 +652,29 @@ def iter_filtered_dossier_pages(
     sous-requête (changement de statut pendant le parcours) ou sur la page
     suivante (dossier modifié pendant le parcours, l'ordre de pagination suivant
     la date de modification quand `updated_since` est renseigné).
+
+    Les groupes absents de la démarche (groupe supprimé, numéro erroné) sont
+    écartés avant le parcours : DN répondrait par une erreur qui interromprait
+    toute la synchronisation. Si la liste des groupes ne peut pas être lue,
+    l'exception est levée avant la première page.
     """
+    groupes_to_query: list[int | None] = [None]
+    if groupe_numbers:
+        known_numbers = get_demarche_groupe_numbers(demarche_number, session=session)
+        unknown_numbers = [n for n in groupe_numbers if n not in known_numbers]
+        if unknown_numbers:
+            log_error(
+                f"[DOSSIERS] Groupe(s) instructeur(s) absent(s) de la démarche "
+                f"{demarche_number}, ignoré(s) : {unknown_numbers}"
+            )
+        groupes_to_query = [n for n in groupe_numbers if n in known_numbers]
+        if not groupes_to_query:
+            return
+
     seen_numbers: set[int] = set()
     skipped_count = 0
 
-    for groupe_number in groupe_numbers or [None]:
+    for groupe_number in groupes_to_query:
         for state in states or [None]:
             pages = iter_demarche_dossier_pages(
                 demarche_number,
@@ -668,6 +698,48 @@ def iter_filtered_dossier_pages(
 
     if skipped_count:
         log(f"[DOSSIERS] {skipped_count} dossier(s) déjà reçu(s) ignoré(s)")
+
+
+def get_demarche_groupe_numbers(
+    demarche_number: int, session: requests.Session | None = None
+) -> set[int]:
+    """
+    Numéros de tous les groupes instructeurs de la démarche, fermés compris.
+
+    Contrairement à `get_groups`, lève une exception quand la liste ne peut pas
+    être lue : une liste vide ferait écarter à tort tous les groupes filtrés.
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    if session is None:
+        session = get_session_with_retries()
+
+    response = session.post(
+        DEMARCHES_API_URL,
+        json={
+            "query": query_demarche_groupe_numbers,
+            "variables": {"demarcheNumber": demarche_number},
+        },
+        headers={
+            "Authorization": f"Bearer {API_TOKEN}",
+            "Content-Type": "application/json",
+        },
+    )
+    response.raise_for_status()
+    result = response.json()
+
+    if "errors" in result:
+        messages = [e.get("message", "") for e in result["errors"]]
+        raise Exception(f"GraphQL errors: {', '.join(messages)}")
+
+    demarche = (result.get("data") or {}).get("demarche")
+    if demarche is None:
+        raise Exception(
+            f"Démarche {demarche_number} inaccessible : groupes instructeurs illisibles"
+        )
+
+    return {groupe["number"] for groupe in demarche["groupeInstructeurs"]}
 
 
 def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, Any]]:

@@ -433,11 +433,30 @@ class FakeDemarchesServer:
 
     `page_in_error` (optionnel) fait répondre la page de ce numéro par une
     erreur GraphQL, comme une API DN qui tombe en cours de parcours.
+
+    Filtres serveur reproduits comme DN : racine `groupeInstructeur` (dossiers
+    du groupe), `state`, `createdSince` (borne incluse, ignoré dès que
+    `updatedSince` est renseigné). `groupes` liste les groupes de la démarche
+    (par défaut ceux des dossiers) ; `groupes_in_error` fait échouer leur lecture.
+    Les variables de chaque page demandée sont conservées dans `list_requests`.
     """
 
-    def __init__(self, dossiers, page_in_error=None):
+    def __init__(
+        self, dossiers, page_in_error=None, groupes=None, groupes_in_error=False
+    ):
         self.dossiers = dossiers
         self.page_in_error = page_in_error
+        self.groupes = (
+            set(groupes)
+            if groupes is not None
+            else {
+                d["groupeInstructeur"]["number"]
+                for d in dossiers
+                if d.get("groupeInstructeur")
+            }
+        )
+        self.groupes_in_error = groupes_in_error
+        self.list_requests = []
 
     def _offset(self, cursor):
         prefix, _, value = str(cursor).partition(":")
@@ -460,8 +479,18 @@ class FakeDemarchesServer:
                 if d["dateDerniereModification"] > updated_since
             ]
         created_since = variables.get("createdSince")
-        if created_since:
-            dossiers = [d for d in dossiers if d["dateDepot"] > created_since]
+        if created_since and not updated_since:
+            dossiers = [d for d in dossiers if d["dateDepot"] >= created_since]
+        groupe_number = variables.get("groupeNumber")
+        if groupe_number is not None:
+            dossiers = [
+                d
+                for d in dossiers
+                if (d.get("groupeInstructeur") or {}).get("number") == groupe_number
+            ]
+        state = variables.get("state")
+        if state:
+            dossiers = [d for d in dossiers if d["state"] == state]
         return dossiers
 
     def _resume(self, dossier):
@@ -470,6 +499,8 @@ class FakeDemarchesServer:
     def handle(self, query, variables):
         if "dossiers(" in query:
             return self._paginated_list(query, variables)
+        if "groupeInstructeurs" in query:
+            return self._groupes_list()
         assert "dossier(number:" in query, f"Query DN non prévue : {query[:120]}"
         return self._dossier_unitaire(query, variables)
 
@@ -480,7 +511,24 @@ class FakeDemarchesServer:
             {"data": {"dossier": dossier if dossier is None else self._forme(query, dossier)}}
         )
 
+    def _groupes_list(self):
+        if self.groupes_in_error:
+            return build_response(
+                {"data": None, "errors": [{"message": "Erreur interne du serveur DN"}]}
+            )
+        groupes = [{"number": number} for number in sorted(self.groupes)]
+        return build_response({"data": {"demarche": {"groupeInstructeurs": groupes}}})
+
     def _paginated_list(self, query, variables):
+        self.list_requests.append(dict(variables))
+        groupe_number = variables.get("groupeNumber")
+        if groupe_number is not None and groupe_number not in self.groupes:
+            return build_response(
+                {
+                    "data": None,
+                    "errors": [{"message": "Groupe instructeur introuvable"}],
+                }
+            )
         first = self._page_size(query, variables)
         after = variables.get("after", variables.get("afterCursor"))
         dossiers = self._server_filters(variables)
@@ -494,26 +542,27 @@ class FakeDemarchesServer:
         end_cursor = f"cursor:{start + len(window)}" if has_next else None
 
         nodes = [self._forme(query, dossier) for dossier in window]
-        return build_response(
-            {
-                "data": {
-                    "demarche": {
-                        "id": "demarche_1",
-                        "number": DEMARCHE_NUMBER,
-                        "title": "Démarche test",
-                        "dossiers": {
-                            "pageInfo": {
-                                "hasPreviousPage": start > 0,
-                                "hasNextPage": has_next,
-                                "startCursor": f"cursor:{start}",
-                                "endCursor": end_cursor,
-                            },
-                            "nodes": nodes,
-                        },
-                    }
+        connection = {
+            "pageInfo": {
+                "hasPreviousPage": start > 0,
+                "hasNextPage": has_next,
+                "startCursor": f"cursor:{start}",
+                "endCursor": end_cursor,
+            },
+            "nodes": nodes,
+        }
+        if variables.get("groupeNumber") is not None:
+            root = {"groupeInstructeur": {"dossiers": connection}}
+        else:
+            root = {
+                "demarche": {
+                    "id": "demarche_1",
+                    "number": DEMARCHE_NUMBER,
+                    "title": "Démarche test",
+                    "dossiers": connection,
                 }
             }
-        )
+        return build_response({"data": root})
 
     def _forme(self, query, dossier):
         return dict(dossier) if DETAIL_MARKER in query else self._resume(dossier)
@@ -812,6 +861,174 @@ class TestSyncPipelineGrist:
         assert result is True
         assert set(server.column(DOSSIERS_TABLE, "dossier_number")) == expected
         assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+
+    def test_dn_applies_groupe_state_and_date_filters(self):
+        """Les filtres de groupe, de statut et de date de début sont envoyés à
+        DN : seuls les dossiers éligibles sont demandés, sans en perdre aucun.
+
+        Scénario : sync complète filtrée sur le groupe 1, deux statuts et une
+        date de début. Une sous-requête par statut sur la racine du groupe,
+        avec la date de début moins un jour de marge.
+
+        Régression : filtres de nouveau appliqués côté client seulement
+        (pages entières téléchargées), ou dossier éligible perdu en route.
+        """
+        groupe_1 = {"id": "groupe_1", "number": 1, "label": "G1"}
+        groupe_2 = {"id": "groupe_2", "number": 2, "label": "G2"}
+        in_period = "2024-03-15T09:00:00Z"
+        dossiers = [
+            make_dossier(1, groupeInstructeur=groupe_1, dateDepot=in_period),
+            make_dossier(2, groupeInstructeur=groupe_1, dateDepot=in_period),
+            make_dossier(
+                3, groupeInstructeur=groupe_1, dateDepot=in_period, state="refuse"
+            ),
+            make_dossier(4, groupeInstructeur=groupe_2, dateDepot=in_period),
+            make_dossier(
+                5, groupeInstructeur=groupe_1, dateDepot="2024-01-05T09:00:00Z"
+            ),
+            make_dossier(
+                6,
+                groupeInstructeur=groupe_1,
+                dateDepot=in_period,
+                state="en_instruction",
+            ),
+        ]
+        dn_server = FakeDemarchesServer(dossiers)
+        server = FakeGristServer()
+
+        result, _ = run_pipeline(
+            server,
+            dn_server,
+            filters={
+                "DATE_DEPOT_DEBUT": "2024-03-01",
+                "STATUTS_DOSSIERS": "accepte,en_instruction",
+                "GROUPES_INSTRUCTEURS": "1",
+            },
+            parallel=False,
+        )
+
+        assert result is True
+        assert set(server.column(DOSSIERS_TABLE, "dossier_number")) == {1, 2, 6}
+        requests_sent = dn_server.list_requests
+        assert [(v.get("groupeNumber"), v["state"]) for v in requests_sent] == [
+            (1, "accepte"),
+            (1, "en_instruction"),
+        ]
+        assert all(v["createdSince"] == "2024-02-29T00:00:00Z" for v in requests_sent)
+
+    def test_groupe_absent_from_demarche_does_not_block_sync(self):
+        """Un groupe configuré qui n'existe plus est ignoré : les autres groupes
+        sont synchronisés et la synchro reste réussie.
+
+        Régression : une erreur DN sur le groupe disparu interromprait toute la
+        pagination à chaque run, avec un repère de reprise bloqué.
+        """
+        groupe_1 = {"id": "groupe_1", "number": 1, "label": "G1"}
+        dn_server = FakeDemarchesServer(
+            [make_dossier(1, groupeInstructeur=groupe_1)], groupes=[1]
+        )
+        server = FakeGristServer()
+
+        result, _ = run_pipeline(
+            server,
+            dn_server,
+            filters={"GROUPES_INSTRUCTEURS": "99,1"},
+            parallel=False,
+        )
+
+        assert result is True
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [1]
+        assert [v["groupeNumber"] for v in dn_server.list_requests] == [1]
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+
+    def test_unreadable_groupes_keep_resume_marker(self):
+        """Si la liste des groupes ne peut pas être lue, rien n'est écrit et le
+        repère de reprise ne bouge pas.
+
+        Régression : une liste vide prise pour « aucun groupe », qui ferait
+        avancer le repère sans avoir synchronisé les dossiers filtrés.
+        """
+        filters = {"GROUPES_INSTRUCTEURS": "1"}
+        with patch.dict(os.environ, {**EMPTY_FILTERS, **filters}):
+            filters_hash = build_filters_cache_key()
+
+        cursor_initial = "2023-01-01T00:00:00Z"
+        server = FakeGristServer(
+            initial_records={
+                SYNC_METADATA_TABLE: [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": cursor_initial,
+                        "deleted_since_cursor": cursor_initial,
+                        "filters_hash": filters_hash,
+                        "force_full_sync": False,
+                    }
+                ]
+            }
+        )
+        groupe_1 = {"id": "groupe_1", "number": 1, "label": "G1"}
+        dn_server = FakeDemarchesServer(
+            [make_dossier(1, groupeInstructeur=groupe_1)], groupes_in_error=True
+        )
+
+        run_pipeline(server, dn_server, filters=filters, parallel=False)
+
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == []
+        assert dn_server.list_requests == []
+        metadata = server.metadata(DEMARCHE_NUMBER)
+        assert metadata["last_sync_status"] == "partial"
+        assert metadata["updated_since_cursor"] == cursor_initial
+        assert metadata["deleted_since_cursor"] == cursor_initial
+
+    def test_incremental_sync_filters_date_debut_after_reception(self):
+        """En synchro incrémentale, la date de début n'est pas envoyée à DN (qui
+        l'ignorerait à côté d'`updatedSince`) : elle est appliquée à réception.
+
+        Régression : dossier déposé avant la borne mais modifié récemment
+        réintégré dans le document.
+        """
+        filters = {"DATE_DEPOT_DEBUT": "2024-01-10"}
+        with patch.dict(os.environ, {**EMPTY_FILTERS, **filters}):
+            filters_hash = build_filters_cache_key()
+
+        cursor_initial = "2024-01-15T00:00:00Z"
+        server = FakeGristServer(
+            initial_records={
+                SYNC_METADATA_TABLE: [
+                    {
+                        "demarche_number": DEMARCHE_NUMBER,
+                        "updated_since_cursor": cursor_initial,
+                        "deleted_since_cursor": cursor_initial,
+                        "filters_hash": filters_hash,
+                        "force_full_sync": False,
+                    }
+                ]
+            }
+        )
+        recent = "2024-02-01T00:00:00Z"
+        dn_server = FakeDemarchesServer(
+            [
+                # Déposé avant la borne, modifié après le repère : reçu puis écarté
+                make_dossier(
+                    1,
+                    dateDepot="2024-01-01T09:00:00Z",
+                    dateDerniereModification=recent,
+                ),
+                # Éligible et modifié après le repère : synchronisé
+                make_dossier(
+                    2,
+                    dateDepot="2024-01-20T09:00:00Z",
+                    dateDerniereModification=recent,
+                ),
+            ]
+        )
+
+        result, _ = run_pipeline(server, dn_server, filters=filters, parallel=False)
+
+        assert result is True
+        assert server.column(DOSSIERS_TABLE, "dossier_number") == [2]
+        assert [v["createdSince"] for v in dn_server.list_requests] == [None]
+        assert [v["updatedSince"] for v in dn_server.list_requests] == [cursor_initial]
 
     def test_dn_page_error_keeps_resume_marker(self):
         """Une page perdue en cours de parcours ne doit pas faire avancer le

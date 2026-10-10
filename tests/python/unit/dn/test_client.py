@@ -8,6 +8,7 @@ from dn.client import (
     DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
     get_deleted_dossiers,
     get_demarche_dossiers_labels_only,
+    get_demarche_groupe_numbers,
     get_groups,
     get_session_with_retries,
     iter_demarche_dossier_pages,
@@ -626,8 +627,19 @@ def _groupe_page(nodes, has_next_page=False, end_cursor=None):
     return _mock_response(json_data=payload)
 
 
+def _groupes_response(numbers):
+    groupes = [{"number": number} for number in numbers]
+    return _mock_response(
+        json_data={"data": {"demarche": {"groupeInstructeurs": groupes}}}
+    )
+
+
 def _sent_variables(session):
     return [appel.kwargs["json"]["variables"] for appel in session.post.call_args_list]
+
+
+def _sent_queries(session):
+    return [appel.kwargs["json"]["query"] for appel in session.post.call_args_list]
 
 
 def _numbers(pages):
@@ -661,6 +673,7 @@ class TestIterFilteredDossierPages:
         """Groupes × statuts → une sous-requête par couple, dans l'ordre"""
         session = MagicMock()
         session.post.side_effect = [
+            _groupes_response([10, 20, 30]),
             _groupe_page([_dossier(1)]),
             _groupe_page([_dossier(2)]),
             _groupe_page([_dossier(3)]),
@@ -675,7 +688,9 @@ class TestIterFilteredDossierPages:
         )
 
         assert _numbers(pages) == [[1], [2], [3], [4]]
-        assert [(v["groupeNumber"], v["state"]) for v in _sent_variables(session)] == [
+        assert "groupeInstructeurs" in _sent_queries(session)[0]
+        sent = [(v["groupeNumber"], v["state"]) for v in _sent_variables(session)[1:]]
+        assert sent == [
             (10, "en_instruction"),
             (10, "accepte"),
             (20, "en_instruction"),
@@ -702,7 +717,11 @@ class TestIterFilteredDossierPages:
     def test_dates_are_sent_to_every_subquery(self, mock_session):
         """Le repère de reprise et la borne de dépôt accompagnent chaque sous-requête"""
         session = MagicMock()
-        session.post.side_effect = [_groupe_page([_dossier(1)]), _groupe_page([])]
+        session.post.side_effect = [
+            _groupes_response([10, 20]),
+            _groupe_page([_dossier(1)]),
+            _groupe_page([]),
+        ]
         mock_session.return_value = session
 
         list(
@@ -714,7 +733,7 @@ class TestIterFilteredDossierPages:
             )
         )
 
-        variables = _sent_variables(session)
+        variables = _sent_variables(session)[1:]
         assert len(variables) == 2
         assert all(v["updatedSince"] == "2026-10-01T00:00:00Z" for v in variables)
         assert all(v["createdSince"] == "2025-12-31T00:00:00Z" for v in variables)
@@ -725,6 +744,7 @@ class TestIterFilteredDossierPages:
         """Dossier ayant changé de statut pendant le parcours → rendu une seule fois"""
         session = MagicMock()
         session.post.side_effect = [
+            _groupes_response([10]),
             _groupe_page([_dossier(1), _dossier(2)]),
             _groupe_page([_dossier(2), _dossier(3)]),
         ]
@@ -760,18 +780,139 @@ class TestIterFilteredDossierPages:
         """Erreur DN sur une sous-requête → propagée après les pages déjà rendues"""
         session = MagicMock()
         session.post.side_effect = [
+            _groupes_response([10, 20]),
             _groupe_page([_dossier(1)]),
             _mock_response(
                 json_data={
                     "data": {"groupeInstructeur": None},
-                    "errors": [{"message": "Groupe instructeur introuvable"}],
+                    "errors": [{"message": "Erreur interne du serveur"}],
                 }
             ),
         ]
         mock_session.return_value = session
 
-        pages = iter_filtered_dossier_pages(123, groupe_numbers=[10, 99])
+        pages = iter_filtered_dossier_pages(123, groupe_numbers=[10, 20])
 
         assert _numbers([next(pages)]) == [[1]]
-        with pytest.raises(Exception, match="introuvable"):
+        with pytest.raises(Exception, match="Erreur interne"):
             next(pages)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.log_error")
+    def test_groupe_absent_from_demarche_is_skipped(self, mock_log_error, mock_session):
+        """Groupe supprimé ou erroné → écarté et signalé, les autres sont parcourus"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupes_response([10, 30]),
+            _groupe_page([_dossier(1)]),
+            _groupe_page([_dossier(3)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_filtered_dossier_pages(123, groupe_numbers=[10, 99, 30]))
+
+        assert _numbers(pages) == [[1], [3]]
+        assert [v["groupeNumber"] for v in _sent_variables(session)[1:]] == [10, 30]
+        assert "99" in mock_log_error.call_args.args[0]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.log_error")
+    def test_no_groupe_left_queries_nothing(self, _mock_log_error, mock_session):
+        """Aucun groupe filtré n'existe → aucune page, et surtout pas toute la démarche"""
+        session = MagicMock()
+        session.post.side_effect = [_groupes_response([10])]
+        mock_session.return_value = session
+
+        assert list(iter_filtered_dossier_pages(123, groupe_numbers=[99])) == []
+        session.post.assert_called_once()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_unreadable_groupes_raise_before_any_page(self, mock_session):
+        """Liste des groupes illisible → exception, aucune page demandée"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _mock_response(json_data={"errors": [{"message": "Service indisponible"}]})
+        ]
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="Service indisponible"):
+            next(iter_filtered_dossier_pages(123, groupe_numbers=[10]))
+        session.post.assert_called_once()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_groupe_filter_groupes_are_not_read(self, mock_session):
+        """Sans filtre de groupe, la liste des groupes n'est pas demandée"""
+        session = MagicMock()
+        session.post.side_effect = [_page([_dossier(1)])]
+        mock_session.return_value = session
+
+        list(iter_filtered_dossier_pages(123, states=["accepte"]))
+
+        assert all("groupeInstructeurs" not in q for q in _sent_queries(session))
+
+
+class TestGetDemarcheGroupeNumbers:
+    """Tests pour get_demarche_groupe_numbers"""
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_returns_all_groupe_numbers(self, mock_session):
+        session = MagicMock()
+        session.post.return_value = _groupes_response([10, 20])
+        mock_session.return_value = session
+
+        assert get_demarche_groupe_numbers(123) == {10, 20}
+        query = session.post.call_args.kwargs["json"]["query"]
+        # Sans argument `closed` : les groupes fermés sont aussi renvoyés
+        assert "groupeInstructeurs {" in query
+        assert session.post.call_args.kwargs["json"]["variables"] == {
+            "demarcheNumber": 123
+        }
+
+    @patch("dn.client.get_session_with_retries")
+    def test_missing_token_raises(self, mock_session):
+        with patch("dn.client.API_TOKEN", ""):
+            with pytest.raises(ValueError):
+                get_demarche_groupe_numbers(123)
+        mock_session.assert_not_called()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_errors_raise(self, mock_session):
+        """Contrairement à get_groups : une erreur n'est jamais une liste vide"""
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"errors": [{"message": "Unauthorized"}]}
+        )
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="Unauthorized"):
+            get_demarche_groupe_numbers(123)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_inaccessible_demarche_raises(self, mock_session):
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"data": {"demarche": None}}
+        )
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="inaccessible"):
+            get_demarche_groupe_numbers(123)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_http_error_raises(self, mock_session):
+        response = _mock_response(status_code=503)
+        response.raise_for_status.side_effect = Exception("503 Service Unavailable")
+        session = MagicMock()
+        session.post.return_value = response
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="503"):
+            get_demarche_groupe_numbers(123)
