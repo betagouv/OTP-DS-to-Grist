@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 from schema_utils import (
     get_problematic_descriptor_ids_from_schema,
     auto_clean_schema_descriptors,
+    create_columns_from_schema,
+    get_demarche_schema,
     update_grist_tables_from_schema,
 )
 
@@ -235,3 +237,111 @@ class TestUpdateGristTablesFromSchema:
             if "columns" in c.kwargs.get("json", {})
         ]
         assert column_posts == []
+
+
+RIB_SUFFIXES = ["titulaire", "iban", "bic", "nom_de_la_banque"]
+
+
+def _make_pj_schema(label, descriptor_id="desc_pj", pj_natures=None):
+    schema = {
+        "title": "Test démarche",
+        "activeRevision": {
+            "id": "rev_1",
+            "champDescriptors": [
+                {
+                    "__typename": "PieceJustificativeChampDescriptor",
+                    "id": descriptor_id,
+                    "type": "piece_justificative",
+                    "label": label,
+                    "description": "",
+                    "required": False,
+                }
+            ],
+            "annotationDescriptors": [],
+        },
+    }
+    if pj_natures is not None:
+        schema["pj_natures"] = pj_natures
+    return schema
+
+
+def _champ_column_ids(schema):
+    column_types, _ = create_columns_from_schema(schema)
+    return {col["id"] for col in column_types["champs"]}
+
+
+class TestCreateColumnsFromSchemaRib:
+    """Tests sur la création des sous-colonnes OCR RIB dans create_columns_from_schema"""
+
+    def test_nature_rib_sans_mot_cle_cree_les_sous_colonnes(self):
+        """Régression #556 : un RIB libellé sans « rib »/« iban » n'avait aucune colonne"""
+        schema = _make_pj_schema("Coordonnées bancaires", pj_natures={"desc_pj": "RIB"})
+        ids = _champ_column_ids(schema)
+        assert {f"coordonnees_bancaires_{s}" for s in RIB_SUFFIXES} <= ids
+        assert "coordonnees_bancaires" in ids
+
+    def test_nature_non_rib_ne_cree_pas_de_sous_colonnes(self):
+        """La nature fait foi sur le libellé"""
+        schema = _make_pj_schema("RIB scanné", pj_natures={"desc_pj": "NON_SPECIFIE"})
+        ids = _champ_column_ids(schema)
+        assert ids == {"dossier_number", "champ_id", "rib_scanne"}
+
+    def test_sans_nature_repli_sur_mot_cle(self):
+        """Démarche sans dossier : repli sur le libellé"""
+        ids = _champ_column_ids(_make_pj_schema("RIB du demandeur"))
+        assert {f"rib_du_demandeur_{s}" for s in RIB_SUFFIXES} <= ids
+
+    def test_sans_nature_ni_mot_cle_pas_de_sous_colonnes(self):
+        ids = _champ_column_ids(_make_pj_schema("Coordonnées bancaires"))
+        assert ids == {"dossier_number", "champ_id", "coordonnees_bancaires"}
+
+    def test_nature_d_une_autre_pj_ignoree(self):
+        """Une nature connue pour un autre descripteur ne s'applique pas"""
+        schema = _make_pj_schema(
+            "RIB du demandeur", pj_natures={"autre_desc": "NON_SPECIFIE"}
+        )
+        ids = _champ_column_ids(schema)
+        assert {f"rib_du_demandeur_{s}" for s in RIB_SUFFIXES} <= ids
+
+
+class TestGetDemarcheSchemaPjNatures:
+    """Tests sur la récupération des natures des PJ par get_demarche_schema"""
+
+    def _mock_schema_response(self, demarche):
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {"data": {"demarche": demarche}}
+        return response
+
+    @patch("schema_utils.API_TOKEN", "token")
+    @patch("schema_utils.get_pj_natures", return_value={"desc_pj": "RIB"})
+    @patch("schema_utils.requests.post")
+    def test_natures_ajoutees_si_pj(self, mock_post, mock_natures):
+        demarche = _make_pj_schema("Coordonnées bancaires")
+        mock_post.return_value = self._mock_schema_response(demarche)
+
+        result = get_demarche_schema(123)
+
+        mock_natures.assert_called_once_with(123)
+        assert result["pj_natures"] == {"desc_pj": "RIB"}
+
+    @patch("schema_utils.API_TOKEN", "token")
+    @patch("schema_utils.get_pj_natures")
+    @patch("schema_utils.requests.post")
+    def test_pas_d_appel_sans_pj(self, mock_post, mock_natures):
+        demarche = {
+            "title": "Test démarche",
+            "activeRevision": {
+                "id": "rev_1",
+                "champDescriptors": [
+                    {"__typename": "TextChampDescriptor", "id": "d1", "label": "Nom"}
+                ],
+                "annotationDescriptors": [],
+            },
+        }
+        mock_post.return_value = self._mock_schema_response(demarche)
+
+        result = get_demarche_schema(123)
+
+        mock_natures.assert_not_called()
+        assert "pj_natures" not in result
