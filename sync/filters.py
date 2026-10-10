@@ -7,17 +7,35 @@ dossiers à synchroniser et pour produire l'empreinte des filtres enregistrée d
 `Sync_metadata.filters_hash` (qui détecte un changement de filtres et force une
 synchronisation complète).
 
-Les filtres sont appliqués côté client : l'API DN ne propose pas de filtrage par
-groupe instructeur, et un filtrage serveur sur les dates ou les statuts rendrait
-le repère `updatedSince` incohérent avec les critères retenus.
+Les filtres sont appliqués en deux temps. DN applique d'abord ceux qu'il sait
+appliquer (`build_server_filters`) : groupe instructeur, statut et, en
+synchronisation complète seulement, date de dépôt de début (DN ignore
+`createdSince` quand `updatedSince` est renseigné). `filter_dossiers` applique
+ensuite tous les filtres aux dossiers reçus : il porte seul la date de fin et,
+en synchronisation incrémentale, la date de début.
 """
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from utils.log import log, log_error
+
+# Statuts acceptés par l'argument `state` de l'API DN (enum DossierState)
+DN_DOSSIER_STATES = (
+    "en_construction",
+    "en_instruction",
+    "accepte",
+    "refuse",
+    "sans_suite",
+)
+
+# Marge prise sur la date de début envoyée à DN : `filter_dossiers` compare des
+# jours calendaires (date locale de `dateDepot`), DN compare un instant UTC.
+# Sans marge, un dossier déposé juste après minuit (heure de Paris) le jour de
+# la borne serait écarté par DN.
+CREATED_SINCE_MARGIN = timedelta(days=1)
 
 
 def read_filters_from_env() -> dict[str, Any]:
@@ -87,6 +105,43 @@ def filter_dossiers(
         selection.append(dossier)
 
     return selection
+
+
+def build_server_filters(
+    filters: dict[str, Any], updated_since: str | None
+) -> dict[str, Any]:
+    """
+    Traduit les filtres de sélection en arguments de `iter_filtered_dossier_pages`.
+
+    Une valeur que DN refuserait (groupe non numérique, statut inconnu) est
+    écartée avec un message d'erreur : elle ne peut retenir aucun dossier, et
+    `filter_dossiers` l'écarte de toute façon après réception.
+    """
+    groupe_numbers = []
+    for groupe in filters["groupes"]:
+        try:
+            groupe_numbers.append(int(groupe))
+        except ValueError:
+            log_error(f"Groupe instructeur non numérique ignoré par DN : {groupe!r}")
+
+    states = []
+    for statut in filters["statuts"]:
+        if statut.strip() in DN_DOSSIER_STATES:
+            states.append(statut.strip())
+        else:
+            log_error(f"Statut de dossier inconnu ignoré par DN : {statut!r}")
+
+    created_since = None
+    if filters["date_debut"] and not updated_since:
+        created_since = (filters["date_debut"] - CREATED_SINCE_MARGIN).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+
+    return {
+        "groupe_numbers": groupe_numbers,
+        "states": states,
+        "created_since": created_since,
+    }
 
 
 def build_filters_cache_key() -> str:
