@@ -619,6 +619,57 @@ def iter_demarche_dossier_pages(
         cursor = cursor_suivant
 
 
+def iter_filtered_dossier_pages(
+    demarche_number: int,
+    groupe_numbers: list[int] | None = None,
+    states: list[str] | None = None,
+    updated_since: str | None = None,
+    created_since: str | None = None,
+    page_size: int = PAGE_SIZE_DOSSIERS_MAX,
+    session: requests.Session | None = None,
+) -> Iterator[list[dict[str, Any]]]:
+    """
+    Parcourt page par page les dossiers détaillés d'une démarche en laissant DN
+    appliquer les filtres de groupe instructeur et de statut.
+
+    DN n'accepte qu'un groupe et qu'un statut par requête : une pagination est
+    faite par couple (groupe, statut). Sans groupe ni statut, une seule
+    pagination sur la démarche, comme `iter_demarche_dossier_pages`.
+
+    Un dossier n'est rendu qu'une fois : il peut réapparaître dans une autre
+    sous-requête (changement de statut pendant le parcours) ou sur la page
+    suivante (dossier modifié pendant le parcours, l'ordre de pagination suivant
+    la date de modification quand `updated_since` est renseigné).
+    """
+    seen_numbers: set[int] = set()
+    skipped_count = 0
+
+    for groupe_number in groupe_numbers or [None]:
+        for state in states or [None]:
+            pages = iter_demarche_dossier_pages(
+                demarche_number,
+                session=session,
+                page_size=page_size,
+                updated_since=updated_since,
+                groupe_number=groupe_number,
+                state=state,
+                created_since=created_since,
+            )
+            for page in pages:
+                new_dossiers = []
+                for dossier in page:
+                    if dossier["number"] in seen_numbers:
+                        skipped_count += 1
+                        continue
+                    seen_numbers.add(dossier["number"])
+                    new_dossiers.append(dossier)
+                if new_dossiers:
+                    yield new_dossiers
+
+    if skipped_count:
+        log(f"[DOSSIERS] {skipped_count} dossier(s) déjà reçu(s) ignoré(s)")
+
+
 def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, Any]]:
     """
     Récupère uniquement le numéro et les labels de TOUS les dossiers d'une démarche.

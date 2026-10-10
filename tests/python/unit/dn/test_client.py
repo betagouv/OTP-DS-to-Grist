@@ -11,6 +11,7 @@ from dn.client import (
     get_groups,
     get_session_with_retries,
     iter_demarche_dossier_pages,
+    iter_filtered_dossier_pages,
 )
 
 
@@ -623,3 +624,154 @@ def _groupe_page(nodes, has_next_page=False, end_cursor=None):
         }
     }
     return _mock_response(json_data=payload)
+
+
+def _sent_variables(session):
+    return [appel.kwargs["json"]["variables"] for appel in session.post.call_args_list]
+
+
+def _numbers(pages):
+    return [[dossier["number"] for dossier in page] for page in pages]
+
+
+class TestIterFilteredDossierPages:
+    """Tests pour iter_filtered_dossier_pages (une pagination par couple groupe/statut)"""
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_filters_paginates_demarche_once(self, mock_session):
+        """Ni groupe ni statut → une seule pagination sur la démarche"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _page([_dossier(1)], has_next_page=True, end_cursor="c1"),
+            _page([_dossier(2)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_filtered_dossier_pages(123))
+
+        assert _numbers(pages) == [[1], [2]]
+        variables = _sent_variables(session)
+        assert [v["demarcheNumber"] for v in variables] == [123, 123]
+        assert all(v["state"] is None for v in variables)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_one_pagination_per_groupe_and_state(self, mock_session):
+        """Groupes × statuts → une sous-requête par couple, dans l'ordre"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupe_page([_dossier(1)]),
+            _groupe_page([_dossier(2)]),
+            _groupe_page([_dossier(3)]),
+            _groupe_page([_dossier(4)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(
+            iter_filtered_dossier_pages(
+                123, groupe_numbers=[10, 20], states=["en_instruction", "accepte"]
+            )
+        )
+
+        assert _numbers(pages) == [[1], [2], [3], [4]]
+        assert [(v["groupeNumber"], v["state"]) for v in _sent_variables(session)] == [
+            (10, "en_instruction"),
+            (10, "accepte"),
+            (20, "en_instruction"),
+            (20, "accepte"),
+        ]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_states_without_groupe_query_demarche(self, mock_session):
+        """Statuts sans groupe → racine démarche, une sous-requête par statut"""
+        session = MagicMock()
+        session.post.side_effect = [_page([_dossier(1)]), _page([_dossier(2)])]
+        mock_session.return_value = session
+
+        list(iter_filtered_dossier_pages(123, states=["accepte", "refuse"]))
+
+        variables = _sent_variables(session)
+        assert [v["state"] for v in variables] == ["accepte", "refuse"]
+        assert all(v["demarcheNumber"] == 123 for v in variables)
+        assert all("groupeNumber" not in v for v in variables)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_dates_are_sent_to_every_subquery(self, mock_session):
+        """Le repère de reprise et la borne de dépôt accompagnent chaque sous-requête"""
+        session = MagicMock()
+        session.post.side_effect = [_groupe_page([_dossier(1)]), _groupe_page([])]
+        mock_session.return_value = session
+
+        list(
+            iter_filtered_dossier_pages(
+                123,
+                groupe_numbers=[10, 20],
+                updated_since="2026-10-01T00:00:00Z",
+                created_since="2025-12-31T00:00:00Z",
+            )
+        )
+
+        variables = _sent_variables(session)
+        assert len(variables) == 2
+        assert all(v["updatedSince"] == "2026-10-01T00:00:00Z" for v in variables)
+        assert all(v["createdSince"] == "2025-12-31T00:00:00Z" for v in variables)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_dossier_seen_in_another_subquery_is_skipped(self, mock_session):
+        """Dossier ayant changé de statut pendant le parcours → rendu une seule fois"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupe_page([_dossier(1), _dossier(2)]),
+            _groupe_page([_dossier(2), _dossier(3)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(
+            iter_filtered_dossier_pages(
+                123, groupe_numbers=[10], states=["en_instruction", "accepte"]
+            )
+        )
+
+        assert _numbers(pages) == [[1, 2], [3]]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_dossier_repeated_on_next_page_is_skipped(self, mock_session):
+        """Dossier décalé d'une page à l'autre → rendu une seule fois, page vide omise"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _page([_dossier(1), _dossier(2)], has_next_page=True, end_cursor="c1"),
+            _page([_dossier(2)], has_next_page=True, end_cursor="c2"),
+            _page([_dossier(3)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_filtered_dossier_pages(123))
+
+        assert _numbers(pages) == [[1, 2], [3]]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_error_in_a_subquery_is_raised(self, mock_session):
+        """Erreur DN sur une sous-requête → propagée après les pages déjà rendues"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupe_page([_dossier(1)]),
+            _mock_response(
+                json_data={
+                    "data": {"groupeInstructeur": None},
+                    "errors": [{"message": "Groupe instructeur introuvable"}],
+                }
+            ),
+        ]
+        mock_session.return_value = session
+
+        pages = iter_filtered_dossier_pages(123, groupe_numbers=[10, 99])
+
+        assert _numbers([next(pages)]) == [[1]]
+        with pytest.raises(Exception, match="introuvable"):
+            next(pages)
