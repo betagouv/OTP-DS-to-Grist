@@ -392,15 +392,19 @@ fragment DossierFragment on Dossier {
 }
 """
 
-# Requête paginée des dossiers DÉTAILLÉS d'une démarche
-# (une page = la connexion `dossiers` complète, avec champs, annotations, avis…)
-query_dossiers_detaille = (
-    """
+# Requête paginée des dossiers DÉTAILLÉS
+# (une page = la connexion `dossiers` complète, avec champs, annotations, avis…).
+# La connexion est atteinte depuis la démarche ou depuis un groupe instructeur :
+# DN expose les mêmes arguments de filtrage sur les deux racines.
+# Attention : DN ignore `createdSince` dès que `updatedSince` est renseigné.
+_DOSSIERS_DETAILLE_TEMPLATE = """
 query getDossiersPage(
-    $demarcheNumber: Int!
+    __ROOT_VARIABLE__: Int!
     $first: Int!
     $afterCursor: String = null
     $updatedSince: ISO8601DateTime = null
+    $createdSince: ISO8601DateTime = null
+    $state: DossierState = null
     $includeChamps: Boolean = true
     $includeAnotations: Boolean = true
     $includeGeometry: Boolean = true
@@ -409,11 +413,13 @@ query getDossiersPage(
     $includeAvis: Boolean = true
     $includeCorrections: Boolean = true
 ) {
-    demarche(number: $demarcheNumber) {
+    __ROOT_FIELD__ {
         dossiers(
             first: $first
             after: $afterCursor
             updatedSince: $updatedSince
+            createdSince: $createdSince
+            state: $state
         ) {
             pageInfo {
                 ...PageInfoFragment
@@ -426,11 +432,26 @@ query getDossiersPage(
 }
 
 """
-    + DOSSIER_FRAGMENT
+_DOSSIERS_DETAILLE_FRAGMENTS = (
+    DOSSIER_FRAGMENT
     + PAGE_INFO_FRAGMENT
     + COMMON_FRAGMENTS
     + SPECIALIZED_FRAGMENTS
     + CHAMP_FRAGMENTS
+)
+
+query_dossiers_detaille = (
+    _DOSSIERS_DETAILLE_TEMPLATE.replace("__ROOT_VARIABLE__", "$demarcheNumber").replace(
+        "__ROOT_FIELD__", "demarche(number: $demarcheNumber)"
+    )
+    + _DOSSIERS_DETAILLE_FRAGMENTS
+)
+
+query_groupe_dossiers_detaille = (
+    _DOSSIERS_DETAILLE_TEMPLATE.replace("__ROOT_VARIABLE__", "$groupeNumber").replace(
+        "__ROOT_FIELD__", "groupeInstructeur(number: $groupeNumber)"
+    )
+    + _DOSSIERS_DETAILLE_FRAGMENTS
 )
 
 # SESSION GLOBALE (créée une seule fois)
@@ -480,12 +501,13 @@ def get_dossier_per_page(
     headers: dict[str, str],
     variables: dict[str, Any],
     cursor: str | None,
+    query: str = query_dossiers_detaille,
 ) -> dict[str, Any]:
     """Requête d'une page de dossiers détaillés, chronométrée par page."""
     response = session.post(
         DEMARCHES_API_URL,
         json={
-            "query": query_dossiers_detaille,
+            "query": query,
             "variables": {**variables, "afterCursor": cursor},
         },
         headers=headers,
@@ -499,6 +521,9 @@ def iter_demarche_dossier_pages(
     session: requests.Session | None = None,
     page_size: int = PAGE_SIZE_DOSSIERS_MAX,
     updated_since: str | None = None,
+    groupe_number: int | None = None,
+    state: str | None = None,
+    created_since: str | None = None,
 ) -> Iterator[list[dict[str, Any]]]:
     """
     Parcourt les dossiers d'une démarche PAGE PAR PAGE, en renvoyant des dossiers
@@ -507,6 +532,11 @@ def iter_demarche_dossier_pages(
     Chaque page est rendue dès sa réception : le consommateur peut l'écrire (Grist)
     avant que la suivante soit demandée, et la mémoire reste bornée à une page,
     quel que soit le nombre de dossiers de la démarche.
+
+    Filtres appliqués par DN (tous optionnels) : `groupe_number` interroge le
+    groupe instructeur au lieu de la démarche, `state` ne retient qu'un statut,
+    `created_since` borne la date de dépôt. DN ignore `created_since` quand
+    `updated_since` est renseigné.
 
     Yield:
         list[dict[str, Any]]: une page de dossiers, filtrés des champs
@@ -525,10 +555,21 @@ def iter_demarche_dossier_pages(
         "Content-Type": "application/json",
     }
 
+    if groupe_number is None:
+        query = query_dossiers_detaille
+        root_variables = {"demarcheNumber": demarche_number}
+    else:
+        query = query_groupe_dossiers_detaille
+        root_variables = {"groupeNumber": groupe_number}
+
+    scope = _pagination_scope(groupe_number, state)
+
     variables = {
-        "demarcheNumber": demarche_number,
+        **root_variables,
         "first": page_size,
         "updatedSince": updated_since,
+        "createdSince": created_since,
+        "state": state,
         "includeChamps": True,
         "includeAnotations": True,
         "includeGeometry": True,
@@ -543,7 +584,7 @@ def iter_demarche_dossier_pages(
     cursor = None
     while has_next_page:
         page_num += 1
-        result = get_dossier_per_page(session, headers, variables, cursor)
+        result = get_dossier_per_page(session, headers, variables, cursor, query)
 
         # Les dossiers en accès refusé n'apparaissent pas dans la page : on ignore
         # l'erreur et on poursuit, les autres dossiers restant exploitables.
@@ -562,7 +603,7 @@ def iter_demarche_dossier_pages(
         page = [_strip_display_champs(node) for node in _dossier_nodes(data)]
 
         if page:
-            log(f"[DOSSIERS] Page {page_num} : {len(page)} dossier(s) reçu(s)")
+            log(f"[DOSSIERS] Page {page_num}{scope} : {len(page)} dossier(s) reçu(s)")
             yield page
 
         if not has_next_page:
@@ -816,12 +857,28 @@ def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
 
 def _dossier_nodes(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Dossiers d'une page paginée (liste vide si la démarche est inaccessible)."""
-    return (data.get("demarche") or {}).get("dossiers", {}).get("nodes") or []
+    return _dossiers_connection(data).get("nodes") or []
 
 
 def _page_info(data: dict[str, Any]) -> tuple[bool, str | None]:
     """(hasNextPage, endCursor) d'une page paginée (démarche inaccessible = fin)."""
-    page_info = (data.get("demarche") or {}).get("dossiers", {}).get("pageInfo")
+    page_info = _dossiers_connection(data).get("pageInfo")
     if not page_info:
         return False, None
     return bool(page_info["hasNextPage"]), page_info["endCursor"]
+
+
+def _dossiers_connection(data: dict[str, Any]) -> dict[str, Any]:
+    """Connexion `dossiers` d'une page, que la racine soit la démarche ou un groupe."""
+    root = data.get("demarche") or data.get("groupeInstructeur") or {}
+    return root.get("dossiers") or {}
+
+
+def _pagination_scope(groupe_number: int | None, state: str | None) -> str:
+    """Précision ajoutée aux logs de page quand DN filtre par groupe ou statut."""
+    criteria = []
+    if groupe_number is not None:
+        criteria.append(f"groupe {groupe_number}")
+    if state:
+        criteria.append(state)
+    return f" ({', '.join(criteria)})" if criteria else ""

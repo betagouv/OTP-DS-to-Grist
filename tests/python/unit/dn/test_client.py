@@ -531,3 +531,95 @@ class TestIterDemarcheDossierPages:
             clear_timings()
 
         assert [t["service"] for t in pages] == ["ds", "ds"]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_server_filters_queries_demarche(self, mock_session):
+        """Sans filtre serveur : racine démarche, statut et date de dépôt à null"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+        mock_session.return_value = session
+
+        list(iter_demarche_dossier_pages(123))
+
+        query = session.post.call_args.kwargs["json"]["query"]
+        variables = session.post.call_args.kwargs["json"]["variables"]
+        assert "demarche(number: $demarcheNumber)" in query
+        assert "groupeInstructeur(number:" not in query
+        assert variables["demarcheNumber"] == 123
+        assert "groupeNumber" not in variables
+        assert variables["state"] is None
+        assert variables["createdSince"] is None
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_groupe_number_queries_groupe_instructeur(self, mock_session):
+        """Avec un groupe : racine groupeInstructeur, pagination lue sous cette racine"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupe_page([_dossier(1)], has_next_page=True, end_cursor="c1"),
+            _groupe_page([_dossier(2)], has_next_page=False),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_demarche_dossier_pages(123, groupe_number=120382))
+
+        assert [[dossier["number"] for dossier in page] for page in pages] == [[1], [2]]
+        first_call = session.post.call_args_list[0].kwargs["json"]
+        assert "groupeInstructeur(number: $groupeNumber)" in first_call["query"]
+        assert "demarche(number:" not in first_call["query"]
+        assert "champs" in first_call["query"] and "annotations" in first_call["query"]
+        assert first_call["variables"]["groupeNumber"] == 120382
+        assert "demarcheNumber" not in first_call["variables"]
+        curseurs = [
+            appel.kwargs["json"]["variables"]["afterCursor"]
+            for appel in session.post.call_args_list
+        ]
+        assert curseurs == [None, "c1"]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_state_and_created_since_are_transmitted(self, mock_session):
+        """Le statut et la borne de dépôt sont transmis tels quels à l'API"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+        mock_session.return_value = session
+
+        list(
+            iter_demarche_dossier_pages(
+                123, state="en_instruction", created_since="2025-12-31T00:00:00Z"
+            )
+        )
+
+        variables = session.post.call_args.kwargs["json"]["variables"]
+        assert variables["state"] == "en_instruction"
+        assert variables["createdSince"] == "2025-12-31T00:00:00Z"
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_inaccessible_groupe_yields_nothing(self, mock_session):
+        """Groupe inaccessible (null) → aucune page, pas d'erreur"""
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"data": {"groupeInstructeur": None}}
+        )
+        mock_session.return_value = session
+
+        assert list(iter_demarche_dossier_pages(123, groupe_number=1)) == []
+
+
+def _groupe_page(nodes, has_next_page=False, end_cursor=None):
+    payload = {
+        "data": {
+            "groupeInstructeur": {
+                "dossiers": {
+                    "pageInfo": {
+                        "hasNextPage": has_next_page,
+                        "endCursor": end_cursor,
+                    },
+                    "nodes": nodes,
+                }
+            }
+        }
+    }
+    return _mock_response(json_data=payload)
