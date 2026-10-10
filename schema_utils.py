@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from dn.client import get_pj_natures
 from utils.constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -371,6 +372,11 @@ def get_demarche_schema(demarche_number):
             f"Aucune révision active trouvée pour la démarche {demarche_number}"
         )
 
+    # La nature des PJ (RIB...) n'est pas exposée par les descripteurs :
+    # elle décide des sous-colonnes OCR créées par create_columns_from_schema
+    if _has_piece_justificative(demarche["activeRevision"]):
+        demarche["pj_natures"] = get_pj_natures(demarche_number)
+
     return demarche
 
 
@@ -534,6 +540,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     repetable_blocks = {}  # Dict au lieu d'une seule liste
     has_carto_fields = False
     descriptor_to_column_id = {}  # {descriptor_id: colonne_id_suffixée stable}
+    pj_natures = demarche_schema.get("pj_natures") or {}
 
     # Traiter les descripteurs de champs
     if demarche_schema.get("activeRevision") and demarche_schema["activeRevision"].get(
@@ -547,8 +554,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
             if descriptor.get("__typename") == "PieceJustificativeChampDescriptor":
                 normalized_label = normalize_column_name(champ_label)
 
-                # Détecter si c'est un champ RIB
-                if "rib" in champ_label.lower() or "iban" in champ_label.lower():
+                if _is_rib(descriptor, pj_natures):
                     rib_suffixes = ["titulaire", "iban", "bic", "nom_de_la_banque"]
                     for suffix in rib_suffixes:
                         rib_col_id = f"{normalized_label}_{suffix}"
@@ -1355,3 +1361,27 @@ def get_demarche_schema_enhanced(demarche_number: int, prefer_robust: bool = Tru
             return get_demarche_schema(demarche_number)
     else:
         return get_demarche_schema(demarche_number)
+
+
+# --- Helpers privés (module) ---
+
+
+def _has_piece_justificative(active_revision: dict[str, Any]) -> bool:
+    """Indique si la révision contient au moins une pièce justificative (hors blocs)."""
+    return any(
+        descriptor.get("__typename") == "PieceJustificativeChampDescriptor"
+        for descriptor in active_revision.get("champDescriptors") or []
+    )
+
+
+def _is_rib(descriptor: dict[str, Any], pj_natures: dict[str, str]) -> bool:
+    """
+    Indique si une pièce justificative est un RIB (sous-colonnes OCR).
+    La nature fait foi quand elle est connue ; sinon (démarche sans dossier,
+    erreur de récupération), repli sur les mots-clés du libellé.
+    """
+    nature = pj_natures.get(descriptor.get("id"))
+    if nature:
+        return nature == "RIB"
+    label = (descriptor.get("label") or "").lower()
+    return "rib" in label or "iban" in label
