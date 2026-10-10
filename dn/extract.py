@@ -117,14 +117,12 @@ def extract_champ_values(
                         continue
 
                     if col_typename == "TextColumn":
-                        # Logique spécifique pour la banque
-                        if "banque" in col_label.lower():
-                            # On force le label pour qu'il devienne EXACTEMENT l'ID Grist après normalisation
-                            full_label = "rib a rattacher a la demande ci dessous nom de la banque"
-                        else:
-                            # Pour IBAN, BIC, Titulaire qui fonctionnent déjà
-                            clean_label = col_label.replace(".", "")
-                            full_label = clean_label.replace("–", "").replace("-", " ")
+                        # DN libelle les sous-colonnes OCR "<libellé du champ> – <sous-libellé>"
+                        # (ex. "RIB – Nom de la Banque"). On repart du libellé du champ pour
+                        # que l'id normalisé corresponde à "<libellé normalisé>_<suffixe>"
+                        # créé par schema_utils.
+                        sub_label = col_label.rsplit(" – ", 1)[-1]
+                        full_label = f"{champ['label']} {sub_label}"
 
                         result.append(
                             {
