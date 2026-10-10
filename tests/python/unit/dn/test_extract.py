@@ -1,4 +1,7 @@
+import pytest
+
 from dn.extract import dossier_to_flat_data, extract_champ_values
+from grist_processor_working_all import normalize_column_name
 from schema_utils import create_columns_from_schema
 
 
@@ -87,6 +90,66 @@ def make_carte_champ(geo_areas, label="Localisation"):
         "updatedAt": "2026-01-01T00:00:00Z",
         "prefilled": False,
         "geoAreas": geo_areas,
+    }
+
+
+RIB_OCR_VALUES = {
+    "Titulaire": "Jean Dupont",
+    "IBAN": "FR7630006000011234567890189",
+    "BIC": "AGRIFRPP",
+    "Nom de la Banque": "Crédit Agricole",
+}
+
+
+def make_rib_champ(label, descriptor_id="desc_rib"):
+    """Fabrique un PieceJustificativeChamp de nature RIB avec ses sous-colonnes OCR,
+    libellées comme DN : "<libellé du champ> – <sous-libellé>"."""
+    columns = [
+        {
+            "__typename": "AttachmentsColumn",
+            "id": "col_pj",
+            "label": label,
+            "value": [{"filename": "rib.pdf"}],
+        }
+    ]
+    columns += [
+        {
+            "__typename": "TextColumn",
+            "id": f"col_{sub_label}",
+            "label": f"{label} – {sub_label}",
+            "value": value,
+        }
+        for sub_label, value in RIB_OCR_VALUES.items()
+    ]
+    return {
+        "__typename": "PieceJustificativeChamp",
+        "id": f"id_{descriptor_id}",
+        "champDescriptorId": descriptor_id,
+        "label": label,
+        "updatedAt": "2026-01-01T00:00:00Z",
+        "prefilled": False,
+        "files": [{"filename": "rib.pdf"}],
+        "columns": columns,
+    }
+
+
+def make_schema_with_pj(label, descriptor_id="desc_rib"):
+    """Fabrique un schéma DS minimal avec une pièce justificative."""
+    return {
+        "title": "Test démarche",
+        "activeRevision": {
+            "champDescriptors": [
+                {
+                    "__typename": "PieceJustificativeChampDescriptor",
+                    "id": descriptor_id,
+                    "type": "piece_justificative",
+                    "label": label,
+                    "description": "",
+                    "required": False,
+                }
+            ],
+            "annotationDescriptors": [],
+        },
     }
 
 
@@ -406,3 +469,82 @@ class TestExtractChampValuesCarteChamp:
         assert zones_out[0]["commune"] == "66136"
         assert zones_out[0]["numero"] == "813"
         assert zones_out[0]["surface"] == "668"
+
+
+class TestExtractChampValuesPieceJustificativeOcr:
+    """Tests pour extract_champ_values - sous-colonnes OCR des pièces justificatives (RIB)."""
+
+    def _ocr_items(self, champ):
+        return [
+            item for item in extract_champ_values(champ) if item["type"] == "TextColumn"
+        ]
+
+    @pytest.mark.parametrize(
+        "label",
+        [
+            "RIB",
+            "1. RIB du demandeur",
+            "RIB à rattacher à la demande ci-dessous",
+        ],
+    )
+    def test_ids_correspondent_aux_colonnes_du_schema(self, label):
+        # Régression #556 : l'id généré pour "Nom de la Banque" était forcé sur le
+        # libellé d'une autre démarche, et le retrait des "." cassait les
+        # libellés numérotés -> valeurs ignorées silencieusement par Grist.
+        column_types, _ = create_columns_from_schema(make_schema_with_pj(label))
+        schema_ids = {col["id"] for col in column_types["champs"]}
+
+        ocr_ids = {
+            normalize_column_name(item["label"])
+            for item in self._ocr_items(make_rib_champ(label))
+        }
+
+        assert len(ocr_ids) == 4
+        assert ocr_ids <= schema_ids
+
+    def test_libelle_avec_points(self):
+        ocr_ids = {
+            normalize_column_name(item["label"])
+            for item in self._ocr_items(make_rib_champ("R.I.B. de l'établissement"))
+        }
+        assert ocr_ids == {
+            "r_i_b_de_l_etablissement_titulaire",
+            "r_i_b_de_l_etablissement_iban",
+            "r_i_b_de_l_etablissement_bic",
+            "r_i_b_de_l_etablissement_nom_de_la_banque",
+        }
+
+    def test_valeurs_associees_aux_bonnes_colonnes(self):
+        values = {
+            normalize_column_name(item["label"]): item["value"]
+            for item in self._ocr_items(make_rib_champ("RIB"))
+        }
+        assert values == {
+            "rib_titulaire": "Jean Dupont",
+            "rib_iban": "FR7630006000011234567890189",
+            "rib_bic": "AGRIFRPP",
+            "rib_nom_de_la_banque": "Crédit Agricole",
+        }
+
+    def test_sous_colonne_vide_ignoree(self):
+        champ = make_rib_champ("RIB")
+        for col in champ["columns"]:
+            if col["label"].endswith("BIC"):
+                col["value"] = None
+        labels = {
+            normalize_column_name(item["label"]) for item in self._ocr_items(champ)
+        }
+        assert "rib_bic" not in labels
+        assert len(labels) == 3
+
+    def test_flat_data_passe_par_dossier_to_flat_data(self):
+        dossier = make_dossier([make_rib_champ("RIB")])
+        flat = dossier_to_flat_data(dossier, exclude_repetition_champs=True)
+        labels = {normalize_column_name(item["label"]) for item in flat["champs"]}
+        assert {
+            "rib",
+            "rib_titulaire",
+            "rib_iban",
+            "rib_bic",
+            "rib_nom_de_la_banque",
+        } <= labels
