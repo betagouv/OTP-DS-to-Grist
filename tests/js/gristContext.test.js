@@ -3,7 +3,7 @@ const {
   getApiBaseUrlFromDocBaseUrl,
   getWidgetToken,
   clearWidgetToken,
-  decodeWidgetTokenClaims
+  decodeWidgetTokenIdentity
 } = require('../../static/js/gristContext.js')
 
 beforeEach(() => {
@@ -78,8 +78,8 @@ const createTokenWithExp = (expInSecondsFromNow, userId = '1', docId = 'd') => {
   return `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
 }
 
-it('decodes widget token claims', () => {
-  expect(decodeWidgetTokenClaims(createTokenWithExp(900, '7', 'docz')))
+it('decodes widget token identity', () => {
+  expect(decodeWidgetTokenIdentity(createTokenWithExp(900, '7', 'docz')))
     .toMatchObject({ userId: '7', docId: 'docz' })
 })
 

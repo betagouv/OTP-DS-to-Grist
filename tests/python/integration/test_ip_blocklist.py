@@ -86,13 +86,6 @@ def store(monkeypatch):
     return fake
 
 
-@pytest.fixture
-def client():
-    app.config["TESTING"] = True
-    with app.test_client() as test_client:
-        yield test_client
-
-
 class _Clock:
     """
     Horloge gelée pour app.py.
@@ -191,7 +184,7 @@ class TestRequetesEnEchec:
     def test_405_de_routage_compte(self, store, client):
         """Un scanner teste aussi les méthodes autorisées."""
         for _ in range(IP_BLOCKLIST_THRESHOLD):
-            assert client.put("/api/sync-report", headers=_HEADERS).status_code == 405
+            assert client.put("/api/config", headers=_HEADERS).status_code == 405
         assert store.applied == ["203.0.113.9"]
 
     def test_redirection_ne_compte_pas(self, store, client):

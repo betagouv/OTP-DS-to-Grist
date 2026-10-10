@@ -53,7 +53,7 @@ const loadConfig = async () => {
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
     loaded = true
-    emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
+    emit('config-loaded', { configs: serverConfigs.value, gristBaseUrl: context.baseUrl })
   } catch (e) {
     configError.value = 'Erreur lors du chargement de la configuration'
   }

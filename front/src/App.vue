@@ -11,8 +11,8 @@ const lastSyncResult = ref(null)
 
 const { lastAutoSync, lastManualSync, fetchAllLatestSyncs } = useSyncStatus()
 
-const handleConfigLoaded = ({ configs, docId }) => {
-  fetchAllLatestSyncs(configs, docId).catch(() => {})
+const handleConfigLoaded = ({ configs, gristBaseUrl }) => {
+  fetchAllLatestSyncs(configs, gristBaseUrl).catch(() => {})
 }
 
 const handleSyncStarted = () => {

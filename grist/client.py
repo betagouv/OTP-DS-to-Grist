@@ -63,37 +63,23 @@ class GristClient:
     def set_doc_id(self, doc_id: str | None) -> None:
         self.doc_id = doc_id
 
-    def get_grist_user_email(self) -> str | None:
-        """Email Grist de l'utilisateur courant via SCIM /Me. None si indisponible."""
-        try:
-            resp = self._get_session().get(
-                f"{self.base_url}/scim/v2/Me", headers=self.headers, timeout=10
-            )
-            if resp.status_code != 200:
-                log_error(f"SCIM /Me HTTP {resp.status_code}")
-                return None
-
-            return self._extract_email_from_scim(resp.json())
-        except Exception as e:
-            log_error(f"SCIM /Me indisponible: {e}")
-
-            return None
-
-    def get_plan_info(self) -> dict[str, Any]:
-        """Infos plan/site Grist de la session courante (GET /api/session/access/active).
-
-        Retourne le payload complet (billingAccount.product.name, features,
-        apiUsage...). Peut échouer si le token n'est pas owner / manager du site.
-        self.base_url porte déjà le suffixe /api (ex. /o/<site>/api), le préfixe
-        /o/<site> étant retiré côté serveur avant dispatch.
-        """
+    def get_profile(self) -> dict[str, Any]:
+        """Profil de l'utilisateur propriétaire de la clé API (GET /profile/user)."""
         resp = self._get_session().get(
-            f"{self.base_url}/session/access/active",
-            headers=self.headers,
-            timeout=10,
+            f"{self.base_url}/profile/user", headers=self.headers, timeout=10
         )
         resp.raise_for_status()
+
         return resp.json()
+
+    def get_grist_user_email(self) -> str | None:
+        """Email Grist du propriétaire de la clé API."""
+        try:
+            return self.get_profile().get("email")
+        except Exception as e:
+            log_error(f"/profile/user indisponible: {e}")
+
+            return None
 
     def table_exists(self, table_id: str) -> dict[str, Any] | None:
         """
@@ -850,21 +836,6 @@ class GristClient:
         return success
 
     # --- Helpers privés ---
-
-    def _extract_email_from_scim(self, data: dict[str, Any]) -> str | None:
-        """
-        Extrait l'email primaire d'une réponse SCIM /Me.
-
-        primary > premier email > None. userName est ignoré (peut être un pseudo).
-        """
-        emails = data.get("emails")
-
-        if not emails:
-            return None
-
-        primary = next((email for email in emails if email.get("primary")), None)
-
-        return (primary or emails[0]).get("value")
 
     def _warn_record_too_large(self, records: list[dict[str, Any]]) -> None:
         """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""

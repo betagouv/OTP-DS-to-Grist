@@ -53,12 +53,11 @@ describe('App', () => {
   it('calls fetchAllLatestSyncs when OTPForm emits config-loaded', async () => {
     const wrapper = createWrapper()
     const configs = [{ otp_config_id: 1 }, { otp_config_id: 2 }]
-    const docId = 'doc-abc'
 
-    wrapper.findComponent(OTPFormStub).vm.$emit('config-loaded', { configs, docId })
+    wrapper.findComponent(OTPFormStub).vm.$emit('config-loaded', { configs, gristBaseUrl: 'https://grist.example.com/api' })
     await wrapper.vm.$nextTick()
 
-    expect(mockFetchAllLatestSyncs).toHaveBeenCalledWith(configs, docId)
+    expect(mockFetchAllLatestSyncs).toHaveBeenCalledWith(configs, 'https://grist.example.com/api')
   })
 
   it('clears live result when SyncProgress emits sync-started', async () => {

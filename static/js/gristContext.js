@@ -4,7 +4,7 @@ const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000
 let tokenState = null
 let readyRequested = false
 
-const decodeWidgetTokenClaims = (token) => {
+const decodeWidgetTokenIdentity = (token) => {
   try {
     return JSON.parse(atob(token.split('.')[1]))
   } catch {
@@ -13,9 +13,9 @@ const decodeWidgetTokenClaims = (token) => {
 }
 
 const resolveTokenExpiresAt = (tokenInfo) => {
-  const claims = decodeWidgetTokenClaims(tokenInfo.token)
-  if (claims && typeof claims.exp === 'number')
-    return claims.exp * 1000
+  const identity = decodeWidgetTokenIdentity(tokenInfo.token)
+  if (identity && typeof identity.exp === 'number')
+    return identity.exp * 1000
 
   if (typeof tokenInfo.ttlMsecs === 'number')
     return Date.now() + tokenInfo.ttlMsecs
@@ -85,7 +85,7 @@ const getGristContext = async () => {
     if (!tokenInfo)
       throw new Error('Impossible de récupérer le jeton d’accès Grist')
 
-    const {docId, userId} = decodeWidgetTokenClaims(tokenInfo.token) || {}
+    const {docId, userId} = decodeWidgetTokenIdentity(tokenInfo.token) || {}
     const baseUrl = getApiBaseUrlFromDocBaseUrl(tokenInfo.baseUrl)
 
     if (!userId || !docId)
@@ -112,6 +112,6 @@ if (typeof module !== 'undefined' && module.exports) {
     getApiBaseUrlFromDocBaseUrl,
     getWidgetToken,
     clearWidgetToken,
-    decodeWidgetTokenClaims
+    decodeWidgetTokenIdentity
   }
 }

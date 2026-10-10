@@ -13,7 +13,7 @@ export const useSyncStatus = () => {
     }
   }
 
-  const fetchAllLatestSyncs = async (configs, fallbackDocId) => {
+  const fetchAllLatestSyncs = async (configs, gristBaseUrl) => {
     const validConfigs = configs.filter(c => c?.otp_config_id)
 
     if (validConfigs.length > 0) {
@@ -21,8 +21,15 @@ export const useSyncStatus = () => {
       return
     }
 
-    if (fallbackDocId) {
-      await fetchByDocId(fallbackDocId)
+    if (gristBaseUrl)
+      await fetchByBaseUrl(gristBaseUrl)
+  }
+
+  const fetchByBaseUrl = async (gristBaseUrl) => {
+    const data = await api.getSyncLogLatestByBaseUrl(gristBaseUrl)
+    if (data.success) {
+      lastAutoSync.value = data.auto || null
+      lastManualSync.value = data.manual || null
     }
   }
 
@@ -42,14 +49,6 @@ export const useSyncStatus = () => {
 
     lastAutoSync.value = mergeSyncs(autos)
     lastManualSync.value = mergeSyncs(manuals)
-  }
-
-  const fetchByDocId = async (docId) => {
-    const data = await api.getSyncLogLatestByDocId(docId)
-    if (data.success) {
-      lastAutoSync.value = data.auto || null
-      lastManualSync.value = data.manual || null
-    }
   }
 
   const mergeSyncs = (syncs) => {

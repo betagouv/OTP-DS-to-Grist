@@ -280,7 +280,7 @@ describe('Save button action', () => {
 })
 
 describe('Config loading on mount', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123', baseUrl: 'https://grist.example.com/api' }
   let consoleSpy = null
 
   beforeEach(() => {
@@ -384,7 +384,7 @@ describe('Config loading on mount', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.emitted('config-loaded')).toBeTruthy()
-    expect(wrapper.emitted('config-loaded')[0][0]).toEqual({ configs, docId: 'doc-123' })
+    expect(wrapper.emitted('config-loaded')[0][0]).toEqual({ configs, gristBaseUrl: 'https://grist.example.com/api' })
   })
 })
 

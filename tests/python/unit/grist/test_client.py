@@ -123,39 +123,29 @@ class TestInitBaseUrlWhitelist:
         mock_build.assert_not_called()
 
 
-class TestExtractEmailFromScim:
-    """Tests unitaires pour GristClient._extract_email_from_scim"""
+class TestGetProfile:
+    """Tests unitaires pour GristClient.get_profile"""
 
     def setup_method(self):
         self.client = GristClient("https://grist.example.com", "test_key")
 
-    def test_primary_email(self):
-        """Retourne l'email marqué primary"""
-        data = {
-            "emails": [
-                {"value": "second@example.com", "primary": False},
-                {"value": "primary@example.com", "primary": True},
-            ]
-        }
-        assert self.client._extract_email_from_scim(data) == "primary@example.com"
+    def test_success_returns_payload(self):
+        """200 -> payload complet"""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"id": 5, "email": "user@example.com"}
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            assert self.client.get_profile() == {"id": 5, "email": "user@example.com"}
 
-    def test_no_primary_returns_first(self):
-        """Sans primary, retourne le premier email"""
-        data = {"emails": [{"value": "first@example.com"}]}
-        assert self.client._extract_email_from_scim(data) == "first@example.com"
+    def test_uses_profile_user_endpoint(self):
+        """L'appel vise /profile/user"""
+        session = MagicMock()
+        session.get.return_value = MagicMock()
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.get_profile()
 
-    def test_empty_emails(self):
-        """emails vide -> None"""
-        assert self.client._extract_email_from_scim({"emails": []}) is None
-
-    def test_missing_emails(self):
-        """emails absent -> None"""
-        assert self.client._extract_email_from_scim({}) is None
-
-    def test_user_name_ignored(self):
-        """userName seul (sans emails) est ignoré -> None"""
-        data = {"userName": "john.doe@example.com"}
-        assert self.client._extract_email_from_scim(data) is None
+        assert session.get.call_args.args[0] == "https://grist.example.com/profile/user"
 
 
 class TestGetGristUserEmail:
@@ -164,34 +154,28 @@ class TestGetGristUserEmail:
     def setup_method(self):
         self.client = GristClient("https://grist.example.com", "test_key")
 
-    def test_success_primary_email(self):
-        """200 avec primary -> retourne l'email"""
+    def test_success_returns_email(self):
+        """200 -> retourne l'email du profil"""
         mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "emails": [
-                {"value": "primary@example.com", "primary": True},
-            ]
-        }
+        mock_response.json.return_value = {"id": 5, "email": "user@example.com"}
         session = MagicMock()
         session.get.return_value = mock_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            assert self.client.get_grist_user_email() == "primary@example.com"
+            assert self.client.get_grist_user_email() == "user@example.com"
 
-    def test_success_no_primary(self):
-        """200 sans primary -> retourne le premier email"""
+    def test_missing_email_returns_none(self):
+        """200 sans email -> None"""
         mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"emails": [{"value": "first@example.com"}]}
+        mock_response.json.return_value = {"id": 5}
         session = MagicMock()
         session.get.return_value = mock_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            assert self.client.get_grist_user_email() == "first@example.com"
+            assert self.client.get_grist_user_email() is None
 
     def test_http_error_returns_none(self):
-        """401 -> None"""
+        """Erreur HTTP -> None"""
         mock_response = MagicMock()
-        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = Exception("401")
         session = MagicMock()
         session.get.return_value = mock_response
         with patch.object(GristClient, "_get_session", return_value=session):
@@ -201,16 +185,6 @@ class TestGetGristUserEmail:
         """Timeout -> None"""
         session = MagicMock()
         session.get.side_effect = Exception("timeout")
-        with patch.object(GristClient, "_get_session", return_value=session):
-            assert self.client.get_grist_user_email() is None
-
-    def test_success_no_emails(self):
-        """200 sans emails[] -> None"""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"userName": "john.doe@example.com"}
-        session = MagicMock()
-        session.get.return_value = mock_response
         with patch.object(GristClient, "_get_session", return_value=session):
             assert self.client.get_grist_user_email() is None
 

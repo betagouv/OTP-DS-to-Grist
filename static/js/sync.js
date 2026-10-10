@@ -354,14 +354,15 @@ const loadAutoSyncState = async () => {
 
 const displaySyncStatus = async (otpConfigId) => {
   try {
-
-    let syncLogResponse
-    if (otpConfigId)
-      syncLogResponse = await apiFetch(`/api/sync-log/latest?otp_config_id=${otpConfigId}`)
-    else {
+    let syncLogUrl
+    if (otpConfigId) {
+      syncLogUrl = `/api/sync-log/latest?otp_config_id=${otpConfigId}`
+    } else {
       const gristContext = await getGristContext()
-      syncLogResponse = await apiFetch(`/api/sync-log/latest?grist_doc_id=${gristContext.docId}`)
+      syncLogUrl = `/api/sync-log/latest?grist_base_url=${encodeURIComponent(gristContext.baseUrl)}`
     }
+
+    const syncLogResponse = await apiFetch(syncLogUrl)
 
     const syncLogResult = await syncLogResponse.json()
 

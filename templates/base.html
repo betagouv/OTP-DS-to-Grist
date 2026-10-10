@@ -448,20 +448,10 @@
                 >Synchro auto quotidienne à {{sync_schedule_time}}</span
               >
             </li>
-            <li class="fr-footer__bottom-item">
-              <a class="fr-footer__bottom-link" href="/debug">debug</a>
-            </li>
           </ul>
         </div>
       </div>
     </footer>
-
-    <script>
-      const debugLink = document.querySelector('a[href="/debug"]')
-      if (debugLink) getGristContext()
-        .then(ctx => { debugLink.href = '/debug' + ctx.params })
-        .catch(() => {})
-    </script>
 
     {% block scripts %}{% endblock %}
   </body>

@@ -56,8 +56,8 @@ class InternalApi {
     return request(`${ROUTES.SYNC_LOG_LATEST}?otp_config_id=${otpConfigId}`)
   }
 
-  getSyncLogLatestByDocId(docId) {
-    return request(`${ROUTES.SYNC_LOG_LATEST}?grist_doc_id=${docId}`)
+  getSyncLogLatestByBaseUrl(gristBaseUrl) {
+    return request(`${ROUTES.SYNC_LOG_LATEST}?grist_base_url=${encodeURIComponent(gristBaseUrl)}`)
   }
 
   async getGroups(otpConfigId) {

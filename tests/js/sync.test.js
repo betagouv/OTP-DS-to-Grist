@@ -747,7 +747,7 @@ describe('displaySyncStatus(otp_config_id)', () => {
       global.fetch = jest.fn().mockRejectedValue(new Error('Network error'))
 
       // Appel de la fonction
-      await displaySyncStatus()
+      await displaySyncStatus(123)
 
       // Vérifications - ne doit pas planter, juste logger l'erreur
       expect(consoleErrorSpy).toHaveBeenCalled()
@@ -756,6 +756,13 @@ describe('displaySyncStatus(otp_config_id)', () => {
 })
 
 describe('displaySyncStatus()', () => {
+  const GRIST_CONTEXT = {
+    params: '',
+    userId: 'user',
+    docId: 'doc',
+    baseUrl: 'https://grist.example.com/api'
+  }
+
   beforeEach(() => {
     // Setup DOM simulé pour les éléments utilisés par displaySyncStatus
     document.body.innerHTML = `
@@ -780,7 +787,8 @@ describe('displaySyncStatus()', () => {
       </div>
     `
 
-    // Mocks
+    // Sans otp_config_id, le contexte Grist fournit l'URL de base
+    global.getGristContext = jest.fn().mockResolvedValue(GRIST_CONTEXT)
     global.fetch = jest.fn()
 
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
@@ -793,7 +801,7 @@ describe('displaySyncStatus()', () => {
   it(
       'Affichage des 2 bannières',
       async () => {
-        // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
+        // Mock fetch pour /api/sync-log/latest (rapport par document Grist)
         global.fetch = jest.fn()
           .mockResolvedValueOnce({
             json: jest.fn().mockResolvedValue({
@@ -815,6 +823,11 @@ describe('displaySyncStatus()', () => {
 
         await displaySyncStatus()
 
+        // Le rapport est demandé par URL de base Grist, encodée
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/sync-log/latest?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
+        )
+
         const autoDiv = document.getElementById('result_content_auto')
         expect(autoDiv.style.display).toBe('block')
 
@@ -835,12 +848,6 @@ describe('displaySyncStatus()', () => {
     'afficher l\'état désactivé quand la programmation n\'est pas activée',
     async () => {
       global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: true
-          })
-        })
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
             success: true,
