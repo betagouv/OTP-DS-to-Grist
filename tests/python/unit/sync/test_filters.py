@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from sync.filters import (
     build_filters_cache_key,
+    build_server_filters,
     filter_dossiers,
     read_filters_from_env,
 )
@@ -218,3 +219,75 @@ class TestBuildFiltersCacheKey:
         monkeypatch.setenv("GROUPES_INSTRUCTEURS", "3,5")
         b = build_filters_cache_key()
         assert a == b
+
+
+def _filters(date_debut=None, date_fin=None, statuts=None, groupes=None):
+    return {
+        "date_debut": date_debut,
+        "date_fin": date_fin,
+        "statuts": statuts or [],
+        "groupes": groupes or [],
+    }
+
+
+class TestBuildServerFilters:
+    """Tests unitaires pour la fonction build_server_filters"""
+
+    def test_no_filter_sends_nothing(self):
+        assert build_server_filters(_filters(), None) == {
+            "groupe_numbers": [],
+            "states": [],
+            "created_since": None,
+        }
+
+    def test_groupes_and_statuts_are_sent(self):
+        server_filters = build_server_filters(
+            _filters(statuts=["en_instruction", "accepte"], groupes=["120382", "7"]),
+            None,
+        )
+
+        assert server_filters["groupe_numbers"] == [120382, 7]
+        assert server_filters["states"] == ["en_instruction", "accepte"]
+
+    def test_full_sync_sends_date_debut_with_one_day_margin(self):
+        """Marge d'un jour : DN compare un instant UTC, le filtre client un jour local"""
+        server_filters = build_server_filters(
+            _filters(date_debut=datetime(2026, 1, 1)), None
+        )
+
+        assert server_filters["created_since"] == "2025-12-31T00:00:00Z"
+
+    def test_incremental_sync_does_not_send_date_debut(self):
+        """DN ignorerait createdSince à côté d'updatedSince : rien n'est envoyé"""
+        server_filters = build_server_filters(
+            _filters(date_debut=datetime(2026, 1, 1)), "2026-10-01T00:00:00Z"
+        )
+
+        assert server_filters["created_since"] is None
+
+    def test_date_fin_is_never_sent(self):
+        """Aucun argument DN pour la date de fin : elle reste côté client"""
+        server_filters = build_server_filters(
+            _filters(date_fin=datetime(2026, 6, 30)), None
+        )
+
+        assert server_filters["created_since"] is None
+        assert set(server_filters) == {"groupe_numbers", "states", "created_since"}
+
+    @patch("sync.filters.log_error")
+    def test_non_numeric_groupe_is_ignored(self, mock_log_error):
+        server_filters = build_server_filters(
+            _filters(groupes=["12", "groupe-a"]), None
+        )
+
+        assert server_filters["groupe_numbers"] == [12]
+        assert "groupe-a" in mock_log_error.call_args.args[0]
+
+    @patch("sync.filters.log_error")
+    def test_unknown_statut_is_ignored(self, mock_log_error):
+        server_filters = build_server_filters(
+            _filters(statuts=["accepte", "instruit"]), None
+        )
+
+        assert server_filters["states"] == ["accepte"]
+        assert "instruit" in mock_log_error.call_args.args[0]

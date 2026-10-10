@@ -8,9 +8,11 @@ from dn.client import (
     DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
     get_deleted_dossiers,
     get_demarche_dossiers_labels_only,
+    get_demarche_groupe_numbers,
     get_groups,
     get_session_with_retries,
     iter_demarche_dossier_pages,
+    iter_filtered_dossier_pages,
 )
 
 
@@ -531,3 +533,386 @@ class TestIterDemarcheDossierPages:
             clear_timings()
 
         assert [t["service"] for t in pages] == ["ds", "ds"]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_server_filters_queries_demarche(self, mock_session):
+        """Sans filtre serveur : racine démarche, statut et date de dépôt à null"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+        mock_session.return_value = session
+
+        list(iter_demarche_dossier_pages(123))
+
+        query = session.post.call_args.kwargs["json"]["query"]
+        variables = session.post.call_args.kwargs["json"]["variables"]
+        assert "demarche(number: $demarcheNumber)" in query
+        assert "groupeInstructeur(number:" not in query
+        assert variables["demarcheNumber"] == 123
+        assert "groupeNumber" not in variables
+        assert variables["state"] is None
+        assert variables["createdSince"] is None
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_groupe_number_queries_groupe_instructeur(self, mock_session):
+        """Avec un groupe : racine groupeInstructeur, pagination lue sous cette racine"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupe_page([_dossier(1)], has_next_page=True, end_cursor="c1"),
+            _groupe_page([_dossier(2)], has_next_page=False),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_demarche_dossier_pages(123, groupe_number=120382))
+
+        assert [[dossier["number"] for dossier in page] for page in pages] == [[1], [2]]
+        first_call = session.post.call_args_list[0].kwargs["json"]
+        assert "groupeInstructeur(number: $groupeNumber)" in first_call["query"]
+        assert "demarche(number:" not in first_call["query"]
+        assert "champs" in first_call["query"] and "annotations" in first_call["query"]
+        assert first_call["variables"]["groupeNumber"] == 120382
+        assert "demarcheNumber" not in first_call["variables"]
+        curseurs = [
+            appel.kwargs["json"]["variables"]["afterCursor"]
+            for appel in session.post.call_args_list
+        ]
+        assert curseurs == [None, "c1"]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_state_and_created_since_are_transmitted(self, mock_session):
+        """Le statut et la borne de dépôt sont transmis tels quels à l'API"""
+        session = MagicMock()
+        session.post.return_value = _page([_dossier(1)])
+        mock_session.return_value = session
+
+        list(
+            iter_demarche_dossier_pages(
+                123, state="en_instruction", created_since="2025-12-31T00:00:00Z"
+            )
+        )
+
+        variables = session.post.call_args.kwargs["json"]["variables"]
+        assert variables["state"] == "en_instruction"
+        assert variables["createdSince"] == "2025-12-31T00:00:00Z"
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_inaccessible_groupe_yields_nothing(self, mock_session):
+        """Groupe inaccessible (null) → aucune page, pas d'erreur"""
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"data": {"groupeInstructeur": None}}
+        )
+        mock_session.return_value = session
+
+        assert list(iter_demarche_dossier_pages(123, groupe_number=1)) == []
+
+
+def _groupe_page(nodes, has_next_page=False, end_cursor=None):
+    payload = {
+        "data": {
+            "groupeInstructeur": {
+                "dossiers": {
+                    "pageInfo": {
+                        "hasNextPage": has_next_page,
+                        "endCursor": end_cursor,
+                    },
+                    "nodes": nodes,
+                }
+            }
+        }
+    }
+    return _mock_response(json_data=payload)
+
+
+def _groupes_response(numbers):
+    groupes = [{"number": number} for number in numbers]
+    return _mock_response(
+        json_data={"data": {"demarche": {"groupeInstructeurs": groupes}}}
+    )
+
+
+def _sent_variables(session):
+    return [appel.kwargs["json"]["variables"] for appel in session.post.call_args_list]
+
+
+def _sent_queries(session):
+    return [appel.kwargs["json"]["query"] for appel in session.post.call_args_list]
+
+
+def _numbers(pages):
+    return [[dossier["number"] for dossier in page] for page in pages]
+
+
+class TestIterFilteredDossierPages:
+    """Tests pour iter_filtered_dossier_pages (une pagination par couple groupe/statut)"""
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_filters_paginates_demarche_once(self, mock_session):
+        """Ni groupe ni statut → une seule pagination sur la démarche"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _page([_dossier(1)], has_next_page=True, end_cursor="c1"),
+            _page([_dossier(2)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_filtered_dossier_pages(123))
+
+        assert _numbers(pages) == [[1], [2]]
+        variables = _sent_variables(session)
+        assert [v["demarcheNumber"] for v in variables] == [123, 123]
+        assert all(v["state"] is None for v in variables)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_one_pagination_per_groupe_and_state(self, mock_session):
+        """Groupes × statuts → une sous-requête par couple, dans l'ordre"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupes_response([10, 20, 30]),
+            _groupe_page([_dossier(1)]),
+            _groupe_page([_dossier(2)]),
+            _groupe_page([_dossier(3)]),
+            _groupe_page([_dossier(4)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(
+            iter_filtered_dossier_pages(
+                123, groupe_numbers=[10, 20], states=["en_instruction", "accepte"]
+            )
+        )
+
+        assert _numbers(pages) == [[1], [2], [3], [4]]
+        assert "groupeInstructeurs" in _sent_queries(session)[0]
+        sent = [(v["groupeNumber"], v["state"]) for v in _sent_variables(session)[1:]]
+        assert sent == [
+            (10, "en_instruction"),
+            (10, "accepte"),
+            (20, "en_instruction"),
+            (20, "accepte"),
+        ]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_states_without_groupe_query_demarche(self, mock_session):
+        """Statuts sans groupe → racine démarche, une sous-requête par statut"""
+        session = MagicMock()
+        session.post.side_effect = [_page([_dossier(1)]), _page([_dossier(2)])]
+        mock_session.return_value = session
+
+        list(iter_filtered_dossier_pages(123, states=["accepte", "refuse"]))
+
+        variables = _sent_variables(session)
+        assert [v["state"] for v in variables] == ["accepte", "refuse"]
+        assert all(v["demarcheNumber"] == 123 for v in variables)
+        assert all("groupeNumber" not in v for v in variables)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_dates_are_sent_to_every_subquery(self, mock_session):
+        """Le repère de reprise et la borne de dépôt accompagnent chaque sous-requête"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupes_response([10, 20]),
+            _groupe_page([_dossier(1)]),
+            _groupe_page([]),
+        ]
+        mock_session.return_value = session
+
+        list(
+            iter_filtered_dossier_pages(
+                123,
+                groupe_numbers=[10, 20],
+                updated_since="2026-10-01T00:00:00Z",
+                created_since="2025-12-31T00:00:00Z",
+            )
+        )
+
+        variables = _sent_variables(session)[1:]
+        assert len(variables) == 2
+        assert all(v["updatedSince"] == "2026-10-01T00:00:00Z" for v in variables)
+        assert all(v["createdSince"] == "2025-12-31T00:00:00Z" for v in variables)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_dossier_seen_in_another_subquery_is_skipped(self, mock_session):
+        """Dossier ayant changé de statut pendant le parcours → rendu une seule fois"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupes_response([10]),
+            _groupe_page([_dossier(1), _dossier(2)]),
+            _groupe_page([_dossier(2), _dossier(3)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(
+            iter_filtered_dossier_pages(
+                123, groupe_numbers=[10], states=["en_instruction", "accepte"]
+            )
+        )
+
+        assert _numbers(pages) == [[1, 2], [3]]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_dossier_repeated_on_next_page_is_skipped(self, mock_session):
+        """Dossier décalé d'une page à l'autre → rendu une seule fois, page vide omise"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _page([_dossier(1), _dossier(2)], has_next_page=True, end_cursor="c1"),
+            _page([_dossier(2)], has_next_page=True, end_cursor="c2"),
+            _page([_dossier(3)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_filtered_dossier_pages(123))
+
+        assert _numbers(pages) == [[1, 2], [3]]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_error_in_a_subquery_is_raised(self, mock_session):
+        """Erreur DN sur une sous-requête → propagée après les pages déjà rendues"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupes_response([10, 20]),
+            _groupe_page([_dossier(1)]),
+            _mock_response(
+                json_data={
+                    "data": {"groupeInstructeur": None},
+                    "errors": [{"message": "Erreur interne du serveur"}],
+                }
+            ),
+        ]
+        mock_session.return_value = session
+
+        pages = iter_filtered_dossier_pages(123, groupe_numbers=[10, 20])
+
+        assert _numbers([next(pages)]) == [[1]]
+        with pytest.raises(Exception, match="Erreur interne"):
+            next(pages)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.log_error")
+    def test_groupe_absent_from_demarche_is_skipped(self, mock_log_error, mock_session):
+        """Groupe supprimé ou erroné → écarté et signalé, les autres sont parcourus"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _groupes_response([10, 30]),
+            _groupe_page([_dossier(1)]),
+            _groupe_page([_dossier(3)]),
+        ]
+        mock_session.return_value = session
+
+        pages = list(iter_filtered_dossier_pages(123, groupe_numbers=[10, 99, 30]))
+
+        assert _numbers(pages) == [[1], [3]]
+        assert [v["groupeNumber"] for v in _sent_variables(session)[1:]] == [10, 30]
+        assert "99" in mock_log_error.call_args.args[0]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.log_error")
+    def test_no_groupe_left_queries_nothing(self, _mock_log_error, mock_session):
+        """Aucun groupe filtré n'existe → aucune page, et surtout pas toute la démarche"""
+        session = MagicMock()
+        session.post.side_effect = [_groupes_response([10])]
+        mock_session.return_value = session
+
+        assert list(iter_filtered_dossier_pages(123, groupe_numbers=[99])) == []
+        session.post.assert_called_once()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_unreadable_groupes_raise_before_any_page(self, mock_session):
+        """Liste des groupes illisible → exception, aucune page demandée"""
+        session = MagicMock()
+        session.post.side_effect = [
+            _mock_response(json_data={"errors": [{"message": "Service indisponible"}]})
+        ]
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="Service indisponible"):
+            next(iter_filtered_dossier_pages(123, groupe_numbers=[10]))
+        session.post.assert_called_once()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_groupe_filter_groupes_are_not_read(self, mock_session):
+        """Sans filtre de groupe, la liste des groupes n'est pas demandée"""
+        session = MagicMock()
+        session.post.side_effect = [_page([_dossier(1)])]
+        mock_session.return_value = session
+
+        list(iter_filtered_dossier_pages(123, states=["accepte"]))
+
+        assert all("groupeInstructeurs" not in q for q in _sent_queries(session))
+
+
+class TestGetDemarcheGroupeNumbers:
+    """Tests pour get_demarche_groupe_numbers"""
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_returns_all_groupe_numbers(self, mock_session):
+        session = MagicMock()
+        session.post.return_value = _groupes_response([10, 20])
+        mock_session.return_value = session
+
+        assert get_demarche_groupe_numbers(123) == {10, 20}
+        query = session.post.call_args.kwargs["json"]["query"]
+        # Sans argument `closed` : les groupes fermés sont aussi renvoyés
+        assert "groupeInstructeurs {" in query
+        assert session.post.call_args.kwargs["json"]["variables"] == {
+            "demarcheNumber": 123
+        }
+
+    @patch("dn.client.get_session_with_retries")
+    def test_missing_token_raises(self, mock_session):
+        with patch("dn.client.API_TOKEN", ""):
+            with pytest.raises(ValueError):
+                get_demarche_groupe_numbers(123)
+        mock_session.assert_not_called()
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_errors_raise(self, mock_session):
+        """Contrairement à get_groups : une erreur n'est jamais une liste vide"""
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"errors": [{"message": "Unauthorized"}]}
+        )
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="Unauthorized"):
+            get_demarche_groupe_numbers(123)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_inaccessible_demarche_raises(self, mock_session):
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"data": {"demarche": None}}
+        )
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="inaccessible"):
+            get_demarche_groupe_numbers(123)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_http_error_raises(self, mock_session):
+        response = _mock_response(status_code=503)
+        response.raise_for_status.side_effect = Exception("503 Service Unavailable")
+        session = MagicMock()
+        session.post.return_value = response
+        mock_session.return_value = session
+
+        with pytest.raises(Exception, match="503"):
+            get_demarche_groupe_numbers(123)
