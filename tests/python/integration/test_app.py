@@ -19,11 +19,10 @@ class TestEndpoints:
         assert response.status_code == 200
         assert b"One Trick Pony" in response.data
 
-    def test_execution_route(self, client):
-        """Test de la route d'exécution"""
+    def test_execution_route_is_gone(self, client):
+        """La route /execution n'existe plus : la page ne doit pas être visitable directement"""
         response = client.get("/execution")
-        assert response.status_code == 200
-        assert b"Synchronisation" in response.data
+        assert response.status_code == 404
 
     @patch.object(sync_manager, "start_sync")
     @patch.object(ConfigManager, "load_config_by_id")

@@ -26,7 +26,6 @@ from utils.log import log_error
 WIDGET_TOKEN_EXEMPT_ENDPOINTS: set[tuple[str, str]] = {
     ("static", "GET"),
     ("index", "GET"),
-    ("execution", "GET"),
     ("wip", "GET"),
 }
 
