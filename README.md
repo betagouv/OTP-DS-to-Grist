@@ -50,22 +50,7 @@ Voir [doc installation](./docs/install.md)
 
 ⚠️ S'assurer de donner un accès complet au document Grist.
 
-### 2. Page d'exécution (`/execution`)
-
-1. **Configurez les filtres** selon vos besoins :
-   - Dates de dépôt (début/fin)
-   - Statuts des dossiers
-   - Groupes instructeurs
-
-2. **Lancez la synchronisation**
-3. **Suivez la progression** en temps réel
-4. **Consultez les logs** détaillés
-
-### 3. Page de débogage (`/debug`)
-
-- **Vérifiez** l'état des fichiers système
-- **Consultez** les variables d'environnement
-- **Testez** la connectivité WebSocket
+Depuis cette page, configurez les filtres (dates de dépôt, statuts des dossiers, groupes instructeurs), lancez la synchronisation, suivez la progression en temps réel et consultez les logs.
 
 
 ## Communauté

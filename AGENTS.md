@@ -135,3 +135,5 @@ Avant de supprimer ou d'altérer un comportement (fonction, route, paramètre, m
 ## Documentations
 
 Consulter `docs/` pour les guides techniques.
+
+`CHANGELOG.md` est généré automatiquement par release-please.
