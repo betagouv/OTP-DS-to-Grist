@@ -1920,6 +1920,21 @@ class TestWidgetAuth:
         response = client.post("/api/schedule", json={"otp_config_id": 7})
         assert response.status_code == 403
 
+    def test_other_user_cannot_delete_config_returns_403(self, client, monkeypatch):
+        self._stub_owned_config(monkeypatch, WIDGET_TEST_CONFIG)
+        client.identity = {"userId": "userB", "docId": "docA", "readOnly": False}
+        response = client.delete("/api/config/7")
+        assert response.status_code == 403
+
+    def test_other_user_cannot_update_config_returns_403(self, client, monkeypatch):
+        self._stub_owned_config(monkeypatch, WIDGET_TEST_CONFIG)
+        client.identity = {"userId": "userB", "docId": "docA", "readOnly": False}
+        response = client.post(
+            "/api/config",
+            json={"otp_config_id": 7, "grist_base_url": "https://grist.example.com/api"},
+        )
+        assert response.status_code == 403
+
     def test_editor_token_allows_write(self, client, monkeypatch):
         self._stub_owned_config(monkeypatch, WIDGET_TEST_CONFIG)
         monkeypatch.setattr(
