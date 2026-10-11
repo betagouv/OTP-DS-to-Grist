@@ -95,6 +95,8 @@ const getGristContext = async () => {
                       encodeURIComponent(userId)
                     }&grist_doc_id=${
                       encodeURIComponent(docId)
+                    }&grist_base_url=${
+                      encodeURIComponent(baseUrl)
                     }`
 
     return { params, userId, docId, baseUrl }

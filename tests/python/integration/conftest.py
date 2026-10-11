@@ -85,3 +85,25 @@ def stored_config(monkeypatch):
         "load_config",
         lambda self, grist_user_id, grist_doc_id: [dict(STORED_CONFIG)],
     )
+
+
+@pytest.fixture(autouse=True)
+def stored_config_by_id(monkeypatch):
+    """La configuration par identifiant est chargeable : aucun accès réel à la base.
+
+    Sans ce stub, le chargement échoue (pas de base de test) et le contrôle
+    d'appartenance refuse la requête avant d'atteindre la route testée.
+    Un identifiant falsy (0) ne désigne aucune configuration : il suit la
+    vraie implémentation.
+    """
+    real_load_config_by_id = ConfigManager.load_config_by_id
+
+    def fake_load_config_by_id(
+        self: ConfigManager, otp_config_id: int
+    ) -> dict:
+        if not otp_config_id:
+            return real_load_config_by_id(self, otp_config_id)
+
+        return dict(STORED_CONFIG)
+
+    monkeypatch.setattr(ConfigManager, "load_config_by_id", fake_load_config_by_id)

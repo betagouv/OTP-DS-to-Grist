@@ -53,11 +53,31 @@ it(
     const result = await getGristContext()
 
     expect(result).toEqual({
-      params: '?grist_user_id=123&grist_doc_id=456',
+      params: '?grist_user_id=123&grist_doc_id=456&grist_base_url=http%3A%2F%2F0.0.0.0%3A8484%2Fo%2Fdocs%2Fapi',
       userId: '123',
       docId: '456',
       baseUrl: 'http://0.0.0.0:8484/o/docs/api'
     })
+    expect(consoleWarnSpy).not.toHaveBeenCalled()
+  }
+)
+
+it(
+  'should return params without throwing when baseUrl cannot be derived',
+  async () => {
+    grist.docApi.getAccessToken.mockResolvedValue({
+      token: createMockToken('123', '456'),
+      baseUrl: 'https://grist.example.com'
+    })
+
+    const result = await getGristContext()
+
+    expect(result).toEqual({
+      params: '?grist_user_id=123&grist_doc_id=456&grist_base_url=undefined',
+      userId: '123',
+      docId: '456'
+    })
+    expect(result.baseUrl).toBeUndefined()
     expect(consoleWarnSpy).not.toHaveBeenCalled()
   }
 )

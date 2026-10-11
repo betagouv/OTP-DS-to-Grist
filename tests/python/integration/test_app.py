@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app import ConfigManager, sync_manager
+from configuration.config_manager import ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 
@@ -546,7 +547,7 @@ class TestEndpoints:
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_groups_otp_config_id_not_found(self, mock_load, client):
         """Test de récupération des groupes avec otp_config_id inexistant"""
-        mock_load.side_effect = Exception("Configuration not found")
+        mock_load.side_effect = ConfigNotFoundError("Configuration not found")
 
         response = client.get("/api/groups?otp_config_id=999")
         assert response.status_code == 400
@@ -675,7 +676,7 @@ class TestErrorHandling:
         self, mock_load, client
     ):
         """otp_config_id inexistant → 500 avec message JSON"""
-        mock_load.side_effect = Exception("Configuration not found")
+        mock_load.side_effect = ConfigNotFoundError("Configuration not found")
 
         response = client.post(
             "/api/test-connection",
@@ -864,7 +865,7 @@ class TestErrorHandling:
         self, mock_load, client
     ):
         """otp_config_id inexistant → 500 avec message JSON"""
-        mock_load.side_effect = Exception("Configuration not found")
+        mock_load.side_effect = ConfigNotFoundError("Configuration not found")
 
         response = client.post(
             "/api/test-connection",
@@ -1995,11 +1996,107 @@ class TestWidgetAuth:
         assert saved["grist_doc_id"] == "docA"
 
     def test_new_user_gets_empty_configs(self, client, monkeypatch):
+        """Un nouvel utilisateur reçoit une configuration vide, après validation du jeton."""
+        monkeypatch.setattr(
+            "app.config_manager.load_config", lambda grist_user_id, grist_doc_id: []
+        )
+        validated_base_urls = []
+        monkeypatch.setattr(
+            "security.widget_auth.validate_widget_token",
+            lambda token, base_url, doc_id: validated_base_urls.append(base_url)
+            or {"userId": "newU", "docId": "newDoc", "readOnly": False},
+        )
+        client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
+
+        response = client.get(
+            "/api/config?grist_base_url=https://grist.example.com/api"
+        )
+
+        assert response.status_code == 200
+        assert response.get_json() == {"configs": []}
+        assert validated_base_urls == ["https://grist.example.com/api"]
+
+    def test_config_get_without_base_url_is_rejected(self, client, monkeypatch):
+        """Sans URL Grist connue, le jeton n'est pas vérifiable : la requête est refusée."""
         monkeypatch.setattr(
             "app.config_manager.load_config", lambda grist_user_id, grist_doc_id: []
         )
         client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
 
         response = client.get("/api/config")
+
+        assert response.status_code == 400
+
+    def test_config_load_failure_is_rejected(self, client, monkeypatch):
+        """Le contrôle d'appartenance exige le chargement : une erreur le fait échouer."""
+
+        def explode(otp_config_id):
+            raise RuntimeError("connexion perdue")
+
+        monkeypatch.setattr("app.config_manager.load_config_by_id", explode)
+
+        response = client.get("/api/sync-log/latest?otp_config_id=7")
+
+        assert response.status_code == 500
+        assert response.get_json()["message"] == "Configuration indisponible"
+
+    @patch("app.SessionLocal")
+    def test_missing_config_reaches_the_route(self, mock_session, client, monkeypatch):
+        """Une configuration absente n'est pas une erreur de chargement : la route répond 404."""
+        mock_session.return_value.query.return_value.filter_by.return_value.first.\
+            return_value = None
+
+        def missing(otp_config_id):
+            raise ConfigNotFoundError("Configuration not found")
+
+        monkeypatch.setattr("app.config_manager.load_config_by_id", missing)
+
+        response = client.delete("/api/config/999")
+
+        assert response.status_code == 404
+
+    @patch("app.SessionLocal")
+    def test_zero_config_id_is_treated_as_missing(
+        self, mock_session, client, monkeypatch
+    ):
+        """otp_config_id=0 désigne une configuration inexistante : la route répond 404."""
+        monkeypatch.setattr(
+            "configuration.config_manager.DatabaseManager.get_connection",
+            MagicMock(),
+        )
+        mock_session.return_value.query.return_value.filter_by.return_value.first.\
+            return_value = None
+
+        response = client.get("/api/schedule?otp_config_id=0")
+
+        assert response.status_code == 404
+        assert response.get_json()["message"] == "Configuration not found"
+
+    def test_stored_base_url_is_used_over_request_param(self, client, monkeypatch):
+        """L'URL de vérification vient de la config stockée, pas du paramètre de l'appelant."""
+        validated_base_urls = []
+        monkeypatch.setattr(
+            "security.widget_auth.validate_widget_token",
+            lambda token, base_url, doc_id: validated_base_urls.append(base_url)
+            or {"userId": "userA", "docId": "docA", "readOnly": False},
+        )
+
+        response = client.get("/api/config?grist_base_url=https://evil.example.com/api")
+
         assert response.status_code == 200
-        assert response.get_json() == {"configs": []}
+        assert validated_base_urls == ["https://grist.example.com/api"]
+
+    def test_stored_config_load_failure_is_rejected(self, client, monkeypatch):
+        """Une erreur de chargement de la config stockée ne retombe pas sur l'URL fournie."""
+
+        def explode(grist_user_id, grist_doc_id):
+            raise RuntimeError("connexion perdue")
+
+        monkeypatch.setattr("app.config_manager.load_config", explode)
+
+        response = client.get(
+            "/api/config?grist_base_url=https://grist.example.com/api"
+        )
+
+        assert response.status_code == 500
+        assert response.get_json()["message"] == "Configuration indisponible"
