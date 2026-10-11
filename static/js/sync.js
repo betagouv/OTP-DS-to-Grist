@@ -53,10 +53,6 @@ const startSync = async (otpConfigId) => {
       .join(',')
   }
 
-  const gristContext = await getGristContext()
-  const gristDocId = gristContext.docId
-  const gristUserId = gristContext.userId
-
   try {
     const response = await apiFetch('/api/start-sync', {
       method: 'POST',
@@ -65,9 +61,7 @@ const startSync = async (otpConfigId) => {
       },
       body: JSON.stringify({
         otp_config_id: otpConfigId,
-        filters: filters,
-        grist_user_id: gristUserId,
-        grist_doc_id: gristDocId
+        filters: filters
       })
     })
 

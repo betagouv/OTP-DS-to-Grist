@@ -8,7 +8,7 @@ import { useDemarcheContext } from '../../composables/useDemarcheContext'
 import { useSyncTask } from '../../composables/useSyncTask'
 
 describe('hasUnsavedSection computation', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+  const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
 
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
@@ -81,7 +81,7 @@ describe('hasUnsavedSection computation', () => {
 })
 
 describe('Add demarche button', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+  const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
 
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
@@ -137,7 +137,7 @@ describe('Add demarche button', () => {
 })
 
 describe('handleAddDemarche', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+  const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
 
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
@@ -266,8 +266,6 @@ describe('Save button action', () => {
         ds_api_token: 'dn-token',
         demarche_number: '12345',
         grist_base_url: 'https://grist.example.com',
-        grist_doc_id: 'doc-123',
-        grist_user_id: '5',
         grist_api_key: 'grist-token',
         filter_date_start: '2023-01-01',
         filter_date_end: '2023-12-31',
@@ -280,7 +278,7 @@ describe('Save button action', () => {
 })
 
 describe('Config loading on mount', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123', baseUrl: 'https://grist.example.com/api' }
+  const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123', baseUrl: 'https://grist.example.com/api' }
   let consoleSpy = null
 
   beforeEach(() => {
@@ -311,7 +309,7 @@ describe('Config loading on mount', () => {
 
     expect(globalThis.getGristContext).toHaveBeenCalled()
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/config?grist_user_id=5&grist_doc_id=doc-123'
+      '/api/config?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     )
     expect(wrapper.getComponent(GristFormSection).props('existingConfig'))
       .toEqual({ otp_config_id: 1, grist_base_url: 'https://example.com' })
@@ -395,7 +393,7 @@ describe('Save with existing config (UPDATE)', () => {
   beforeEach(async () => {
     vi.restoreAllMocks()
     globalThis.getGristContext = vi.fn().mockResolvedValue({
-      params: '?grist_user_id=5&grist_doc_id=doc-123'
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -453,8 +451,6 @@ describe('Save with existing config (UPDATE)', () => {
         ds_api_token: 'dn-token',
         demarche_number: '12345',
         grist_base_url: 'https://grist.example.com',
-        grist_doc_id: 'doc-123',
-        grist_user_id: '5',
         grist_api_key: 'grist-token',
         filter_date_start: '2023-06-01',
         filter_date_end: '2023-06-30',
@@ -499,7 +495,7 @@ describe('Save with existing config (UPDATE)', () => {
     })
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      '/api/config?grist_user_id=5&grist_doc_id=doc-123'
+      '/api/config?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     )
     expect(wrapper.getComponent(GristFormSection).props('existingConfig'))
       .toEqual({ otp_config_id: 1 })
@@ -643,7 +639,7 @@ describe('Multi-section save', () => {
   beforeEach(async () => {
     vi.restoreAllMocks()
     globalThis.getGristContext = vi.fn().mockResolvedValue({
-      params: '?grist_user_id=5&grist_doc_id=doc-123'
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -699,8 +695,6 @@ describe('Multi-section save', () => {
         ds_api_token: 'dn-token-2',
         demarche_number: '22222',
         grist_base_url: 'https://grist.example.com',
-        grist_doc_id: 'doc-123',
-        grist_user_id: '5',
         grist_api_key: 'grist-token',
         otp_config_id: 2
       })
@@ -825,7 +819,7 @@ describe('Multi-section save', () => {
 describe('Delete action', () => {
   let wrapper
   let consoleSpy = null
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+  const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
 
   beforeEach(async () => {
     vi.restoreAllMocks()
@@ -970,7 +964,7 @@ describe('Sync action', () => {
   beforeEach(async () => {
     vi.restoreAllMocks()
     globalThis.getGristContext = vi.fn().mockResolvedValue({
-      params: '?grist_user_id=5&grist_doc_id=doc-123'
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -1027,7 +1021,7 @@ describe('Sync action', () => {
 
   it('does not call API when there is no config', async () => {
     globalThis.getGristContext.mockResolvedValue({
-      params: '?grist_user_id=5&grist_doc_id=doc-123'
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
     globalThis.fetch.mockResolvedValue({
       ok: true,
@@ -1051,7 +1045,7 @@ describe('Sync action', () => {
 
   it("does not call sync API route when syncRunning is true", async () => {
     globalThis.getGristContext.mockResolvedValue({
-      params: '?grist_user_id=5&grist_doc_id=doc-123'
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
@@ -1113,7 +1107,7 @@ describe('Sync action', () => {
 })
 
 describe('sortConfigs', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+  const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
 
   beforeEach(() => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
@@ -1202,7 +1196,7 @@ describe('sortConfigs', () => {
 })
 
 describe('Accordion DN state', () => {
-  const mockContext = { params: '?grist_user_id=5&grist_doc_id=doc-123', docId: 'doc-123' }
+  const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
 
   const mountWithConfigs = async (configs) => {
     globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)

@@ -91,13 +91,7 @@ const getGristContext = async () => {
     if (!userId || !docId)
       throw new Error('Impossible de récupérer le user id ou le doc id')
 
-    const params = `?grist_user_id=${
-                      encodeURIComponent(userId)
-                    }&grist_doc_id=${
-                      encodeURIComponent(docId)
-                    }&grist_base_url=${
-                      encodeURIComponent(baseUrl)
-                    }`
+    const params = `?grist_base_url=${encodeURIComponent(baseUrl)}`
 
     return { params, userId, docId, baseUrl }
   } catch (error) {

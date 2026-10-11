@@ -53,7 +53,7 @@ it(
     const result = await getGristContext()
 
     expect(result).toEqual({
-      params: '?grist_user_id=123&grist_doc_id=456&grist_base_url=http%3A%2F%2F0.0.0.0%3A8484%2Fo%2Fdocs%2Fapi',
+      params: '?grist_base_url=http%3A%2F%2F0.0.0.0%3A8484%2Fo%2Fdocs%2Fapi',
       userId: '123',
       docId: '456',
       baseUrl: 'http://0.0.0.0:8484/o/docs/api'
@@ -73,7 +73,7 @@ it(
     const result = await getGristContext()
 
     expect(result).toEqual({
-      params: '?grist_user_id=123&grist_doc_id=456&grist_base_url=undefined',
+      params: '?grist_base_url=undefined',
       userId: '123',
       docId: '456'
     })

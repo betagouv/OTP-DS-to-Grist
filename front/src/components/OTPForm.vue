@@ -102,8 +102,6 @@ const handleSave = async (index) => {
       ds_api_token: dnData.token,
       demarche_number: dnData.demarche_number,
       grist_base_url: gristData.baseUrl,
-      grist_doc_id: gristData.docId,
-      grist_user_id: gristData.userId,
       grist_api_key: gristData.token,
       filter_date_start: dnData.filter_date_start,
       filter_date_end: dnData.filter_date_end,
