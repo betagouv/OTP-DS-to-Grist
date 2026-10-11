@@ -198,7 +198,7 @@ describe('testDemarchesConnection', () => {
 })
 
 describe('testGristConnection', () => {
-  let mockResultDiv, mockKeyInput, mockUrlInput, mockDocInput
+  let mockResultDiv, mockKeyInput, mockUrlInput
 
   beforeEach(() => {
     // Mock DOM elements
@@ -207,7 +207,6 @@ describe('testGristConnection', () => {
     }
     mockKeyInput = { value: '' }
     mockUrlInput = { value: '' }
-    mockDocInput = { value: '' }
 
     global.document = {
       getElementById: jest.fn((id) => {
@@ -215,7 +214,6 @@ describe('testGristConnection', () => {
           case 'grist_test_result': return mockResultDiv
           case 'grist_api_key': return mockKeyInput
           case 'grist_base_url': return mockUrlInput
-          case 'grist_doc_id': return mockDocInput
           default: return null
         }
       })
@@ -226,6 +224,7 @@ describe('testGristConnection', () => {
 
     // Mock global variables
     global.getConfiguration = jest.fn()
+    global.getGristContext = jest.fn().mockResolvedValue({ docId: 'doc123' })
     global.console.error = jest.fn()
   })
 
@@ -237,7 +236,6 @@ describe('testGristConnection', () => {
     'should test connection successfully with key from input', async () => {
       mockKeyInput.value = 'test-key'
       mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
 
       const mockResponse = {
         ok: true,
@@ -267,7 +265,6 @@ describe('testGristConnection', () => {
     'should show error when connection fails', async () => {
       mockKeyInput.value = 'test-key'
       mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
 
       const mockResponse = {
         ok: true,
@@ -288,7 +285,6 @@ describe('testGristConnection', () => {
     'should reload config when no key in input but config exists', async () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
       global.getConfiguration.mockResolvedValue([{ grist_api_key: 'config-key' }])
       global.fetch.mockResolvedValue({
         ok: true,
@@ -314,7 +310,6 @@ describe('testGristConnection', () => {
     'should show error when no key available', async () => {
       mockKeyInput.value = ''
       mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
       global.getConfiguration.mockResolvedValue([{ grist_api_key: '' }])
 
       await testGristConnection()
@@ -330,7 +325,6 @@ describe('testGristConnection', () => {
     'should show error when no base URL', async () => {
       mockKeyInput.value = 'test-key'
       mockUrlInput.value = ''
-      mockDocInput.value = 'doc123'
 
       await testGristConnection()
 
@@ -344,7 +338,7 @@ describe('testGristConnection', () => {
     'should show error when no doc ID', async () => {
       mockKeyInput.value = 'test-key'
       mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = ''
+      global.getGristContext.mockResolvedValue({ docId: '' })
 
       await testGristConnection()
 
@@ -358,7 +352,6 @@ describe('testGristConnection', () => {
     'should handle fetch error', async () => {
       mockKeyInput.value = 'test-key'
       mockUrlInput.value = 'https://grist.example.com'
-      mockDocInput.value = 'doc123'
       global.fetch.mockRejectedValue(new Error('Network error'))
 
       await testGristConnection()

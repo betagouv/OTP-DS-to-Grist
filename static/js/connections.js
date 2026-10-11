@@ -85,7 +85,7 @@ const testGristConnection = async (silent = false) => {
   try {
     const gristKeyInputValue = document.getElementById('grist_api_key').value
     const gristBaseUrlValue  = document.getElementById('grist_base_url').value
-    const gristDocIdValue    = document.getElementById('grist_doc_id').value
+    const gristDocIdValue    = (await getGristContext()).docId
 
     // Utiliser la clé saisie OU recharger la config si vide
     let grist_key = gristKeyInputValue
