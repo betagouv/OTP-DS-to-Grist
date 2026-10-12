@@ -237,15 +237,23 @@ const updateTaskProgress = (task) => {
       // TODO use showSyncBanner or derivated
       if (task.sync_reason === 'already_up_to_date') {
         const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
-        const deletedLine = nbDeleted > 0
-          ? `<p>${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist)</p>`
-          : ''
-        if (resultContentManual) resultContentManual.innerHTML = `<div class="fr-alert fr-alert--info">
-          <h3 class="fr-alert__title">Grist déjà à jour</h3>
-          <p>Aucun dossier nouveau ou modifié depuis la dernière synchronisation.</p>
-          ${deletedLine}
-          <p>${task.message}</p>
-        </div>`
+        // Remplir le template existant plutôt que de remplacer le conteneur :
+        // écraser le innerHTML détruirait .sync_banner_template, requis par
+        // showSyncBanner pour les bannières suivantes.
+        const subContainer =
+          resultContentManual && resultContentManual.querySelector('.sync_banner_template')
+        if (subContainer) {
+          subContainer.querySelector('.fr-alert').classList.add('fr-alert--info')
+          subContainer.querySelector('h3').innerText = 'Grist déjà à jour'
+          const deletedPart =
+            nbDeleted > 0
+              ? ` ${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist).`
+              : ''
+          subContainer.querySelector('.sync-banner-count').innerText =
+            `Aucun dossier nouveau ou modifié depuis la dernière synchronisation.${deletedPart}`
+          subContainer.querySelector('.sync-banner-date').innerText = task.message || ''
+          resultContentManual.style.display = 'block'
+        }
         showNotification('Grist déjà à jour', 'info')
       } else {
         const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0

@@ -219,6 +219,72 @@ describe('updateTaskProgress', () => {
   })
 
   it(
+    'un sync « déjà à jour » ne détruit pas le template de la bannière suivante', () => {
+    document.body.innerHTML = `<div id="sync_progress_container">
+      <div id="sync_progress" style="display: block;">
+        <span id="sync-progress-text">Progression</span>
+        <div id="progress_percentage">0%</div>
+        <div id="progress_bar" style="width: 0%;"></div>
+        <div id="elapsed_time">0s</div>
+        <div id="processing_speed">-</div>
+        <div id="eta">-</div>
+      </div>
+      <div id="sync_result">
+        <div id="result_content_auto">
+          <div class="sync_banner_template">
+            <div class="fr-alert" role="alert">
+              <h3 class="fr-alert__title"></h3>
+              <p class="sync-banner-count"></p>
+              <p class="sync-banner-date fr-text--sm"></p>
+            </div>
+          </div>
+        </div>
+        <div id="result_content_manual">
+          <div class="sync_banner_template">
+            <div class="fr-alert" role="alert">
+              <h3 class="fr-alert__title"></h3>
+              <p class="sync-banner-count"></p>
+              <p class="sync-banner-date fr-text--sm"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="sync_controls"></div>`
+
+    globalThis.startTime = null
+    globalThis.successCount = 13
+    globalThis.errorCount = 0
+    globalThis.totalDossiers = 13
+    globalThis.logsCount = 0
+    globalThis.logsVisible = false
+    globalThis.updateStatsFromLog = () => {}
+
+    // 1er sync terminé : classé déjà à jour par le backend
+    updateTaskProgress({
+      status: 'completed',
+      sync_reason: 'already_up_to_date',
+      message: 'Grist déjà à jour',
+      progress: 100,
+      result: {}
+    })
+
+    // 2e sync terminée : succès avec 13 dossiers — la bannière doit s'afficher
+    updateTaskProgress({
+      status: 'completed',
+      message: 'Sync terminée',
+      progress: 100,
+      result: {}
+    })
+
+    const resultContentManual = document.getElementById('result_content_manual')
+    expect(resultContentManual.querySelector('.sync_banner_template')).not.toBeNull()
+    const h3 = resultContentManual.querySelector('h3')
+    const titleText = h3.textContent || h3.innerText || ''
+    expect(titleText).toContain('Synchronisation terminée avec succès')
+  })
+
+  it(
     'rend les logs reçus en delta sans duplication',
     () => {
       document.body.innerHTML = `<div id="progress_bar" style="width: 0%;"></div>
