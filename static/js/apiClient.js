@@ -1,4 +1,5 @@
 const WIDGET_TOKEN_HEADER = 'X-Grist-Widget-Token'
+const GRIST_BASE_URL_HEADER = 'X-Grist-Base-Url'
 
 const gristContext = (typeof module !== 'undefined' && module.exports)
   ? require('./gristContext.js')
@@ -6,13 +7,23 @@ const gristContext = (typeof module !== 'undefined' && module.exports)
 
 const getToken = () => (gristContext ? gristContext.getWidgetToken() : getWidgetToken())
 
+const deriveBaseUrl = (docBaseUrl) => {
+  if (!docBaseUrl) return null
+  const derived = gristContext
+    ? gristContext.getApiBaseUrlFromDocBaseUrl(docBaseUrl)
+    : getApiBaseUrlFromDocBaseUrl(docBaseUrl)
+  return derived || null
+}
+
 const clearToken = () => (gristContext ? gristContext.clearWidgetToken() : clearWidgetToken())
 
-const buildRequestWithToken = (input, init, token) => {
+const buildRequestWithToken = (input, init, token, baseUrl) => {
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
   if (init && init.headers)
     new Headers(init.headers).forEach((value, key) => headers.set(key, value))
   headers.set(WIDGET_TOKEN_HEADER, token)
+  if (baseUrl)
+    headers.set(GRIST_BASE_URL_HEADER, baseUrl)
 
   if (input instanceof Request) {
     const extraInit = { ...init }
@@ -29,14 +40,17 @@ const apiFetch = async (input, init) => {
   if (!tokenInfo)
     return fetch(input, init)
 
-  const firstAttempt = buildRequestWithToken(input, init, tokenInfo.token)
+  const baseUrl = deriveBaseUrl(tokenInfo.baseUrl)
+  const firstAttempt = buildRequestWithToken(input, init, tokenInfo.token, baseUrl)
   let response = await fetch(firstAttempt.input, firstAttempt.init)
 
   if (response.status === 401) {
     clearToken()
     const refreshedToken = await getToken()
     if (refreshedToken) {
-      const secondAttempt = buildRequestWithToken(input, init, refreshedToken.token)
+      const secondAttempt = buildRequestWithToken(
+        input, init, refreshedToken.token, deriveBaseUrl(refreshedToken.baseUrl)
+      )
       response = await fetch(secondAttempt.input, secondAttempt.init)
     }
   }
@@ -47,6 +61,7 @@ const apiFetch = async (input, init) => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     apiFetch,
-    WIDGET_TOKEN_HEADER
+    WIDGET_TOKEN_HEADER,
+    GRIST_BASE_URL_HEADER
   }
 }

@@ -2114,3 +2114,85 @@ class TestWidgetAuth:
 
         assert response.status_code == 500
         assert response.get_json()["message"] == "Configuration indisponible"
+
+    @patch("app.test_demarches_api")
+    def test_new_user_demarches_test_with_base_url_header(
+        self, mock_test, client, monkeypatch
+    ):
+        """Un nouvel utilisateur présente l'en-tête X-Grist-Base-Url : le test DN passe."""
+        monkeypatch.setattr(
+            "app.config_manager.load_config", lambda grist_user_id, grist_doc_id: []
+        )
+        validated_base_urls = []
+        monkeypatch.setattr(
+            "security.widget_auth.validate_widget_token",
+            lambda token, base_url, doc_id: validated_base_urls.append(base_url)
+            or {"userId": "newU", "docId": "newDoc", "readOnly": False},
+        )
+        client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
+        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "demarches",
+                    "api_token": "token",
+                    "demarche_number": "123",
+                }
+            ),
+            content_type="application/json",
+            headers={"X-Grist-Base-Url": "https://grist.example.com/api"},
+        )
+
+        assert response.status_code == 200
+        assert validated_base_urls == ["https://grist.example.com/api"]
+        mock_test.assert_called_once_with("token", "123")
+
+    @patch("app.test_demarches_api")
+    def test_body_base_url_serves_new_user(self, mock_test, client, monkeypatch):
+        """L'URL fournie dans le corps reste une source valide pour un nouvel utilisateur."""
+        monkeypatch.setattr(
+            "app.config_manager.load_config", lambda grist_user_id, grist_doc_id: []
+        )
+        validated_base_urls = []
+        monkeypatch.setattr(
+            "security.widget_auth.validate_widget_token",
+            lambda token, base_url, doc_id: validated_base_urls.append(base_url)
+            or {"userId": "newU", "docId": "newDoc", "readOnly": False},
+        )
+        client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
+        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "demarches",
+                    "api_token": "token",
+                    "demarche_number": "123",
+                    "grist_base_url": "https://grist.example.com/api",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        assert validated_base_urls == ["https://grist.example.com/api"]
+
+    def test_stored_base_url_is_used_over_header(self, client, monkeypatch):
+        """L'URL de vérification vient de la config stockée, pas de l'en-tête de l'appelant."""
+        validated_base_urls = []
+        monkeypatch.setattr(
+            "security.widget_auth.validate_widget_token",
+            lambda token, base_url, doc_id: validated_base_urls.append(base_url)
+            or {"userId": "userA", "docId": "docA", "readOnly": False},
+        )
+
+        response = client.get(
+            "/api/config",
+            headers={"X-Grist-Base-Url": "https://evil.example.com/api"},
+        )
+
+        assert response.status_code == 200
+        assert validated_base_urls == ["https://grist.example.com/api"]

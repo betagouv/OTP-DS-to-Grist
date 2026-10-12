@@ -14,6 +14,7 @@ from configuration.config_manager import ConfigManager, ConfigNotFoundError
 from grist.base_url import GristBaseUrlNotAllowedError
 from grist.client import GristClient
 from security.widget_token import (
+    BASE_URL_HEADER,
     WidgetTokenInvalidError,
     WidgetTokenUnavailableError,
     decode_widget_token_identity,
@@ -77,6 +78,7 @@ def authorize_request(
                 request.args.get("grist_base_url")
                 or data.get("grist_base_url")
                 or data.get("base_url")
+                or request.headers.get(BASE_URL_HEADER)
             )
 
     if not base_url:

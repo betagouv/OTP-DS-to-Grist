@@ -38,6 +38,25 @@ describe('apiFetch', () => {
     expect(new Headers(init.headers).get(WIDGET_TOKEN_HEADER)).toBe(token)
   })
 
+  it('attaches the Grist base URL header derived from the widget context', async () => {
+    const token = createTokenWithExp(900)
+    global.grist = {
+      ready: jest.fn(),
+      docApi: {
+        getAccessToken: jest.fn().mockResolvedValue({
+          token,
+          baseUrl: 'http://x/api/docs/abc',
+          ttlMsecs: 900000
+        })
+      }
+    }
+
+    await apiFetch('/api/test-connection', { method: 'POST' })
+
+    const [, init] = global.fetch.mock.calls[0]
+    expect(new Headers(init.headers).get('X-Grist-Base-Url')).toBe('http://x/api')
+  })
+
   it('retries once with a fresh token after a 401', async () => {
     global.fetch
       .mockResolvedValueOnce({ status: 401 })

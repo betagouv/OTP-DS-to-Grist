@@ -22,6 +22,7 @@ import requests
 from grist.base_url import assert_base_url_allowed
 
 WIDGET_TOKEN_HEADER = "X-Grist-Widget-Token"
+BASE_URL_HEADER = "X-Grist-Base-Url"
 
 # Durée de mise en cache d'une vérification réussie, bornée par l'expiration
 # du jeton (le jeton vit ≈15 min, bien plus que cette marge).
