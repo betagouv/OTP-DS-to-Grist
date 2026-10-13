@@ -69,6 +69,17 @@ class TestParseOutput:
         assert result["success_count"] == 0
         assert result["error_count"] == 0
 
+    def test_labels_deja_a_jour_ne_suffit_pas(self):
+        """La ligne de rafraîchissement des labels contient « déjà à jour » mais
+        ne signifie pas que le sync n'a rien eu à faire : un sync à 0 dossier
+        (filtres restrictifs) ne doit pas être classé already_up_to_date."""
+        lines = [
+            "Dossiers traités avec succès: 0",
+            "Sync complète — rafraîchissement des labels ignoré (déjà à jour).",
+        ]
+        result = parse_output(lines)
+        assert result["sync_reason"] == "synced"
+
     def test_calcul_total_auto(self):
         lines = [
             "Dossiers traités avec succès: 5",

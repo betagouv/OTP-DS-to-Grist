@@ -8,12 +8,11 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request, url_for
-import requests
+from flask import Flask, Response, g, jsonify, render_template, request, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -25,7 +24,6 @@ from grist.base_url import (
     GristBaseUrlImmutableError,
     GristBaseUrlNotAllowedError
 )
-from grist.client import GristClient
 from security.ip_blocklist import (
     is_whitelisted,
     parse_whitelist,
@@ -35,6 +33,7 @@ from security.ip_blocklist import (
     should_ignore_path,
 )
 from security.ip_blocklist_store import IpBlocklistStore
+from security.widget_auth import authorize_request
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
@@ -45,7 +44,6 @@ from utils.api_validator import (
 )
 from utils.constants import (
     CHANGELOG_PATH,
-    DEMARCHES_API_URL,
     GITHUB_CHANGELOG_BASE_URL,
     DATABASE_URL,
     HELP_LINK_FAQ,
@@ -134,6 +132,12 @@ def check_banned_ip() -> tuple[Response, int] | None:
         return jsonify({"error": "Forbidden"}), 403
 
     return None
+
+
+@app.before_request
+def check_widget_token() -> tuple[Response, int] | None:
+    """Vérifie le jeton widget porté par la requête."""
+    return authorize_request(request, config_manager)
 
 
 @app.after_request
@@ -311,9 +315,10 @@ def api_config():
     """API pour la gestion de la configuration"""
     if request.method == "GET":
         try:
-            # Récupérer les paramètres de contexte Grist depuis la requête
-            grist_user_id = request.args.get("grist_user_id")
-            grist_doc_id = request.args.get("grist_doc_id")
+            # L'identité vient du jeton widget, vérifié par l'authentification.
+            identity = g.get("widget_identity") or {}
+            grist_user_id = str(identity.get("userId") or "")
+            grist_doc_id = str(identity.get("docId") or "")
 
             configs = config_manager.load_config(
                 grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
@@ -335,6 +340,11 @@ def api_config():
             new_config = request.get_json()
 
             new_config = ConfigManager.normalize_config(new_config)
+
+            identity = g.get("widget_identity")
+            if identity:
+                new_config["grist_user_id"] = str(identity.get("userId", ""))
+                new_config["grist_doc_id"] = str(identity.get("docId", ""))
 
             otp_config_id = new_config.get("otp_config_id")
             if otp_config_id:
@@ -668,112 +678,10 @@ def api_groups():
         return jsonify({"error": "Erreur lors de la récupération des groupes"}), 400
 
 
-@app.route("/api/sync-report", methods=["GET"])
-def api_sync_report():
-    """Route pour récupérer le rapport des synchronisations des dernières 24h"""
-    db = SessionLocal()
-    try:
-        # Logs des dernières 24h avec jointures pour récupérer config_id, schedule_id, demarche
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-        logs_query = (
-            db.query(
-                SyncLog,
-                SyncLog.otp_config_id.label("config_id"),
-                UserSchedule.id.label("schedule_id"),
-                SyncLog.demarche_number,
-            )
-            .outerjoin(
-                UserSchedule, UserSchedule.otp_config_id == SyncLog.otp_config_id
-            )
-            .filter(SyncLog.timestamp >= cutoff)
-            .order_by(SyncLog.timestamp.asc())
-            .all()
-        )
-
-        logs_data = []
-        for log, config_id, schedule_id, demarche_number in logs_query:
-            logs_data.append(
-                {
-                    "timestamp": to_local_iso(log.timestamp),
-                    "status": log.status,
-                    "message": log.message,
-                    "grist_user_id": log.grist_user_id,
-                    "grist_doc_id": log.grist_doc_id,
-                    "config_id": config_id,
-                    "schedule_id": schedule_id,
-                    "demarche": demarche_number,
-                    "auto": log.auto,
-                }
-            )
-
-        return jsonify({"logs": logs_data})
-    except Exception as e:
-        logger.error(f"Erreur récupération rapport sync: {str(e)}")
-        return jsonify(
-            {
-                "error": "Une erreur interne est survenue lors de la récupération du rapport de synchronisation."
-            }
-        ), 500
-    finally:
-        db.close()
-
-
-@app.route("/api/grist-plan")
-def api_grist_plan():
-    """Infos du plan Grist (limites API) pour la configuration courante (page debug)."""
-    grist_user_id = request.args.get("grist_user_id", "")
-    grist_doc_id = request.args.get("grist_doc_id", "")
-
-    try:
-        configs = config_manager.load_config(grist_user_id, grist_doc_id)
-        config = configs[0] if configs else {}
-        if not config.get("grist_doc_id"):
-            return jsonify({"error": "Configuration introuvable"}), 200
-
-        client = GristClient(config["grist_base_url"], config["grist_api_key"])
-        data = client.get_plan_info()
-    except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code if e.response is not None else None
-        if status_code in (401, 403):
-            return (
-                jsonify(
-                    {
-                        "error": "Plan Grist indisponible avec ce token "
-                        "(réservé owner / manager du site)"
-                    }
-                ),
-                200,
-            )
-        return jsonify({"error": f"Plan Grist indisponible (HTTP {status_code})"}), 200
-    except Exception as e:
-        logger.error(f"Erreur lors de la récupération du plan Grist: {str(e)}")
-        return jsonify({"error": "Plan Grist indisponible"}), 200
-
-    org = data.get("org") or {}
-    billing = org.get("billingAccount") or {}
-    product = billing.get("product") or {}
-    features = billing.get("features") or product.get("features") or {}
-
-    return jsonify(
-        {
-            "plan": product.get("name"),
-            "daily_limit": features.get("baseMaxApiUnitsPerDocumentPerDay"),
-            "monthly_limit": features.get("maxApiCallsPerOrgMonth"),
-            "usage": org.get("apiUsage") or None,
-        }
-    )
-
-
 @app.route("/api/sync-log/latest", methods=["GET"])
 def api_sync_log_latest():
-    """Route pour récupérer les dernières synchronisations (auto et manuelle) pour une config"""
+    """Route pour récupérer les dernières synchronisations (auto et manuelle)"""
     otp_config_id = request.args.get("otp_config_id")
-    grist_doc_id = request.args.get("grist_doc_id")
-
-    if not otp_config_id and not grist_doc_id:
-        return jsonify(
-            {"success": False, "message": "otp_config_id or grist_doc_id is required"}
-        ), 400
 
     db = SessionLocal()
 
@@ -796,52 +704,35 @@ def api_sync_log_latest():
             if not otp_config:
                 return jsonify({"success": False, "message": "Config not found"}), 404
 
-            latest_auto = (
-                db.query(SyncLog)
-                .filter_by(
-                    grist_user_id=otp_config.grist_user_id,
-                    grist_doc_id=otp_config.grist_doc_id,
-                    auto=True,
-                )
-                .order_by(SyncLog.timestamp.desc())
-                .first()
-            )
+            grist_user_id = otp_config.grist_user_id
+            grist_doc_id = otp_config.grist_doc_id
+        else:
+            # Rapport par document : le doc vient de l'identité du jeton widget,
+            # même si l'utilisateur n'a pas de configuration enregistrée.
+            identity = g.get("widget_identity") or {}
+            grist_doc_id = str(identity.get("docId") or "")
+            if not grist_doc_id:
+                return jsonify(
+                    {"success": False, "message": "otp_config_id is required"}
+                ), 400
+            grist_user_id = None
 
-            latest_manual = (
-                db.query(SyncLog)
-                .filter_by(
-                    grist_user_id=otp_config.grist_user_id,
-                    grist_doc_id=otp_config.grist_doc_id,
-                    auto=False,
-                )
-                .order_by(SyncLog.timestamp.desc())
-                .first()
-            )
-
-            return jsonify(
-                {
-                    "success": True,
-                    "auto": format_sync(latest_auto),
-                    "manual": format_sync(latest_manual),
-                }
-            )
+        auto_filters = {"grist_doc_id": grist_doc_id, "auto": True}
+        manual_filters = {"grist_doc_id": grist_doc_id, "auto": False}
+        if grist_user_id is not None:
+            auto_filters["grist_user_id"] = grist_user_id
+            manual_filters["grist_user_id"] = grist_user_id
 
         latest_auto = (
             db.query(SyncLog)
-            .filter_by(
-                grist_doc_id=grist_doc_id,
-                auto=True,
-            )
+            .filter_by(**auto_filters)
             .order_by(SyncLog.timestamp.desc())
             .first()
         )
 
         latest_manual = (
             db.query(SyncLog)
-            .filter_by(
-                grist_doc_id=grist_doc_id,
-                auto=False,
-            )
+            .filter_by(**manual_filters)
             .order_by(SyncLog.timestamp.desc())
             .first()
         )
@@ -918,66 +809,6 @@ def api_start_sync():
     except Exception as e:
         logger.error(f"Erreur lors du démarrage de la synchronisation: {str(e)}")
         return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
-
-
-@app.route("/execution")
-def execution():
-    """Page d'exécution et de suivi"""
-    return render_template("execution.html")
-
-
-@app.route("/debug")
-def debug():
-    """Page de débogage"""
-    # Variables d'environnement (masquées pour la sécurité)
-    env_vars = {
-        "DEMARCHES_API_TOKEN": "***"
-        if os.getenv("DEMARCHES_API_TOKEN")
-        else "Non défini",
-        "DEMARCHES_API_URL": f"Constante: {DEMARCHES_API_URL}",
-        "DEMARCHE_NUMBER": os.getenv("DEMARCHE_NUMBER", "Non défini"),
-        "GRIST_BASE_URL": os.getenv("GRIST_BASE_URL", "Non défini"),
-        "GRIST_API_KEY": "***" if os.getenv("GRIST_API_KEY") else "Non défini",
-        "GRIST_DOC_ID": os.getenv("GRIST_DOC_ID", "Non défini"),
-        "GRIST_USER_ID": os.getenv("GRIST_USER_ID", "Non défini"),
-    }
-
-    filter_vars = {
-        "DATE_DEPOT_DEBUT": os.getenv("DATE_DEPOT_DEBUT", "Non défini"),
-        "DATE_DEPOT_FIN": os.getenv("DATE_DEPOT_FIN", "Non défini"),
-        "STATUTS_DOSSIERS": os.getenv("STATUTS_DOSSIERS", "Non défini"),
-        "GROUPES_INSTRUCTEURS": os.getenv("GROUPES_INSTRUCTEURS", "Non défini"),
-        "BATCH_SIZE": os.getenv("BATCH_SIZE", "25"),
-        "MAX_WORKERS": os.getenv("MAX_WORKERS", "2"),
-        "PARALLEL": os.getenv("PARALLEL", "True"),
-    }
-
-    current_email = None
-    db = None
-    try:
-        db = SessionLocal()
-        config = (
-            db.query(OtpConfiguration)
-            .filter_by(
-                grist_user_id=request.args.get("grist_user_id", ""),
-                grist_doc_id=request.args.get("grist_doc_id", ""),
-            )
-            .first()
-        )
-        current_email = config.grist_user_email if config else None
-    except Exception:
-        logger.warning("Impossible de récupérer l'email Grist pour la page debug")
-    finally:
-        if db:
-            db.close()
-
-    return render_template(
-        "debug.html",
-        env_vars=env_vars,
-        filter_vars=filter_vars,
-        script_dir=script_dir,
-        current_email=current_email,
-    )
 
 
 @app.context_processor

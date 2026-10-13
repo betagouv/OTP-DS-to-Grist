@@ -45,7 +45,7 @@ const testDemarchesConnection = async (silent = false) => {
       body.api_token = ds_token
     }
 
-    const response = await fetch('/api/test-connection', {
+    const response = await apiFetch('/api/test-connection', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,7 +85,7 @@ const testGristConnection = async (silent = false) => {
   try {
     const gristKeyInputValue = document.getElementById('grist_api_key').value
     const gristBaseUrlValue  = document.getElementById('grist_base_url').value
-    const gristDocIdValue    = document.getElementById('grist_doc_id').value
+    const gristDocIdValue    = (await getGristContext()).docId
 
     // Utiliser la clé saisie OU recharger la config si vide
     let grist_key = gristKeyInputValue
@@ -120,7 +120,7 @@ const testGristConnection = async (silent = false) => {
         <p>ID du document Grist requis</p>
       </div>`
 
-    const response = await fetch('/api/test-connection', {
+    const response = await apiFetch('/api/test-connection', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -224,7 +224,7 @@ const testExternalConnections = async (silent = false) => {
 
     if (!config.otp_config_id) throw new Error('Pas de configuration trouvée')
 
-    const response = await fetch('/api/test-connection', {
+    const response = await apiFetch('/api/test-connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

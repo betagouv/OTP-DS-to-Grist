@@ -146,23 +146,23 @@ describe('InternalApi', () => {
     })
   })
 
-  describe('getSyncLogLatestByDocId', () => {
-    it('calls GET /api/sync-log/latest with grist_doc_id', async () => {
+  describe('getSyncLogLatestByBaseUrl', () => {
+    it('calls GET /api/sync-log/latest with grist_base_url', async () => {
       globalThis.fetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ success: true, auto: null, manual: null })
       })
 
-      const result = await api.getSyncLogLatestByDocId('doc-abc')
+      const result = await api.getSyncLogLatestByBaseUrl('https://grist.example.com/api')
 
-      expect(globalThis.fetch).toHaveBeenCalledWith('/api/sync-log/latest?grist_doc_id=doc-abc')
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/sync-log/latest?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi')
       expect(result).toEqual({ success: true, auto: null, manual: null })
     })
 
     it('throws on non-ok response', async () => {
       globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
 
-      await expect(api.getSyncLogLatestByDocId('doc-abc')).rejects.toThrow('Erreur HTTP 500')
+      await expect(api.getSyncLogLatestByBaseUrl('https://grist.example.com/api')).rejects.toThrow('Erreur HTTP 500')
     })
   })
 

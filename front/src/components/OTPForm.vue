@@ -53,7 +53,7 @@ const loadConfig = async () => {
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
     loaded = true
-    emit('config-loaded', { configs: serverConfigs.value, docId: context.docId })
+    emit('config-loaded', { configs: serverConfigs.value, gristBaseUrl: context.baseUrl })
   } catch (e) {
     configError.value = 'Erreur lors du chargement de la configuration'
   }
@@ -102,8 +102,6 @@ const handleSave = async (index) => {
       ds_api_token: dnData.token,
       demarche_number: dnData.demarche_number,
       grist_base_url: gristData.baseUrl,
-      grist_doc_id: gristData.docId,
-      grist_user_id: gristData.userId,
       grist_api_key: gristData.token,
       filter_date_start: dnData.filter_date_start,
       filter_date_end: dnData.filter_date_end,

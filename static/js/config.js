@@ -7,7 +7,7 @@ if (typeof testExternalConnections === 'undefined')
 const getConfiguration = async () => {
   // Récupérer le contexte Grist
   const gristContext = await getGristContext()
-  const response = await fetch(`/api/config${gristContext.params}`)
+  const response = await apiFetch(`/api/config${gristContext.params}`)
   if (!response.ok)
     throw new Error(`Erreur HTTP ${response.status}`)
 
@@ -62,9 +62,7 @@ const checkConfiguration = async (silent = false) => {
       'has_ds_token',
       'demarche_number',
       'has_grist_key',
-      'grist_base_url',
-      'grist_doc_id',
-      'grist_user_id'
+      'grist_base_url'
     ]
 
     const missingFields = requiredFields.filter(field => !config[field])
@@ -113,13 +111,7 @@ const loadConfiguration = async () => {
   try {
     // Récupérer d'abord le contexte Grist pour conditionner le chargement de la configuration
     const gristContext = await getGristContext()
-    let gristUserId = gristContext.userId
-    let gristDocId = gristContext.docId
-    let gristBaseUrl = gristContext.baseUrl
-
-    // Pré-remplir TOUJOURS les IDs Grist depuis le contexte
-    document.getElementById('grist_doc_id').value = gristDocId || ''
-    document.getElementById('grist_user_id').value = gristUserId || ''
+    const gristBaseUrl = gristContext.baseUrl
 
     // Set default base url
     document.getElementById('grist_base_url').value = gristBaseUrl || ''
@@ -246,8 +238,6 @@ const saveConfiguration = async () => {
     otp_config_id: window.otp_config_id || undefined,
     demarche_number: document.getElementById('demarche_number').value,
     grist_base_url: document.getElementById('grist_base_url').value,
-    grist_doc_id: document.getElementById('grist_doc_id').value,
-    grist_user_id: document.getElementById('grist_user_id').value,
     filter_date_start: document.getElementById('date_debut').value,
     filter_date_end: document.getElementById('date_fin').value,
     filter_statuses: Array.from(document.querySelectorAll('input[name="statuts"]:checked')).map(el => el.value).join(','),
@@ -261,9 +251,7 @@ const saveConfiguration = async () => {
   // Validation basique - champs minimum pour sauvegarde partielle
   const requiredFields = [
     {key: 'demarche_number', name: 'Numéro de démarche'},
-    {key: 'grist_base_url', name: 'URL de base Grist'},
-    {key: 'grist_doc_id', name: 'ID du document Grist'},
-    {key: 'grist_user_id', name: 'ID utilisateur Grist'}
+    {key: 'grist_base_url', name: 'URL de base Grist'}
   ]
 
   try {
@@ -289,7 +277,7 @@ const saveConfiguration = async () => {
       }
     }
 
-    const response = await fetch('/api/config', {
+    const response = await apiFetch('/api/config', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -347,7 +335,7 @@ const deleteConfig = async (configId = null) => {
   clearTimeout(window.saveTimeout)
 
   try {
-    const response = await fetch(`/api/config/${configId}`, {
+    const response = await apiFetch(`/api/config/${configId}`, {
       method: 'DELETE'
     })
 

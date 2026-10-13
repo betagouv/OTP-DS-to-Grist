@@ -53,21 +53,15 @@ const startSync = async (otpConfigId) => {
       .join(',')
   }
 
-  const gristContext = await getGristContext()
-  const gristDocId = gristContext.docId
-  const gristUserId = gristContext.userId
-
   try {
-    const response = await fetch('/api/start-sync', {
+    const response = await apiFetch('/api/start-sync', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         otp_config_id: otpConfigId,
-        filters: filters,
-        grist_user_id: gristUserId,
-        grist_doc_id: gristDocId
+        filters: filters
       })
     })
 
@@ -243,15 +237,23 @@ const updateTaskProgress = (task) => {
       // TODO use showSyncBanner or derivated
       if (task.sync_reason === 'already_up_to_date') {
         const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
-        const deletedLine = nbDeleted > 0
-          ? `<p>${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist)</p>`
-          : ''
-        if (resultContentManual) resultContentManual.innerHTML = `<div class="fr-alert fr-alert--info">
-          <h3 class="fr-alert__title">Grist déjà à jour</h3>
-          <p>Aucun dossier nouveau ou modifié depuis la dernière synchronisation.</p>
-          ${deletedLine}
-          <p>${task.message}</p>
-        </div>`
+        // Remplir le template existant plutôt que de remplacer le conteneur :
+        // écraser le innerHTML détruirait .sync_banner_template, requis par
+        // showSyncBanner pour les bannières suivantes.
+        const subContainer =
+          resultContentManual && resultContentManual.querySelector('.sync_banner_template')
+        if (subContainer) {
+          subContainer.querySelector('.fr-alert').classList.add('fr-alert--info')
+          subContainer.querySelector('h3').innerText = 'Grist déjà à jour'
+          const deletedPart =
+            nbDeleted > 0
+              ? ` ${nbDeleted} dossier(s) supprimé(s) dans DN (mis à jour dans Grist).`
+              : ''
+          subContainer.querySelector('.sync-banner-count').innerText =
+            `Aucun dossier nouveau ou modifié depuis la dernière synchronisation.${deletedPart}`
+          subContainer.querySelector('.sync-banner-date').innerText = task.message || ''
+          resultContentManual.style.display = 'block'
+        }
         showNotification('Grist déjà à jour', 'info')
       } else {
         const nbDeleted = (task.result && task.result.deleted_dossiers_count) || 0
@@ -294,7 +296,7 @@ const toggleAutoSync = async (enabled) => {
     }
 
     const method = enabled ? 'POST' : 'DELETE'
-    const response = await fetch('/api/schedule', {
+    const response = await apiFetch('/api/schedule', {
       method: method,
       headers: {
         'Content-Type': 'application/json'
@@ -343,7 +345,7 @@ const loadAutoSyncState = async () => {
 
     checkbox.disabled = false
 
-    const scheduleResponse = await fetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
+    const scheduleResponse = await apiFetch(`/api/schedule?otp_config_id=${config.otp_config_id}`)
     const scheduleResult = await scheduleResponse.json()
 
     checkbox.checked = scheduleResult.enabled || false
@@ -354,14 +356,15 @@ const loadAutoSyncState = async () => {
 
 const displaySyncStatus = async (otpConfigId) => {
   try {
-
-    let syncLogResponse
-    if (otpConfigId)
-      syncLogResponse = await fetch(`/api/sync-log/latest?otp_config_id=${otpConfigId}`)
-    else {
+    let syncLogUrl
+    if (otpConfigId) {
+      syncLogUrl = `/api/sync-log/latest?otp_config_id=${otpConfigId}`
+    } else {
       const gristContext = await getGristContext()
-      syncLogResponse = await fetch(`/api/sync-log/latest?grist_doc_id=${gristContext.docId}`)
+      syncLogUrl = `/api/sync-log/latest?grist_base_url=${encodeURIComponent(gristContext.baseUrl)}`
     }
+
+    const syncLogResponse = await apiFetch(syncLogUrl)
 
     const syncLogResult = await syncLogResponse.json()
 

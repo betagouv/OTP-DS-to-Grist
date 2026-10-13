@@ -91,7 +91,7 @@ const loadGroupes = async (otp_config_id = null) => {
     </div>`
 
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/groups?otp_config_id=${otp_config_id}`
     )
     const groups = await response.json()

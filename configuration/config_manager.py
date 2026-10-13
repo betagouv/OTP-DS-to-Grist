@@ -13,6 +13,10 @@ from utils.constants import DEMARCHES_API_URL
 logger = logging.getLogger(__name__)
 
 
+class ConfigNotFoundError(Exception):
+    """La configuration demandée est absente de la base de données."""
+
+
 class ConfigManager:
     """Gestionnaire de configuration optimisé avec sauvegarde robuste"""
 
@@ -225,15 +229,15 @@ class ConfigManager:
         finally:
             conn.close()
 
-    def load_config_by_id(self, otp_config_id):
+    def load_config_by_id(self, otp_config_id: int | str | None) -> dict:
         """Charge la configuration depuis la base de données par ID"""
+        if not otp_config_id:
+            raise ConfigNotFoundError("Configuration not found")
+
         conn = DatabaseManager.get_connection(self.database_url)
 
         try:
             with conn.cursor() as cursor:
-                if not otp_config_id:
-                    raise Exception("No otp config id")
-
                 cursor.execute(
                     """
                     SELECT id,
@@ -256,10 +260,12 @@ class ConfigManager:
                 row = cursor.fetchone()
 
                 if not row:
-                    raise Exception("Configuration not found")
+                    raise ConfigNotFoundError("Configuration not found")
 
                 return ConfigManager._build_config_from_row(row)
 
+        except ConfigNotFoundError:
+            raise
         except Exception as e:
             logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")
             conn.close()

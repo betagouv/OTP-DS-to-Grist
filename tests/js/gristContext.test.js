@@ -1,4 +1,10 @@
-const { getGristContext, getApiBaseUrlFromDocBaseUrl }  = require('../../static/js/gristContext.js')
+const {
+  getGristContext,
+  getApiBaseUrlFromDocBaseUrl,
+  getWidgetToken,
+  clearWidgetToken,
+  decodeWidgetTokenIdentity
+} = require('../../static/js/gristContext.js')
 
 beforeEach(() => {
   consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {}) // Supprime console.warn
@@ -47,11 +53,31 @@ it(
     const result = await getGristContext()
 
     expect(result).toEqual({
-      params: '?grist_user_id=123&grist_doc_id=456',
+      params: '?grist_base_url=http%3A%2F%2F0.0.0.0%3A8484%2Fo%2Fdocs%2Fapi',
       userId: '123',
       docId: '456',
       baseUrl: 'http://0.0.0.0:8484/o/docs/api'
     })
+    expect(consoleWarnSpy).not.toHaveBeenCalled()
+  }
+)
+
+it(
+  'should return params without throwing when baseUrl cannot be derived',
+  async () => {
+    grist.docApi.getAccessToken.mockResolvedValue({
+      token: createMockToken('123', '456'),
+      baseUrl: 'https://grist.example.com'
+    })
+
+    const result = await getGristContext()
+
+    expect(result).toEqual({
+      params: '?grist_base_url=undefined',
+      userId: '123',
+      docId: '456'
+    })
+    expect(result.baseUrl).toBeUndefined()
     expect(consoleWarnSpy).not.toHaveBeenCalled()
   }
 )
@@ -66,3 +92,50 @@ it(
     ).toBe('https://grist.numerique.gouv.fr/o/docs/api')
   }
 )
+
+const createTokenWithExp = (expInSecondsFromNow, userId = '1', docId = 'd') => {
+  const payload = { userId, docId, exp: Math.floor(Date.now() / 1000) + expInSecondsFromNow }
+  return `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
+}
+
+it('decodes widget token identity', () => {
+  expect(decodeWidgetTokenIdentity(createTokenWithExp(900, '7', 'docz')))
+    .toMatchObject({ userId: '7', docId: 'docz' })
+})
+
+describe('getWidgetToken', () => {
+  beforeEach(() => {
+    clearWidgetToken()
+    delete global.grist
+  })
+
+  it('returns null when grist is unavailable', async () => {
+    expect(await getWidgetToken()).toBeNull()
+  })
+
+  it('mints a token once and serves it from cache', async () => {
+    const token = createTokenWithExp(900)
+    const getAccessToken = jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 })
+    global.grist = { ready: jest.fn(), docApi: { getAccessToken } }
+
+    const first = await getWidgetToken()
+    const second = await getWidgetToken()
+
+    expect(first.token).toBe(token)
+    expect(second).toBe(first)
+    expect(getAccessToken).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-mints when the cached token is close to expiry', async () => {
+    const getAccessToken = jest.fn()
+      .mockResolvedValueOnce({ token: createTokenWithExp(30), baseUrl: 'http://x/api', ttlMsecs: 900000 })
+      .mockResolvedValueOnce({ token: createTokenWithExp(900), baseUrl: 'http://x/api', ttlMsecs: 900000 })
+    global.grist = { ready: jest.fn(), docApi: { getAccessToken } }
+
+    const first = await getWidgetToken()
+    const second = await getWidgetToken()
+
+    expect(getAccessToken).toHaveBeenCalledTimes(2)
+    expect(second.token).not.toBe(first.token)
+  })
+})

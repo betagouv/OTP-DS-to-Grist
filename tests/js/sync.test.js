@@ -219,6 +219,72 @@ describe('updateTaskProgress', () => {
   })
 
   it(
+    'un sync « déjà à jour » ne détruit pas le template de la bannière suivante', () => {
+    document.body.innerHTML = `<div id="sync_progress_container">
+      <div id="sync_progress" style="display: block;">
+        <span id="sync-progress-text">Progression</span>
+        <div id="progress_percentage">0%</div>
+        <div id="progress_bar" style="width: 0%;"></div>
+        <div id="elapsed_time">0s</div>
+        <div id="processing_speed">-</div>
+        <div id="eta">-</div>
+      </div>
+      <div id="sync_result">
+        <div id="result_content_auto">
+          <div class="sync_banner_template">
+            <div class="fr-alert" role="alert">
+              <h3 class="fr-alert__title"></h3>
+              <p class="sync-banner-count"></p>
+              <p class="sync-banner-date fr-text--sm"></p>
+            </div>
+          </div>
+        </div>
+        <div id="result_content_manual">
+          <div class="sync_banner_template">
+            <div class="fr-alert" role="alert">
+              <h3 class="fr-alert__title"></h3>
+              <p class="sync-banner-count"></p>
+              <p class="sync-banner-date fr-text--sm"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="sync_controls"></div>`
+
+    globalThis.startTime = null
+    globalThis.successCount = 13
+    globalThis.errorCount = 0
+    globalThis.totalDossiers = 13
+    globalThis.logsCount = 0
+    globalThis.logsVisible = false
+    globalThis.updateStatsFromLog = () => {}
+
+    // 1er sync terminé : classé déjà à jour par le backend
+    updateTaskProgress({
+      status: 'completed',
+      sync_reason: 'already_up_to_date',
+      message: 'Grist déjà à jour',
+      progress: 100,
+      result: {}
+    })
+
+    // 2e sync terminée : succès avec 13 dossiers — la bannière doit s'afficher
+    updateTaskProgress({
+      status: 'completed',
+      message: 'Sync terminée',
+      progress: 100,
+      result: {}
+    })
+
+    const resultContentManual = document.getElementById('result_content_manual')
+    expect(resultContentManual.querySelector('.sync_banner_template')).not.toBeNull()
+    const h3 = resultContentManual.querySelector('h3')
+    const titleText = h3.textContent || h3.innerText || ''
+    expect(titleText).toContain('Synchronisation terminée avec succès')
+  })
+
+  it(
     'rend les logs reçus en delta sans duplication',
     () => {
       document.body.innerHTML = `<div id="progress_bar" style="width: 0%;"></div>
@@ -747,7 +813,7 @@ describe('displaySyncStatus(otp_config_id)', () => {
       global.fetch = jest.fn().mockRejectedValue(new Error('Network error'))
 
       // Appel de la fonction
-      await displaySyncStatus()
+      await displaySyncStatus(123)
 
       // Vérifications - ne doit pas planter, juste logger l'erreur
       expect(consoleErrorSpy).toHaveBeenCalled()
@@ -756,6 +822,13 @@ describe('displaySyncStatus(otp_config_id)', () => {
 })
 
 describe('displaySyncStatus()', () => {
+  const GRIST_CONTEXT = {
+    params: '',
+    userId: 'user',
+    docId: 'doc',
+    baseUrl: 'https://grist.example.com/api'
+  }
+
   beforeEach(() => {
     // Setup DOM simulé pour les éléments utilisés par displaySyncStatus
     document.body.innerHTML = `
@@ -780,7 +853,8 @@ describe('displaySyncStatus()', () => {
       </div>
     `
 
-    // Mocks
+    // Sans otp_config_id, le contexte Grist fournit l'URL de base
+    global.getGristContext = jest.fn().mockResolvedValue(GRIST_CONTEXT)
     global.fetch = jest.fn()
 
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
@@ -793,7 +867,7 @@ describe('displaySyncStatus()', () => {
   it(
       'Affichage des 2 bannières',
       async () => {
-        // Mock fetch pour /api/config, /api/schedule et /api/sync-log/latest
+        // Mock fetch pour /api/sync-log/latest (rapport par document Grist)
         global.fetch = jest.fn()
           .mockResolvedValueOnce({
             json: jest.fn().mockResolvedValue({
@@ -815,6 +889,11 @@ describe('displaySyncStatus()', () => {
 
         await displaySyncStatus()
 
+        // Le rapport est demandé par URL de base Grist, encodée
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/sync-log/latest?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
+        )
+
         const autoDiv = document.getElementById('result_content_auto')
         expect(autoDiv.style.display).toBe('block')
 
@@ -835,12 +914,6 @@ describe('displaySyncStatus()', () => {
     'afficher l\'état désactivé quand la programmation n\'est pas activée',
     async () => {
       global.fetch = jest.fn()
-        .mockResolvedValueOnce({
-          json: jest.fn().mockResolvedValue({
-            otp_config_id: 123,
-            has_grist_key: true
-          })
-        })
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
             success: true,

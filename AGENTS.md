@@ -124,6 +124,16 @@ Préférer des affectations explicites plutôt que des modification de variables
 Voir `tests/README.md` pour les commandes et conventions.
 Ne jamais modifier le code testé pour faire passer les tests. Si c'est vraiment un bloquage, prévenir l'utilisateur.
 
+### Prévention des régressions
+
+Avant de supprimer ou d'altérer un comportement (fonction, route, paramètre, message, champ) :
+- Rechercher les tests et le code front qui référencent ce symbole ou cette route, et
+  **lister à l'utilisateur les tests impactés** avant de continuer.
+- La suppression ou la neutralisation d'un test existant est un **point d'arrêt** :
+  demander une validation explicite de l'utilisateur avant de la faire.
+
 ## Documentations
 
 Consulter `docs/` pour les guides techniques.
+
+`CHANGELOG.md` est généré automatiquement par release-please.

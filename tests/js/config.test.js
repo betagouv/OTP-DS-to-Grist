@@ -290,8 +290,6 @@ describe('loadConfiguration', () => {
   beforeEach(() => {
     // Setup DOM simulé pour les champs du formulaire
     document.body.innerHTML = `
-      <input id="grist_doc_id">
-      <input id="grist_user_id">
       <input id="grist_base_url">
       <input id="ds_api_token">
       <input id="demarche_number">
@@ -326,7 +324,7 @@ describe('loadConfiguration', () => {
     async () => {
       // Mock getGristContext
       getGristContext.mockResolvedValue({
-        params: '?grist_user_id=5&grist_doc_id=doc123',
+        params: '?grist_base_url=%2F',
         userId: 5,
         docId: 'doc123',
         baseUrl: '/'
@@ -357,12 +355,8 @@ describe('loadConfiguration', () => {
       // Appel de la fonction
       await loadConfiguration()
 
-      // Vérifications des champs pré-remplis depuis le contexte
-      expect(document.getElementById('grist_doc_id').value).toBe('doc123')
-      expect(document.getElementById('grist_user_id').value).toBe('5')
-      expect(document.getElementById('grist_base_url').value).toBe('x/xx/x')
-
       // Vérifications des champs remplis depuis la config (car hasConfig = true)
+      expect(document.getElementById('grist_base_url').value).toBe('x/xx/x')
       expect(document.getElementById('ds_api_token').value).toBe('')
       expect(document.getElementById('demarche_number').value).toBe('123')
       expect(document.getElementById('grist_api_key').value).toBe('')
@@ -386,7 +380,7 @@ describe('loadConfiguration', () => {
     async () => {
       // Mock getGristContext
       getGristContext.mockResolvedValue({
-        params: '?grist_user_id=5&grist_doc_id=doc123',
+        params: '?grist_base_url=http%3A%2F%2Flocalhost%3A8484%2Fo%2Fdocs%2Fapi',
         userId: 5,
         docId: 'doc123',
         baseUrl: 'http://localhost:8484/o/docs/api'
@@ -402,9 +396,7 @@ describe('loadConfiguration', () => {
       // Appel de la fonction
       await loadConfiguration()
 
-      // Vérifications : les champs restent vides ou par défaut
-      expect(document.getElementById('grist_doc_id').value).toBe('doc123')
-      expect(document.getElementById('grist_user_id').value).toBe('5')
+      // Vérifications : la base url issue du contexte est appliquée avant l'erreur fetch
       expect(document.getElementById('grist_base_url').value).toBe('http://localhost:8484/o/docs/api')
 
       // Vérifications des appels
@@ -435,8 +427,6 @@ describe('saveConfiguration', () => {
         <input id="demarche_number" value="123">
         <input id="grist_base_url" value="https://grist.example.com">
         <input id="grist_api_key" value="new_key">
-        <input id="grist_doc_id" value="doc123">
-        <input id="grist_user_id" value="5">
         <input id="date_debut" value="2023-01-01">
         <input id="date_fin" value="2023-12-31">
         <input type="checkbox" name="statuts" value="en_construction" checked>
@@ -496,8 +486,6 @@ describe('saveConfiguration', () => {
         demarche_number: '123',
         grist_base_url: 'https://grist.example.com',
         grist_api_key: 'new_key',
-        grist_doc_id: 'doc123',
-        grist_user_id: '5',
         filter_date_start: '2023-01-01',
         filter_date_end: '2023-12-31',
         filter_statuses: 'en_construction',
@@ -515,8 +503,6 @@ describe('saveConfiguration', () => {
         <input id="demarche_number" value="123">
         <input id="grist_base_url" value="https://grist.numerique.gouv.fr/api">
         <input id="grist_api_key" value=""> <!-- Vide pour sauvegarde partielle -->
-        <input id="grist_doc_id" value="doc123">
-        <input id="grist_user_id" value="5">
         <input id="date_debut" value="2023-01-01">
         <input id="date_fin" value="2023-12-31">
         <input type="checkbox" name="statuts" value="en_construction" checked>
@@ -575,8 +561,6 @@ describe('saveConfiguration', () => {
         ds_api_token: 'test_token',
         demarche_number: '123',
         grist_base_url: 'https://grist.numerique.gouv.fr/api',
-        grist_doc_id: 'doc123',
-        grist_user_id: '5',
         filter_date_start: '2023-01-01',
         filter_date_end: '2023-12-31',
         filter_statuses: 'en_construction',
@@ -597,8 +581,6 @@ describe('saveConfiguration', () => {
         <input id="demarche_number" value="123">
         <input id="grist_base_url" value="https://grist.numerique.gouv.fr/api">
         <input id="grist_api_key" value="">
-        <input id="grist_doc_id" value="doc123">
-        <input id="grist_user_id" value="5">
         <input id="date_debut" value="">
         <input id="date_fin" value="">`
 
