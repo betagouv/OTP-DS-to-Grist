@@ -77,9 +77,6 @@ class TestDatabaseManager(unittest.TestCase):
         # Mock the fetchone for id column check
         mock_cursor.fetchone.return_value = [1]  # Column exists
 
-        # Mock count for empty table check
-        mock_cursor.fetchone.side_effect = [[1], [0]]  # First for id, second for count
-
         DatabaseManager.create_table_if_not_exists(mock_conn)
 
         # Vérifier que execute a été appelé plusieurs fois
@@ -92,8 +89,8 @@ class TestDatabaseManager(unittest.TestCase):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
-        # Column id existe, table non vide
-        mock_cursor.fetchone.side_effect = [[1], [1]]
+        # Column id existe
+        mock_cursor.fetchone.return_value = [1]
 
         DatabaseManager.create_table_if_not_exists(mock_conn)
 
@@ -111,7 +108,7 @@ class TestDatabaseManager(unittest.TestCase):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
-        # Column id existe, table non vide (fetchone appelé 4 fois sur 2 exécutions)
+        # Column id existe (fetchone appelé une fois par exécution)
         mock_cursor.fetchone.side_effect = lambda: [1]
 
         # Exécuter deux fois la même migration
