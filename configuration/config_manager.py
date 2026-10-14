@@ -276,7 +276,9 @@ class ConfigManager:
                 row = cursor.fetchone()
 
                 if not row:
-                    raise ConfigNotFoundError("Configuration not found")
+                    raise ConfigNotFoundError(
+                        f"Configuration non trouvée (id={otp_config_id})"
+                    )
 
                 return ConfigManager._build_config_from_row(row)
 
@@ -326,7 +328,9 @@ class ConfigManager:
                         logger.error(
                             f"Configuration non trouvée pour id={otp_config_id}"
                         )
-                        raise ConfigNotFoundError("Configuration not found")
+                        raise ConfigNotFoundError(
+                            f"Configuration non trouvée (id={otp_config_id})"
+                        )
 
                     # L'URL de base Grist est immuable : un champ vide signifie
                     # « pas de changement demandé », toute autre valeur doit

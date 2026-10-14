@@ -752,7 +752,7 @@ class TestConfigManager:
             ConfigManager, "fetch_and_store_grist_user_email"
         ) as mock_fetch:
             config_manager = ConfigManager("dummy_url")
-            with pytest.raises(ConfigNotFoundError):
+            with pytest.raises(ConfigNotFoundError) as exc_info:
                 config_manager.save_config(
                     {
                         "otp_config_id": 999,  # ID inexistant
@@ -764,6 +764,8 @@ class TestConfigManager:
                         "grist_user_id": "test_user",
                     }
                 )
+
+        assert "(id=999)" in str(exc_info.value)
 
         mock_fetch.assert_not_called()
 
