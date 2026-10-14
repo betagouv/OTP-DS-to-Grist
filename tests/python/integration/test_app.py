@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app import ConfigManager, sync_manager
-from configuration.config_manager import ConfigNotFoundError
+from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 
@@ -69,47 +69,47 @@ class TestEndpoints:
         assert data["success"] is False
         assert "requis" in data["message"]
 
-    @patch("app.SessionLocal")
     @patch.object(ConfigManager, "save_config")
-    def test_api_config_post_partial_save_success(
-        self, mock_save, mock_session, client
-    ):
-        """Test de sauvegarde partielle réussie (sans clé API Grist)"""
-        mock_save.return_value = True
+    def test_api_config_post_without_grist_key_rejected(self, mock_save, client):
+        """Création sans clé API Grist → 400 (la sauvegarde partielle est interdite)"""
+        mock_save.side_effect = ConfigIncompleteError(["grist_api_key"])
 
-        # Mock pour l'id
-        mock_db = mock_session.return_value
-        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
-        mock_otp.id = 456
-
-        # Configuration partielle (sans grist_api_key)
         config_data = {
             "ds_api_token": "token123",
             "demarche_number": "12345",
             "grist_base_url": "https://grist.numerique.gouv.fr/api",
             "grist_doc_id": "doc123",
             "grist_user_id": "user456",
-            # grist_api_key manquant (sauvegarde partielle)
+            # grist_api_key manquant
         }
 
         response = client.post(
             "/api/config", data=json.dumps(config_data), content_type="application/json"
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 400
         data = json.loads(response.data)
-        assert data["success"] is True
-        assert "sauvegardée" in data["message"]
-        assert data["otp_config_id"] == 456
+        assert data["success"] is False
+        assert data["message"] == "Le champ grist_api_key est requis"
 
-        # Vérifier que save_config a été appelé avec la configuration partielle
-        mock_save.assert_called_once()
-        call_args = mock_save.call_args[0][0]
-        assert call_args["ds_api_token"] == "token123"
-        assert call_args["demarche_number"] == "12345"
-        assert call_args["grist_base_url"] == "https://grist.numerique.gouv.fr/api"
-        assert call_args["grist_doc_id"] == "docA"
-        assert call_args["grist_user_id"] == "userA"
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_config_update_config_not_found(self, mock_load, client):
+        """Update avec un otp_config_id inexistant → 404"""
+        mock_load.side_effect = ConfigNotFoundError("Configuration not found")
+
+        response = client.post(
+            "/api/config",
+            json={
+                "otp_config_id": 999,
+                "grist_doc_id": "doc123",
+                "grist_user_id": "user456",
+            },
+        )
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == "Configuration non trouvée"
 
     @patch.object(ConfigManager, "save_config")
     @patch("app.SessionLocal")

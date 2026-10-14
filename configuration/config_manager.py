@@ -12,9 +12,25 @@ from utils.constants import DEMARCHES_API_URL
 
 logger = logging.getLogger(__name__)
 
+REQUIRED_CONFIG_FIELDS = [
+    "ds_api_token",
+    "demarche_number",
+    "grist_base_url",
+    "grist_doc_id",
+    "grist_user_id",
+]
+
 
 class ConfigNotFoundError(Exception):
     """La configuration demandée est absente de la base de données."""
+
+
+class ConfigIncompleteError(Exception):
+    """La configuration est incomplète : un ou plusieurs champs requis manquent."""
+
+    def __init__(self, missing: list[str]):
+        self.missing = missing
+        super().__init__(f"Le champ {missing[0]} est requis")
 
 
 class ConfigManager:
@@ -273,15 +289,26 @@ class ConfigManager:
         finally:
             conn.close()
 
-    def save_config(self, config):
-        """Sauvegarde la configuration dans la base de données"""
-        conn = DatabaseManager.get_connection(self.database_url)
+    def save_config(self, config: dict) -> bool:
+        """Sauvegarde la configuration dans la base de données.
+
+        Lève ConfigIncompleteError quand un champ requis est absent : la
+        validation des créations précède toute connexion à la base.
+        """
         config = ConfigManager.normalize_config(config)
+        otp_config_id = config.get("otp_config_id")
+
+        if not otp_config_id:
+            missing = [
+                field for field in REQUIRED_CONFIG_FIELDS if not config.get(field)
+            ]
+            if missing:
+                raise ConfigIncompleteError(missing)
+
+        conn = DatabaseManager.get_connection(self.database_url)
 
         try:
             with conn.cursor() as cursor:
-                otp_config_id = config.get("otp_config_id")
-
                 if otp_config_id:
                     # UPDATE par ID
                     # Charger l'existant pour gérer les tokens vides
@@ -327,6 +354,8 @@ class ConfigManager:
                         if grist_api_key
                         else row[1]  # existant déjà chiffré
                     )
+                    if not grist_api_key_encrypted:
+                        raise ConfigIncompleteError(["grist_api_key"])
 
                     # UPDATE par ID
                     cursor.execute(
@@ -359,19 +388,6 @@ class ConfigManager:
                     logger.info(f"Configuration mise à jour pour id={otp_config_id}")
                 else:
                     # INSERT nouvelle configuration
-                    # Validation des champs requis
-                    required_fields = [
-                        "ds_api_token",
-                        "demarche_number",
-                        "grist_base_url",
-                        "grist_doc_id",
-                        "grist_user_id",
-                    ]
-                    for field in required_fields:
-                        if not config.get(field):
-                            logger.error(f"Champ requis manquant: {field}")
-                            return False
-
                     # L'URL de base Grist doit désigner une instance autorisée.
                     assert_base_url_allowed(config["grist_base_url"])
                     effective_base_url = config["grist_base_url"]
@@ -403,6 +419,9 @@ class ConfigManager:
                         existing = cursor.fetchone()
                         if existing:
                             grist_api_key_encrypted = existing[0]
+
+                    if not grist_api_key_encrypted:
+                        raise ConfigIncompleteError(["grist_api_key"])
 
                     cursor.execute(
                         """
@@ -449,18 +468,14 @@ class ConfigManager:
                     self.fetch_and_store_grist_user_email(
                         otp_config_id, effective_base_url, grist_api_key_decrypted
                     )
-        except GristBaseUrlImmutableError:
-            if conn:
-                conn.close()
-            raise
-        except GristBaseUrlNotAllowedError:
-            if conn:
-                conn.close()
+        except (
+            GristBaseUrlImmutableError,
+            GristBaseUrlNotAllowedError,
+            ConfigIncompleteError,
+        ):
             raise
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
-            if conn:
-                conn.close()
             return False
         finally:
             if conn:

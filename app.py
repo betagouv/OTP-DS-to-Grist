@@ -16,7 +16,11 @@ from flask import Flask, Response, g, jsonify, render_template, request, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from configuration.config_manager import ConfigManager
+from configuration.config_manager import (
+    ConfigIncompleteError,
+    ConfigManager,
+    ConfigNotFoundError,
+)
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from dn.client import get_groups
@@ -349,9 +353,9 @@ def api_config():
             otp_config_id = new_config.get("otp_config_id")
             if otp_config_id:
                 # Update existant - Charger la config pour vérification
-                existing_config = config_manager.load_config_by_id(otp_config_id)
-
-                if not existing_config:
+                try:
+                    existing_config = config_manager.load_config_by_id(otp_config_id)
+                except ConfigNotFoundError:
                     return jsonify(
                         {"success": False, "message": "Configuration non trouvée"}
                     ), 404
@@ -367,46 +371,19 @@ def api_config():
                 # Passer le dict à save_config() qui gère l'update par ID et les tokens
                 success = config_manager.save_config(new_config)
 
-                return (
-                    (
-                        jsonify(
-                            {
-                                "success": True,
-                                "message": "Configuration mise à jour avec succès",
-                                "otp_config_id": otp_config_id,
-                            }
-                        ),
-                        200,
-                    )
-                    if success
-                    else (
-                        jsonify(
-                            {
-                                "success": False,
-                                "message": "Erreur lors de la mise à jour",
-                            }
-                        ),
-                        500,
-                    )
-                )
-            else:
-                # Création - champs minimum pour sauvegarde partielle
-                required_fields = [
-                    "ds_api_token",
-                    "demarche_number",
-                    "grist_base_url",
-                    "grist_doc_id",
-                    "grist_user_id",
-                ]
+                if success:
+                    return jsonify(
+                        {
+                            "success": True,
+                            "message": "Configuration mise à jour avec succès",
+                            "otp_config_id": otp_config_id,
+                        }
+                    ), 200
 
-                for field in required_fields:
-                    if not new_config.get(field):
-                        return jsonify(
-                            {
-                                "success": False,
-                                "message": f"Le champ {field} est requis",
-                            }
-                        ), 400
+                return jsonify(
+                    {"success": False, "message": "Erreur lors de la mise à jour"}
+                ), 500
+            else:
                 success = config_manager.save_config(new_config)
                 if success:
                     db = SessionLocal()
@@ -442,6 +419,8 @@ def api_config():
                 }
             ), 403
         except GristBaseUrlNotAllowedError as e:
+            return jsonify({"success": False, "message": str(e)}), 400
+        except ConfigIncompleteError as e:
             return jsonify({"success": False, "message": str(e)}), 400
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")

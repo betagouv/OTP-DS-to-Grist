@@ -1,7 +1,7 @@
 import pytest
 import os
 from unittest.mock import patch, MagicMock
-from configuration.config_manager import ConfigManager
+from configuration.config_manager import ConfigIncompleteError, ConfigManager
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 
 
@@ -297,13 +297,14 @@ class TestConfigManager:
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(os.environ, {"ENCRYPTION_KEY": "test_key"})
     def test_save_config_invalid_params(self, mock_db_manager):
-        """Test d'erreur de sauvegarde avec paramètres invalides"""
-        # La méthode retourne False au lieu de lever une exception
+        """Champs requis manquants → ConfigIncompleteError avant toute connexion"""
         config_manager = ConfigManager("dummy_url")
-        result = config_manager.save_config(
-            {"grist_user_id": "", "grist_doc_id": "test_doc"}
-        )
-        assert result is False
+        with pytest.raises(ConfigIncompleteError):
+            config_manager.save_config(
+                {"grist_user_id": "", "grist_doc_id": "test_doc"}
+            )
+
+        mock_db_manager.get_connection.assert_not_called()
 
     def test_sensitive_keys_constant(self):
         """Test de la constante SENSITIVE_KEYS"""
@@ -316,15 +317,15 @@ class TestConfigManager:
         os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
     )
     def test_save_config_partial_without_grist_key(self, mock_db_manager):
-        """Test de la sauvegarde partielle sans clé API Grist — aucune config existante → fallback vide"""
+        """INSERT sans clé API Grist ni config existante à copier → ConfigIncompleteError"""
         # Mock de la connexion DB
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
         mock_db_manager.get_connection.return_value = mock_conn
 
-        # Aucune config existante pour copier la clé (SELECT copie) puis id retourné par INSERT
-        mock_cursor.fetchone.side_effect = [None, (9,)]
+        # Aucune config existante pour copier la clé
+        mock_cursor.fetchone.return_value = None
 
         with (
             patch.object(
@@ -337,39 +338,32 @@ class TestConfigManager:
             ) as mock_fetch,
         ):
             config_manager = ConfigManager("dummy_url")
-            result = config_manager.save_config(
-                {
-                    "ds_api_token": "test_token",
-                    "demarche_number": "12345",
-                    "grist_base_url": "https://grist.numerique.gouv.fr/api",
-                    "grist_doc_id": "test_doc",
-                    "grist_user_id": "test_user",
-                    # grist_api_key manquant (sauvegarde partielle)
-                    "filter_date_start": "2023-01-01",
-                    "filter_date_end": "2023-12-31",
-                    "filter_statuses": "status1,status2",
-                    "filter_groups": "group1,group2",
-                }
-            )
+            with pytest.raises(ConfigIncompleteError) as exc_info:
+                config_manager.save_config(
+                    {
+                        "ds_api_token": "test_token",
+                        "demarche_number": "12345",
+                        "grist_base_url": "https://grist.numerique.gouv.fr/api",
+                        "grist_doc_id": "test_doc",
+                        "grist_user_id": "test_user",
+                        # grist_api_key manquant
+                        "filter_date_start": "2023-01-01",
+                        "filter_date_end": "2023-12-31",
+                        "filter_statuses": "status1,status2",
+                        "filter_groups": "group1,group2",
+                    }
+                )
 
-        assert result is True
+        assert exc_info.value.missing == ["grist_api_key"]
+        assert str(exc_info.value) == "Le champ grist_api_key est requis"
 
         # Pas de clé Grist effective → aucun appel de récupération d'email
         mock_fetch.assert_not_called()
 
-        # SELECT (copy query) + INSERT = 2 appels
-        assert mock_cursor.execute.call_count == 2
-        insert_call = mock_cursor.execute.call_args_list[1]
-        assert "INSERT INTO otp_configurations" in insert_call[0][0]
-
-        # Vérifier que les valeurs chiffrées sont correctes
-        call_args = insert_call[0]
-        assert call_args[1][0] == "encrypted_test_token"  # ds_api_token
-        assert call_args[1][1] == "12345"  # demarche_number
-        assert (
-            call_args[1][2] == "https://grist.numerique.gouv.fr/api"
-        )  # grist_base_url
-        assert call_args[1][3] == ""  # grist_api_key vide (pas de config existante)
+        # SELECT (copy query) uniquement : rien n'est écrit
+        assert mock_cursor.execute.call_count == 1
+        copy_call = mock_cursor.execute.call_args_list[0]
+        assert "WHERE grist_user_id = %s AND grist_doc_id = %s" in copy_call[0][0]
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(
@@ -613,6 +607,43 @@ class TestConfigManager:
         call_args = update_call[0][1]
         assert call_args[0] == "encrypted_new_token"  # nouveau token DS chiffré
         assert call_args[2] == "existing_encrypted_key"  # clé Grist existante conservée
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_save_config_update_without_grist_key_in_db(self, mock_db_manager):
+        """Update d'une configuration sans aucune clé Grist en base → ConfigIncompleteError"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        # Config existante sans clé Grist en base
+        mock_cursor.fetchone.return_value = [
+            "existing_encrypted_token",
+            None,
+            "https://test.grist.com",
+        ]
+
+        config_manager = ConfigManager("dummy_url")
+        with pytest.raises(ConfigIncompleteError) as exc_info:
+            config_manager.save_config(
+                {
+                    "otp_config_id": 1,
+                    "ds_api_token": "",  # vide → garder l'existant
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "",  # vide → aucune clé en base non plus
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                }
+            )
+
+        assert exc_info.value.missing == ["grist_api_key"]
+
+        # SELECT uniquement : rien n'est écrit
+        assert mock_cursor.execute.call_count == 1
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(
