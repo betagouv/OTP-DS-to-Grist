@@ -112,13 +112,9 @@ class TestEndpoints:
         assert data["message"] == "Configuration non trouvée"
 
     @patch.object(ConfigManager, "save_config")
-    @patch("app.SessionLocal")
-    def test_api_config_post_normalizes_types(self, mock_session, mock_save, client):
+    def test_api_config_post_normalizes_types(self, mock_save, client):
         """Vérifie que les types mixtes (int, bool) sont normalisés en str par le POST"""
-        mock_save.return_value = True
-        mock_db = mock_session.return_value
-        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
-        mock_otp.id = 789
+        mock_save.return_value = 789
 
         config_data = {
             "ds_api_token": "token123",
@@ -158,6 +154,35 @@ class TestEndpoints:
         assert isinstance(normalized["parallel"], bool)
 
     @patch.object(ConfigManager, "save_config")
+    @patch("app.SessionLocal")
+    def test_api_config_post_returns_id_from_save_config(
+        self, mock_session, mock_save, client
+    ):
+        """La réponse porte l'id retourné par save_config, sans relecture SessionLocal"""
+        mock_save.return_value = 789
+        # Simule une autre config existante pour le même user/doc
+        mock_otp = (
+            mock_session.return_value.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_otp.id = 999
+
+        config_data = {
+            "ds_api_token": "token123",
+            "demarche_number": "12345",
+            "grist_base_url": "https://grist.numerique.gouv.fr/api",
+            "grist_doc_id": "doc123",
+            "grist_user_id": "user456",
+            "grist_api_key": "key123",
+        }
+
+        response = client.post("/api/config", json=config_data)
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["otp_config_id"] == 789
+        mock_session.assert_not_called()
+
+    @patch.object(ConfigManager, "save_config")
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_config_update_base_url_unchanged_success(
         self, mock_load, mock_save, client
@@ -168,7 +193,7 @@ class TestEndpoints:
             "grist_doc_id": "docA",
             "grist_base_url": "https://grist.test.com/api",
         }
-        mock_save.return_value = True
+        mock_save.return_value = 1
 
         response = client.post(
             "/api/config",

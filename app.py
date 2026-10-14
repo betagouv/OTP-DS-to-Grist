@@ -384,21 +384,8 @@ def api_config():
                     {"success": False, "message": "Erreur lors de la mise à jour"}
                 ), 500
             else:
-                success = config_manager.save_config(new_config)
-                if success:
-                    db = SessionLocal()
-                    try:
-                        otp_config = (
-                            db.query(OtpConfiguration)
-                            .filter_by(
-                                grist_user_id=new_config.get("grist_user_id", ""),
-                                grist_doc_id=new_config.get("grist_doc_id", ""),
-                            )
-                            .first()
-                        )
-                        otp_config_id = otp_config.id if otp_config else None
-                    finally:
-                        db.close()
+                otp_config_id = config_manager.save_config(new_config)
+                if otp_config_id:
                     return jsonify(
                         {
                             "success": True,
@@ -406,10 +393,9 @@ def api_config():
                             "otp_config_id": otp_config_id,
                         }
                     )
-                else:
-                    return jsonify(
-                        {"success": False, "message": "Erreur lors de la sauvegarde"}
-                    ), 500
+                return jsonify(
+                    {"success": False, "message": "Erreur lors de la sauvegarde"}
+                ), 500
 
         except GristBaseUrlImmutableError:
             return jsonify(

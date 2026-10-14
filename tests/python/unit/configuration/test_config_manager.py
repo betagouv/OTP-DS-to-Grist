@@ -223,7 +223,7 @@ class TestConfigManager:
                 }
             )
 
-        assert result is True
+        assert result == 1
 
         # L'email est récupéré avec la clé déchiffrée
         mock_fetch.assert_called_once_with(
@@ -239,6 +239,51 @@ class TestConfigManager:
         update_call = mock_cursor.execute.call_args_list[1]
         assert "UPDATE otp_configurations SET" in update_call[0][0]
         assert "filter_date_start" in update_call[0][0]
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_save_config_update_returns_id(self, mock_db_manager):
+        """UPDATE → save_config retourne l'id de la config mise à jour"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        mock_cursor.fetchone.return_value = [
+            "existing_encrypted_token",
+            "existing_encrypted_key",
+            "https://test.grist.com",
+        ]
+
+        with (
+            patch.object(
+                ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(ConfigManager, "fetch_and_store_grist_user_email"),
+        ):
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "otp_config_id": 42,
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                    "filter_date_start": "2023-01-01",
+                    "filter_date_end": "2023-12-31",
+                    "filter_statuses": "status1,status2",
+                    "filter_groups": "group1,group2",
+                }
+            )
+
+        assert result == 42
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(
@@ -280,7 +325,7 @@ class TestConfigManager:
                 }
             )
 
-        assert result is True
+        assert result == 5
 
         # L'email est récupéré avec l'id retourné par l'INSERT et la clé déchiffrée
         mock_fetch.assert_called_once_with(
@@ -293,6 +338,45 @@ class TestConfigManager:
         assert "INSERT INTO otp_configurations" in insert_call[0][0]
         assert "RETURNING id" in insert_call[0][0]
         assert "filter_date_start" in insert_call[0][0]
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_save_config_insert_returns_id(self, mock_db_manager):
+        """INSERT → save_config retourne l'id de la config créée"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+        mock_cursor.fetchone.return_value = (5,)
+
+        with (
+            patch.object(
+                ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(ConfigManager, "fetch_and_store_grist_user_email"),
+        ):
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                    "filter_date_start": "2023-01-01",
+                    "filter_date_end": "2023-12-31",
+                    "filter_statuses": "status1,status2",
+                    "filter_groups": "group1,group2",
+                }
+            )
+
+        assert result == 5
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(os.environ, {"ENCRYPTION_KEY": "test_key"})
@@ -404,7 +488,7 @@ class TestConfigManager:
                 }
             )
 
-        assert result is True
+        assert result == 7
 
         # L'email est récupéré avec l'id retourné par l'INSERT et la clé existante déchiffrée
         mock_fetch.assert_called_once_with(
@@ -472,7 +556,7 @@ class TestConfigManager:
                 }
             )
 
-        assert result is True
+        assert result == 1
 
         # L'email est récupéré avec la clé existante déchiffrée
         mock_fetch.assert_called_once_with(
@@ -534,7 +618,7 @@ class TestConfigManager:
                 }
             )
 
-        assert result is True
+        assert result == 1
 
         # L'email est récupéré avec la nouvelle clé déchiffrée
         mock_fetch.assert_called_once_with(
@@ -595,7 +679,7 @@ class TestConfigManager:
                 }
             )
 
-        assert result is True
+        assert result == 1
 
         # L'email est récupéré avec la clé existante déchiffrée
         mock_fetch.assert_called_once_with(
@@ -754,7 +838,7 @@ class TestSaveConfigBaseUrl:
                 }
             )
 
-        assert result is True
+        assert result == 1
         assert mock_cursor.execute.call_count == 2  # SELECT + UPDATE
         update_call = mock_cursor.execute.call_args_list[1]
         assert "grist_base_url" not in update_call[0][0]
@@ -834,7 +918,7 @@ class TestConfigNormalization:
                 }
             )
 
-        assert result is True
+        assert result == 8
         mock_fetch.assert_called_once()
         insert_call = mock_cursor.execute.call_args_list[0]
 

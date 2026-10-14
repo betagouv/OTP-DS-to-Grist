@@ -289,8 +289,8 @@ class ConfigManager:
         finally:
             conn.close()
 
-    def save_config(self, config: dict) -> bool:
-        """Sauvegarde la configuration dans la base de données.
+    def save_config(self, config: dict) -> int | bool:
+        """Sauvegarde la configuration et retourne son id, ou False en cas d'échec.
 
         Lève ConfigIncompleteError quand un champ requis est absent : la
         validation des créations précède toute connexion à la base.
@@ -481,4 +481,4 @@ class ConfigManager:
             if conn:
                 conn.close()
 
-        return True
+        return otp_config_id
