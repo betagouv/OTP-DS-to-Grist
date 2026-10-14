@@ -71,14 +71,6 @@ const checkConfiguration = async (silent = false) => {
       if (silent)
         return config
 
-      const onlyGristKeyMissing = missingFields.length === 1
-        && missingFields[0] === 'has_grist_key'
-
-      if (onlyGristKeyMissing) {
-        resultDiv.innerHTML = ''
-        return config
-      }
-
       resultDiv.innerHTML = `
         <div class="fr-alert fr-alert--error">
           <h3 class="fr-alert__title">Configuration incomplète</h3>
@@ -263,6 +255,14 @@ const saveConfiguration = async () => {
     // Vérification spécifique pour ds_api_token : obligatoire si pas en base
     if (!dsToken && !currentConfig.has_ds_token) {
       showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
+      // Réactiver les boutons en cas d'erreur de validation
+      setButtonsDisabled(false)
+      return
+    }
+
+    // Vérification spécifique pour grist_api_key : obligatoire si pas en base
+    if (!grist_key && !currentConfig.has_grist_key) {
+      showNotification('Le champ "Clé API Grist" est requis', 'error')
       // Réactiver les boutons en cas d'erreur de validation
       setButtonsDisabled(false)
       return
