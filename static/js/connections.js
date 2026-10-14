@@ -10,7 +10,7 @@ const testDemarchesConnection = async (silent = false) => {
     const demarche_number = document.getElementById('demarche_number').value || ''
 
     // Utiliser le token saisi ou envoyer otp_config_id pour la récupération côté serveur
-    let ds_token = ds_token_input
+    const ds_token = ds_token_input
     let otp_config_id = null
     let config = null
 
@@ -18,7 +18,7 @@ const testDemarchesConnection = async (silent = false) => {
       try {
         [config] = (await getConfiguration())
         if (config?.otp_config_id) {
-          otp_config_id = config.otp_config_id
+          ({otp_config_id} = config)
         }
       } catch (e) {
         console.error('Erreur rechargement config:', e)
@@ -29,7 +29,12 @@ const testDemarchesConnection = async (silent = false) => {
       resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
         <p>Token API requis. Veuillez saisir votre token ou vérifier qu'il est sauvegardé.</p>
       </div>`
-      if (!silent) showNotification('Token API démarches simplifiées requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+      if (!silent) showNotification(
+        'Token API démarches simplifiées requis.'
+        + ' Veuillez saisir votre token ou vérifier qu’il est sauvegardé.',
+        'error'
+      )
+
       return false
     }
 
@@ -60,6 +65,7 @@ const testDemarchesConnection = async (silent = false) => {
         <p>${result.message}</p>
       </div>`
       if (!silent) showNotification(result.message, 'success')
+
       return true
     }
 
@@ -67,6 +73,7 @@ const testDemarchesConnection = async (silent = false) => {
       <p>${result.message}</p>
     </div>`
     showNotification(result.message, 'error')
+
     return false
 
   } catch (error) {
@@ -75,6 +82,7 @@ const testDemarchesConnection = async (silent = false) => {
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
     showNotification('Erreur lors du test de connexion', 'error')
+
     return false
   }
 }
@@ -104,9 +112,16 @@ const testGristConnection = async (silent = false) => {
     }
 
     if (!grist_key) {
-      if (!silent) showNotification('Token Grist requis. Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error')
+      if (!silent) showNotification(
+        'Token Grist requis.'
+        + ' Veuillez saisir votre token ou vérifier qu’il est sauvegardé.', 'error'
+      )
+
       return resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
-        <p>Clé API Grist requise. Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.</p>
+        <p>
+          Clé API Grist requise.
+          Veuillez saisir votre clé ou vérifier qu'elle est sauvegardée.
+        </p>
       </div>`
     }
 
@@ -140,6 +155,7 @@ const testGristConnection = async (silent = false) => {
         <p>${result.message}</p>
       </div>`
       if (!silent) showNotification(result.message, 'success')
+
       return true
     }
 
@@ -148,6 +164,7 @@ const testGristConnection = async (silent = false) => {
     </div>`
 
     showNotification(result.message, 'error')
+
     return false
 
   } catch (error) {
@@ -156,6 +173,7 @@ const testGristConnection = async (silent = false) => {
       <p>Erreur de connexion: ${error.message}</p>
     </div>`
     showNotification('Erreur lors du test de connexion', 'error')
+
     return false
   }
 }
@@ -217,7 +235,9 @@ const testWebSocket = () => {
 const testExternalConnections = async (silent = false) => {
   const resultDiv = document.getElementById('external_tests_result')
   if (!silent)
-    resultDiv.innerHTML = '<div class="fr-alert fr-alert--info"><p>Test des connexions externes en cours...</p></div>'
+    resultDiv.innerHTML = `<div class="fr-alert fr-alert--info">
+      <p>Test des connexions externes en cours...</p>
+    </div>`
 
   try {
     const config = (await getConfiguration())[0]
@@ -235,8 +255,11 @@ const testExternalConnections = async (silent = false) => {
     const result = await response.json()
 
     if (!response.ok) {
-      resultDiv.innerHTML = `<div class="fr-alert fr-alert--error"><p>${result.message}</p></div>`
+      resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+        <p>${result.message}</p>
+      </div>`
       showNotification(result.message, 'error')
+
       return
     }
 
@@ -268,7 +291,9 @@ const testExternalConnections = async (silent = false) => {
     }
 
   } catch (error) {
-    resultDiv.innerHTML = `<div class="fr-alert fr-alert--error"><p>Erreur: ${error.message}</p></div>`
+    resultDiv.innerHTML = `<div class="fr-alert fr-alert--error">
+      <p>Erreur: ${error.message}</p>
+    </div>`
     showNotification('Erreur lors des tests', 'error')
   }
 }
