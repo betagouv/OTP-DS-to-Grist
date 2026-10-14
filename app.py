@@ -369,33 +369,24 @@ def api_config():
                     return jsonify({"success": False, "message": "Forbidden"}), 403
 
                 # Passer le dict à save_config() qui gère l'update par ID et les tokens
-                success = config_manager.save_config(new_config)
-
-                if success:
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": "Configuration mise à jour avec succès",
-                            "otp_config_id": otp_config_id,
-                        }
-                    ), 200
+                config_manager.save_config(new_config)
 
                 return jsonify(
-                    {"success": False, "message": "Erreur lors de la mise à jour"}
-                ), 500
+                    {
+                        "success": True,
+                        "message": "Configuration mise à jour avec succès",
+                        "otp_config_id": otp_config_id,
+                    }
+                ), 200
             else:
                 otp_config_id = config_manager.save_config(new_config)
-                if otp_config_id:
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": "Configuration sauvegardée avec succès",
-                            "otp_config_id": otp_config_id,
-                        }
-                    )
                 return jsonify(
-                    {"success": False, "message": "Erreur lors de la sauvegarde"}
-                ), 500
+                    {
+                        "success": True,
+                        "message": "Configuration sauvegardée avec succès",
+                        "otp_config_id": otp_config_id,
+                    }
+                )
 
         except GristBaseUrlImmutableError:
             return jsonify(
@@ -408,6 +399,10 @@ def api_config():
             return jsonify({"success": False, "message": str(e)}), 400
         except ConfigIncompleteError as e:
             return jsonify({"success": False, "message": str(e)}), 400
+        except ConfigNotFoundError:
+            return jsonify(
+                {"success": False, "message": "Configuration non trouvée"}
+            ), 404
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
             return jsonify(

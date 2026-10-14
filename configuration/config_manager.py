@@ -289,8 +289,8 @@ class ConfigManager:
         finally:
             conn.close()
 
-    def save_config(self, config: dict) -> int | bool:
-        """Sauvegarde la configuration et retourne son id, ou False en cas d'échec.
+    def save_config(self, config: dict) -> int:
+        """Sauvegarde la configuration et retourne son id.
 
         Lève ConfigIncompleteError quand un champ requis est absent : la
         validation des créations précède toute connexion à la base.
@@ -326,7 +326,7 @@ class ConfigManager:
                         logger.error(
                             f"Configuration non trouvée pour id={otp_config_id}"
                         )
-                        return False
+                        raise ConfigNotFoundError("Configuration not found")
 
                     # L'URL de base Grist est immuable : un champ vide signifie
                     # « pas de changement demandé », toute autre valeur doit
@@ -476,7 +476,7 @@ class ConfigManager:
             raise
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde en base: {str(e)}")
-            return False
+            raise
         finally:
             if conn:
                 conn.close()

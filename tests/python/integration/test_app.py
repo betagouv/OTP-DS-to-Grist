@@ -112,6 +112,37 @@ class TestEndpoints:
         assert data["message"] == "Configuration non trouvée"
 
     @patch.object(ConfigManager, "save_config")
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_config_update_row_missing_during_save(
+        self, mock_load, mock_save, client
+    ):
+        """La config disparaît entre le load et le save → 404"""
+        mock_load.return_value = {
+            "grist_user_id": "userA",
+            "grist_doc_id": "docA",
+            "grist_base_url": "https://grist.test.com/api",
+        }
+        mock_save.side_effect = ConfigNotFoundError("Configuration not found")
+
+        response = client.post(
+            "/api/config",
+            json={
+                "otp_config_id": 7,
+                "ds_api_token": "token123",
+                "demarche_number": "12345",
+                "grist_base_url": "https://grist.test.com/api",
+                "grist_doc_id": "doc123",
+                "grist_user_id": "user456",
+                "grist_api_key": "key123",
+            },
+        )
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == "Configuration non trouvée"
+
+    @patch.object(ConfigManager, "save_config")
     def test_api_config_post_normalizes_types(self, mock_save, client):
         """Vérifie que les types mixtes (int, bool) sont normalisés en str par le POST"""
         mock_save.return_value = 789
@@ -995,7 +1026,7 @@ class TestErrorHandling:
     @patch.object(ConfigManager, "save_config")
     def test_api_config_post_save_failure(self, mock_save, client):
         """Test échec de sauvegarde configuration"""
-        mock_save.return_value = False
+        mock_save.side_effect = Exception("Erreur BDD")
 
         config_data = {
             "ds_api_token": "token",
@@ -1013,7 +1044,7 @@ class TestErrorHandling:
         assert response.status_code == 500
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Erreur lors de la sauvegarde" in data["message"]
+        assert "Erreur interne lors de la sauvegarde" in data["message"]
 
     @patch("app.SessionLocal")
     def test_api_schedule_post_success(self, mock_session, client):

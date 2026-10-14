@@ -1,7 +1,11 @@
 import pytest
 import os
 from unittest.mock import patch, MagicMock
-from configuration.config_manager import ConfigIncompleteError, ConfigManager
+from configuration.config_manager import (
+    ConfigIncompleteError,
+    ConfigManager,
+    ConfigNotFoundError,
+)
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 
 
@@ -734,7 +738,7 @@ class TestConfigManager:
         os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
     )
     def test_save_config_nonexistent_id(self, mock_db_manager):
-        """Test update avec otp_config_id inexistant → False"""
+        """Test update avec otp_config_id inexistant → ConfigNotFoundError"""
         # Mock de la connexion DB
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -748,20 +752,23 @@ class TestConfigManager:
             ConfigManager, "fetch_and_store_grist_user_email"
         ) as mock_fetch:
             config_manager = ConfigManager("dummy_url")
-            result = config_manager.save_config(
-                {
-                    "otp_config_id": 999,  # ID inexistant
-                    "ds_api_token": "test_token",
-                    "demarche_number": "12345",
-                    "grist_base_url": "https://test.grist.com",
-                    "grist_api_key": "test_key",
-                    "grist_doc_id": "test_doc",
-                    "grist_user_id": "test_user",
-                }
-            )
+            with pytest.raises(ConfigNotFoundError):
+                config_manager.save_config(
+                    {
+                        "otp_config_id": 999,  # ID inexistant
+                        "ds_api_token": "test_token",
+                        "demarche_number": "12345",
+                        "grist_base_url": "https://test.grist.com",
+                        "grist_api_key": "test_key",
+                        "grist_doc_id": "test_doc",
+                        "grist_user_id": "test_user",
+                    }
+                )
 
-        assert result is False
         mock_fetch.assert_not_called()
+
+        # SELECT uniquement : rien n'est écrit
+        assert mock_cursor.execute.call_count == 1
 
 
 class TestSaveConfigBaseUrl:
