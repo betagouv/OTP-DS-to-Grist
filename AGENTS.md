@@ -36,6 +36,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 
 - Lancer les tests associés après chaque modification
 - Ne jamais committer, pousser ni stager : laisser l'utilisateur préparer, créer et valider ses propres commits après relecture
+- Mettre à jour la todo list à chaque changement d'état (étape terminée, annulée, nouveau plan, décision) — pas seulement en fin de tâche
 
 ## Architecture du projet
 
