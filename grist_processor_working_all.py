@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 import repetable_processor as rp
 from deleted_dossiers_checker import check_deleted_dossiers
-from grist.client import GristClient, GristReadError
+from grist.client import GristClient, GristReadError, extract_dossier_numbers
 from grist.column_cache import ColumnCache
 from grist.columns import hide_columns_with_id
 from grist.formatter import format_value
@@ -38,7 +38,7 @@ from utils.constants import (
     EXIT_CODE_EXTERNAL_API_ERROR,
     EXIT_CODE_GRIST_READ_ERROR,
 )
-from utils.log import log, log_verbose, log_error, log_progress
+from utils.log import format_numbers, log, log_verbose, log_error, log_progress
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -1238,7 +1238,7 @@ def process_demarche_for_grist_optimized(
                     column_cache=column_cache,
                 )
                 if not success:
-                    failed_dossiers.update(_dossier_numbers(champ_records))
+                    failed_dossiers.update(extract_dossier_numbers(champ_records))
 
                 log(f"[TIMING] Après upsert champs: {time.time() - page_start:.1f}s")
                 log_progress.log("Mise à jour des enregistrements de champs")
@@ -1254,7 +1254,7 @@ def process_demarche_for_grist_optimized(
                     column_cache=column_cache,
                 )
                 if not success:
-                    failed_dossiers.update(_dossier_numbers(annotation_records))
+                    failed_dossiers.update(extract_dossier_numbers(annotation_records))
 
                 log(
                     f"[TIMING] Après upsert annotations: {time.time() - page_start:.1f}s"
@@ -1299,7 +1299,7 @@ def process_demarche_for_grist_optimized(
                         )
                     else:
                         log_error("   Erreur lors du traitement des demandeurs")
-                        failed_dossiers.update(_dossier_numbers(demandeur_records))
+                        failed_dossiers.update(extract_dossier_numbers(demandeur_records))
 
                 log(
                     f"[TIMING] Après upsert demandeurs: {time.time() - page_start:.1f}s"
@@ -1364,14 +1364,14 @@ def process_demarche_for_grist_optimized(
                                 f"  Bloc '{block_label}': {success_count} réussis, {error_count} échecs"
                             )
                             if error_count:
-                                failed_dossiers.update(_dossier_numbers(rows))
+                                failed_dossiers.update(extract_dossier_numbers(rows))
                         except GristReadError:
                             raise
                         except Exception as e:
                             log_error(
                                 f"  Erreur traitement bloc '{block_label}': {str(e)}"
                             )
-                            failed_dossiers.update(_dossier_numbers(rows))
+                            failed_dossiers.update(extract_dossier_numbers(rows))
 
             log(f"[TIMING] Après blocs répétables: {time.time() - page_start:.1f}s")
             log_progress.log("Traitement des champs répétables")
@@ -1458,7 +1458,7 @@ def process_demarche_for_grist_optimized(
             # l'avancer perdrait les dossiers en échec non modifiés depuis.
             log_error(
                 f"{len(failed_dossiers)} dossier(s) en échec "
-                f"({_format_numbers(failed_dossiers)}) : le repère de reprise est "
+                f"({format_numbers(failed_dossiers)}) : le repère de reprise est "
                 "conservé, ils seront repris au prochain run"
             )
 
@@ -1622,27 +1622,6 @@ def main():
         log_error(f"Échec du traitement de la démarche {demarche_number}")
         print_api_timings()
         return 1
-
-
-# --- Helpers privés (module) ---
-
-
-def _dossier_numbers(records: list[dict[str, Any]]) -> set[str]:
-    """Numéros des dossiers portés par des enregistrements (`dossier_number`)."""
-    return {
-        str(record["dossier_number"])
-        for record in records
-        if record.get("dossier_number")
-    }
-
-
-def _format_numbers(numbers: set[str], limit: int = 20) -> str:
-    """Numéros triés, tronqués au-delà de `limit` pour garder un log lisible."""
-    ordered = sorted(numbers, key=lambda number: (len(number), number))
-    shown = ", ".join(ordered[:limit])
-    if len(ordered) > limit:
-        shown += f", … (+{len(ordered) - limit})"
-    return shown
 
 
 if __name__ == "__main__":

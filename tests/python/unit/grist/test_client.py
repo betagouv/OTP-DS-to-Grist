@@ -14,6 +14,7 @@ from grist.client import (
     GristClient,
     GristReadError,
     _split_records_by_size,
+    extract_dossier_numbers,
 )
 from utils.rate_limited_session import RateLimitedSession
 
@@ -1768,3 +1769,27 @@ class TestGristClientSession:
         assert mock_request.call_count == 1
         mock_sleep.assert_not_called()
         mock_log.assert_not_called()
+
+
+class TestExtractDossierNumbers:
+    """Tests unitaires pour extract_dossier_numbers"""
+
+    def test_empty(self):
+        assert extract_dossier_numbers([]) == set()
+
+    def test_numbers_as_strings(self):
+        records = [{"dossier_number": 12}, {"dossier_number": "34"}]
+        assert extract_dossier_numbers(records) == {"12", "34"}
+
+    def test_fallback_on_number(self):
+        """Enregistrements de la table dossiers : numéro porté par `number`"""
+        assert extract_dossier_numbers([{"number": 56}]) == {"56"}
+
+    def test_deduplicated(self):
+        """Plusieurs lignes d'un même dossier (blocs répétables)"""
+        records = [{"dossier_number": 7}, {"dossier_number": 7}]
+        assert extract_dossier_numbers(records) == {"7"}
+
+    def test_records_without_number_ignored(self):
+        records = [{"dossier_number": None}, {"autre": 1}, {"dossier_number": 8}]
+        assert extract_dossier_numbers(records) == {"8"}

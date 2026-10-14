@@ -941,6 +941,11 @@ class GristClient:
         return _aggregated_response(sent_records)
 
 
+def extract_dossier_numbers(records: list[dict[str, Any]]) -> set[str]:
+    """Numéros des dossiers portés par des enregistrements à écrire dans Grist."""
+    return {str(number) for record in records if (number := _dossier_number(record))}
+
+
 # --- Helpers privés (module) ---
 
 
