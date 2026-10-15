@@ -93,3 +93,19 @@ class TestExtractErrorParts:
 
         assert len(result) == 4
         assert "" not in result
+
+    def test_python_traceback_stderr_is_filtered(self):
+        """Le stderr d'un traceback Python se réduit à son message d'exception"""
+        e = MagicMock(spec=subprocess.CalledProcessError)
+        e.stderr = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/grist_processor_working_all.py", line 1600, in main\n'
+            "    process_demarche(demarche)\n"
+            '  File "/app/grist_processor_working_all.py", line 42, in run\n'
+            "    raise GristReadError(detail)\n"
+            "GristReadError: Grist a refusé l'écriture (403)\n"
+        )
+
+        result = extract_error_parts(e, [])
+
+        assert result == ["GristReadError: Grist a refusé l'écriture (403)"]

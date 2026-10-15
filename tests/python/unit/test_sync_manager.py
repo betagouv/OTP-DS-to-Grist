@@ -444,6 +444,69 @@ class TestSyncManager:
     @patch("sync.sync_manager.create_engine")
     @patch("sync.sync_manager.sessionmaker")
     @patch("subprocess.Popen")
+    def test_run_synchronization_task_traceback_stderr_shows_short_message(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Un stderr de traceback Python ne déborde pas dans le message affiché"""
+        stderr = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/grist_processor_working_all.py", line 1600, in main\n'
+            "    process_demarche(demarche)\n"
+            '  File "/app/grist_processor_working_all.py", line 42, in run\n'
+            "    raise GristReadError(detail)\n"
+            "GristReadError: Grist a refusé l'écriture (403)\n"
+        )
+        mock_subprocess.return_value = create_mock_process("", stderr, returncode=1)
+
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is False
+        assert "Traceback" not in result["message"]
+        assert "GristReadError: Grist a refusé l'écriture (403)" in result["message"]
+        assert len(result["message"]) < 200
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_long_error_is_truncated(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Un message d'erreur très long est tronqué pour rester affichable"""
+        mock_subprocess.return_value = create_mock_process(
+            "ERREUR: " + "x" * 2000, "", returncode=1
+        )
+
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is False
+        assert len(result["message"]) <= len("Erreur lors de la synchronisation: ") + 500
+        assert result["message"].endswith("…")
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
     def test_run_synchronization_task_error_code_api_error(
         self, mock_subprocess, mock_sessionmaker, mock_create_engine
     ):
