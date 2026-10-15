@@ -6,9 +6,9 @@ if (typeof testExternalConnections === 'undefined')
 
 // Niveaux d'accès de la clé Grist qui ne permettent pas d'écrire dans le
 // document : une synchro échouerait, il faut prévenir l'utilisateur.
-const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'no-access']
+const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'editors', 'no-access']
 const GRIST_KEY_ACCESS_WARNING =
-  "La clé API Grist enregistrée n'a pas les droits d'éditeur sur ce document."
+  "La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document."
 
 const getConfiguration = async () => {
   // Récupérer le contexte Grist
@@ -85,7 +85,7 @@ const checkConfiguration = async (silent = false) => {
       return config
     }
 
-    // Clé enregistrée sans droits d'éditeur : alerter, y compris au chargement
+    // Clé enregistrée sans droits de propriétaire : alerter, y compris au chargement
     // silencieux, car une synchro échouerait à l'écriture du document.
     if (GRIST_KEY_INSUFFICIENT_ACCESS.includes(config.grist_key_access)) {
       resultDiv.style.display = 'block'

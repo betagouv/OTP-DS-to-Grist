@@ -1351,7 +1351,7 @@ describe('Grist key access warning', () => {
     vi.restoreAllMocks()
   })
 
-  it.each(['viewers', 'no-access'])(
+  it.each(['viewers', 'editors', 'no-access'])(
     'alerts when stored key access is %s',
     async (access) => {
       const wrapper = await mountWithAccess(access)
@@ -1361,12 +1361,12 @@ describe('Grist key access warning', () => {
       expect(alert.exists()).toBe(true)
       expect(alert.props('type')).toBe('warning')
       expect(alert.text()).toContain(
-        "La clé API Grist enregistrée n'a pas les droits d'éditeur sur ce document."
+        "La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document."
       )
     }
   )
 
-  it.each(['owners', 'editors', 'unavailable'])(
+  it.each(['owners', 'unavailable'])(
     'stays silent when stored key access is %s',
     async (access) => {
       const wrapper = await mountWithAccess(access)

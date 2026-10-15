@@ -313,7 +313,7 @@ describe('checkConfiguration', () => {
       expect(resultDiv.style.display).toBe('block')
       expect(resultDiv.innerHTML).toContain('Clé API Grist insuffisante')
       expect(resultDiv.innerHTML).toContain(
-        "La clé API Grist enregistrée n'a pas les droits d'éditeur sur ce document."
+        "La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document."
       )
       expect(resultDiv.innerHTML).not.toContain('Configuration complète')
     }
@@ -374,7 +374,7 @@ describe('checkConfiguration', () => {
   )
 
   it(
-    'reste silencieux si la clé a les droits d\'éditeur',
+    'alerte si la clé enregistrée est editor, même en mode silencieux',
     async () => {
       fetch.mockResolvedValue({
         ok: true,
@@ -388,6 +388,34 @@ describe('checkConfiguration', () => {
             has_ds_token: true,
             has_grist_key: true,
             grist_key_access: 'editors'
+          }]
+        })
+      })
+
+      await checkConfiguration(true)
+
+      const resultDiv = document.getElementById('config_check_result')
+      expect(resultDiv.style.display).toBe('block')
+      expect(resultDiv.innerHTML).toContain('Clé API Grist insuffisante')
+      expect(resultDiv.innerHTML).not.toContain('Configuration complète')
+    }
+  )
+
+  it(
+    'reste silencieux si la clé a les droits de propriétaire',
+    async () => {
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          configs: [{
+            otp_config_id: 123,
+            demarche_number: 123,
+            grist_base_url: 'url',
+            grist_doc_id: 'doc',
+            grist_user_id: 'user',
+            has_ds_token: true,
+            has_grist_key: true,
+            grist_key_access: 'owners'
           }]
         })
       })
