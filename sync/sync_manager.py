@@ -14,10 +14,11 @@ from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
 from database.models import SyncLog
 from configuration.config_manager import ConfigManager
+from security.widget_auth import grist_doc_access_level, is_key_write_allowed
 
 load_dotenv()
 
-from utils.constants import DATABASE_URL
+from utils.constants import DATABASE_URL, EXIT_CODE_EXTERNAL_API_ERROR
 
 # Nombre maximal de logs retenus par tâche en mémoire serveur
 MAX_LOGS_PER_TASK = 2000
@@ -61,6 +62,34 @@ class SyncManager:
         result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
 
         try:
+            # Refuser tôt une clé Grist qui ne peut pas écrire dans le document
+            # (lecture seule ou sans accès) : le sous-processus ne ferait que
+            # récolter des refus d'écriture. Grist indisponible (None) n'est pas
+            # bloquant ici : la vérification des connexions du sous-processus
+            # prend le relais.
+            grist_api_key = config.get("grist_api_key")
+            if grist_api_key:
+                access_level = grist_doc_access_level(
+                    config.get("grist_base_url") or "",
+                    grist_api_key,
+                    str(config.get("grist_doc_id") or ""),
+                )
+                if access_level is not None and not is_key_write_allowed(access_level):
+                    message = (
+                        "La clé API Grist enregistrée n'a pas les droits "
+                        "d'éditeur sur le document Grist."
+                    )
+                    if log_callback:
+                        log_callback(f"ERREUR: {message}")
+                    result = {
+                        "success": False,
+                        "message": message,
+                        "success_count": 0,
+                        "error_count": 0,
+                        "error_code": EXIT_CODE_EXTERNAL_API_ERROR,
+                    }
+                    return result
+
             if progress_callback:
                 progress_callback(5, "Préparation de l'environnement...")
 

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
@@ -2045,10 +2046,28 @@ class TestWidgetAuth:
         response = client.get("/api/sync-log/latest?otp_config_id=7")
         assert response.status_code == 403
 
-    def test_foreign_key_owner_returns_403(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "security.widget_auth._grist_key_owner_id", lambda base_url, api_key: "userB"
-        )
+    @staticmethod
+    def _stub_document_access(monkeypatch, *, document_info=None, error=None):
+        """Simule la consultation du document ciblé par la clé API."""
+        get_document_info = MagicMock()
+        if error is not None:
+            get_document_info.side_effect = error
+        else:
+            get_document_info.return_value = document_info
+        grist_client = MagicMock()
+        grist_client.return_value.get_document_info = get_document_info
+        monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+
+    @staticmethod
+    def _http_error(status_code):
+        response = requests.Response()
+        response.status_code = status_code
+
+        return requests.exceptions.HTTPError(response=response)
+
+    def test_key_without_document_access_returns_403(self, client, monkeypatch):
+        """La clé qui ne voit pas le document (404) est refusée."""
+        self._stub_document_access(monkeypatch, error=self._http_error(404))
         response = client.post(
             "/api/config",
             json={
@@ -2057,10 +2076,13 @@ class TestWidgetAuth:
             },
         )
         assert response.status_code == 403
+        data = json.loads(response.data)
+        assert "sans accès au document" in data["message"]
 
-    def test_key_owner_unavailable_returns_502(self, client, monkeypatch):
-        monkeypatch.setattr(
-            "security.widget_auth._grist_key_owner_id", lambda base_url, api_key: None
+    def test_key_document_lookup_unavailable_returns_502(self, client, monkeypatch):
+        """Grist injoignable pendant la vérification de la clé : 502."""
+        self._stub_document_access(
+            monkeypatch, error=requests.exceptions.ConnectionError()
         )
         response = client.post(
             "/api/config",
@@ -2070,6 +2092,49 @@ class TestWidgetAuth:
             },
         )
         assert response.status_code == 502
+
+    def test_viewer_key_returns_403(self, client, monkeypatch):
+        """Un accès lecture seule ne suffit pas pour synchroniser."""
+        self._stub_document_access(monkeypatch, document_info={"access": "viewers"})
+        response = client.post(
+            "/api/config",
+            json={
+                "grist_base_url": "https://grist.example.com/api",
+                "grist_api_key": "some-key",
+            },
+        )
+        assert response.status_code == 403
+        data = json.loads(response.data)
+        assert "éditeur" in data["message"]
+
+    def test_unspecified_access_key_allows_save(self, client, monkeypatch):
+        """Grist n'expose pas le niveau d'accès : la clé est acceptée."""
+        self._stub_document_access(monkeypatch, document_info={"name": "Doc"})
+        monkeypatch.setattr("app.config_manager.save_config", lambda config: True)
+        response = client.post(
+            "/api/config",
+            json={"otp_config_id": 1, "grist_api_key": "some-key"},
+        )
+        assert response.status_code == 200
+
+    def test_service_account_key_allows_save(self, client, monkeypatch):
+        """La clé d'un compte de service doit pouvoir être enregistrée.
+
+        /profile/user renvoie l'id du compte de service, pas celui de
+        l'utilisateur du widget : seule la consultation du document compte.
+        """
+        grist_client = MagicMock()
+        grist_client.return_value.get_document_info.return_value = {"access": "owners"}
+        grist_client.return_value.get_profile.return_value = {
+            "id": "service-account-42"
+        }
+        monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+        monkeypatch.setattr("app.config_manager.save_config", lambda config: True)
+        response = client.post(
+            "/api/config",
+            json={"otp_config_id": 1, "grist_api_key": "sa-key"},
+        )
+        assert response.status_code == 200
 
     def test_ids_come_from_identity_not_body(self, client, monkeypatch):
         saved = {}
@@ -2286,3 +2351,83 @@ class TestWidgetAuth:
 
         assert response.status_code == 200
         assert validated_base_urls == ["https://grist.example.com/api"]
+
+
+class TestGristKeyAccessField:
+    """Champ grist_key_access sur GET /api/config (niveau d'accès de la clé)."""
+
+    @staticmethod
+    def _config_from_response(response):
+        assert response.status_code == 200
+        return response.get_json()["configs"][0]
+
+    @staticmethod
+    def _stub_document_access(monkeypatch, *, document_info=None, error=None):
+        grist_client = MagicMock()
+        if error is not None:
+            grist_client.return_value.get_document_info.side_effect = error
+        else:
+            grist_client.return_value.get_document_info.return_value = document_info
+        monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+        return grist_client
+
+    def test_grist_key_access_reports_owners(self, client):
+        """La config stockée expose le niveau d'accès fourni par Grist, sans la clé."""
+        response = client.get("/api/config")
+
+        config = self._config_from_response(response)
+        assert config["grist_key_access"] == "owners"
+        assert config["has_grist_key"] is True
+        assert "grist_api_key" not in config
+
+    def test_grist_key_access_reports_viewer(self, client, monkeypatch):
+        """Une clé rétrogradée viewer apparaît explicitement dans la réponse."""
+        self._stub_document_access(monkeypatch, document_info={"access": "viewers"})
+
+        response = client.get("/api/config")
+
+        assert self._config_from_response(response)["grist_key_access"] == "viewers"
+
+    def test_grist_key_access_absent_without_key(self, client, monkeypatch):
+        """Sans clé enregistrée, le champ n'est pas produit (rien à vérifier)."""
+        monkeypatch.setattr(
+            "app.config_manager.load_config",
+            lambda grist_user_id, grist_doc_id: [
+                {
+                    "otp_config_id": 1,
+                    "demarche_number": "123",
+                    "grist_base_url": "https://grist.example.com/api",
+                    "grist_doc_id": "docA",
+                    "grist_user_id": "userA",
+                }
+            ],
+        )
+
+        response = client.get("/api/config")
+
+        config = self._config_from_response(response)
+        assert "grist_key_access" not in config
+        assert config["has_grist_key"] is False
+
+    def test_grist_key_access_is_cached(self, client, monkeypatch):
+        """Deux lectures successives n'interrogent Grist qu'une seule fois."""
+        grist_client = self._stub_document_access(
+            monkeypatch, document_info={"access": "owners"}
+        )
+
+        first = client.get("/api/config")
+        second = client.get("/api/config")
+
+        assert self._config_from_response(first)["grist_key_access"] == "owners"
+        assert self._config_from_response(second)["grist_key_access"] == "owners"
+        assert grist_client.return_value.get_document_info.call_count == 1
+
+    def test_grist_key_access_unavailable_on_error(self, client, monkeypatch):
+        """Une erreur réseau côté Grist produit un niveau explicite, sans casser le GET."""
+        self._stub_document_access(monkeypatch, error=ConnectionError("réseau"))
+
+        response = client.get("/api/config")
+
+        assert (
+            self._config_from_response(response)["grist_key_access"] == "unavailable"
+        )

@@ -27,5 +27,7 @@ watch(() => props.title, async (title) => {
     :title="title"
     :closeable="closeable"
     @close="emit('close')"
-  />
+  >
+    <slot />
+  </DsfrAlert>
 </template>

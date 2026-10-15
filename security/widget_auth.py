@@ -9,6 +9,7 @@ visée. Toutes les routes protégées exigent un accès éditeur.
 from typing import Any
 
 from flask import Request, Response, g, jsonify
+from requests.exceptions import HTTPError
 
 from configuration.config_manager import ConfigManager, ConfigNotFoundError
 from grist.base_url import GristBaseUrlNotAllowedError
@@ -22,6 +23,21 @@ from security.widget_token import (
     validate_widget_token,
 )
 from utils.log import log_error
+
+# Niveaux d'accès de la clé API Grist qui permettent d'écrire dans le document
+# (sauvegarde de configuration, synchronisation) : lecture seule ne suffit pas.
+GRIST_KEY_REQUIRED_ACCESS_LEVELS = frozenset({"owners", "editors"})
+
+# Niveau renvoyé quand la clé n'a aucun accès au document (401, 403 ou 404).
+GRIST_KEY_NO_ACCESS = "no-access"
+
+# Niveau renvoyé quand Grist n'expose pas le niveau d'accès de la clé :
+# indéterminé, la clé est acceptée à titre défensif.
+GRIST_KEY_ACCESS_UNSPECIFIED = "unspecified"
+
+# Niveau renvoyé quand la vérification n'a pas abouti (Grist indisponible) :
+# transitoire, à ne pas confondre avec un refus d'accès.
+GRIST_KEY_ACCESS_UNAVAILABLE = "unavailable"
 
 # Routes autorisées sans jeton widget. Tout le reste est protégé.
 WIDGET_TOKEN_EXEMPT_ENDPOINTS: set[tuple[str, str]] = {
@@ -105,13 +121,62 @@ def authorize_request(
 
     api_key = data.get("grist_api_key")
     if api_key:
-        owner_id = _grist_key_owner_id(base_url, api_key)
-        if owner_id is None:
+        access_level = grist_doc_access_level(
+            base_url, api_key, str(identity.get("docId") or "")
+        )
+        if access_level is None:
             return _error_response("Grist indisponible", 502)
-        if str(owner_id) != str(identity.get("userId")):
-            return _error_response("Clé API d'un autre utilisateur", 403)
+        if access_level == GRIST_KEY_NO_ACCESS:
+            return _error_response("Clé API sans accès au document Grist", 403)
+        if not is_key_write_allowed(access_level):
+            return _error_response(
+                "Accès éditeur requis sur le document Grist", 403
+            )
 
     return None
+
+
+def grist_doc_access_level(base_url: str, api_key: str, doc_id: str) -> str | None:
+    """Niveau d'accès de la clé API sur le document ciblé (GET /docs/{docId}).
+
+    Renvoie le niveau retourné par Grist (`owners`, `editors`, `viewers`),
+    `GRIST_KEY_NO_ACCESS` quand la clé ne voit pas le document,
+    `GRIST_KEY_ACCESS_UNSPECIFIED` quand Grist n'expose pas le niveau, ou
+    None quand Grist n'a pas répondu.
+    """
+    try:
+        doc_info = GristClient(base_url, api_key, doc_id).get_document_info()
+    except HTTPError as error:
+        status_code = (
+            error.response.status_code if error.response is not None else None
+        )
+        if status_code in (401, 403, 404):
+            return GRIST_KEY_NO_ACCESS
+        log_error(
+            f"Consultation du document Grist impossible ({status_code}) : {error}"
+        )
+        return None
+    except Exception as e:
+        log_error(f"Vérification de l'accès de la clé API impossible : {e}")
+        return None
+
+    access = doc_info.get("access") if isinstance(doc_info, dict) else None
+    if not access:
+        log_error(
+            "Grist n'expose pas le niveau d'accès de la clé : "
+            "clé acceptée à titre défensif"
+        )
+        return GRIST_KEY_ACCESS_UNSPECIFIED
+
+    return str(access)
+
+
+def is_key_write_allowed(access_level: str) -> bool:
+    """Vrai si le niveau d'accès de la clé permet d'écrire dans le document."""
+    return (
+        access_level in GRIST_KEY_REQUIRED_ACCESS_LEVELS
+        or access_level == GRIST_KEY_ACCESS_UNSPECIFIED
+    )
 
 
 # --- Helpers privés ---
@@ -168,17 +233,6 @@ def _config_matches_identity(
     ) == str(identity.get("userId")) and str(
         config.get("grist_doc_id")
     ) == str(identity.get("docId"))
-
-
-def _grist_key_owner_id(base_url: str, api_key: str) -> int | str | None:
-    """Propriétaire de la clé API Grist, ou None si Grist n'a pas répondu."""
-    try:
-        profile = GristClient(base_url, api_key).get_profile()
-    except Exception as e:
-        log_error(f"Vérification de la clé API Grist impossible : {e}")
-        return None
-
-    return profile.get("id")
 
 
 def _error_response(message: str, status: int) -> tuple[Response, int]:

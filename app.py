@@ -39,7 +39,11 @@ from security.ip_blocklist import (
     should_ignore_path,
 )
 from security.ip_blocklist_store import IpBlocklistStore
-from security.widget_auth import authorize_request
+from security.widget_auth import (
+    GRIST_KEY_ACCESS_UNAVAILABLE,
+    authorize_request,
+    grist_doc_access_level,
+)
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
@@ -52,6 +56,7 @@ from utils.constants import (
     CHANGELOG_PATH,
     GITHUB_CHANGELOG_BASE_URL,
     DATABASE_URL,
+    GRIST_KEY_ACCESS_CACHE_TTL_SECONDS,
     HELP_LINK_FAQ,
     HELP_LINK_GRIST_API_KEY,
     HELP_LINK_DN_TOKEN_API,
@@ -106,6 +111,34 @@ ip_blocklist_store = IpBlocklistStore(
 )
 ip_blocklist_whitelist = parse_whitelist(IP_BLOCKLIST_WHITELIST.split(","))
 ip_blocklist_hits: dict[str, list[float]] = {}
+
+# Cache du niveau d'accès de la clé Grist sur le document, alimenté par
+# GET /api/config : (base_url, api_key, doc_id) -> (horodatage, niveau).
+_grist_key_access_cache: dict[tuple[str, str, str], tuple[float, str]] = {}
+
+# Taille au-delà de laquelle le cache d'accès est vidé d'un coup :
+# le nombre de clés/configs est faible, l'invalidation fine est inutile.
+_GRIST_KEY_ACCESS_CACHE_MAX_ENTRIES = 256
+
+
+def _cached_grist_key_access(base_url: str, api_key: str, doc_id: str) -> str:
+    """Niveau d'accès de la clé sur le document, avec cache TTL en mémoire.
+
+    Renvoie un niveau explicite `unavailable` quand Grist n'a pas répondu,
+    pour distinguer une indisponibilité transitoire d'un refus d'accès.
+    """
+    cache_key = (base_url, api_key, doc_id)
+    cached = _grist_key_access_cache.get(cache_key)
+    if cached and time.monotonic() - cached[0] < GRIST_KEY_ACCESS_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    access_level = grist_doc_access_level(base_url, api_key, doc_id)
+    level = access_level or GRIST_KEY_ACCESS_UNAVAILABLE
+
+    if len(_grist_key_access_cache) >= _GRIST_KEY_ACCESS_CACHE_MAX_ENTRIES:
+        _grist_key_access_cache.clear()
+    _grist_key_access_cache[cache_key] = (time.monotonic(), level)
+    return level
 
 
 def _blocklist_target_ip() -> str | None:
@@ -353,6 +386,16 @@ def api_config():
             for config in configs:
                 config["has_ds_token"] = bool(config.get("ds_api_token"))
                 config["has_grist_key"] = bool(config.get("grist_api_key"))
+                api_key = config.get("grist_api_key")
+                if api_key:
+                    # Niveau d'accès de la clé sur le document (lecture seule,
+                    # éditeur…), pour que le front puisse prévenir l'utilisateur
+                    # d'une clé qui ne peut pas écrire.
+                    config["grist_key_access"] = _cached_grist_key_access(
+                        config.get("grist_base_url") or "",
+                        api_key,
+                        str(config.get("grist_doc_id") or ""),
+                    )
                 config.pop("ds_api_token", None)
                 config.pop("grist_api_key", None)
 

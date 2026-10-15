@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
+import OtpAlert from '../OtpAlert.vue'
 import { useDemarcheContext } from '../../composables/useDemarcheContext'
 import { useSyncTask } from '../../composables/useSyncTask'
 
@@ -1320,5 +1321,74 @@ describe('Accordion DN state', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.activeDnAccordion).toBe(1)
+  })
+})
+
+describe('Grist key access warning', () => {
+  const mockContext = {
+    params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+    docId: 'doc-123'
+  }
+
+  const mountWithAccess = async (gristKeyAccess) => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
+    const config = { otp_config_id: 1 }
+    if (gristKeyAccess !== undefined) config.grist_key_access = gristKeyAccess
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [config] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+    return wrapper
+  }
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it.each(['viewers', 'no-access'])(
+    'alerts when stored key access is %s',
+    async (access) => {
+      const wrapper = await mountWithAccess(access)
+
+      expect(wrapper.vm.gristKeyAccessWarning).toBe(true)
+      const alert = wrapper.findComponent(OtpAlert)
+      expect(alert.exists()).toBe(true)
+      expect(alert.props('type')).toBe('warning')
+      expect(alert.text()).toContain(
+        "La clé API Grist enregistrée n'a pas les droits d'éditeur sur ce document."
+      )
+    }
+  )
+
+  it.each(['owners', 'editors', 'unavailable'])(
+    'stays silent when stored key access is %s',
+    async (access) => {
+      const wrapper = await mountWithAccess(access)
+
+      expect(wrapper.vm.gristKeyAccessWarning).toBe(false)
+      expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
+    }
+  )
+
+  it('stays silent when no access level is reported', async () => {
+    const wrapper = await mountWithAccess(undefined)
+
+    expect(wrapper.vm.gristKeyAccessWarning).toBe(false)
+    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
+  })
+
+  it('hides the warning once dismissed', async () => {
+    const wrapper = await mountWithAccess('viewers')
+
+    wrapper.findComponent(OtpAlert).vm.$emit('close')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
   })
 })

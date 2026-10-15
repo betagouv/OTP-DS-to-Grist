@@ -48,4 +48,14 @@ describe('OtpAlert', () => {
 
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
   })
+
+  it('renders slot content as alert body', () => {
+    const wrapper = mount(OtpAlert, {
+      props: { type: 'warning', title: 'Titre' },
+      slots: { default: 'Message de détail' },
+      global: { components: { DsfrAlert } }
+    })
+
+    expect(wrapper.text()).toContain('Message de détail')
+  })
 })
