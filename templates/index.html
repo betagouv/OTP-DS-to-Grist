@@ -40,6 +40,12 @@ socket.on('task_update', function(data) {
 
 // ===== INITIALISATION DE LA PAGE =====
 document.addEventListener('DOMContentLoaded', async () => {
+  // En lecture seule, aucun appel API : un seul message explicite, pas de 403 en cascade
+  if (await isWidgetReadOnly()) {
+    showNotification('Accès éditeur requis : ce document est en lecture seule', 'error')
+    return
+  }
+
   // Vérifier la configuration dès le démarrage (en cas de token périmé)
   const checkedConfig = await checkConfiguration(true)
   window.otp_config_id = checkedConfig?.otp_config_id

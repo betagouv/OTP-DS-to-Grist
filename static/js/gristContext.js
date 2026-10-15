@@ -12,8 +12,7 @@ const decodeWidgetTokenIdentity = (token) => {
   }
 }
 
-const resolveTokenExpiresAt = (tokenInfo) => {
-  const identity = decodeWidgetTokenIdentity(tokenInfo.token)
+const resolveTokenExpiresAt = (tokenInfo, identity) => {
   if (identity && typeof identity.exp === 'number')
     return identity.exp * 1000
 
@@ -63,10 +62,13 @@ const getWidgetToken = async () => {
     const tokenInfo = await withAcquisitionTimeout(grist.docApi.getAccessToken({ readOnly: false }))
     if (!tokenInfo || !tokenInfo.token) return null
 
+    const identity = decodeWidgetTokenIdentity(tokenInfo.token)
+
     tokenState = {
       token: tokenInfo.token,
       baseUrl: tokenInfo.baseUrl,
-      expiresAt: resolveTokenExpiresAt(tokenInfo)
+      expiresAt: resolveTokenExpiresAt(tokenInfo, identity),
+      readOnly: identity !== null && identity.readOnly === true
     }
 
     return tokenState
@@ -74,6 +76,13 @@ const getWidgetToken = async () => {
     console.warn('Jeton widget Grist indisponible :', error)
     return null
   }
+}
+
+const isWidgetReadOnly = async () => {
+  const tokenInfo = await getWidgetToken()
+  if (!tokenInfo) return false
+
+  return tokenInfo.readOnly === true
 }
 
 const getGristContext = async () => {
@@ -108,6 +117,7 @@ if (typeof module !== 'undefined' && module.exports) {
     getApiBaseUrlFromDocBaseUrl,
     getWidgetToken,
     clearWidgetToken,
-    decodeWidgetTokenIdentity
+    decodeWidgetTokenIdentity,
+    isWidgetReadOnly
   }
 }
