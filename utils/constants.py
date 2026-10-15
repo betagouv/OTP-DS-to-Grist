@@ -31,6 +31,10 @@ GITHUB_CHANGELOG_BASE_URL: str = "https://github.com/betagouv/OTP-DS-to-Grist/bl
 
 EXIT_CODE_EXTERNAL_API_ERROR: int = 2
 
+# Durée de validité (secondes) du cache du niveau d'accès de la clé Grist
+# consulté à chaque chargement de configuration (GET /api/config).
+GRIST_KEY_ACCESS_CACHE_TTL_SECONDS: float = 60.0
+
 # Durée de validité du cache des bannissements d'IP, en secondes.
 IP_BLOCKLIST_CACHE_TTL_SECONDS: float = float(
     os.getenv("IP_BLOCKLIST_CACHE_TTL_SECONDS", "60")

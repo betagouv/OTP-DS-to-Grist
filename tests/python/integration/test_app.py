@@ -2351,3 +2351,83 @@ class TestWidgetAuth:
 
         assert response.status_code == 200
         assert validated_base_urls == ["https://grist.example.com/api"]
+
+
+class TestGristKeyAccessField:
+    """Champ grist_key_access sur GET /api/config (niveau d'accès de la clé)."""
+
+    @staticmethod
+    def _config_from_response(response):
+        assert response.status_code == 200
+        return response.get_json()["configs"][0]
+
+    @staticmethod
+    def _stub_document_access(monkeypatch, *, document_info=None, error=None):
+        grist_client = MagicMock()
+        if error is not None:
+            grist_client.return_value.get_document_info.side_effect = error
+        else:
+            grist_client.return_value.get_document_info.return_value = document_info
+        monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+        return grist_client
+
+    def test_grist_key_access_reports_owners(self, client):
+        """La config stockée expose le niveau d'accès fourni par Grist, sans la clé."""
+        response = client.get("/api/config")
+
+        config = self._config_from_response(response)
+        assert config["grist_key_access"] == "owners"
+        assert config["has_grist_key"] is True
+        assert "grist_api_key" not in config
+
+    def test_grist_key_access_reports_viewer(self, client, monkeypatch):
+        """Une clé rétrogradée viewer apparaît explicitement dans la réponse."""
+        self._stub_document_access(monkeypatch, document_info={"access": "viewers"})
+
+        response = client.get("/api/config")
+
+        assert self._config_from_response(response)["grist_key_access"] == "viewers"
+
+    def test_grist_key_access_absent_without_key(self, client, monkeypatch):
+        """Sans clé enregistrée, le champ n'est pas produit (rien à vérifier)."""
+        monkeypatch.setattr(
+            "app.config_manager.load_config",
+            lambda grist_user_id, grist_doc_id: [
+                {
+                    "otp_config_id": 1,
+                    "demarche_number": "123",
+                    "grist_base_url": "https://grist.example.com/api",
+                    "grist_doc_id": "docA",
+                    "grist_user_id": "userA",
+                }
+            ],
+        )
+
+        response = client.get("/api/config")
+
+        config = self._config_from_response(response)
+        assert "grist_key_access" not in config
+        assert config["has_grist_key"] is False
+
+    def test_grist_key_access_is_cached(self, client, monkeypatch):
+        """Deux lectures successives n'interrogent Grist qu'une seule fois."""
+        grist_client = self._stub_document_access(
+            monkeypatch, document_info={"access": "owners"}
+        )
+
+        first = client.get("/api/config")
+        second = client.get("/api/config")
+
+        assert self._config_from_response(first)["grist_key_access"] == "owners"
+        assert self._config_from_response(second)["grist_key_access"] == "owners"
+        assert grist_client.return_value.get_document_info.call_count == 1
+
+    def test_grist_key_access_unavailable_on_error(self, client, monkeypatch):
+        """Une erreur réseau côté Grist produit un niveau explicite, sans casser le GET."""
+        self._stub_document_access(monkeypatch, error=ConnectionError("réseau"))
+
+        response = client.get("/api/config")
+
+        assert (
+            self._config_from_response(response)["grist_key_access"] == "unavailable"
+        )

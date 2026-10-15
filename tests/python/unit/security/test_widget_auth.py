@@ -8,7 +8,8 @@ import requests
 from security.widget_auth import (
     GRIST_KEY_ACCESS_UNSPECIFIED,
     GRIST_KEY_NO_ACCESS,
-    _grist_doc_access_level,
+    grist_doc_access_level,
+    is_key_write_allowed,
 )
 
 BASE_URL = "https://grist.example.com/api"
@@ -49,25 +50,25 @@ class TestGristDocAccessLevel:
             monkeypatch, document_info={"name": "Doc", "access": "owners"}
         )
 
-        assert _grist_doc_access_level(BASE_URL, "sa-key", "docA") == "owners"
+        assert grist_doc_access_level(BASE_URL, "sa-key", "docA") == "owners"
         client_cls.assert_called_once_with(BASE_URL, "sa-key", "docA")
 
     def test_editors_access_returns_editors(self, monkeypatch):
         _patch_grist_client(monkeypatch, document_info={"access": "editors"})
 
-        assert _grist_doc_access_level(BASE_URL, "key", "docA") == "editors"
+        assert grist_doc_access_level(BASE_URL, "key", "docA") == "editors"
 
     def test_viewers_access_returns_viewers(self, monkeypatch):
         _patch_grist_client(monkeypatch, document_info={"access": "viewers"})
 
-        assert _grist_doc_access_level(BASE_URL, "key", "docA") == "viewers"
+        assert grist_doc_access_level(BASE_URL, "key", "docA") == "viewers"
 
     def test_missing_access_returns_unspecified(self, monkeypatch):
         """200 sans champ `access` : niveau indéterminé, la clé est acceptée."""
         _patch_grist_client(monkeypatch, document_info={"name": "Doc"})
 
         assert (
-            _grist_doc_access_level(BASE_URL, "key", "docA")
+            grist_doc_access_level(BASE_URL, "key", "docA")
             == GRIST_KEY_ACCESS_UNSPECIFIED
         )
 
@@ -79,26 +80,41 @@ class TestGristDocAccessLevel:
         _patch_grist_client(monkeypatch, error=_http_error(status_code))
 
         assert (
-            _grist_doc_access_level(BASE_URL, "key", "docA") == GRIST_KEY_NO_ACCESS
+            grist_doc_access_level(BASE_URL, "key", "docA") == GRIST_KEY_NO_ACCESS
         )
 
     @pytest.mark.parametrize("status_code", [500, 502, 503])
     def test_server_error_returns_none(self, monkeypatch, status_code):
         _patch_grist_client(monkeypatch, error=_http_error(status_code))
 
-        assert _grist_doc_access_level(BASE_URL, "key", "docA") is None
+        assert grist_doc_access_level(BASE_URL, "key", "docA") is None
 
     def test_network_error_returns_none(self, monkeypatch):
         _patch_grist_client(monkeypatch, error=requests.exceptions.ConnectionError())
 
-        assert _grist_doc_access_level(BASE_URL, "key", "docA") is None
+        assert grist_doc_access_level(BASE_URL, "key", "docA") is None
 
     def test_timeout_returns_none(self, monkeypatch):
         _patch_grist_client(monkeypatch, error=requests.exceptions.Timeout())
 
-        assert _grist_doc_access_level(BASE_URL, "key", "docA") is None
+        assert grist_doc_access_level(BASE_URL, "key", "docA") is None
 
     def test_unexpected_error_returns_none(self, monkeypatch):
         _patch_grist_client(monkeypatch, error=ValueError("Document ID is required"))
 
-        assert _grist_doc_access_level(BASE_URL, "key", "docA") is None
+        assert grist_doc_access_level(BASE_URL, "key", "docA") is None
+
+
+class TestIsKeyWriteAllowed:
+    """Le prédicat partagé autorise owners/editors et le niveau indéterminé."""
+
+    @pytest.mark.parametrize("access_level", ["owners", "editors"])
+    def test_write_levels_are_allowed(self, access_level):
+        assert is_key_write_allowed(access_level) is True
+
+    def test_unspecified_level_is_allowed(self):
+        assert is_key_write_allowed(GRIST_KEY_ACCESS_UNSPECIFIED) is True
+
+    @pytest.mark.parametrize("access_level", ["viewers", GRIST_KEY_NO_ACCESS])
+    def test_read_only_levels_are_refused(self, access_level):
+        assert is_key_write_allowed(access_level) is False

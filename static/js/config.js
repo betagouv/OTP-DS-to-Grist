@@ -4,6 +4,12 @@ if (typeof showNotification === 'undefined')
 if (typeof testExternalConnections === 'undefined')
   ({ testExternalConnections } = require('./connections.js'))
 
+// Niveaux d'accès de la clé Grist qui ne permettent pas d'écrire dans le
+// document : une synchro échouerait, il faut prévenir l'utilisateur.
+const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'no-access']
+const GRIST_KEY_ACCESS_WARNING =
+  "La clé API Grist enregistrée n'a pas les droits d'éditeur sur ce document."
+
 const getConfiguration = async () => {
   // Récupérer le contexte Grist
   const gristContext = await getGristContext()
@@ -76,6 +82,19 @@ const checkConfiguration = async (silent = false) => {
           <h3 class="fr-alert__title">Configuration incomplète</h3>
           <p>Champs manquants: ${missingFields.join(', ')}</p>
         </div>`
+      return config
+    }
+
+    // Clé enregistrée sans droits d'éditeur : alerter, y compris au chargement
+    // silencieux, car une synchro échouerait à l'écriture du document.
+    if (GRIST_KEY_INSUFFICIENT_ACCESS.includes(config.grist_key_access)) {
+      resultDiv.style.display = 'block'
+      resultDiv.innerHTML = `
+        <div class="fr-alert fr-alert--warning">
+          <h3 class="fr-alert__title">Clé API Grist insuffisante</h3>
+          <p>${GRIST_KEY_ACCESS_WARNING}</p>
+        </div>`
+      updateButtonsState()
       return config
     }
 

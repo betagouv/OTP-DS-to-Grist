@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from flask.testing import FlaskClient
 
-from app import app
+from app import _grist_key_access_cache, app
 from configuration.config_manager import ConfigManager
 
 WIDGET_HEADER = "X-Grist-Widget-Token"
@@ -79,6 +79,14 @@ def client(monkeypatch):
 
     with test_client:
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+def clear_grist_key_access_cache():
+    """Le cache d'accès en mémoire ne doit pas contaminer d'un test à l'autre."""
+    _grist_key_access_cache.clear()
+    yield
+    _grist_key_access_cache.clear()
 
 
 @pytest.fixture(autouse=True)

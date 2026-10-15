@@ -41,6 +41,16 @@ class TestSyncManager:
         """Initialisation avant chaque test"""
         self.mock_callback = MagicMock()
         self.manager = SyncManager(notify_callback=self.mock_callback)
+        # Par défaut, la clé Grist est propriétaire : le contrôle d'accès
+        # préalable ne doit pas déclencher de vrai appel réseau.
+        self._access_patcher = patch(
+            "sync.sync_manager.grist_doc_access_level", return_value="owners"
+        )
+        self.grist_access_mock = self._access_patcher.start()
+
+    def teardown_method(self):
+        """Nettoyage après chaque test"""
+        self._access_patcher.stop()
 
     def test_initialization_without_callback(self):
         """Test l'initialisation sans callback de notification"""
@@ -911,3 +921,125 @@ class TestSyncManager:
         mock_cm_class.return_value.fetch_and_store_grist_user_email.assert_called_once_with(
             5, "https://test.grist.com", "test_key"
         )
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_refuses_read_only_key(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Une clé en lecture seule bloque la synchro avant le sous-processus"""
+        self.grist_access_mock.return_value = "viewers"
+
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_base_url": "https://test.grist.com",
+            "grist_api_key": "viewer_key",
+            "grist_doc_id": "test_doc",
+            "grist_user_id": "user_viewer",
+        }
+
+        log_calls = []
+        result = self.manager.run_synchronization_task(
+            config, log_callback=log_calls.append
+        )
+
+        assert result["success"] is False
+        assert result["error_code"] == 2
+        assert "droits d'éditeur" in result["message"]
+        mock_subprocess.assert_not_called()
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.status == "error"
+        assert sync_log.message == result["message"]
+
+        assert any("ERREUR" in line for line in log_calls)
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_refuses_key_without_access(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Une clé sans accès au document bloque la synchro"""
+        self.grist_access_mock.return_value = "no-access"
+
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "foreign_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is False
+        assert result["error_code"] == 2
+        assert "droits d'éditeur" in result["message"]
+        mock_subprocess.assert_not_called()
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_unavailable_access_starts_subprocess(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Grist indisponible (None) ne bloque pas : le sous-processus prend le relais"""
+        self.grist_access_mock.return_value = None
+
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is True
+        mock_subprocess.assert_called_once()
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_empty_key_skips_access_check(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Une clé vide n'appelle pas le contrôle d'accès (pas de faux appel Grist)"""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is True
+        self.grist_access_mock.assert_not_called()
+        mock_subprocess.assert_called_once()

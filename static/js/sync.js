@@ -269,7 +269,7 @@ const updateTaskProgress = (task) => {
       showNotification('Synchronisation terminée avec des erreurs', 'warning')
     } else {
       showSyncBanner('result_content_manual', 'error', successCount, errorCount)
-      showNotification('Erreur lors de la synchronisation', 'error')
+      showNotification(task.message || 'Erreur lors de la synchronisation', 'error')
     }
   }
 }
