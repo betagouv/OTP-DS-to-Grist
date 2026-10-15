@@ -17,7 +17,7 @@ L'API et les pages de l'application n'acceptent que les requêtes portant le jet
 Vérifications effectuées sur chaque requête :
 - l'identité portée par le jeton widget (utilisateur et document) doit correspondre à la configuration concernée par la requête ;
 - un jeton widget réservé en lecture est refusé ;
-- lors de la sauvegarde d'une configuration, une clé API Grist fournie est soumise à Grist : elle doit donner un accès propriétaire ou éditeur sur le document concerné, sinon elle est refusée (une clé de compte de service invité sur le document est donc acceptée) ; ce même niveau d'accès, partagé avec la synchronisation, alimente un avertissement au chargement et bloque une synchro insuffisante ;
+- lors de la sauvegarde d'une configuration, une clé API Grist fournie est soumise à Grist : elle doit donner un accès propriétaire sur le document concerné, sinon elle est refusée ; ce même niveau d'accès, partagé avec la synchronisation, alimente un avertissement au chargement et bloque une synchro insuffisante (la synchronisation crée ou vide des tables, ce que Grist interdit aux éditeurs selon les paramètres du document) ;
 - l'URL de base Grist est soumise à la liste blanche des domaines.
 
 Les pages HTML d'interface sont les seules servies sans jeton widget : une navigation de navigateur ne peut pas joindre l'en-tête. Toute autre route exige le jeton widget.

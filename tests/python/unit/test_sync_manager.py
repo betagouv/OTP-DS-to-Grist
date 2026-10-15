@@ -987,7 +987,7 @@ class TestSyncManager:
 
         assert result["success"] is False
         assert result["error_code"] == 2
-        assert "droits d'éditeur" in result["message"]
+        assert "droits de propriétaire" in result["message"]
         mock_subprocess.assert_not_called()
 
         sync_log = mock_db.add.call_args[0][0]
@@ -995,6 +995,33 @@ class TestSyncManager:
         assert sync_log.message == result["message"]
 
         assert any("ERREUR" in line for line in log_calls)
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_refuses_editor_key(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Une clé éditeur (non propriétaire) bloque la synchro avant le sous-processus"""
+        self.grist_access_mock.return_value = "editors"
+
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "editor_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is False
+        assert result["error_code"] == 2
+        assert "droits de propriétaire" in result["message"]
+        mock_subprocess.assert_not_called()
 
     @patch("sync.sync_manager.create_engine")
     @patch("sync.sync_manager.sessionmaker")
@@ -1020,7 +1047,7 @@ class TestSyncManager:
 
         assert result["success"] is False
         assert result["error_code"] == 2
-        assert "droits d'éditeur" in result["message"]
+        assert "droits de propriétaire" in result["message"]
         mock_subprocess.assert_not_called()
 
     @patch("sync.sync_manager.create_engine")

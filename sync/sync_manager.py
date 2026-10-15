@@ -77,7 +77,7 @@ class SyncManager:
                 if access_level is not None and not is_key_write_allowed(access_level):
                     message = (
                         "La clé API Grist enregistrée n'a pas les droits "
-                        "d'éditeur sur le document Grist."
+                        "de propriétaire sur le document Grist."
                     )
                     if log_callback:
                         log_callback(f"ERREUR: {message}")
