@@ -1,6 +1,7 @@
 # tests/python/integration/conftest.py
 import base64
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from flask.testing import FlaskClient
@@ -56,7 +57,11 @@ class AuthenticatedClient(FlaskClient):
 
 @pytest.fixture
 def client(monkeypatch):
-    """Client authentifié : le seul mock externe est la validation du jeton par Grist."""
+    """Client authentifié : Grist est simulé côté widget_auth.
+
+    La validation du jeton widget et la consultation du document visé par
+    la clé API (niveau d'accès `owners`) retournent sans appel réseau.
+    """
     app.config["TESTING"] = True
     monkeypatch.setattr(app, "test_client_class", AuthenticatedClient)
     test_client = app.test_client()
@@ -68,10 +73,9 @@ def client(monkeypatch):
         return dict(test_client.identity)
 
     monkeypatch.setattr("security.widget_auth.validate_widget_token", fake_validate)
-    monkeypatch.setattr(
-        "security.widget_auth._grist_key_owner_id",
-        lambda base_url, api_key: test_client.identity["userId"],
-    )
+    grist_client = MagicMock()
+    grist_client.return_value.get_document_info.return_value = {"access": "owners"}
+    monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
 
     with test_client:
         yield test_client
