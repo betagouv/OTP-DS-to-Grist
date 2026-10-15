@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app import ConfigManager, sync_manager
-from configuration.config_manager import ConfigNotFoundError
+from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 
@@ -69,56 +69,83 @@ class TestEndpoints:
         assert data["success"] is False
         assert "requis" in data["message"]
 
-    @patch("app.SessionLocal")
     @patch.object(ConfigManager, "save_config")
-    def test_api_config_post_partial_save_success(
-        self, mock_save, mock_session, client
-    ):
-        """Test de sauvegarde partielle réussie (sans clé API Grist)"""
-        mock_save.return_value = True
+    def test_api_config_post_without_grist_key_rejected(self, mock_save, client):
+        """Création sans clé API Grist → 400 (la sauvegarde partielle est interdite)"""
+        mock_save.side_effect = ConfigIncompleteError(["grist_api_key"])
 
-        # Mock pour l'id
-        mock_db = mock_session.return_value
-        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
-        mock_otp.id = 456
-
-        # Configuration partielle (sans grist_api_key)
         config_data = {
             "ds_api_token": "token123",
             "demarche_number": "12345",
             "grist_base_url": "https://grist.numerique.gouv.fr/api",
             "grist_doc_id": "doc123",
             "grist_user_id": "user456",
-            # grist_api_key manquant (sauvegarde partielle)
+            # grist_api_key manquant
         }
 
         response = client.post(
             "/api/config", data=json.dumps(config_data), content_type="application/json"
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 400
         data = json.loads(response.data)
-        assert data["success"] is True
-        assert "sauvegardée" in data["message"]
-        assert data["otp_config_id"] == 456
+        assert data["success"] is False
+        assert data["message"] == "Le champ grist_api_key est requis"
 
-        # Vérifier que save_config a été appelé avec la configuration partielle
-        mock_save.assert_called_once()
-        call_args = mock_save.call_args[0][0]
-        assert call_args["ds_api_token"] == "token123"
-        assert call_args["demarche_number"] == "12345"
-        assert call_args["grist_base_url"] == "https://grist.numerique.gouv.fr/api"
-        assert call_args["grist_doc_id"] == "docA"
-        assert call_args["grist_user_id"] == "userA"
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_config_update_config_not_found(self, mock_load, client):
+        """Update avec un otp_config_id inexistant → 404"""
+        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
+
+        response = client.post(
+            "/api/config",
+            json={
+                "otp_config_id": 999,
+                "grist_doc_id": "doc123",
+                "grist_user_id": "user456",
+            },
+        )
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == "Configuration non trouvée (id=999)"
 
     @patch.object(ConfigManager, "save_config")
-    @patch("app.SessionLocal")
-    def test_api_config_post_normalizes_types(self, mock_session, mock_save, client):
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_config_update_row_missing_during_save(
+        self, mock_load, mock_save, client
+    ):
+        """La config disparaît entre le load et le save → 404"""
+        mock_load.return_value = {
+            "grist_user_id": "userA",
+            "grist_doc_id": "docA",
+            "grist_base_url": "https://grist.test.com/api",
+        }
+        mock_save.side_effect = ConfigNotFoundError("Configuration non trouvée (id=7)")
+
+        response = client.post(
+            "/api/config",
+            json={
+                "otp_config_id": 7,
+                "ds_api_token": "token123",
+                "demarche_number": "12345",
+                "grist_base_url": "https://grist.test.com/api",
+                "grist_doc_id": "doc123",
+                "grist_user_id": "user456",
+                "grist_api_key": "key123",
+            },
+        )
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == "Configuration non trouvée (id=7)"
+
+    @patch.object(ConfigManager, "save_config")
+    def test_api_config_post_normalizes_types(self, mock_save, client):
         """Vérifie que les types mixtes (int, bool) sont normalisés en str par le POST"""
-        mock_save.return_value = True
-        mock_db = mock_session.return_value
-        mock_otp = mock_db.query.return_value.filter_by.return_value.first.return_value
-        mock_otp.id = 789
+        mock_save.return_value = 789
 
         config_data = {
             "ds_api_token": "token123",
@@ -158,6 +185,35 @@ class TestEndpoints:
         assert isinstance(normalized["parallel"], bool)
 
     @patch.object(ConfigManager, "save_config")
+    @patch("app.SessionLocal")
+    def test_api_config_post_returns_id_from_save_config(
+        self, mock_session, mock_save, client
+    ):
+        """La réponse porte l'id retourné par save_config, sans relecture SessionLocal"""
+        mock_save.return_value = 789
+        # Simule une autre config existante pour le même user/doc
+        mock_otp = (
+            mock_session.return_value.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_otp.id = 999
+
+        config_data = {
+            "ds_api_token": "token123",
+            "demarche_number": "12345",
+            "grist_base_url": "https://grist.numerique.gouv.fr/api",
+            "grist_doc_id": "doc123",
+            "grist_user_id": "user456",
+            "grist_api_key": "key123",
+        }
+
+        response = client.post("/api/config", json=config_data)
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["otp_config_id"] == 789
+        mock_session.assert_not_called()
+
+    @patch.object(ConfigManager, "save_config")
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_config_update_base_url_unchanged_success(
         self, mock_load, mock_save, client
@@ -168,7 +224,7 @@ class TestEndpoints:
             "grist_doc_id": "docA",
             "grist_base_url": "https://grist.test.com/api",
         }
-        mock_save.return_value = True
+        mock_save.return_value = 1
 
         response = client.post(
             "/api/config",
@@ -546,14 +602,14 @@ class TestEndpoints:
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_groups_otp_config_id_not_found(self, mock_load, client):
         """Test de récupération des groupes avec otp_config_id inexistant"""
-        mock_load.side_effect = ConfigNotFoundError("Configuration not found")
+        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
 
         response = client.get("/api/groups?otp_config_id=999")
-        assert response.status_code == 400
+        assert response.status_code == 404
 
         data = json.loads(response.data)
-        assert "error" in data
-        assert "Erreur lors de la récupération des groupes" == data["error"]
+        assert data["success"] is False
+        assert data["message"] == "Configuration non trouvée (id=999)"
 
     def test_api_groups_no_params_400(self, client):
         """Test de récupération des groupes sans aucun paramètre"""
@@ -561,7 +617,23 @@ class TestEndpoints:
         assert response.status_code == 400
 
         data = json.loads(response.data)
-        assert "error" in data
+        assert data["success"] is False
+
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_start_sync_config_not_found(self, mock_load, client):
+        """otp_config_id inexistant au démarrage de sync → 404"""
+        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
+
+        response = client.post(
+            "/api/start-sync",
+            data=json.dumps({"otp_config_id": 999, "filters": {}}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == "Configuration non trouvée (id=999)"
 
     @patch.object(sync_manager, "start_sync")
     @patch.object(ConfigManager, "load_config_by_id")
@@ -674,8 +746,8 @@ class TestErrorHandling:
     def test_api_test_connection_demarches_with_otp_config_id_not_found(
         self, mock_load, client
     ):
-        """otp_config_id inexistant → 500 avec message JSON"""
-        mock_load.side_effect = ConfigNotFoundError("Configuration not found")
+        """otp_config_id inexistant → 404 avec message JSON"""
+        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
 
         response = client.post(
             "/api/test-connection",
@@ -689,10 +761,10 @@ class TestErrorHandling:
             content_type="application/json",
         )
 
-        assert response.status_code == 500
+        assert response.status_code == 404
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "introuvable" in data["message"]
+        assert data["message"] == "Configuration non trouvée (id=999)"
 
     @patch("app.test_grist_api")
     def test_api_test_connection_grist_network_error(self, mock_test, client):
@@ -863,8 +935,8 @@ class TestErrorHandling:
     def test_api_test_connection_grist_with_otp_config_id_not_found(
         self, mock_load, client
     ):
-        """otp_config_id inexistant → 500 avec message JSON"""
-        mock_load.side_effect = ConfigNotFoundError("Configuration not found")
+        """otp_config_id inexistant → 404 avec message JSON"""
+        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
 
         response = client.post(
             "/api/test-connection",
@@ -877,10 +949,28 @@ class TestErrorHandling:
             content_type="application/json",
         )
 
-        assert response.status_code == 500
+        assert response.status_code == 404
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "introuvable" in data["message"]
+        assert data["message"] == "Configuration non trouvée (id=999)"
+
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_test_connection_no_type_config_not_found(
+        self, mock_load, client
+    ):
+        """Sans type, config absente → 404 (auparavant une 500 brute)"""
+        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps({"otp_config_id": 999}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 404
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == "Configuration non trouvée (id=999)"
 
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_start_sync_missing_demarche_token(self, mock_load, client):
@@ -970,7 +1060,7 @@ class TestErrorHandling:
     @patch.object(ConfigManager, "save_config")
     def test_api_config_post_save_failure(self, mock_save, client):
         """Test échec de sauvegarde configuration"""
-        mock_save.return_value = False
+        mock_save.side_effect = Exception("Erreur BDD")
 
         config_data = {
             "ds_api_token": "token",
@@ -988,7 +1078,7 @@ class TestErrorHandling:
         assert response.status_code == 500
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Erreur lors de la sauvegarde" in data["message"]
+        assert "Erreur interne lors de la sauvegarde" in data["message"]
 
     @patch("app.SessionLocal")
     def test_api_schedule_post_success(self, mock_session, client):
@@ -1110,7 +1200,7 @@ class TestErrorHandling:
 
         data_resp = json.loads(response.data)
         assert data_resp["success"] is False
-        assert "not found" in data_resp["message"]
+        assert data_resp["message"] == "Configuration non trouvée (id=999)"
 
     @patch("app.SessionLocal")
     def test_api_schedule_missing_fields(self, _, client):
@@ -2061,7 +2151,7 @@ class TestWidgetAuth:
             return_value = None
 
         def missing(otp_config_id):
-            raise ConfigNotFoundError("Configuration not found")
+            raise ConfigNotFoundError("Configuration non trouvée (id=999)")
 
         monkeypatch.setattr("app.config_manager.load_config_by_id", missing)
 
@@ -2084,7 +2174,7 @@ class TestWidgetAuth:
         response = client.get("/api/schedule?otp_config_id=0")
 
         assert response.status_code == 404
-        assert response.get_json()["message"] == "Configuration not found"
+        assert response.get_json()["message"] == "Configuration non trouvée (id=0)"
 
     def test_stored_base_url_is_used_over_request_param(self, client, monkeypatch):
         """L'URL de vérification vient de la config stockée, pas du paramètre de l'appelant."""

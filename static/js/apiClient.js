@@ -35,10 +35,18 @@ const buildRequestWithToken = (input, init, token, baseUrl) => {
   return { input, init: { ...init, headers } }
 }
 
+const buildReadOnlyResponse = () => new Response(
+  JSON.stringify({ success: false, message: 'Accès éditeur requis' }),
+  { status: 403, headers: { 'Content-Type': 'application/json' } }
+)
+
 const apiFetch = async (input, init) => {
   const tokenInfo = await getToken()
   if (!tokenInfo)
     return fetch(input, init)
+
+  if (tokenInfo.readOnly === true)
+    return buildReadOnlyResponse()
 
   const baseUrl = deriveBaseUrl(tokenInfo.baseUrl)
   const firstAttempt = buildRequestWithToken(input, init, tokenInfo.token, baseUrl)

@@ -74,4 +74,22 @@ describe('apiFetch', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2)
     expect(getAccessToken).toHaveBeenCalledTimes(2)
   })
+
+  it('returns a synthetic 403 without any network call when the token is read-only', async () => {
+    const payload = { userId: '1', docId: 'd', readOnly: true, exp: Math.floor(Date.now() / 1000) + 900 }
+    const token = `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
+    global.grist = {
+      ready: jest.fn(),
+      docApi: { getAccessToken: jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
+    }
+
+    const response = await apiFetch('/api/config')
+
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      message: 'Accès éditeur requis'
+    })
+  })
 })

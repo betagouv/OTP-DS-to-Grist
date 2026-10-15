@@ -3,7 +3,8 @@ const {
   getApiBaseUrlFromDocBaseUrl,
   getWidgetToken,
   clearWidgetToken,
-  decodeWidgetTokenIdentity
+  decodeWidgetTokenIdentity,
+  isWidgetReadOnly
 } = require('../../static/js/gristContext.js')
 
 beforeEach(() => {
@@ -137,5 +138,44 @@ describe('getWidgetToken', () => {
 
     expect(getAccessToken).toHaveBeenCalledTimes(2)
     expect(second.token).not.toBe(first.token)
+  })
+})
+
+describe('isWidgetReadOnly', () => {
+  const createTokenWithPayload = (payload) =>
+    `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
+
+  beforeEach(() => {
+    clearWidgetToken()
+    delete global.grist
+  })
+
+  const mockGristWithToken = (token) => {
+    global.grist = {
+      ready: jest.fn(),
+      docApi: { getAccessToken: jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
+    }
+  }
+
+  it('returns true when the token payload marks readOnly', async () => {
+    mockGristWithToken(createTokenWithPayload({ userId: '1', docId: 'd', readOnly: true, exp: Math.floor(Date.now() / 1000) + 900 }))
+
+    expect(await isWidgetReadOnly()).toBe(true)
+  })
+
+  it('returns false when the token payload has no readOnly', async () => {
+    mockGristWithToken(createTokenWithExp(900))
+
+    expect(await isWidgetReadOnly()).toBe(false)
+  })
+
+  it('fails open when the payload is unreadable', async () => {
+    mockGristWithToken('header.!!!invalid!!!.signature')
+
+    expect(await isWidgetReadOnly()).toBe(false)
+  })
+
+  it('fails open when no token is available', async () => {
+    expect(await isWidgetReadOnly()).toBe(false)
   })
 })

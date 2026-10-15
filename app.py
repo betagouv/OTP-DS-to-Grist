@@ -15,8 +15,14 @@ from dotenv import load_dotenv
 from flask import Flask, Response, g, jsonify, render_template, request, url_for
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from werkzeug.exceptions import HTTPException
 
-from configuration.config_manager import ConfigManager
+from api.responses import config_not_found_response, error_response
+from configuration.config_manager import (
+    ConfigIncompleteError,
+    ConfigManager,
+    ConfigNotFoundError,
+)
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from dn.client import get_groups
@@ -310,6 +316,25 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/wip")
+def wip():
+    return render_template("wip.html")
+
+
+@app.errorhandler(ConfigNotFoundError)
+def handle_config_not_found(e: ConfigNotFoundError):
+    """Réponse 404 unique pour une configuration absente en base."""
+    return error_response(str(e), 404)
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(e: HTTPException):
+    """Erreurs HTTP en JSON sous /api, rendu HTML conservé ailleurs."""
+    if not request.path.startswith("/api/"):
+        return e
+    return error_response(str(e.description), int(e.code or 500))
+
+
 @app.route("/api/config", methods=["GET", "POST"])
 def api_config():
     """API pour la gestion de la configuration"""
@@ -351,11 +376,6 @@ def api_config():
                 # Update existant - Charger la config pour vérification
                 existing_config = config_manager.load_config_by_id(otp_config_id)
 
-                if not existing_config:
-                    return jsonify(
-                        {"success": False, "message": "Configuration non trouvée"}
-                    ), 404
-
                 # Vérification de sécurité : IDs doivent correspondre
                 if existing_config.get("grist_user_id") != new_config.get(
                     "grist_user_id"
@@ -365,74 +385,24 @@ def api_config():
                     return jsonify({"success": False, "message": "Forbidden"}), 403
 
                 # Passer le dict à save_config() qui gère l'update par ID et les tokens
-                success = config_manager.save_config(new_config)
+                config_manager.save_config(new_config)
 
-                return (
-                    (
-                        jsonify(
-                            {
-                                "success": True,
-                                "message": "Configuration mise à jour avec succès",
-                                "otp_config_id": otp_config_id,
-                            }
-                        ),
-                        200,
-                    )
-                    if success
-                    else (
-                        jsonify(
-                            {
-                                "success": False,
-                                "message": "Erreur lors de la mise à jour",
-                            }
-                        ),
-                        500,
-                    )
-                )
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": "Configuration mise à jour avec succès",
+                        "otp_config_id": otp_config_id,
+                    }
+                ), 200
             else:
-                # Création - champs minimum pour sauvegarde partielle
-                required_fields = [
-                    "ds_api_token",
-                    "demarche_number",
-                    "grist_base_url",
-                    "grist_doc_id",
-                    "grist_user_id",
-                ]
-
-                for field in required_fields:
-                    if not new_config.get(field):
-                        return jsonify(
-                            {
-                                "success": False,
-                                "message": f"Le champ {field} est requis",
-                            }
-                        ), 400
-                success = config_manager.save_config(new_config)
-                if success:
-                    db = SessionLocal()
-                    try:
-                        otp_config = (
-                            db.query(OtpConfiguration)
-                            .filter_by(
-                                grist_user_id=new_config.get("grist_user_id", ""),
-                                grist_doc_id=new_config.get("grist_doc_id", ""),
-                            )
-                            .first()
-                        )
-                        otp_config_id = otp_config.id if otp_config else None
-                    finally:
-                        db.close()
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": "Configuration sauvegardée avec succès",
-                            "otp_config_id": otp_config_id,
-                        }
-                    )
-                else:
-                    return jsonify(
-                        {"success": False, "message": "Erreur lors de la sauvegarde"}
-                    ), 500
+                otp_config_id = config_manager.save_config(new_config)
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": "Configuration sauvegardée avec succès",
+                        "otp_config_id": otp_config_id,
+                    }
+                )
 
         except GristBaseUrlImmutableError:
             return jsonify(
@@ -443,6 +413,10 @@ def api_config():
             ), 403
         except GristBaseUrlNotAllowedError as e:
             return jsonify({"success": False, "message": str(e)}), 400
+        except ConfigIncompleteError as e:
+            return jsonify({"success": False, "message": str(e)}), 400
+        except ConfigNotFoundError:
+            raise
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde: {str(e)}")
             return jsonify(
@@ -460,9 +434,7 @@ def api_delete_config(otp_config_id):
         otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
 
         if not otp_config:
-            return jsonify(
-                {"success": False, "message": "Configuration non trouvée"}
-            ), 404
+            return config_not_found_response(otp_config_id)
 
         # Supprimer la configuration (les FK sont gérées automatiquement)
         db.delete(otp_config)
@@ -505,9 +477,7 @@ def api_schedule():
             otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
 
             if not otp_config:
-                return jsonify(
-                    {"success": False, "message": "Configuration not found"}
-                ), 404
+                return config_not_found_response(otp_config_id)
 
             # Vérifier si le planning existe et est activé
             schedule = (
@@ -541,9 +511,7 @@ def api_schedule():
         otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
 
         if not otp_config:
-            return jsonify(
-                {"success": False, "message": "Configuration not found"}
-            ), 404
+            return config_not_found_response(otp_config_id)
 
         if request.method == "POST":
             if not otp_config.grist_api_key:
@@ -613,6 +581,8 @@ def api_test_connection():
             if otp_config_id:
                 try:
                     config = config_manager.load_config_by_id(otp_config_id)
+                except ConfigNotFoundError:
+                    raise
                 except Exception:
                     logger.error(
                         f"Configuration introuvable pour otp_config_id={otp_config_id}"
@@ -637,6 +607,8 @@ def api_test_connection():
             if otp_config_id:
                 try:
                     config = config_manager.load_config_by_id(otp_config_id)
+                except ConfigNotFoundError:
+                    raise
                 except Exception:
                     logger.error(
                         f"Configuration introuvable pour otp_config_id={otp_config_id}"
@@ -666,16 +638,20 @@ def api_groups():
     try:
         otp_config_id = request.args.get("otp_config_id")
         if not otp_config_id:
-            return jsonify({"error": "otp_config_id requis"}), 400
+            return error_response("otp_config_id requis", 400)
 
         config = config_manager.load_config_by_id(otp_config_id)
         groups = get_groups(config["ds_api_token"], config["demarche_number"])
 
         return jsonify(groups)
 
+    except ConfigNotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des groupes : {str(e)}")
-        return jsonify({"error": "Erreur lors de la récupération des groupes"}), 400
+        return error_response(
+            "Erreur lors de la récupération des groupes", 400
+        )
 
 
 @app.route("/api/sync-log/latest", methods=["GET"])
@@ -702,7 +678,7 @@ def api_sync_log_latest():
         if otp_config_id:
             otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
             if not otp_config:
-                return jsonify({"success": False, "message": "Config not found"}), 404
+                return config_not_found_response(otp_config_id)
 
             grist_user_id = otp_config.grist_user_id
             grist_doc_id = otp_config.grist_doc_id
@@ -806,6 +782,8 @@ def api_start_sync():
             }
         )
 
+    except ConfigNotFoundError:
+        raise
     except Exception as e:
         logger.error(f"Erreur lors du démarrage de la synchronisation: {str(e)}")
         return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
@@ -820,11 +798,6 @@ def inject_help_links():
             "grist_api_key": HELP_LINK_GRIST_API_KEY,
         }
     }
-
-
-@app.route("/wip")
-def wip():
-    return render_template("wip.html")
 
 
 def vite_asset(entry: str = "src/main.js") -> dict[str, str | None]:

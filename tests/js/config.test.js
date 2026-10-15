@@ -191,7 +191,7 @@ describe('checkConfiguration', () => {
   )
 
   it(
-    'ne montre pas de message si seulement la clé Grist manque',
+    'affiche un message si seulement la clé Grist manque',
     async () => {
       // Mock réponse API partielle
       fetch.mockResolvedValue({
@@ -204,7 +204,7 @@ describe('checkConfiguration', () => {
             grist_doc_id: 'doc123',
             grist_user_id: 'user123',
             has_ds_token: true,
-            has_grist_key: false // Manquant mais acceptable
+            has_grist_key: false // Manquant
           }]
         })
       })
@@ -214,7 +214,8 @@ describe('checkConfiguration', () => {
       expect(result.otp_config_id).toBe(123)
 
       const resultDiv = document.getElementById('config_check_result')
-      expect(resultDiv.innerHTML).toBe('')
+      expect(resultDiv.innerHTML).toContain('Configuration incomplète')
+      expect(resultDiv.innerHTML).toContain('has_grist_key') // Champ manquant listé
       expect(document.getElementById('start_sync_btn').disabled).toBe(true)
       expect(showNotification).not.toHaveBeenCalled()
       expect(consoleErrorSpy).not.toHaveBeenCalled()
@@ -495,14 +496,14 @@ describe('saveConfiguration', () => {
   )
 
   it(
-    'sauvegarde partielle sans clé API Grist',
+    'bloque la sauvegarde sans clé API Grist',
     async () => {
       // Setup DOM simulé
       document.body.innerHTML = `
         <input id="ds_api_token" value="test_token">
         <input id="demarche_number" value="123">
         <input id="grist_base_url" value="https://grist.numerique.gouv.fr/api">
-        <input id="grist_api_key" value=""> <!-- Vide pour sauvegarde partielle -->
+        <input id="grist_api_key" value=""> <!-- Vide, absent de la base -->
         <input id="date_debut" value="2023-01-01">
         <input id="date_fin" value="2023-12-31">
         <input type="checkbox" name="statuts" value="en_construction" checked>
@@ -528,7 +529,7 @@ describe('saveConfiguration', () => {
           // GET /api/config retourne {configs: [...]}
           return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve({ configs: [{ has_ds_token: false }] })
+            json: () => Promise.resolve({ configs: [{ has_ds_token: false, has_grist_key: false }] })
           })
         }
       })
@@ -546,29 +547,11 @@ describe('saveConfiguration', () => {
       // Appel
       await saveConfiguration()
 
-      // Vérifications
-      expect(fetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      }))
-
-      const callArgs = fetch.mock.calls[1][1]
-      const body = JSON.parse(callArgs.body)
-      
-      // Vérifier que la clé API Grist n'est pas incluse si vide
-      expect(body).toEqual({
-        otp_config_id: undefined,
-        ds_api_token: 'test_token',
-        demarche_number: '123',
-        grist_base_url: 'https://grist.numerique.gouv.fr/api',
-        filter_date_start: '2023-01-01',
-        filter_date_end: '2023-12-31',
-        filter_statuses: 'en_construction',
-        filter_groups: '1'
-      })
-
-      // Vérifier que grist_api_key n'est pas dans le body
-      expect(body.grist_api_key).toBeUndefined()
+      // Vérifications : notification d'erreur, aucune sauvegarde
+      expect(showNotification).toHaveBeenCalledWith('Le champ "Clé API Grist" est requis', 'error')
+      expect(fetch).toHaveBeenCalledTimes(1) // Seul le GET /api/config de contexte
+      const postCalls = fetch.mock.calls.filter(([, options]) => options?.method === 'POST')
+      expect(postCalls).toHaveLength(0)
     }
   )
 

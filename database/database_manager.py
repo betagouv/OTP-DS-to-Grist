@@ -141,37 +141,6 @@ class DatabaseManager:
                 )
             """)
 
-            # Ajouter les colonnes manquantes aux tables existantes
-            # (aucune pour le moment)
-
-            # Insérer une ligne vide si la table est vide
-            cursor.execute("SELECT COUNT(*) FROM otp_configurations")
-            if cursor.fetchone()[0] == 0:
-                cursor.execute("""
-                    INSERT INTO otp_configurations (
-                        ds_api_token,
-                        demarche_number,
-                        grist_base_url,
-                        grist_api_key,
-                        grist_doc_id,
-                        grist_user_id,
-                        filter_date_start,
-                        filter_date_end,
-                        filter_statuses,
-                        filter_groups
-                    ) VALUES (
-                        '',
-                        '',
-                        '',
-                        '',
-                        '',
-                        '',
-                        '',
-                        '',
-                        '',
-                        ''
-                    )
-                """)
             conn.commit()
 
     @staticmethod

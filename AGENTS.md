@@ -36,6 +36,7 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 
 - Lancer les tests associés après chaque modification
 - Ne jamais committer, pousser ni stager : laisser l'utilisateur préparer, créer et valider ses propres commits après relecture
+- Mettre à jour la todo list à chaque changement d'état (étape terminée, annulée, nouveau plan, décision) — pas seulement en fin de tâche
 
 ## Architecture du projet
 
@@ -101,7 +102,7 @@ obsolète et fragile. Décrire le rôle et les responsabilités, pas l'inventair
 
 ## Conventions
 
-Consulter les fichiers de config à la racine (`.eslintrc.json`, `pyproject.toml`) pour les règles de code.
+Consulter les fichiers de config à la racine (`eslint.config.js`, `pyproject.toml`) pour les règles de code.
 Conventions de nommage : standards Python (PEP 8) et JS.
 Typer les signatures des fonctions touchées lors d'une modification (approche incrémentale), en
 cohérence avec le style existant : types natifs (`dict[str, str]`, `set[str]`, ...) et unions
