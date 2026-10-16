@@ -49,4 +49,13 @@ def log_error(message):
     print(f"ERREUR: {message}")
 
 
+def format_numbers(numbers: set[str], limit: int = 20) -> str:
+    """Numéros triés, tronqués au-delà de `limit` pour garder un log lisible."""
+    ordered = sorted(numbers, key=lambda number: (len(number), number))
+    shown = ", ".join(ordered[:limit])
+    if len(ordered) > limit:
+        shown += f", … (+{len(ordered) - limit})"
+    return shown
+
+
 log_progress = LogProgress(ceiling=98)

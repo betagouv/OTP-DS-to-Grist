@@ -23,6 +23,11 @@ from utils.constants import DATABASE_URL, EXIT_CODE_EXTERNAL_API_ERROR
 # Nombre maximal de logs retenus par tâche en mémoire serveur
 MAX_LOGS_PER_TASK = 2000
 
+# Longueur maximale du message d'erreur présenté à l'utilisateur (affiché par
+# le front sous la barre de progression) : au-delà, le texte est tronqué.
+# Le détail complet (stderr, tracebacks) reste dans les logs de la tâche.
+MAX_ERROR_MESSAGE_LENGTH = 500
+
 
 class SyncManager:
     """
@@ -77,7 +82,7 @@ class SyncManager:
                 if access_level is not None and not is_key_write_allowed(access_level):
                     message = (
                         "La clé API Grist enregistrée n'a pas les droits "
-                        "d'éditeur sur le document Grist."
+                        "de propriétaire sur le document Grist."
                     )
                     if log_callback:
                         log_callback(f"ERREUR: {message}")
@@ -217,11 +222,12 @@ class SyncManager:
         except Exception as e:
             error_parts = extract_error_parts(e, output_lines)
             if error_parts:
-                error_msg = (
-                    f"Erreur lors de la synchronisation: {'; '.join(error_parts)}"
-                )
-            elif isinstance(e, subprocess.CalledProcessError):
-                error_msg = f"Erreur lors de la synchronisation: {str(e)}"
+                summary = "; ".join(error_parts)
+                if len(summary) > MAX_ERROR_MESSAGE_LENGTH:
+                    summary = (
+                        summary[: MAX_ERROR_MESSAGE_LENGTH - 1].rstrip() + "…"
+                    )
+                error_msg = f"Erreur lors de la synchronisation: {summary}"
             else:
                 error_msg = f"Erreur lors de la synchronisation: {str(e)}"
 

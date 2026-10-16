@@ -69,7 +69,10 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
       - Met à jour last_run et calcule next_run dans UserSchedule
       - Exécute run_synchronization_task
       - En cas d'erreur :
-        - Désactivation du planning : uniquement pour les exceptions.
+        - Désactivation du planning : uniquement pour EXIT_CODE_EXTERNAL_API_ERROR
+          (échec de la vérification des connexions : token, document ou démarche).
+          Les autres erreurs, transitoires (EXIT_CODE_GRIST_READ_ERROR) ou
+          inattendues, laissent le planning actif.
     """
     logger.info(
         f"Démarrage de la synchronisation planifiée pour config ID: {otp_config_id}"
@@ -109,7 +112,18 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
         )
 
         if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
-            raise Exception(f"Erreur API externe: {result.get('message')}")
+            # Erreur définitive (token invalide, document ou démarche
+            # introuvable) : relancer chaque jour ne servirait à rien.
+            logger.error(
+                f"Erreur API externe pour config {otp_config_id}: {result.get('message')}"
+            )
+            if user_schedule:
+                user_schedule.enabled = False
+                db.commit()
+                logger.info(
+                    f"Planning désactivé pour config {otp_config_id} à cause d'erreur"
+                )
+            return
 
         now = datetime.now(timezone.utc)
         next_run = compute_next_run(now)
@@ -130,23 +144,11 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
         logger.info(f"next_run DB mis à jour: {next_run}")
 
     except Exception as e:
+        # Erreur inattendue (base de données, configuration…) : journalisée,
+        # sans désactiver le planning, qui retentera au prochain créneau.
         logger.error(
             f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}"
         )
-
-        try:
-            user_schedule = (
-                db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
-            )
-
-            if user_schedule:
-                user_schedule.enabled = False
-                db.commit()
-                logger.info(
-                    f"Planning désactivé pour config {otp_config_id} à cause d'erreur"
-                )
-        except Exception:
-            logger.error(f"Erreur lors de la désactivation du planning")
 
     finally:
         db.close()

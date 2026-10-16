@@ -71,8 +71,12 @@ def _mark_deleted_in_grist(
         log(f"  {len(records)} dossiers marqués '{COLUMN_LABEL}' dans Grist.")
         return len(records)
 
-    log_error(f"  Erreur PATCH Grist: {response.status_code} - {response.text}")
-    return 0
+    # Échec signalé à l'appelant : le repère `deleted_since` ne doit pas avancer,
+    # sinon ces suppressions ne seraient jamais redemandées à DN.
+    raise RuntimeError(
+        f"PATCH Grist en échec ({len(records)} dossiers à marquer supprimés) : "
+        f"{response.status_code} - {response.text}"
+    )
 
 
 def check_deleted_dossiers(
@@ -99,7 +103,9 @@ def check_deleted_dossiers(
     )
 
     if not _ensure_deletion_columns(client, table_id, log, log_error):
-        return {}
+        raise RuntimeError(
+            f"Colonnes de suppression impossibles à créer dans la table {table_id}"
+        )
 
     deleted_dossiers = get_deleted_dossiers(
         demarche_number, deleted_since=deleted_since

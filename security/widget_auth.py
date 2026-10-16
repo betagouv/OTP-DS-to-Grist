@@ -25,8 +25,10 @@ from security.widget_token import (
 from utils.log import log_error
 
 # Niveaux d'accès de la clé API Grist qui permettent d'écrire dans le document
-# (sauvegarde de configuration, synchronisation) : lecture seule ne suffit pas.
-GRIST_KEY_REQUIRED_ACCESS_LEVELS = frozenset({"owners", "editors"})
+# (sauvegarde de configuration, synchronisation) : seul le propriétaire écrit,
+# car la synchronisation crée ou vide des tables (changement de structure),
+# refusé aux éditeurs selon les paramètres d'accès du document Grist.
+GRIST_KEY_REQUIRED_ACCESS_LEVELS = frozenset({"owners"})
 
 # Niveau renvoyé quand la clé n'a aucun accès au document (401, 403 ou 404).
 GRIST_KEY_NO_ACCESS = "no-access"
@@ -130,7 +132,7 @@ def authorize_request(
             return _error_response("Clé API sans accès au document Grist", 403)
         if not is_key_write_allowed(access_level):
             return _error_response(
-                "Accès éditeur requis sur le document Grist", 403
+                "Accès propriétaire requis sur le document Grist", 403
             )
 
     return None

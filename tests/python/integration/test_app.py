@@ -2105,7 +2105,21 @@ class TestWidgetAuth:
         )
         assert response.status_code == 403
         data = json.loads(response.data)
-        assert "éditeur" in data["message"]
+        assert "propriétaire" in data["message"]
+
+    def test_editor_key_returns_403(self, client, monkeypatch):
+        """Un accès éditeur ne suffit pas : seule la sauvegarde d'une clé propriétaire est acceptée."""
+        self._stub_document_access(monkeypatch, document_info={"access": "editors"})
+        response = client.post(
+            "/api/config",
+            json={
+                "grist_base_url": "https://grist.example.com/api",
+                "grist_api_key": "some-key",
+            },
+        )
+        assert response.status_code == 403
+        data = json.loads(response.data)
+        assert "propriétaire" in data["message"]
 
     def test_unspecified_access_key_allows_save(self, client, monkeypatch):
         """Grist n'expose pas le niveau d'accès : la clé est acceptée."""

@@ -106,15 +106,16 @@ class TestGristDocAccessLevel:
 
 
 class TestIsKeyWriteAllowed:
-    """Le prédicat partagé autorise owners/editors et le niveau indéterminé."""
+    """Le prédicat partagé n'autorise que owners et le niveau indéterminé."""
 
-    @pytest.mark.parametrize("access_level", ["owners", "editors"])
-    def test_write_levels_are_allowed(self, access_level):
-        assert is_key_write_allowed(access_level) is True
+    def test_owners_level_is_allowed(self):
+        assert is_key_write_allowed("owners") is True
 
     def test_unspecified_level_is_allowed(self):
         assert is_key_write_allowed(GRIST_KEY_ACCESS_UNSPECIFIED) is True
 
-    @pytest.mark.parametrize("access_level", ["viewers", GRIST_KEY_NO_ACCESS])
-    def test_read_only_levels_are_refused(self, access_level):
+    @pytest.mark.parametrize(
+        "access_level", ["editors", "viewers", GRIST_KEY_NO_ACCESS]
+    )
+    def test_insufficient_levels_are_refused(self, access_level):
         assert is_key_write_allowed(access_level) is False

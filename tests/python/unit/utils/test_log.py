@@ -1,5 +1,5 @@
 import utils.log
-from utils.log import log, log_verbose, log_error
+from utils.log import format_numbers, log, log_verbose, log_error
 
 
 class TestLoggingFunctions:
@@ -43,3 +43,26 @@ class TestLoggingFunctions:
         log_error("Error message")
         captured = capsys.readouterr()
         assert captured.out.strip() == "ERREUR: Error message"
+
+
+class TestFormatNumbers:
+    """Tests unitaires pour format_numbers"""
+
+    def test_empty(self):
+        assert format_numbers(set()) == ""
+
+    def test_sorted_numerically(self):
+        """Tri numérique, pas lexicographique : 9 avant 10 avant 100"""
+        assert format_numbers({"100", "10", "9"}) == "9, 10, 100"
+
+    def test_at_limit_not_truncated(self):
+        numbers = {str(i) for i in range(1, 4)}
+        assert format_numbers(numbers, limit=3) == "1, 2, 3"
+
+    def test_above_limit_truncated_with_remaining_count(self):
+        numbers = {str(i) for i in range(1, 6)}
+        assert format_numbers(numbers, limit=3) == "1, 2, 3, … (+2)"
+
+    def test_default_limit_is_20(self):
+        numbers = {str(i) for i in range(1, 26)}
+        assert format_numbers(numbers).endswith("19, 20, … (+5)")

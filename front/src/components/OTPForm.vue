@@ -37,7 +37,7 @@ const activeDnAccordion = ref(-1)
 
 // Niveaux d'accès de la clé Grist qui ne permettent pas d'écrire dans le
 // document : une synchro échouerait, il faut prévenir l'utilisateur.
-const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'no-access']
+const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'editors', 'no-access']
 const gristKeyWarningDismissed = ref(false)
 
 const gristKeyAccessWarning = computed(() =>
@@ -223,7 +223,7 @@ const handleAddDemarche = async () => {
       @close="gristKeyWarningDismissed = true"
       class="fr-mb-4w"
     >
-      La clé API Grist enregistrée n'a pas les droits d'éditeur sur ce document.
+      La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document.
     </OtpAlert>
 
     <p class="fr-mb-4w">Les champs suivis d'un astérisque (*) sont obligatoires.</p>

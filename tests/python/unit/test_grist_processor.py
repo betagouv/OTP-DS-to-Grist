@@ -1,5 +1,9 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
+
+from grist.client import GristReadError
+import grist_processor_working_all as gpa
 from grist_processor_working_all import (
     normalize_column_name,
     add_id_columns_based_on_annotations,
@@ -220,17 +224,16 @@ class TestUpsertAvisRecords:
         self.client.post_records.assert_not_called()
         self.client.patch_records.assert_called_once()
 
-    def test_get_http_error_creates_all(self):
-        """GET en échec -> aucun existant indexé, tout créé, pas d'erreur levée"""
+    def test_get_http_error_raises_without_writing(self):
+        """GET en échec -> GristReadError, aucun avis recréé en doublon"""
         self.client.get_records.return_value.status_code = 500
+        self.client.get_records.return_value.text = "boom"
         avis = [{"avis_id": 1}]
 
-        nb_created, nb_updated = upsert_avis_records(
-            self.client, self.TABLE_ID, avis
-        )
+        with pytest.raises(GristReadError):
+            upsert_avis_records(self.client, self.TABLE_ID, avis)
 
-        assert (nb_created, nb_updated) == (1, 0)
-        self.client.post_records.assert_called_once()
+        self.client.post_records.assert_not_called()
         self.client.patch_records.assert_not_called()
 
     def test_avis_without_avis_id_are_created(self):
@@ -263,3 +266,44 @@ class TestUpsertAvisRecords:
         self.client.get_records.assert_called_once()
         self.client.post_records.assert_not_called()
         self.client.patch_records.assert_not_called()
+
+
+class TestMainGristReadError:
+    """Tests unitaires de main() quand une lecture Grist échoue"""
+
+    def _response(self):
+        response = MagicMock()
+        response.status_code = 400
+        response.json.return_value = {"error": "[Sandbox] MemoryError"}
+        return response
+
+    def test_returns_dedicated_exit_code_and_user_message(self, monkeypatch, capsys):
+        """GristReadError -> code EXIT_CODE_GRIST_READ_ERROR, une seule ligne
+        d'erreur explicite, aucune trace d'appels"""
+        from utils.constants import EXIT_CODE_GRIST_READ_ERROR
+
+        monkeypatch.setenv("DEMARCHES_API_TOKEN", "token")
+        monkeypatch.setenv("DEMARCHE_NUMBER", "128651")
+        monkeypatch.setenv("GRIST_BASE_URL", "https://grist.example.com")
+        monkeypatch.setenv("GRIST_API_KEY", "key-123456789")
+        monkeypatch.setenv("GRIST_DOC_ID", "doc123")
+        error = GristReadError("Demarche_128651_dossiers", self._response())
+
+        with patch.object(
+            gpa, "verify_api_connections", return_value=(True, [])
+        ), patch.object(
+            gpa, "process_demarche_for_grist_optimized", side_effect=error
+        ):
+            exit_code = gpa.main()
+
+        captured = capsys.readouterr()
+        assert exit_code == EXIT_CODE_GRIST_READ_ERROR
+        error_lines = [
+            line for line in captured.out.splitlines() if line.startswith("ERREUR:")
+        ]
+        assert error_lines == [
+            "ERREUR: Grist n'a pas pu lire la table Demarche_128651_dossiers "
+            "(400 : [Sandbox] MemoryError). Synchronisation interrompue pour ne "
+            "pas créer de doublons ; elle reprendra au prochain lancement."
+        ]
+        assert "Traceback" not in captured.err
