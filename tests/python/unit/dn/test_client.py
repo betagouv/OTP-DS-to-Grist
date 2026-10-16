@@ -9,6 +9,7 @@ from dn.client import (
     get_deleted_dossiers,
     get_demarche_dossiers_labels_only,
     get_groups,
+    get_pj_natures,
     get_session_with_retries,
     iter_demarche_dossier_pages,
 )
@@ -116,6 +117,86 @@ class TestGetGroups:
         get_groups("token", "123")
 
         assert "Network error" in capsys.readouterr().out
+
+
+class TestGetPjNatures:
+    """Tests pour get_pj_natures"""
+
+    @staticmethod
+    def _session(mock_session_factory, response):
+        session = MagicMock()
+        session.post.return_value = response
+        mock_session_factory.return_value = session
+        return session
+
+    @patch("dn.client.get_session_with_retries")
+    def test_success_fusionne_les_natures_des_dossiers(self, mock_session_factory):
+        """Natures lues sur plusieurs dossiers, champs non-PJ ignorés"""
+        response = _mock_response(
+            json_data={
+                "data": {
+                    "demarche": {
+                        "dossiers": {
+                            "nodes": [
+                                {
+                                    "champs": [
+                                        {
+                                            "__typename": "PieceJustificativeChamp",
+                                            "champDescriptorId": "pj_rib",
+                                            "nature": "RIB",
+                                        },
+                                        {
+                                            "__typename": "TextChamp",
+                                            "champDescriptorId": "txt",
+                                        },
+                                    ]
+                                },
+                                {
+                                    "champs": [
+                                        {
+                                            "__typename": "PieceJustificativeChamp",
+                                            "champDescriptorId": "pj_autre",
+                                            "nature": "NON_SPECIFIE",
+                                        }
+                                    ]
+                                },
+                            ]
+                        }
+                    }
+                }
+            }
+        )
+        session = self._session(mock_session_factory, response)
+
+        assert get_pj_natures(123) == {"pj_rib": "RIB", "pj_autre": "NON_SPECIFIE"}
+        variables = session.post.call_args.kwargs["json"]["variables"]
+        assert variables["demarcheNumber"] == 123
+
+    @patch("dn.client.get_session_with_retries")
+    def test_aucun_dossier_retourne_vide(self, mock_session_factory):
+        response = _mock_response(
+            json_data={"data": {"demarche": {"dossiers": {"nodes": []}}}}
+        )
+        self._session(mock_session_factory, response)
+        assert get_pj_natures(123) == {}
+
+    @patch("dn.client.get_session_with_retries")
+    def test_statut_http_en_erreur_retourne_vide(self, mock_session_factory, capsys):
+        self._session(mock_session_factory, _mock_response(status_code=500))
+        assert get_pj_natures(123) == {}
+        assert "500" in capsys.readouterr().out
+
+    @patch("dn.client.get_session_with_retries")
+    def test_erreurs_graphql_retourne_vide(self, mock_session_factory, capsys):
+        response = _mock_response(json_data={"errors": [{"message": "Boom"}]})
+        self._session(mock_session_factory, response)
+        assert get_pj_natures(123) == {}
+        assert "Boom" in capsys.readouterr().out
+
+    @patch("dn.client.get_session_with_retries", side_effect=Exception("Network"))
+    def test_exception_retourne_vide(self, mock_session_factory, capsys):
+        assert get_pj_natures(123) == {}
+        assert "Network" in capsys.readouterr().out
 
 
 class TestGetSessionWithRetries:

@@ -14,6 +14,9 @@ load_dotenv()
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
 
 PAGE_SIZE_DOSSIERS_MAX = 100
+# Dossiers lus pour déterminer la nature des pièces justificatives
+# (un dossier sur une ancienne révision peut ne pas porter toutes les PJ)
+PJ_NATURES_SAMPLE_SIZE = 10
 
 # Requêtes GraphQL (fragmentées en quelques constantes)
 # Pour les fragments communs
@@ -797,6 +800,84 @@ def get_groups(
     except Exception as e:
         log_error(f"Erreur lors de la récupération des groupes instructeurs: {e}")
         return []
+
+
+def get_pj_natures(demarche_number: int) -> dict[str, str]:
+    """
+    Retourne la nature de chaque pièce justificative de la démarche
+    ({champDescriptorId: "RIB", "TITRE_IDENTITE", ...}).
+
+    La nature n'est exposée que sur les champs (PieceJustificativeChamp), pas
+    sur les descripteurs : on la lit sur un échantillon de dossiers. Retourne
+    {} si la démarche n'a aucun dossier ou en cas d'erreur.
+    """
+    query = """
+    query getPjNatures($demarcheNumber: Int!, $first: Int!) {
+        demarche(number: $demarcheNumber) {
+            dossiers(first: $first) {
+                nodes {
+                    champs {
+                        __typename
+                        champDescriptorId
+                        ... on PieceJustificativeChamp {
+                            nature
+                        }
+                    }
+                }
+            }
+        }
+    }
+    """
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    variables = {
+        "demarcheNumber": int(demarche_number),
+        "first": PJ_NATURES_SAMPLE_SIZE,
+    }
+
+    try:
+        session = get_session_with_retries()
+        response = session.post(
+            DEMARCHES_API_URL,
+            json={"query": query, "variables": variables},
+            headers=headers,
+            timeout=30,
+        )
+
+        if response.status_code != 200:
+            log_error(
+                f"Natures des pièces justificatives non récupérées "
+                f"(HTTP {response.status_code})"
+            )
+            return {}
+
+        result = response.json()
+        if "errors" in result:
+            messages = [e.get("message", "Unknown error") for e in result["errors"]]
+            log_error(
+                "Erreur GraphQL lors de la récupération des natures des pièces "
+                "justificatives: " + ", ".join(messages)
+            )
+            return {}
+
+        dossiers = (
+            ((result.get("data") or {}).get("demarche") or {}).get("dossiers") or {}
+        ).get("nodes") or []
+        return {
+            champ["champDescriptorId"]: champ["nature"]
+            for dossier in dossiers
+            for champ in dossier.get("champs") or []
+            if champ.get("__typename") == "PieceJustificativeChamp"
+            and champ.get("nature")
+        }
+
+    except Exception as e:
+        log_error(
+            f"Erreur lors de la récupération des natures des pièces justificatives: {e}"
+        )
+        return {}
 
 
 # --- Helpers privés (module) ---
