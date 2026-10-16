@@ -19,6 +19,7 @@ Tu examines les modifications de la branche courante et signales les problèmes 
 
 ## Principes
 
+- Ne pas exécuter les tests ni le linter : la CI s'en charge.
 - **KISS** : garder le code simple et direct.
 - **YAGNI** : ne pas anticiper des besoins futurs qui ne sont pas requis aujourd'hui.
 - **Early return** : réduire l'imbrication en traitant les cas d'abord.
