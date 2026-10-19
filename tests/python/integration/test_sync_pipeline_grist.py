@@ -733,7 +733,11 @@ class TestSyncPipelineGrist:
 
     def test_pipeline_emits_sync_metadata_line(self, capsys):
         """Le pipeline émet une ligne SYNC_METADATA unique portant durée, flag et
-        hash de filtres — contrat parsé côté parent par `parse_output`."""
+        hash de filtres — parsée côté parent par `parse_output`.
+
+        Sans métadonnées (première sync ou table `Sync_metadata` supprimée),
+        aucun curseur n'est disponible : la sync est complète et le flag est
+        déclaré `true`."""
         server = FakeGristServer()
         dn_server = FakeDemarchesServer([make_dossier(1)])
 
@@ -748,7 +752,7 @@ class TestSyncPipelineGrist:
         ]
         assert len(lines) == 1
         metadata = json.loads(lines[0][len("SYNC_METADATA: ") :])
-        assert metadata["force_full_sync"] is False
+        assert metadata["force_full_sync"] is True
         assert metadata["filters_hash"] == build_filters_cache_key()
         assert metadata["duration_seconds"] >= 0
 

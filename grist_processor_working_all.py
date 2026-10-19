@@ -878,8 +878,11 @@ def process_demarche_for_grist_optimized(
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
+        # Pas de métadonnées (première sync ou table Sync_metadata supprimée) :
+        # aucun curseur disponible, la sync sera complète → déclarée
+        # force_full_sync.
         force_full_sync = (
-            sync_meta.get("force_full_sync", False) if sync_meta else False
+            sync_meta.get("force_full_sync", False) if sync_meta else True
         )
         current_filters_key = build_filters_cache_key()
 
