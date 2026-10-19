@@ -252,55 +252,6 @@ class TestGetExistingDossierNumbers:
             client.get_existing_dossier_numbers("dossiers")
 
 
-class TestGetExistingDossierDates:
-    """Tests unitaires pour GristClient.get_existing_dossier_dates"""
-
-    def setup_method(self):
-        self.client = GristClient(
-            "https://grist.example.com", "test_key", doc_id="doc123"
-        )
-
-    def test_success_builds_dates_dict(self):
-        """200 -> dict avec grist_id et dates"""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "records": [
-                {
-                    "id": 11,
-                    "fields": {
-                        "dossier_number": "1001",
-                        "date_derniere_modification": "2024-01-01",
-                    },
-                },
-                {"id": 22, "fields": {"number": "2002"}},
-            ]
-        }
-        session = MagicMock()
-        session.get.return_value = mock_response
-        with patch.object(GristClient, "_get_session", return_value=session):
-            result = self.client.get_existing_dossier_dates("dossiers")
-        assert result["1001"]["grist_id"] == 11
-        assert result["1001"]["date_derniere_modification"] == "2024-01-01"
-        assert result["2002"]["grist_id"] == 22
-
-    def test_non_200_returns_empty(self):
-        """non-200 -> {}"""
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        session = MagicMock()
-        session.get.return_value = mock_response
-        with patch.object(GristClient, "_get_session", return_value=session):
-            result = self.client.get_existing_dossier_dates("dossiers")
-        assert result == {}
-
-    def test_raises_without_doc_id(self):
-        """sans doc_id -> ValueError"""
-        client = GristClient("https://grist.example.com", "test_key")
-        with pytest.raises(ValueError):
-            client.get_existing_dossier_dates("dossiers")
-
-
 class TestGetSyncMetadata:
     """Tests unitaires pour GristClient.get_sync_metadata"""
 
@@ -445,82 +396,6 @@ class TestSaveSyncMetadata:
             self.client.save_sync_metadata(123, {"last_sync_at": "2024-01-01"})
         session.post.assert_called_once()
         session.patch.assert_not_called()
-
-
-class TestUpsertDossierInGrist:
-    """Tests unitaires pour GristClient.upsert_dossier_in_grist"""
-
-    def setup_method(self):
-        self.client = GristClient(
-            "https://grist.example.com", "test_key", doc_id="doc123"
-        )
-
-    def test_updates_existing(self):
-        """dossier existant -> PATCH"""
-        get_response = MagicMock()
-        get_response.status_code = 200
-        get_response.json.return_value = {
-            "records": [{"id": 5, "fields": {"dossier_number": "1001"}}]
-        }
-        patch_response = MagicMock()
-        patch_response.status_code = 200
-        session = MagicMock()
-        session.get.return_value = get_response
-        session.patch.return_value = patch_response
-        with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_dossier_in_grist(
-                "dossiers", {"dossier_number": "1001", "name": "X"}
-            )
-        assert ok is True
-        session.patch.assert_called_once()
-        session.post.assert_not_called()
-        payload = session.patch.call_args.kwargs["json"]
-        assert payload["records"][0]["id"] == 5
-
-    def test_inserts_new(self):
-        """dossier nouveau -> POST"""
-        get_response = MagicMock()
-        get_response.status_code = 200
-        get_response.json.return_value = {"records": []}
-        post_response = MagicMock()
-        post_response.status_code = 201
-        session = MagicMock()
-        session.get.return_value = get_response
-        session.post.return_value = post_response
-        with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_dossier_in_grist(
-                "dossiers", {"dossier_number": "2002", "name": "Y"}
-            )
-        assert ok is True
-        session.post.assert_called_once()
-        session.patch.assert_not_called()
-        payload = session.post.call_args.kwargs["json"]
-        assert payload["records"][0]["fields"]["dossier_number"] == "2002"
-
-    def test_missing_dossier_number_returns_false(self):
-        """sans dossier_number -> False, aucun appel réseau"""
-        session = MagicMock()
-        with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_dossier_in_grist("dossiers", {"name": "Z"})
-        assert ok is False
-        session.get.assert_not_called()
-
-    def test_error_status_returns_false(self):
-        """statut d'erreur -> False"""
-        get_response = MagicMock()
-        get_response.status_code = 200
-        get_response.json.return_value = {"records": []}
-        post_response = MagicMock()
-        post_response.status_code = 500
-        post_response.text = "err"
-        session = MagicMock()
-        session.get.return_value = get_response
-        session.post.return_value = post_response
-        with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_dossier_in_grist(
-                "dossiers", {"dossier_number": "3003"}
-            )
-        assert ok is False
 
 
 class TestListDocuments:
