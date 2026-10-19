@@ -4,7 +4,19 @@ Détection des dossiers supprimés de Démarches Simplifiées, via le champ
 `deletedDossiers` de l'API DN. Interroge l'API directement (plus de comparaison
 par absence) et met à jour les colonnes dossiers_supprimes_DN, date_suppression
 et raison_suppression dans Grist.
+
+Utilisation autonome (depuis la racine du projet) :
+    python -m sync.tasks.deleted_dossiers
+
+En autonome, la vérification porte sur toutes les suppressions de la démarche
+(pas de `deleted_since`) : le repère incrémental n'est géré que par la synchro.
+
+Variables d'environnement requises :
+    GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER
 """
+
+import os
+import sys
 
 from dn.client import get_deleted_dossiers
 
@@ -129,3 +141,35 @@ def check_deleted_dossiers(
         "newly_marked": newly_marked,
         "deleted_numbers": sorted(d["number"] for d in deleted_dossiers),
     }
+
+
+def main():
+    from dotenv import load_dotenv
+
+    from grist.client import GristClient
+
+    load_dotenv(override=True)
+
+    grist_base_url = os.getenv("GRIST_BASE_URL")
+    grist_api_key = os.getenv("GRIST_API_KEY")
+    grist_doc_id = os.getenv("GRIST_DOC_ID")
+    demarche_number = os.getenv("DEMARCHE_NUMBER")
+
+    if not all([grist_base_url, grist_api_key, grist_doc_id, demarche_number]):
+        print(
+            "Configuration incomplète : GRIST_BASE_URL, GRIST_API_KEY, "
+            "GRIST_DOC_ID et DEMARCHE_NUMBER sont requis dans le fichier .env"
+        )
+        return 1
+
+    demarche_number = int(demarche_number)
+    table_id = os.getenv("TABLE_DOSSIERS", f"Demarche_{demarche_number}_dossiers")
+
+    client = GristClient(grist_base_url, grist_api_key, grist_doc_id)
+    check_deleted_dossiers(client, table_id, demarche_number, print, print)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
