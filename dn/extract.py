@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 from dn.client import get_session_with_retries
 from dn.formatter import decode_base64_id
+from grist.utils import normalize_column_name
 from utils.constants import DEMARCHES_API_URL
 from utils.formatter import format_json_value, unwrap_json_list
 
@@ -573,8 +574,6 @@ def extract_repetable_blocks(
     Returns:
         Liste de dictionnaires représentant chaque ligne de bloc répétable
     """
-    from grist_processor_working_all import normalize_column_name
-
     repetable_rows = []
 
     def process_repetable_champ(
@@ -767,8 +766,6 @@ def dossier_to_flat_data(
     Returns:
         Dictionnaire avec les données du dossier en format plat
     """
-
-    from grist_processor_working_all import normalize_column_name
 
     # Informations de base du dossier
     flat_data = {
