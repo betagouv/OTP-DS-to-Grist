@@ -526,113 +526,36 @@ def repetable_row_key(dossier_number, block_row_id):
     return f"{number}:{block_row_id}"
 
 
-def get_existing_repetable_rows_improved_no_filter(
-    client,
-    table_id,
-    dossier_number=None
-):
+def get_existing_repetable_rows(client, table_id):
     """
-    Version améliorée qui évite d'utiliser le filtre côté serveur,
-    récupère toutes les lignes et filtre côté client.
+    Charge les lignes existantes d'une table de bloc répétable.
+
+    Retourne un dict {repetable_row_key(dossier, block_row_id): id Grist}.
+    Les lignes sans dossier_number ou sans block_row_id sont ignorées : elles ne
+    peuvent être ni retrouvées ni purgées.
+    Lève GristReadError si la lecture échoue : un dict vide ferait recréer
+    toutes les lignes du bloc et désactiverait la purge sans le dire.
     """
     if not client.doc_id:
         raise ValueError("Document ID is required")
 
-    # Récupérer tous les enregistrements sans filtre
     log_verbose(f"Récupération de tous les enregistrements de la table {table_id}")
-
     response = client.get_records(table_id)
-
     if response.status_code != 200:
         raise GristReadError(table_id, response)
 
-    data = response.json()
-
-    # Dictionnaire pour stocker les enregistrements par différentes clés composites
     records_dict = {}
+    for record in response.json().get("records") or []:
+        fields = record.get("fields") or {}
+        record_id = record.get("id")
+        dossier_number = fields.get("dossier_number")
+        block_row_id = fields.get("block_row_id")
+        if record_id is None or dossier_number in (None, "") or not block_row_id:
+            continue
+        records_dict[repetable_row_key(dossier_number, block_row_id)] = record_id
 
-    if 'records' in data and isinstance(data['records'], list):
-        for record in data['records']:
-            if 'id' in record and 'fields' in record:
-                fields = record['fields']
-                record_id = record['id']
-
-                # Vérifier que les champs requis sont présents
-                if 'dossier_number' in fields:
-                    # Filtrer par dossier si un dossier_number est spécifié
-                    if dossier_number is not None and str(fields['dossier_number']) != str(dossier_number):
-                        continue
-
-                    current_dossier_number = str(fields['dossier_number'])
-                    block_label = fields.get('block_label', '')  # ✅ Optionnel
-
-                    # Utiliser block_row_id s'il est disponible, sinon block_row_index
-                    if 'block_row_id' in fields and fields['block_row_id']:
-                        row_identifier = fields['block_row_id']
-                    elif 'block_row_index' in fields:
-                        row_identifier = f"index_{fields['block_row_index']}"
-                    else:
-                        # Sans identifiant de ligne, passer à l'enregistrement suivant
-                        continue
-
-                    # Créer plusieurs formats de clés composites pour augmenter les chances de correspondance
-
-                    # Format 1: dossier_number_block_label_row_id
-                    key1 = f"{current_dossier_number}_{block_label}_{row_identifier}"
-                    records_dict[key1] = record_id
-
-                    # Format 2: dossier_number_block_label_row_id (tout en minuscules)
-                    key2 = key1.lower()
-                    records_dict[key2] = record_id
-
-                    # Format 3: dossier_number_block_label_index (si block_row_index est disponible)
-                    if 'block_row_index' in fields:
-                        key3 = f"{current_dossier_number}_{block_label}_index_{fields['block_row_index']}"
-                        records_dict[key3] = record_id
-
-                    # Format 4: avec espaces remplacés par des underscores dans block_label
-                    clean_label = block_label.replace(' ', '_')
-                    key4 = f"{current_dossier_number}_{clean_label}_{row_identifier}"
-                    records_dict[key4] = record_id
-
-                    # Format 5: avec tous les caractères non alphanumériques supprimés
-                    clean_label = re.sub(r'[^\w]', '', block_label)
-                    key5 = f"{current_dossier_number}_{clean_label}_{row_identifier}"
-                    records_dict[key5] = record_id
-
-                    # Clé de référence (dossier, block_row_id). Pas de clé sur le
-                    # block_row_id seul : il peut être partagé entre deux dossiers.
-                    if 'block_row_id' in fields and fields['block_row_id']:
-                        records_dict[
-                            repetable_row_key(fields['dossier_number'], fields['block_row_id'])
-                        ] = record_id
-
-                    # Gestion spéciale des géométries
-                    if 'field_name' in fields and 'geo_id' in fields and fields['geo_id']:
-                        field_name = fields['field_name']
-                        geo_id = fields['geo_id']
-
-                        # Clé pour les géométries
-                        geo_key = f"{current_dossier_number}_{block_label}_{field_name}_{geo_id}"
-                        records_dict[geo_key.lower()] = record_id
-
-                        # Autre format avec position de la géométrie si disponible
-                        if row_identifier and '_geo' in row_identifier:
-                            # Extraire l'index de la géométrie depuis row_identifier
-                            match = re.search(r'_geo(\d+)$', row_identifier)
-                            if match:
-                                geo_index = match.group(1)
-                                base_id = row_identifier.split('_geo')[0]
-                                geo_key_alt = f"{current_dossier_number}_{block_label}_{base_id}_geo{geo_index}"
-                                records_dict[geo_key_alt.lower()] = record_id
-
-        # Afficher des statistiques détaillées sur les lignes trouvées
-        if dossier_number is not None:
-            filtered_count = sum(1 for key in records_dict.keys() if key.startswith(f"{dossier_number}_"))
-            log(f"  {filtered_count} clés d'identification trouvées pour les lignes de blocs répétables du dossier {dossier_number}")
-        else:
-            log(f"  {len(records_dict)} clés d'identification trouvées pour tous les blocs répétables")
-            return records_dict
+    log(f"  {len(records_dict)} lignes existantes dans la table {table_id}")
+    return records_dict
 
 
 def _update_cache_after_create(client, table_id, batch, response, existing_rows):
@@ -681,9 +604,7 @@ def _reload_cache(client, table_id, existing_rows):
     l'appelant). Pas de clear() : les clés connues sont conservées.
     Si le GET échoue, GristReadError est propagée.
     """
-    existing_rows.update(
-        get_existing_repetable_rows_improved_no_filter(client, table_id, None)
-    )
+    existing_rows.update(get_existing_repetable_rows(client, table_id))
 
 
 def process_repetables_batch(
@@ -709,7 +630,11 @@ def process_repetables_batch(
         existing_rows_cache: dict optionnel {block_key: {search_key: record_id}},
             préchargé par l'appelant et partagé entre les appels. S'il est fourni,
             aucun GET de la table n'est fait et il est mis à jour en place après
-            chaque création.
+            chaque création et chaque suppression.
+
+    Les lignes Grist d'un dossier que DN ne renvoie plus (ligne supprimée par
+    l'usager ou l'instructeur) sont supprimées. Voir `_stale_row_ids` pour les
+    garde-fous.
 
     Returns:
         tuple: (success_count, error_count)
@@ -723,36 +648,42 @@ def process_repetables_batch(
         # Comportement historique : GET complet de chaque table à chaque appel
         existing_rows_by_block = {}
         for block_key, table_id in table_ids_dict.items():
-            existing_rows_by_block[block_key] = get_existing_repetable_rows_improved_no_filter(
-                client,
-                table_id,
-                None  # None = récupérer TOUTES les lignes de tous les dossiers
+            existing_rows_by_block[block_key] = get_existing_repetable_rows(
+                client, table_id
             )
 
     # Grouper les dossiers et extraire les lignes par bloc
     rows_by_block = {}  # {block_label_normalized: {"to_update": [], "to_create": [], "existing_rows": {}}}
 
+    # État nécessaire à la purge (voir _stale_row_ids)
+    seen_keys_by_block = {}  # {bloc: clés des lignes renvoyées par DN}
+    purge_dossiers = {"champs": set(), "annotations": set()}  # dossiers purgeables
+    protected_blocks = {}  # {numéro normalisé: blocs à ne jamais purger}
+
     for dossier_data in dossiers_data:
+        dossier_number = dossier_data.get("number")
+        dossier_key = _normalized_number(dossier_number)
+        dossier_ok = True
         try:
-            dossier_number = dossier_data["number"]
-
             # Extraire les blocs répétables de ce dossier (champs + annotations)
-            all_champs = dossier_data.get("champs", []) + dossier_data.get("annotations", [])
+            champs = dossier_data.get("champs")
+            annotations = dossier_data.get("annotations")
+            sources = [
+                (champ, False) for champ in (champs or [])
+            ] + [(annotation, True) for annotation in (annotations or [])]
 
-            for champ in all_champs:
+            for champ, is_annotation in sources:
                 # Filtrer les blocs non répétables
                 if champ["__typename"] != "RepetitionChamp":
                     continue
 
-                # Filtrer les champs problématiques
-                if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
-                    continue
-
-
-                # Détecter si c'est une annotation en vérifiant si le champ vient de la liste annotations
-                is_annotation = champ in dossier_data.get("annotations", [])
                 block_label = f"annotation_{champ['label']}" if is_annotation else champ["label"]
                 normalized_block = normalize_column_name(block_label)
+
+                # Filtrer les champs problématiques (et ne jamais purger leur table)
+                if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
+                    protected_blocks.setdefault(dossier_key, set()).add(normalized_block)
+                    continue
 
                 # Vérifier que ce bloc a une table
                 if normalized_block not in table_ids_dict:
@@ -841,6 +772,9 @@ def process_repetables_batch(
 
                                 # Clé de recherche : (dossier, block_row_id de la géométrie)
                                 search_keys = [repetable_row_key(dossier_number, geo_identifier)]
+                                seen_keys_by_block.setdefault(normalized_block, set()).update(
+                                    search_keys
+                                )
 
                                 # Chercher si existe
                                 found_id = None
@@ -862,6 +796,9 @@ def process_repetables_batch(
 
                             # Clé de recherche : (dossier, block_row_id)
                             search_keys = [repetable_row_key(dossier_number, row_id)]
+                            seen_keys_by_block.setdefault(normalized_block, set()).update(
+                                search_keys
+                            )
 
                             # Chercher si existe
                             found_id = None
@@ -880,10 +817,20 @@ def process_repetables_batch(
                     except Exception as e:
                         log_error(f"Erreur extraction ligne {row_index+1} du bloc '{block_label}': {str(e)}")
                         total_errors += 1
+                        dossier_ok = False
 
         except Exception as e:
             log_error(f"Erreur extraction dossier {dossier_data.get('number')}: {str(e)}")
             total_errors += 1
+            dossier_ok = False
+
+        # Purge seulement pour un dossier extrait sans erreur, et par famille
+        # (champs / annotations) uniquement si DN l'a effectivement renvoyée.
+        if dossier_ok and dossier_key is not None:
+            if isinstance(dossier_data.get("champs"), list):
+                purge_dossiers["champs"].add(dossier_key)
+            if isinstance(dossier_data.get("annotations"), list):
+                purge_dossiers["annotations"].add(dossier_key)
 
     # Traiter chaque bloc séparément
     for block_key, data in rows_by_block.items():
@@ -965,7 +912,94 @@ def process_repetables_batch(
                     else:
                         total_errors += len(batch)
 
+    # Purge : tous les blocs ayant une table, y compris ceux sans aucune ligne
+    # dans ce lot (bloc entièrement vidé par l'usager).
+    for block_key, table_id in table_ids_dict.items():
+        existing_rows = existing_rows_by_block.get(block_key)
+        if not existing_rows:
+            continue
+        family = "annotations" if block_key.startswith("annotation_") else "champs"
+        eligible = {
+            number
+            for number in purge_dossiers[family]
+            if block_key not in protected_blocks.get(number, set())
+        }
+        stale_keys = _stale_row_keys(
+            existing_rows, eligible, seen_keys_by_block.get(block_key, set())
+        )
+        if not stale_keys:
+            continue
+        deleted, failed = _delete_stale_rows(client, table_id, existing_rows, stale_keys)
+        total_errors += failed
+        if deleted:
+            log(
+                f"  Bloc '{block_key}': {deleted} ligne(s) supprimée(s) dans DN "
+                "retirée(s) de Grist"
+            )
+
     return total_success, total_errors
+
+
+def _normalized_number(dossier_number):
+    """Numéro de dossier sous la forme utilisée dans repetable_row_key."""
+    if dossier_number in (None, ""):
+        return None
+    return repetable_row_key(dossier_number, "").rsplit(":", 1)[0]
+
+
+def _stale_row_keys(existing_rows, eligible_numbers, seen_keys):
+    """
+    Clés du cache appartenant à un dossier purgeable mais que DN n'a pas
+    renvoyées pendant cette synchro.
+
+    `eligible_numbers` ne contient que les dossiers du lot :
+    - extraits sans erreur de ligne ;
+    - dont la famille du bloc (champs ou annotations) a été renvoyée par DN ;
+    - pour lesquels le bloc n'a pas été écarté par `problematic_ids`.
+    Les lignes des autres dossiers de la table ne sont jamais concernées.
+    """
+    if not eligible_numbers:
+        return []
+    return [
+        key
+        for key in existing_rows
+        if key.split(":", 1)[0] in eligible_numbers and key not in seen_keys
+    ]
+
+
+DELETE_BATCH_SIZE = 500
+
+
+def _delete_stale_rows(client, table_id, existing_rows, stale_keys):
+    """
+    Supprime de Grist les lignes `stale_keys` par lots de DELETE_BATCH_SIZE,
+    et les retire du cache partagé quand la suppression réussit.
+
+    Returns:
+        tuple: (lignes supprimées, lignes en échec)
+    """
+    ids_to_keys = {}
+    for key in stale_keys:
+        ids_to_keys.setdefault(existing_rows[key], []).append(key)
+    record_ids = list(ids_to_keys)
+
+    deleted = 0
+    failed = 0
+    for i in range(0, len(record_ids), DELETE_BATCH_SIZE):
+        batch = record_ids[i:i + DELETE_BATCH_SIZE]
+        response = client.delete_records(table_id, batch)
+        if response.status_code in [200, 201]:
+            deleted += len(batch)
+            for record_id in batch:
+                for key in ids_to_keys[record_id]:
+                    existing_rows.pop(key, None)
+        else:
+            log_error(
+                f"  Échec de la suppression de {len(batch)} ligne(s) dans {table_id} : "
+                f"{response.status_code}"
+            )
+            failed += len(batch)
+    return deleted, failed
 
 # Fonctions utilitaires pour la détection de colonnes dans les blocs répétables
 

@@ -7,7 +7,7 @@ from grist.client import GristReadError
 from repetable_processor import (
     auto_fix_missing_columns_optimized,
     process_repetables_batch,
-    get_existing_repetable_rows_improved_no_filter,
+    get_existing_repetable_rows,
 )
 
 
@@ -91,7 +91,7 @@ class TestAutoFixMissingColumnsOptimized:
 
 
 class TestGetExistingRepetableRowsImprovedNoFilter:
-    """Tests unitaires pour get_existing_repetable_rows_improved_no_filter"""
+    """Tests unitaires pour get_existing_repetable_rows"""
 
     def setup_method(self):
         self.client = MagicMock()
@@ -111,7 +111,7 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
         self.client.doc_id = None
         self.client.get_records.return_value = self._mock_response(200)
         with pytest.raises(ValueError):
-            get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+            get_existing_repetable_rows(self.client, "blocs")
         self.client.get_records.assert_not_called()
 
     def test_http_error_raises_read_error(self):
@@ -119,12 +119,13 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
         toutes les lignes répétables du run)"""
         self.client.get_records.return_value = self._mock_response(500)
         with pytest.raises(GristReadError) as error:
-            get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+            get_existing_repetable_rows(self.client, "blocs")
         assert error.value.table_id == "blocs"
         self.client.get_records.assert_called_once_with("blocs")
 
-    def test_success_builds_composite_keys(self):
-        """200 -> dict des clés composites vers l'id de l'enregistrement"""
+    def test_success_builds_only_dossier_row_keys(self):
+        """200 -> une seule clé (dossier, block_row_id) par ligne, plus de clés
+        à base de block_label (colonne jamais écrite dans les tables de blocs)"""
         records = [
             {
                 "id": 42,
@@ -134,36 +135,30 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
                     "block_row_id": "row_1",
                     "block_row_index": 1,
                 },
-            }
-        ]
-        self.client.get_records.return_value = self._mock_response(200, records)
-        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
-        assert result["123_Maquettes_row_1"] == 42
-        assert result["123_maquettes_row_1"] == 42
-        assert result["123_Maquettes_index_1"] == 42
-        assert result["123:row_1"] == 42
-        # pas de clé sur le block_row_id seul (partageable entre dossiers)
-        assert "row_1" not in result
-
-    def test_success_builds_geo_keys(self):
-        """200 avec géométrie -> clés géo"""
-        records = [
+            },
             {
                 "id": 7,
                 "fields": {
                     "dossier_number": "123",
-                    "block_label": "Maquettes",
                     "block_row_id": "row_1_geo1",
                     "field_name": "carte",
                     "geo_id": "g1",
                 },
-            }
+            },
         ]
         self.client.get_records.return_value = self._mock_response(200, records)
-        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
-        assert result["123_Maquettes_row_1_geo1"] == 7
-        assert result["123_maquettes_carte_g1"] == 7
-        assert result["123:row_1_geo1"] == 7
+        result = get_existing_repetable_rows(self.client, "blocs")
+        assert result == {"123:row_1": 42, "123:row_1_geo1": 7}
+
+    def test_rows_without_identifiers_are_ignored(self):
+        """ligne sans dossier_number ou sans block_row_id -> ignorée"""
+        records = [
+            {"id": 1, "fields": {"block_row_id": "row_1"}},
+            {"id": 2, "fields": {"dossier_number": 123, "block_row_index": 1}},
+            {"id": 3, "fields": {"dossier_number": 123, "block_row_id": ""}},
+        ]
+        self.client.get_records.return_value = self._mock_response(200, records)
+        assert get_existing_repetable_rows(self.client, "blocs") == {}
 
     def test_same_block_row_id_in_two_dossiers_gives_distinct_keys(self):
         """même block_row_id dans deux dossiers -> deux clés distinctes"""
@@ -172,7 +167,7 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
             {"id": 2, "fields": {"dossier_number": 456, "block_row_id": "row_1"}},
         ]
         self.client.get_records.return_value = self._mock_response(200, records)
-        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        result = get_existing_repetable_rows(self.client, "blocs")
         assert result["123:row_1"] == 1
         assert result["456:row_1"] == 2
         assert "row_1" not in result
@@ -183,7 +178,7 @@ class TestGetExistingRepetableRowsImprovedNoFilter:
             {"id": 1, "fields": {"dossier_number": 123.0, "block_row_id": "row_1"}},
         ]
         self.client.get_records.return_value = self._mock_response(200, records)
-        result = get_existing_repetable_rows_improved_no_filter(self.client, "blocs")
+        result = get_existing_repetable_rows(self.client, "blocs")
         assert result["123:row_1"] == 1
 
 
@@ -245,7 +240,7 @@ class TestProcessRepetablesBatchRecords:
         self.client.post_records.return_value = self._mock_response(201)
         with (
             patch(
-                "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+                "repetable_processor.get_existing_repetable_rows",
                 return_value={},
             ),
         ):
@@ -266,7 +261,7 @@ class TestProcessRepetablesBatchRecords:
         self.client.patch_records.return_value = self._mock_response(200)
         with (
             patch(
-                "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+                "repetable_processor.get_existing_repetable_rows",
                 return_value=existing_rows,
             ),
         ):
@@ -290,7 +285,7 @@ class TestProcessRepetablesBatchRecords:
         ]
         with (
             patch(
-                "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+                "repetable_processor.get_existing_repetable_rows",
                 return_value=existing_rows,
             ),
         ):
@@ -311,7 +306,7 @@ class TestProcessRepetablesBatchRecords:
         self.client.post_records.return_value = self._mock_response(500)
         with (
             patch(
-                "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+                "repetable_processor.get_existing_repetable_rows",
                 return_value={},
             ),
         ):
@@ -327,7 +322,7 @@ class TestProcessRepetablesBatchRecords:
         )
         with (
             patch(
-                "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+                "repetable_processor.get_existing_repetable_rows",
                 return_value={},
             ),
             patch(
@@ -354,7 +349,7 @@ class TestProcessRepetablesBatchRecords:
         """existing_rows_cache fourni -> pas de GET de la table"""
         self.client.patch_records.return_value = self._mock_response(200)
         with patch(
-            "repetable_processor.get_existing_repetable_rows_improved_no_filter"
+            "repetable_processor.get_existing_repetable_rows"
         ) as mock_fetch:
             success, errors = process_repetables_batch(
                 self.client,
@@ -375,7 +370,7 @@ class TestProcessRepetablesBatchRecords:
         self.client.post_records.return_value = self._created_response([{"id": 99}])
         shared_cache = {}
         with patch(
-            "repetable_processor.get_existing_repetable_rows_improved_no_filter"
+            "repetable_processor.get_existing_repetable_rows"
         ) as mock_fetch:
             success, errors = process_repetables_batch(
                 self.client,
@@ -397,7 +392,7 @@ class TestProcessRepetablesBatchRecords:
         self.client.post_records.return_value = self._created_response([])
         shared_cache = {"autre_cle": 1}
         with patch(
-            "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+            "repetable_processor.get_existing_repetable_rows",
             return_value={"row_1": 77},
         ) as mock_fetch:
             process_repetables_batch(
@@ -407,9 +402,7 @@ class TestProcessRepetablesBatchRecords:
                 self._column_types(),
                 existing_rows_cache={"maquettes": shared_cache},
             )
-        mock_fetch.assert_called_once_with(
-            self.client, "Demarche_123_maquettes", None
-        )
+        mock_fetch.assert_called_once_with(self.client, "Demarche_123_maquettes")
         assert shared_cache == {"autre_cle": 1, "row_1": 77}
 
     def test_reload_read_error_propagates_and_keeps_cache(self):
@@ -420,7 +413,7 @@ class TestProcessRepetablesBatchRecords:
         response = self._mock_response(400)
         response.json.return_value = {"error": "[Sandbox] MemoryError"}
         with patch(
-            "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+            "repetable_processor.get_existing_repetable_rows",
             side_effect=GristReadError("Demarche_123_maquettes", response),
         ):
             with pytest.raises(GristReadError):
@@ -438,7 +431,7 @@ class TestProcessRepetablesBatchRecords:
         self.client.post_records.return_value = self._created_response([{}])
         shared_cache = {}
         with patch(
-            "repetable_processor.get_existing_repetable_rows_improved_no_filter",
+            "repetable_processor.get_existing_repetable_rows",
             return_value={},
         ) as mock_fetch:
             process_repetables_batch(
@@ -502,8 +495,8 @@ class TestProcessRepetablesBatchRecords:
         }
         self.client.get_records.return_value = grist_rows
         cache = {
-            "maquettes": get_existing_repetable_rows_improved_no_filter(
-                self.client, "Demarche_123_maquettes", None
+            "maquettes": get_existing_repetable_rows(
+                self.client, "Demarche_123_maquettes"
             )
         }
         self.client.patch_records.return_value = self._mock_response(200)
@@ -558,3 +551,182 @@ class TestProcessRepetablesBatchRecords:
         patched = self.client.patch_records.call_args.args[1]
         assert patched[0]["id"] == 7
         assert patched[0]["fields"]["block_row_id"] == "row_1_geo1"
+
+
+class TestProcessRepetablesBatchPurge:
+    """Suppression des lignes de blocs que DN ne renvoie plus"""
+
+    def setup_method(self):
+        self.client = MagicMock()
+        self.client.doc_id = "doc1"
+        ok = MagicMock()
+        ok.status_code = 200
+        self.client.patch_records.return_value = ok
+        self.client.delete_records.return_value = ok
+        created = MagicMock()
+        created.status_code = 201
+        created.json.return_value = {"records": [{"id": 100}]}
+        self.client.post_records.return_value = created
+
+    @staticmethod
+    def _row(row_id, nom="x"):
+        return {
+            "id": row_id,
+            "champs": [{"__typename": "TextChamp", "label": "Nom", "stringValue": nom}],
+        }
+
+    def _dossier(self, rows, number=123, annotation_rows=None):
+        dossier = {
+            "number": number,
+            "champs": [
+                {
+                    "__typename": "RepetitionChamp",
+                    "id": "bloc_1",
+                    "champDescriptorId": "desc_bloc",
+                    "label": "Maquettes",
+                    "rows": rows,
+                }
+            ],
+            "annotations": [],
+        }
+        if annotation_rows is not None:
+            dossier["annotations"] = [
+                {
+                    "__typename": "RepetitionChamp",
+                    "id": "bloc_a",
+                    "label": "Suivi",
+                    "rows": annotation_rows,
+                }
+            ]
+        return dossier
+
+    @staticmethod
+    def _table_ids():
+        return {
+            "maquettes": "Demarche_123_maquettes",
+            "annotation_suivi": "Demarche_123_annotation_suivi",
+        }
+
+    @staticmethod
+    def _column_types():
+        columns = {"columns": [{"id": "nom", "type": "Text"}]}
+        return {"maquettes": columns, "annotation_suivi": columns}
+
+    def _run(self, dossiers, cache, **kwargs):
+        return process_repetables_batch(
+            self.client,
+            dossiers,
+            self._table_ids(),
+            self._column_types(),
+            existing_rows_cache=cache,
+            **kwargs,
+        )
+
+    def _deleted(self, table_id):
+        return [
+            c.args[1]
+            for c in self.client.delete_records.call_args_list
+            if c.args[0] == table_id
+        ]
+
+    def test_deleted_row_is_removed(self):
+        """3 lignes dans Grist, r2 supprimée dans DN, r4 ajoutée -> MAJ r1/r3,
+        création r4, suppression de r2 et retrait du cache"""
+        cache = {"maquettes": {"123:r1": 1, "123:r2": 2, "123:r3": 3}}
+        dossier = self._dossier([self._row("r1"), self._row("r3"), self._row("r4")])
+        success, errors = self._run([dossier], cache)
+        assert errors == 0
+        patched = [r["id"] for r in self.client.patch_records.call_args.args[1]]
+        assert patched == [1, 3]
+        assert self._deleted("Demarche_123_maquettes") == [[2]]
+        assert cache["maquettes"] == {"123:r1": 1, "123:r3": 3, "123:r4": 100}
+
+    def test_emptied_block_is_purged(self):
+        """bloc entièrement vidé dans DN -> toutes ses lignes supprimées"""
+        cache = {"maquettes": {"123:r1": 1, "123:r2": 2}}
+        self._run([self._dossier([])], cache)
+        assert self._deleted("Demarche_123_maquettes") == [[1, 2]]
+        assert cache["maquettes"] == {}
+
+    def test_other_dossiers_rows_are_untouched(self):
+        """lignes d'un dossier absent du lot -> jamais supprimées"""
+        cache = {"maquettes": {"123:r1": 1, "456:r1": 2}}
+        self._run([self._dossier([self._row("r1")])], cache)
+        self.client.delete_records.assert_not_called()
+
+    def test_extraction_error_blocks_purge(self):
+        """erreur d'extraction d'une ligne -> aucune purge pour ce dossier"""
+        cache = {"maquettes": {"123:r1": 1, "123:r2": 2}}
+        broken_row = {"id": "r1", "champs": [{"__typename": "TextChamp"}]}
+        _, errors = self._run([self._dossier([broken_row])], cache)
+        assert errors == 1
+        self.client.delete_records.assert_not_called()
+
+    def test_problematic_block_is_never_purged(self):
+        """bloc filtré par problematic_ids -> pas de purge de sa table"""
+        cache = {"maquettes": {"123:r1": 1}}
+        self._run([self._dossier([])], cache, problematic_ids={"desc_bloc"})
+        self.client.delete_records.assert_not_called()
+
+    def test_annotations_not_returned_blocks_annotation_purge(self):
+        """annotations absentes de la réponse DN -> pas de purge des blocs
+        d'annotations, purge des blocs de champs maintenue"""
+        cache = {
+            "maquettes": {"123:r1": 1, "123:r2": 2},
+            "annotation_suivi": {"123:a1": 10},
+        }
+        dossier = self._dossier([self._row("r1")])
+        del dossier["annotations"]
+        self._run([dossier], cache)
+        assert self._deleted("Demarche_123_maquettes") == [[2]]
+        assert self._deleted("Demarche_123_annotation_suivi") == []
+
+    def test_annotation_block_row_is_purged(self):
+        """ligne supprimée dans un bloc d'annotations -> supprimée"""
+        cache = {
+            "maquettes": {"123:r1": 1},
+            "annotation_suivi": {"123:a1": 10, "123:a2": 11},
+        }
+        dossier = self._dossier([self._row("r1")], annotation_rows=[self._row("a1")])
+        self._run([dossier], cache)
+        assert self._deleted("Demarche_123_annotation_suivi") == [[11]]
+        assert self._deleted("Demarche_123_maquettes") == []
+
+    def test_removed_geo_area_is_purged(self):
+        """zone géo retirée d'une ligne -> sa ligne _geoN est supprimée"""
+        cache = {"maquettes": {"123:r1_geo1": 1, "123:r1_geo2": 2}}
+        row = {
+            "id": "r1",
+            "champs": [
+                {
+                    "__typename": "CarteChamp",
+                    "label": "Carte",
+                    "geoAreas": [{"id": "g1", "description": "A"}],
+                }
+            ],
+        }
+        self._run([self._dossier([row])], cache)
+        assert self._deleted("Demarche_123_maquettes") == [[2]]
+
+    def test_delete_failure_counts_errors_and_keeps_cache(self):
+        """suppression refusée -> erreurs comptées, cache inchangé"""
+        refused = MagicMock()
+        refused.status_code = 500
+        self.client.delete_records.return_value = refused
+        cache = {"maquettes": {"123:r1": 1, "123:r2": 2}}
+        _, errors = self._run([self._dossier([self._row("r1")])], cache)
+        assert errors == 1
+        assert cache["maquettes"] == {"123:r1": 1, "123:r2": 2}
+
+    def test_float_dossier_number_in_cache_is_purged(self):
+        """numéro relu en float depuis Grist -> même dossier, purge appliquée"""
+        cache = {"maquettes": {"123:r1": 1, "123:r2": 2}}
+        self._run([self._dossier([self._row("r1")], number=123.0)], cache)
+        assert self._deleted("Demarche_123_maquettes") == [[2]]
+
+    def test_delete_is_batched(self, monkeypatch):
+        """suppressions envoyées par lots de DELETE_BATCH_SIZE"""
+        monkeypatch.setattr("repetable_processor.DELETE_BATCH_SIZE", 2)
+        cache = {"maquettes": {f"123:r{i}": i for i in range(5)}}
+        self._run([self._dossier([])], cache)
+        assert self._deleted("Demarche_123_maquettes") == [[0, 1], [2, 3], [4]]
