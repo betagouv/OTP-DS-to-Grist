@@ -169,47 +169,6 @@ class GristClient:
 
         return dossier_dict
 
-    # Fonction upsert par date
-    def get_existing_dossier_dates(self, table_id: str) -> dict[str, dict[str, Any]]:
-        """
-        Récupère les dates de modification stockées dans Grist pour la table dossiers.
-        Retourne un dict {str(dossier_number): {
-            "grist_id": int,
-            "date_derniere_modification": str|None,
-            "date_derniere_modification_champs": str|None,
-            "date_derniere_modification_annotations": str|None
-        }}
-        """
-        if not self.doc_id:
-            raise ValueError("Document ID is required")
-
-        response = self.get_records(table_id)
-
-        if response.status_code != 200:
-            log_error(f"Erreur get_existing_dossier_dates: {response.status_code}")
-            return {}
-
-        dates_dict = {}
-        for record in response.json().get("records", []):
-            fields = record.get("fields", {})
-            num = fields.get("dossier_number") or fields.get("number")
-            if num:
-                dates_dict[str(num)] = {
-                    "grist_id": record.get("id"),
-                    "date_derniere_modification": fields.get(
-                        "date_derniere_modification"
-                    ),
-                    "date_derniere_modification_champs": fields.get(
-                        "date_derniere_modification_champs"
-                    ),
-                    "date_derniere_modification_annotations": fields.get(
-                        "date_derniere_modification_annotations"
-                    ),
-                }
-
-        log(f"  Cache dates: {len(dates_dict)} dossiers chargés depuis {table_id}")
-        return dates_dict
-
     def get_sync_metadata(self, demarche_number: int | str) -> dict[str, Any] | None:
         """
         Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.
@@ -275,71 +234,6 @@ class GristClient:
             )
 
         return existing_grist_id
-
-    def upsert_dossier_in_grist(self, table_id: str, row_dict: dict[str, Any]) -> bool:
-        """
-        Insère ou met à jour un dossier dans une table Grist, en filtrant les champs problématiques.
-        """
-        # Log des champs avant filtrage
-        log_verbose(f"Champs dans row_dict avant filtrage: {list(row_dict.keys())}")
-        log_verbose(f"Présence de 'label_names': {'label_names' in row_dict}")
-        log_verbose(f"Présence de 'labels_json': {'labels_json' in row_dict}")
-
-        if "label_names" in row_dict:
-            log_verbose(f"Valeur de 'label_names': {row_dict['label_names']}")
-        if "labels_json" in row_dict:
-            log_verbose(f"Valeur de 'labels_json': {row_dict['labels_json']}")
-            if not self.doc_id:
-                raise ValueError("Document ID is required")
-
-        # Vérifier si nous avons le numéro de dossier
-        dossier_number = row_dict.get("dossier_number") or row_dict.get("number")
-
-        if not dossier_number:
-            log_error(
-                f"dossier_number manquant dans les données "
-                f"(table {table_id}, champs {sorted(row_dict)}): l'enregistrement est ignoré"
-            )
-            return False
-
-        # Convertir le numéro de dossier en chaîne pour les comparaisons
-        dossier_number_str = str(dossier_number)
-
-        # Récupération des dossiers existants pour vérifier si on doit faire un update ou un insert
-        log_verbose(f"Récupération des dossiers existants pour la table {table_id}...")
-        existing_records = self.get_existing_dossier_numbers(table_id)
-        log_verbose(f"Dossiers existants trouvés: {len(existing_records)}")
-
-        # S'assurer que le dictionnaire est formaté correctement pour l'API Grist
-        # Grist attend des champs sous la forme {"fields": {...}}
-        formatted_row = {"fields": row_dict} if "fields" not in row_dict else row_dict
-
-        log_verbose(
-            f"Recherche du dossier {dossier_number_str} dans les enregistrements existants..."
-        )
-        if dossier_number_str in existing_records:
-            # Mise à jour de l'enregistrement existant
-            record_id = existing_records[dossier_number_str]
-            log_verbose(
-                f"Dossier {dossier_number_str} trouvé avec ID {record_id}, mise à jour..."
-            )
-            response = self.patch_records(
-                table_id, [{"id": record_id, "fields": formatted_row["fields"]}]
-            )
-        else:
-            # Création d'un nouvel enregistrement
-            log_verbose(
-                f"Dossier {dossier_number_str} non trouvé, création d'un nouvel enregistrement..."
-            )
-            response = self.post_records(table_id, [formatted_row])
-
-        if response.status_code in [200, 201]:
-            return True
-        else:
-            log_error(
-                f"Erreur UPSERT pour {dossier_number_str}: {response.status_code} - {response.text}"
-            )
-            return False
 
     def list_documents(self) -> dict[str, Any]:
         url = f"{self.base_url}/docs"
