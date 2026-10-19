@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deleted_dossiers_checker import (
+from sync.tasks.deleted_dossiers import (
     COLUMN_ID,
     DATE_COLUMN_ID,
     REASON_COLUMN_ID,
@@ -163,8 +163,8 @@ class TestCheckDeletedDossiers:
         sans appel à l'API DN"""
         client = MagicMock()
         with patch(
-            "deleted_dossiers_checker._ensure_deletion_columns", return_value=False
-        ), patch("deleted_dossiers_checker.get_deleted_dossiers") as mock_dn:
+            "sync.tasks.deleted_dossiers._ensure_deletion_columns", return_value=False
+        ), patch("sync.tasks.deleted_dossiers.get_deleted_dossiers") as mock_dn:
             with pytest.raises(RuntimeError, match="Colonnes de suppression"):
                 check_deleted_dossiers(client, "dossiers", 123, MagicMock(), MagicMock())
         mock_dn.assert_not_called()

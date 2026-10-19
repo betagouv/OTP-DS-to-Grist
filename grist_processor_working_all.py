@@ -15,7 +15,6 @@ import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
-from deleted_dossiers_checker import check_deleted_dossiers
 from grist.client import GristClient, GristReadError, extract_dossier_numbers
 from grist.column_cache import ColumnCache
 from grist.columns import hide_columns_with_id
@@ -39,6 +38,7 @@ from sync.filters import (
     filter_dossiers,
     read_filters_from_env,
 )
+from sync.tasks.deleted_dossiers import check_deleted_dossiers
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections

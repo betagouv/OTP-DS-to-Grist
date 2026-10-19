@@ -13,7 +13,6 @@ services:
       - ./database:/app/database
       - ./templates:/app/templates
       - ./static:/app/static
-      - ./deleted_dossiers_checker.py:/app/deleted_dossiers_checker.py
       - ./utils:/app/utils
       - ./sync:/app/sync
       - ./grist:/app/grist
