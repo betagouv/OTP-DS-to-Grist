@@ -1407,7 +1407,8 @@ class TestErrorHandling:
 
             mock_load_config.assert_called_once_with(1)
             mock_sync.assert_called_once()
-            mock_sync.assert_called_once_with(
+            args, kwargs = mock_sync.call_args
+            assert args == (
                 {
                     "otp_config_id": 1,
                     "demarche_number": "123",
@@ -1416,8 +1417,9 @@ class TestErrorHandling:
                     "has_ds_token": True,
                     "has_grist_key": True,
                 },
-                auto=True,
             )
+            assert kwargs["auto"] is True
+            assert callable(kwargs["progress_callback"])
 
             assert mock_schedule.last_run is not None
             assert mock_schedule.last_status == "success"
@@ -1486,7 +1488,8 @@ class TestErrorHandling:
 
             mock_load_config.assert_called_once_with(1)
             mock_sync.assert_called_once()
-            mock_sync.assert_called_once_with(
+            args, kwargs = mock_sync.call_args
+            assert args == (
                 {
                     "otp_config_id": 1,
                     "demarche_number": "123",
@@ -1495,8 +1498,9 @@ class TestErrorHandling:
                     "has_ds_token": True,
                     "has_grist_key": True,
                 },
-                auto=True,
             )
+            assert kwargs["auto"] is True
+            assert callable(kwargs["progress_callback"])
 
             assert mock_schedule.last_run is not None
             assert mock_schedule.last_status == "error"

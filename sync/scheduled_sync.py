@@ -108,7 +108,8 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
 
         result = sync_manager.run_synchronization_task(
             config,
-            auto=True
+            progress_callback=lambda progress, message: None,
+            auto=True,
         )
 
         if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:

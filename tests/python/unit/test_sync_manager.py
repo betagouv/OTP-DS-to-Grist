@@ -35,6 +35,10 @@ def create_mock_process(stdout_text, stderr_text="", returncode=0):
     return mock_process
 
 
+def _ignore_progress(_progress: float, _message: str) -> None:
+    """Callback de progression sans effet, pour les tests qui ne l'observent pas."""
+
+
 class TestSyncManager:
     """Tests unitaires pour la classe SyncManager"""
 
@@ -341,7 +345,9 @@ class TestSyncManager:
 
         # Exécuter la tâche
         result = self.manager.run_synchronization_task(
-            config, progress_callback, log_callback
+            config,
+            progress_callback=progress_callback,
+            log_callback=log_callback,
         )
 
         # Vérifier le résultat
@@ -390,7 +396,11 @@ class TestSyncManager:
         def log_callback(message):
             log_calls.append(message)
 
-        self.manager.run_synchronization_task(config, log_callback=log_callback)
+        self.manager.run_synchronization_task(
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_callback,
+        )
 
         # Vérifier que les filtres sont affichés dans les logs
         filter_logs = [log for log in log_calls if "Filtre" in log]
@@ -433,7 +443,9 @@ class TestSyncManager:
             log_calls.append(message)
 
         result = self.manager.run_synchronization_task(
-            config, log_callback=log_callback
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_callback,
         )
 
         # Vérifier que l'erreur est bien gérée
@@ -470,7 +482,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert "Traceback" not in result["message"]
@@ -499,7 +513,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert len(result["message"]) <= len("Erreur lors de la synchronisation: ") + 500
@@ -528,7 +544,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["error_code"] == 2
 
@@ -555,7 +573,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["error_code"] == 1
 
@@ -584,7 +604,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert result["error_code"] == 3
@@ -620,7 +642,9 @@ class TestSyncManager:
 
             with patch("subprocess.Popen", side_effect=Exception("Unexpected error")):
                 result = self.manager.run_synchronization_task(
-                    config, log_callback=log_callback
+                    config,
+                    progress_callback=_ignore_progress,
+                    log_callback=log_callback,
                 )
 
                 assert result["success"] is False
@@ -689,7 +713,9 @@ class TestSyncManager:
             "grist_base_url": "https://new.grist.com",
         }
 
-        self.manager.run_synchronization_task(config)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         # Vérifier l'environnement passé à subprocess
         _, kwargs = mock_subprocess.call_args
@@ -722,7 +748,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success_count"] == 85
         assert result["error_count"] == 15
@@ -756,7 +784,9 @@ class TestSyncManager:
         log_calls = []
 
         result = self.manager.run_synchronization_task(
-            config, log_callback=log_calls.append
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
         )
 
         assert result["success"] is True
@@ -790,7 +820,9 @@ class TestSyncManager:
         log_calls = []
 
         result = self.manager.run_synchronization_task(
-            config, log_callback=log_calls.append
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
         )
 
         assert result["success"] is True
@@ -829,7 +861,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        self.manager.run_synchronization_task(config)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.duration_seconds == 12.5
@@ -856,7 +890,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         sync_log = mock_db.add.call_args[0][0]
@@ -890,7 +926,9 @@ class TestSyncManager:
             "otp_config_id": 1,
         }
 
-        result = self.manager.run_synchronization_task(config, auto=True)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
 
         assert result["success"] is True
         mock_db.add.assert_called_once()
@@ -930,7 +968,9 @@ class TestSyncManager:
             "otp_config_id": 2,
         }
 
-        result = self.manager.run_synchronization_task(config, auto=False)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=False
+        )
 
         assert result["success"] is False
         mock_db.add.assert_called_once()
@@ -1036,7 +1076,9 @@ class TestSyncManager:
             "otp_config_id": 3,
         }
 
-        self.manager.run_synchronization_task(config, auto=True)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.otp_config_id == 3
         assert sync_log.demarche_number == "12345"
@@ -1046,7 +1088,9 @@ class TestSyncManager:
 
         mock_db.reset_mock()
 
-        self.manager.run_synchronization_task(config, auto=False)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=False
+        )
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.auto is False
 
@@ -1076,7 +1120,9 @@ class TestSyncManager:
             "otp_config_id": 4,
         }
 
-        result = self.manager.run_synchronization_task(config, auto=False)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=False
+        )
 
         assert result["success"] is True
         mock_db.add.assert_called_once()
@@ -1112,7 +1158,9 @@ class TestSyncManager:
             "grist_user_id": "user_auto_error",
         }
 
-        result = self.manager.run_synchronization_task(config, auto=True)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
 
         assert result["success"] is False
         mock_db.add.assert_called_once()
@@ -1150,7 +1198,9 @@ class TestSyncManager:
             "otp_config_id": 5,
         }
 
-        self.manager.run_synchronization_task(config, auto=True)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
 
         mock_cm_class.return_value.fetch_and_store_grist_user_email.assert_called_once_with(
             5, "https://test.grist.com", "test_key"
@@ -1180,7 +1230,9 @@ class TestSyncManager:
 
         log_calls = []
         result = self.manager.run_synchronization_task(
-            config, log_callback=log_calls.append
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
         )
 
         assert result["success"] is False
@@ -1214,7 +1266,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert result["error_code"] == 2
@@ -1241,7 +1295,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert result["error_code"] == 2
@@ -1272,7 +1328,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is True
         mock_subprocess.assert_called_once()
@@ -1299,7 +1357,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is True
         self.grist_access_mock.assert_not_called()
