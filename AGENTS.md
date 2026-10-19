@@ -120,6 +120,9 @@ Ne pas réécrire les docstrings existantes.
 
 Préférer des affectations explicites plutôt que des modification de variables passée en référence tant que c'est possible.
 
+Journalisation des erreurs : logger au plus haut niveau possible ; faire remonter les erreurs
+par exception jusqu'à ce niveau, qui les formate. Utiliser la brique log existante.
+
 ## Tests
 
 Voir `tests/README.md` pour les commandes et conventions.
