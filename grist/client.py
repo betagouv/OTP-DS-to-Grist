@@ -169,7 +169,6 @@ class GristClient:
 
         return dossier_dict
 
-    # Fonction upsert par date
     def get_sync_metadata(self, demarche_number: int | str) -> dict[str, Any] | None:
         """
         Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.

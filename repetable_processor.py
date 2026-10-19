@@ -18,7 +18,6 @@ from utils.log import log, log_verbose, log_error
 def auto_fix_missing_columns_optimized(client, table_id, records_payload):
     """
     Version unique et optimisée pour corriger automatiquement toutes les colonnes manquantes.
-    Remplace les 3 fonctions précédentes.
 
     Args:
         client: Instance GristClient
