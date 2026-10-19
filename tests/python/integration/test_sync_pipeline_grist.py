@@ -731,7 +731,28 @@ class TestSyncPipelineGrist:
         # Le masquage des colonnes `_id` est toujours exécuté en fin de sync
         mocks.hiding.assert_called_once()
 
-    def test_filter_change_forces_full_sync(self):
+    def test_pipeline_emits_sync_metadata_line(self, capsys):
+        """Le pipeline émet une ligne SYNC_METADATA unique portant durée, flag et
+        hash de filtres — contrat parsé côté parent par `parse_output`."""
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+        captured = capsys.readouterr()
+
+        assert result is True
+        lines = [
+            line
+            for line in captured.out.splitlines()
+            if line.startswith("SYNC_METADATA: ")
+        ]
+        assert len(lines) == 1
+        metadata = json.loads(lines[0][len("SYNC_METADATA: ") :])
+        assert metadata["force_full_sync"] is False
+        assert metadata["filters_hash"] == build_filters_cache_key()
+        assert metadata["duration_seconds"] >= 0
+
+    def test_filter_change_forces_full_sync(self, capsys):
         """Un changement de filtres doit réintégrer dans le document les dossiers
         que le repère de reprise aurait écartés.
 
@@ -765,10 +786,19 @@ class TestSyncPipelineGrist:
         )
 
         result, _ = run_pipeline(server, dn_server, parallel=False)
+        captured = capsys.readouterr()
 
         assert result is True
         assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == [1, 2]
         assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+        metadata_line = next(
+            line
+            for line in captured.out.splitlines()
+            if line.startswith("SYNC_METADATA: ")
+        )
+        assert json.loads(metadata_line[len("SYNC_METADATA: ") :])[
+            "force_full_sync"
+        ] is True
 
     def test_pipeline_updates_existing_dossier_without_duplicate(self):
         """Un dossier déjà présent dans le document est mis à jour, pas dupliqué."""

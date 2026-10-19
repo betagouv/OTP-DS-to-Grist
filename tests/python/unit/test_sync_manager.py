@@ -13,6 +13,7 @@ import os
 import time
 from io import StringIO
 from unittest.mock import patch, MagicMock
+import sync.sync_manager as sync_manager_module
 from sync.sync_manager import SyncManager
 
 
@@ -728,6 +729,140 @@ class TestSyncManager:
         assert result["total_processed"] == 100
         assert result["dossier_count"] == 100
         assert result["success"] is False  # Parce qu'il y a des erreurs
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_sync_metadata_line_filtered_from_log_callback(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Les métadonnées de fin de sync alimentent parse_output mais ne
+        doivent pas être re-loguées à l'utilisateur via log_callback."""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 10\n"
+            'SYNC_METADATA: {"duration_seconds": 12.5, "force_full_sync": true, '
+            '"filters_hash": "{}"}\n'
+        )
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+        log_calls = []
+
+        result = self.manager.run_synchronization_task(
+            config, log_callback=log_calls.append
+        )
+
+        assert result["success"] is True
+        assert result["duration_seconds"] == 12.5
+        assert result["force_full_sync"] is True
+        assert result["filters_hash"] == "{}"
+        assert not any(message.startswith("SYNC_METADATA: ") for message in log_calls)
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_sync_metadata_malformee_alerte_sans_faire_echouer_la_sync(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Des métadonnées de fin de sync illisibles sont signalées à
+        l'utilisateur via log_callback, sans faire échouer une sync dont les
+        dossiers sont synchronisés."""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 10\nSYNC_METADATA: {pas-du-json\n"
+        )
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+        log_calls = []
+
+        result = self.manager.run_synchronization_task(
+            config, log_callback=log_calls.append
+        )
+
+        assert result["success"] is True
+        assert result["duration_seconds"] is None
+        assert any("SYNC_METADATA" in message for message in log_calls)
+
+    def test_parent_ne_recalcule_jamais_les_filtres(self):
+        """Verrou chokepoint : `filters_hash` stocké dans `sync_logs` vient
+        exclusivement du sous-processus (ligne stdout parsée). Le parent ne
+        doit pas dépendre de `build_filters_cache_key` — son environnement est
+        globalement pollué (os.environ.update) et divergerait de la vérité du
+        pipeline."""
+        assert not hasattr(sync_manager_module, "build_filters_cache_key")
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_persists_sync_metadata_on_success(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Les métadonnées émises par le pipeline (durée, force_full_sync,
+        hash de filtres) sont persistées dans le SyncLog en cas de succès."""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 10\n"
+            'SYNC_METADATA: {"duration_seconds": 12.5, "force_full_sync": true, '
+            '"filters_hash": "{}"}\n'
+        )
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        self.manager.run_synchronization_task(config)
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.duration_seconds == 12.5
+        assert sync_log.force_full_sync is True
+        assert sync_log.filters_hash == "{}"
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_persists_null_metadata_on_failure(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Échec du sous-processus : les métadonnées restent NULL (le parsing
+        n'a pas lieu, la durée n'est pas intéressante en échec)."""
+        mock_subprocess.return_value = create_mock_process("", returncode=1)
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(config)
+
+        assert result["success"] is False
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.duration_seconds is None
+        assert sync_log.force_full_sync is None
+        assert sync_log.filters_hash is None
 
     @patch("sync.sync_manager.create_engine")
     @patch("sync.sync_manager.sessionmaker")

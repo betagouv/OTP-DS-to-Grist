@@ -1,8 +1,14 @@
+import pytest
+
 from sync.sync_result_parser import (
+    SyncMetadataParseError,
     _parse_success_count,
     _parse_error_count,
+    _parse_sync_metadata,
+    emit_sync_metadata,
     parse_output,
 )
+
 
 class TestParseSuccessCount:
     def test_format_simple_returns_count(self):
@@ -95,6 +101,75 @@ class TestParseOutput:
         assert result["success_count"] == 0
         assert result["error_count"] == 0
         assert result["total_processed"] == 0
+
+
+class TestSyncMetadataContract:
+    """Contrat d'émission/parsing de la ligne SYNC_METADATA entre le pipeline
+    (sous-processus) et le parent : durée, force_full_sync et empreinte des
+    filtres. Absente → valeurs None. Présente mais illisible → SyncMetadataParseError
+    en interne, signalée par le flag sync_metadata_error sans impacter les compteurs."""
+
+    def test_emit_est_parsee_par_parse_output(self, capsys):
+        emit_sync_metadata(12.5, True, '{"date_debut": "2024-01-01"}')
+        captured = capsys.readouterr()
+        assert captured.out.startswith("SYNC_METADATA: ")
+        result = parse_output(captured.out.splitlines())
+        assert result["duration_seconds"] == 12.5
+        assert result["force_full_sync"] is True
+        assert result["filters_hash"] == '{"date_debut": "2024-01-01"}'
+        assert result["sync_metadata_error"] is False
+
+    def test_emit_force_full_sync_false(self, capsys):
+        emit_sync_metadata(3.0, False, "{}")
+        result = parse_output(capsys.readouterr().out.splitlines())
+        assert result["force_full_sync"] is False
+
+    def test_metadata_absentes_sont_none(self):
+        result = parse_output(["Dossiers traités avec succès: 10"])
+        assert result["duration_seconds"] is None
+        assert result["force_full_sync"] is None
+        assert result["filters_hash"] is None
+        assert result["sync_metadata_error"] is False
+
+    def test_metadata_malformee_signalee_sans_casser_les_compteurs(self):
+        lines = [
+            "SYNC_METADATA: {pas-du-json",
+            "Dossiers traités avec succès: 10",
+            "Dossiers en échec: 2",
+        ]
+        result = parse_output(lines)
+        assert result["duration_seconds"] is None
+        assert result["force_full_sync"] is None
+        assert result["filters_hash"] is None
+        assert result["sync_metadata_error"] is True
+        assert result["success_count"] == 10
+        assert result["error_count"] == 2
+
+    def test_metadata_non_dict_signalee(self):
+        result = parse_output(["SYNC_METADATA: 42"])
+        assert result["duration_seconds"] is None
+        assert result["sync_metadata_error"] is True
+
+
+class TestParseSyncMetadata:
+    """`_parse_sync_metadata` est le contrat : pas mon préfixe → None ; mon
+    préfixe mais illisible → SyncMetadataParseError (signal interne, attrapé
+    par parse_output)."""
+
+    def test_ligne_sans_prefixe_retourne_none(self):
+        assert _parse_sync_metadata("Dossiers traités avec succès: 10") is None
+
+    def test_ligne_valide_retourne_le_dict(self):
+        metadata = _parse_sync_metadata('SYNC_METADATA: {"duration_seconds": 1.0}')
+        assert metadata == {"duration_seconds": 1.0}
+
+    def test_json_illisible_leve(self):
+        with pytest.raises(SyncMetadataParseError):
+            _parse_sync_metadata("SYNC_METADATA: {pas-du-json")
+
+    def test_contenu_non_dict_leve(self):
+        with pytest.raises(SyncMetadataParseError):
+            _parse_sync_metadata("SYNC_METADATA: [1, 2]")
 
 
 class TestParseOutputWithDetailedErrorLogs:
