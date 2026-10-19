@@ -255,6 +255,34 @@ class TestProcessRepetablesBatchRecords:
         ]
         self.client.patch_records.assert_not_called()
 
+    def _create_with_labels(self, block_label, field_label):
+        """Crée les lignes d'un bloc dont les libellés viennent de DN tels quels"""
+        dossier = self._dossier()
+        dossier["champs"][0]["label"] = block_label
+        dossier["champs"][0]["rows"][0]["champs"][0]["label"] = field_label
+        self.client.post_records.return_value = self._mock_response(201)
+        with patch(
+            "repetable_processor.get_existing_repetable_rows",
+            return_value={},
+        ):
+            return process_repetables_batch(
+                self.client, [dossier], self._table_ids(), self._column_types()
+            )
+
+    def test_numbered_block_label_matches_schema_table(self):
+        """bloc « 1. Maquettes » -> écrit dans la table créée par le schéma"""
+        success, errors = self._create_with_labels("1. Maquettes", "Nom")
+        assert (success, errors) == (1, 0)
+        assert self.client.post_records.call_args.args[0] == "Demarche_123_maquettes"
+
+    def test_numbered_field_label_matches_schema_column(self):
+        """champ « 2) Nom » -> valeur dans la colonne `nom` créée par le schéma"""
+        success, errors = self._create_with_labels("Maquettes", "2) Nom")
+        assert (success, errors) == (1, 0)
+        assert self.client.post_records.call_args.args[1] == [
+            {"fields": self._expected_record()}
+        ]
+
     def test_update_batch_records(self):
         """ligne existante -> PATCH lot avec les ids trouvés"""
         existing_rows = {"123:row_1": 42}
