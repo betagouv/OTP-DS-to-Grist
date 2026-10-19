@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Integer, String, Boolean, DateTime, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 from datetime import datetime, timezone
 
@@ -54,6 +54,11 @@ class SyncLog(Base):
     auto: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     success_count: Mapped[int | None] = mapped_column(Integer)
     error_count: Mapped[int | None] = mapped_column(Integer)
+    # Métadonnées de la synchronisation (ticket 567) : NULL sur les lignes
+    # historiques et sur les échecs survenus avant leur calcul
+    duration_seconds: Mapped[float | None] = mapped_column(Float)
+    force_full_sync: Mapped[bool | None] = mapped_column(Boolean)
+    filters_hash: Mapped[str | None] = mapped_column(String)
 
 
 class IpBlocklist(Base):

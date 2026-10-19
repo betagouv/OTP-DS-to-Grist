@@ -132,6 +132,15 @@ class DatabaseManager:
                 ADD COLUMN IF NOT EXISTS error_count INTEGER
             """)
 
+            # Migration ticket 567 : métadonnées de la synchronisation
+            # (durée, force_full_sync effectif, empreinte des filtres)
+            cursor.execute("""
+                ALTER TABLE sync_logs
+                ADD COLUMN IF NOT EXISTS duration_seconds FLOAT,
+                ADD COLUMN IF NOT EXISTS force_full_sync BOOLEAN,
+                ADD COLUMN IF NOT EXISTS filters_hash TEXT
+            """)
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ip_blocklist (
                     id SERIAL PRIMARY KEY,
