@@ -17,22 +17,34 @@ def _make_session_mock():
     return mock_db, mock_session_class
 
 
+def _inline_enqueue(otp_config_id, grist_doc_id, fn):
+    """Enfilement synchrone pour les tests : exécute l'étape immédiatement."""
+    fn()
+    return f"fake_step_config_{otp_config_id}"
+
+
 class TestScheduledSyncJob:
     """Tests pour scheduled_sync_job"""
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager")
-    def test_success(self, mock_cm, mock_sessionmaker, mock_create_engine):
+    def test_success(
+        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
+    ):
         """Synchro réussie : last_status='success', next_run calculé"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db, mock_session_class = _make_session_mock()
         mock_sessionmaker.return_value = mock_session_class
 
         mock_config_otp = MagicMock()
         mock_config_otp.id = 1
+        mock_config_otp.grist_doc_id = "doc456"
         mock_user_schedule = MagicMock()
         mock_user_schedule.otp_config_id = 1
 
@@ -65,6 +77,10 @@ class TestScheduledSyncJob:
 
             scheduled_sync_job(1, sync_manager)
 
+            mock_sequencer.enqueue.assert_called_once()
+            enqueue_kwargs = mock_sequencer.enqueue.call_args.kwargs
+            assert enqueue_kwargs["otp_config_id"] == 1
+            assert enqueue_kwargs["grist_doc_id"] == "doc456"
             mock_sync.assert_called_once()
             args, kwargs = mock_sync.call_args
             assert args == (mock_cm.load_config_by_id.return_value,)
@@ -73,15 +89,18 @@ class TestScheduledSyncJob:
             assert mock_user_schedule.last_status == "success"
             assert mock_user_schedule.last_run is not None
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager")
     def test_sync_failure_keeps_schedule_enabled(
-        self, mock_cm, mock_sessionmaker, mock_create_engine
+        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
     ):
         """Échec sync (success=False) : schedule reste activé"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db, mock_session_class = _make_session_mock()
         mock_sessionmaker.return_value = mock_session_class
@@ -118,16 +137,19 @@ class TestScheduledSyncJob:
             assert mock_user_schedule.last_status == "error"
             assert mock_user_schedule.enabled is not False
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager")
     def test_api_error_disables_schedule(
-        self, mock_cm, mock_sessionmaker, mock_create_engine
+        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
     ):
         """Erreur API (EXIT_CODE_EXTERNAL_API_ERROR) : schedule désactivé"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
         from utils.constants import EXIT_CODE_EXTERNAL_API_ERROR
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db, mock_session_class = _make_session_mock()
         mock_sessionmaker.return_value = mock_session_class
@@ -167,16 +189,19 @@ class TestScheduledSyncJob:
 
             assert mock_user_schedule.enabled is False
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager")
     def test_unexpected_exception_keeps_schedule_enabled(
-        self, mock_cm, mock_sessionmaker, mock_create_engine
+        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
     ):
         """Exception inattendue : journalisée, schedule toujours actif
         (seule une erreur définitive désactive le planning)"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db, mock_session_class = _make_session_mock()
         mock_sessionmaker.return_value = mock_session_class
@@ -212,11 +237,12 @@ class TestScheduledSyncJob:
 
             assert mock_user_schedule.enabled is not False
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager")
     def test_grist_read_error_keeps_schedule_enabled(
-        self, mock_cm, mock_sessionmaker, mock_create_engine
+        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
     ):
         """Lecture Grist en échec (EXIT_CODE_GRIST_READ_ERROR) : erreur
         transitoire, schedule toujours actif, last_status='error', next_run
@@ -224,6 +250,8 @@ class TestScheduledSyncJob:
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
         from utils.constants import EXIT_CODE_GRIST_READ_ERROR
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db, mock_session_class = _make_session_mock()
         mock_sessionmaker.return_value = mock_session_class
@@ -254,11 +282,12 @@ class TestScheduledSyncJob:
             assert mock_user_schedule.last_status == "error"
             assert mock_user_schedule.next_run is not None
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager")
     def test_config_not_found(
-        self, mock_cm, mock_sessionmaker, mock_create_engine
+        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
     ):
         """Config introuvable : retourne sans crash sans appeler la sync"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -277,6 +306,7 @@ class TestScheduledSyncJob:
         ) as mock_sync:
             scheduled_sync_job(999, sync_manager)
 
+            mock_sequencer.enqueue.assert_not_called()
             mock_sync.assert_not_called()
 
 

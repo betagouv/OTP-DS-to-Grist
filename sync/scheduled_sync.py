@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database.models import OtpConfiguration, UserSchedule
 from configuration.config_manager import ConfigManager
+from sync.sequencer import sequencer
 from sync.sync_manager import SyncManager
 from utils.constants import EXIT_CODE_EXTERNAL_API_ERROR
 
@@ -54,9 +55,8 @@ def compute_next_run(now: datetime) -> datetime:
 def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     """
     Job exécuté automatiquement par APScheduler pour une configuration donnée.
-    Exécute la synchronisation complète,
-    met à jour les statuts en base de données,
-    et gère les erreurs avec notifications et désactivation automatique.
+    Valide la configuration puis l'enfile dans le séquenceur, qui exécute
+    séquentiellement les synchros d'un même document Grist.
     - Fréquence :
       - Quotidienne, à l'heure configurée (SYNC_HOUR:SYNC_MINUTE)
         dans la timezone SYNC_TZ (défaut Europe/Paris),
@@ -66,9 +66,9 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     - Condition : Uniquement pour les synchronisations activées
     - Actions :
       - Charge la configuration depuis la base
-      - Met à jour last_run et calcule next_run dans UserSchedule
-      - Exécute run_synchronization_task
-      - En cas d'erreur :
+      - Enfile une étape dans le séquenceur (last_run est positionné au
+        début réel de l'exécution de l'étape, pas à la mise en file)
+      - L'étape exécute run_synchronization_task et gère les erreurs :
         - Désactivation du planning : uniquement pour EXIT_CODE_EXTERNAL_API_ERROR
           (échec de la vérification des connexions : token, document ou démarche).
           Les autres erreurs, transitoires (EXIT_CODE_GRIST_READ_ERROR) ou
@@ -98,57 +98,14 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
             logger.error(f"Configuration {otp_config_id} non trouvée")
             return
 
-        user_schedule = (
-            db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
+        step_id = sequencer.enqueue(
+            otp_config_id=otp_config_id,
+            grist_doc_id=otp_config.grist_doc_id,
+            fn=lambda: _run_scheduled_sync_step(otp_config_id, config, sync_manager),
         )
-
-        if user_schedule:
-            user_schedule.last_run = datetime.now(timezone.utc)
-            db.commit()
-
-        result = sync_manager.run_synchronization_task(
-            config,
-            progress_callback=lambda progress, message: None,
-            auto=True,
-        )
-
-        if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
-            # Erreur définitive (token invalide, document ou démarche
-            # introuvable) : relancer chaque jour ne servirait à rien.
-            logger.error(
-                f"Erreur API externe pour config {otp_config_id}: {result.get('message')}"
-            )
-            if user_schedule:
-                user_schedule.enabled = False
-                db.commit()
-                logger.info(
-                    f"Planning désactivé pour config {otp_config_id} à cause d'erreur"
-                )
-            return
-
-        now = datetime.now(timezone.utc)
-        next_run = compute_next_run(now)
-
-        if user_schedule:
-            user_schedule.next_run = next_run
-            db.commit()
-
-        status = "success" if result.get("success") else "error"
-
-        if user_schedule:
-            user_schedule.last_status = status
-            db.commit()
-
         logger.info(
-            f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}"
-        )
-        logger.info(f"next_run DB mis à jour: {next_run}")
-
-    except Exception as e:
-        # Erreur inattendue (base de données, configuration…) : journalisée,
-        # sans désactiver le planning, qui retentera au prochain créneau.
-        logger.error(
-            f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}"
+            f"Synchronisation planifiée {otp_config_id} enfile "
+            f"(étape {step_id}, document {otp_config.grist_doc_id})"
         )
 
     finally:
@@ -222,3 +179,80 @@ def reload_scheduler_jobs(sync_manager: SyncManager) -> None:
 
     except Exception as e:
         logger.error(f"Erreur lors du rechargement des jobs scheduler: {str(e)}")
+
+
+# --- Helpers privés (module) ---
+
+
+def _run_scheduled_sync_step(
+    otp_config_id: int, config: dict, sync_manager: SyncManager
+) -> None:
+    """
+    Corps d'une étape de synchronisation planifiée, exécuté par le séquenceur.
+    Ouvre sa propre session de base : l'exécution a lieu dans un thread du
+    séquenceur, potentiellement longtemps après la mise en file.
+    - Positionne last_run au début réel de l'exécution
+    - Exécute run_synchronization_task
+    - Désactive le planning sur EXIT_CODE_EXTERNAL_API_ERROR ; calcule
+      next_run et last_status dans les autres cas
+    """
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = SessionLocal()
+
+    try:
+        user_schedule = (
+            db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
+        )
+
+        if user_schedule:
+            user_schedule.last_run = datetime.now(timezone.utc)
+            db.commit()
+
+        result = sync_manager.run_synchronization_task(
+            config,
+            progress_callback=lambda progress, message: None,
+            auto=True,
+        )
+
+        if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
+            # Erreur définitive (token invalide, document ou démarche
+            # introuvable) : relancer chaque jour ne servirait à rien.
+            logger.error(
+                f"Erreur API externe pour config {otp_config_id}: {result.get('message')}"
+            )
+            if user_schedule:
+                user_schedule.enabled = False
+                db.commit()
+                logger.info(
+                    f"Planning désactivé pour config {otp_config_id} à cause d'erreur"
+                )
+            return
+
+        now = datetime.now(timezone.utc)
+        next_run = compute_next_run(now)
+
+        if user_schedule:
+            user_schedule.next_run = next_run
+            db.commit()
+
+        status = "success" if result.get("success") else "error"
+
+        if user_schedule:
+            user_schedule.last_status = status
+            db.commit()
+
+        logger.info(
+            f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}"
+        )
+        logger.info(f"next_run DB mis à jour: {next_run}")
+
+    except Exception as e:
+        # Erreur inattendue (base de données, configuration…) : journalisée,
+        # sans désactiver le planning, qui retentera au prochain créneau.
+        logger.error(
+            f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}"
+        )
+
+    finally:
+        db.close()
