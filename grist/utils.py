@@ -19,15 +19,11 @@ def normalize_column_name(name: str | None, max_length: int = 150) -> str:
     doivent produire le même identifiant pour un même libellé : sinon les
     valeurs ne trouvent pas leur colonne et sont ignorées.
     """
-    if not name:
-        return "column"
-
     # Supprimer les espaces en début et fin, et remplacer les espaces consécutifs par un seul espace
-    name = name.strip()
+    name = (name or "").strip()
     name = re.sub(r"\s+", " ", name)
 
     name = name.replace("'", "_")
-    name = name.replace("'", "_")  # Apostrophe typographique
     name = name.replace("`", "_")  # Accent grave utilisé comme apostrophe
 
     # Supprimer les numéros de début type "1. ", "2) ", etc.
@@ -47,9 +43,13 @@ def normalize_column_name(name: str | None, max_length: int = 150) -> str:
     # Éliminer les underscores en début et fin
     name = name.strip("_")
 
+    # Libellé vide ou sans aucun caractère exploitable
+    if not name:
+        return "column"
+
     # S'assurer que le nom commence par une lettre
-    if not name or not name[0].isalpha():
-        name = "col_" + (name or "")
+    if not name[0].isalpha():
+        name = "col_" + name
 
     # Tronquer si nécessaire à max_length caractères
     if len(name) > max_length:

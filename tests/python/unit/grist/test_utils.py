@@ -13,7 +13,9 @@ class TestNormalizeColumnName:
     def test_normalize_column_name_empty(self):
         """Test avec chaîne vide"""
         assert normalize_column_name("") == "column"
-        assert normalize_column_name("   ") == "col_"
+        assert normalize_column_name("   ") == "column"
+        assert normalize_column_name("!!!") == "column"
+        assert normalize_column_name(None) == "column"
 
     def test_normalize_column_name_special_chars(self):
         """Test avec caractères spéciaux"""
