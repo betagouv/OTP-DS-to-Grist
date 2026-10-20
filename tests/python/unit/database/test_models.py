@@ -141,6 +141,35 @@ class TestSyncLog:
         """Test que le nom de table est correct"""
         assert SyncLog.__tablename__ == "sync_logs"
 
+    def test_sync_log_creation_with_sync_metadata_fields(self):
+        """Test de création d'une instance SyncLog avec les champs de métadonnées"""
+        log = SyncLog(
+            status="success",
+            duration_seconds=42.5,
+            force_full_sync=True,
+            filters_hash='{"statuts": ["accepte"]}',
+        )
+
+        assert log.duration_seconds == 42.5
+        assert log.force_full_sync is True
+        assert log.filters_hash == '{"statuts": ["accepte"]}'
+
+    def test_sync_log_metadata_fields_default_none(self):
+        """Test que les champs de métadonnées sont None par défaut (lignes historiques)"""
+        log = SyncLog(status="success")
+
+        assert log.duration_seconds is None
+        assert log.force_full_sync is None
+        assert log.filters_hash is None
+
+    def test_sync_log_metadata_columns_exist_in_table(self):
+        """Test que les colonnes de métadonnées sont déclarées dans la table"""
+        column_names = {column.name for column in SyncLog.__table__.columns}
+
+        assert "duration_seconds" in column_names
+        assert "force_full_sync" in column_names
+        assert "filters_hash" in column_names
+
 
 class TestIpBlocklist:
     """Tests unitaires pour le modèle IpBlocklist"""

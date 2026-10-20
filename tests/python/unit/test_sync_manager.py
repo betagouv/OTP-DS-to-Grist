@@ -13,6 +13,7 @@ import os
 import time
 from io import StringIO
 from unittest.mock import patch, MagicMock
+import sync.sync_manager as sync_manager_module
 from sync.sync_manager import SyncManager
 
 
@@ -32,6 +33,10 @@ def create_mock_process(stdout_text, stderr_text="", returncode=0):
     mock_process.stderr = StringIO(stderr_text)
     mock_process.wait = MagicMock(return_value=returncode)
     return mock_process
+
+
+def _ignore_progress(_progress: float, _message: str) -> None:
+    """Callback de progression sans effet, pour les tests qui ne l'observent pas."""
 
 
 class TestSyncManager:
@@ -340,7 +345,9 @@ class TestSyncManager:
 
         # Exécuter la tâche
         result = self.manager.run_synchronization_task(
-            config, progress_callback, log_callback
+            config,
+            progress_callback=progress_callback,
+            log_callback=log_callback,
         )
 
         # Vérifier le résultat
@@ -389,7 +396,11 @@ class TestSyncManager:
         def log_callback(message):
             log_calls.append(message)
 
-        self.manager.run_synchronization_task(config, log_callback=log_callback)
+        self.manager.run_synchronization_task(
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_callback,
+        )
 
         # Vérifier que les filtres sont affichés dans les logs
         filter_logs = [log for log in log_calls if "Filtre" in log]
@@ -432,7 +443,9 @@ class TestSyncManager:
             log_calls.append(message)
 
         result = self.manager.run_synchronization_task(
-            config, log_callback=log_callback
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_callback,
         )
 
         # Vérifier que l'erreur est bien gérée
@@ -469,7 +482,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert "Traceback" not in result["message"]
@@ -498,7 +513,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert len(result["message"]) <= len("Erreur lors de la synchronisation: ") + 500
@@ -527,7 +544,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["error_code"] == 2
 
@@ -554,7 +573,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["error_code"] == 1
 
@@ -583,7 +604,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert result["error_code"] == 3
@@ -619,7 +642,9 @@ class TestSyncManager:
 
             with patch("subprocess.Popen", side_effect=Exception("Unexpected error")):
                 result = self.manager.run_synchronization_task(
-                    config, log_callback=log_callback
+                    config,
+                    progress_callback=_ignore_progress,
+                    log_callback=log_callback,
                 )
 
                 assert result["success"] is False
@@ -688,7 +713,9 @@ class TestSyncManager:
             "grist_base_url": "https://new.grist.com",
         }
 
-        self.manager.run_synchronization_task(config)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         # Vérifier l'environnement passé à subprocess
         _, kwargs = mock_subprocess.call_args
@@ -721,13 +748,157 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success_count"] == 85
         assert result["error_count"] == 15
         assert result["total_processed"] == 100
         assert result["dossier_count"] == 100
         assert result["success"] is False  # Parce qu'il y a des erreurs
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_sync_metadata_line_filtered_from_log_callback(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Les métadonnées de fin de sync alimentent parse_output mais ne
+        doivent pas être re-loguées à l'utilisateur via log_callback."""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 10\n"
+            'SYNC_METADATA: {"duration_seconds": 12.5, "force_full_sync": true, '
+            '"filters_hash": "{}"}\n'
+        )
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+        log_calls = []
+
+        result = self.manager.run_synchronization_task(
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
+        )
+
+        assert result["success"] is True
+        assert result["duration_seconds"] == 12.5
+        assert result["force_full_sync"] is True
+        assert result["filters_hash"] == "{}"
+        assert not any(message.startswith("SYNC_METADATA: ") for message in log_calls)
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_sync_metadata_malformee_alerte_sans_faire_echouer_la_sync(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Des métadonnées de fin de sync illisibles sont signalées à
+        l'utilisateur via log_callback, sans faire échouer une sync dont les
+        dossiers sont synchronisés."""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 10\nSYNC_METADATA: {pas-du-json\n"
+        )
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+        log_calls = []
+
+        result = self.manager.run_synchronization_task(
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
+        )
+
+        assert result["success"] is True
+        assert result["duration_seconds"] is None
+        assert any("SYNC_METADATA" in message for message in log_calls)
+
+    def test_parent_ne_recalcule_jamais_les_filtres(self):
+        """Verrou chokepoint : `filters_hash` stocké dans `sync_logs` vient
+        exclusivement du sous-processus (ligne stdout parsée). Le parent ne
+        doit pas dépendre de `build_filters_cache_key` — son environnement est
+        globalement pollué (os.environ.update) et divergerait de la vérité du
+        pipeline."""
+        assert not hasattr(sync_manager_module, "build_filters_cache_key")
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_persists_sync_metadata_on_success(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Les métadonnées émises par le pipeline (durée, force_full_sync,
+        hash de filtres) sont persistées dans le SyncLog en cas de succès."""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 10\n"
+            'SYNC_METADATA: {"duration_seconds": 12.5, "force_full_sync": true, '
+            '"filters_hash": "{}"}\n'
+        )
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.duration_seconds == 12.5
+        assert sync_log.force_full_sync is True
+        assert sync_log.filters_hash == "{}"
+
+    @patch("sync.sync_manager.create_engine")
+    @patch("sync.sync_manager.sessionmaker")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_persists_null_metadata_on_failure(
+        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+    ):
+        """Échec du sous-processus : les métadonnées restent NULL (le parsing
+        n'a pas lieu, la durée n'est pas intéressante en échec)."""
+        mock_subprocess.return_value = create_mock_process("", returncode=1)
+        mock_db = MagicMock()
+        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        mock_create_engine.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        assert result["success"] is False
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.duration_seconds is None
+        assert sync_log.force_full_sync is None
+        assert sync_log.filters_hash is None
 
     @patch("sync.sync_manager.create_engine")
     @patch("sync.sync_manager.sessionmaker")
@@ -755,7 +926,9 @@ class TestSyncManager:
             "otp_config_id": 1,
         }
 
-        result = self.manager.run_synchronization_task(config, auto=True)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
 
         assert result["success"] is True
         mock_db.add.assert_called_once()
@@ -795,7 +968,9 @@ class TestSyncManager:
             "otp_config_id": 2,
         }
 
-        result = self.manager.run_synchronization_task(config, auto=False)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=False
+        )
 
         assert result["success"] is False
         mock_db.add.assert_called_once()
@@ -901,7 +1076,9 @@ class TestSyncManager:
             "otp_config_id": 3,
         }
 
-        self.manager.run_synchronization_task(config, auto=True)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.otp_config_id == 3
         assert sync_log.demarche_number == "12345"
@@ -911,7 +1088,9 @@ class TestSyncManager:
 
         mock_db.reset_mock()
 
-        self.manager.run_synchronization_task(config, auto=False)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=False
+        )
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.auto is False
 
@@ -941,7 +1120,9 @@ class TestSyncManager:
             "otp_config_id": 4,
         }
 
-        result = self.manager.run_synchronization_task(config, auto=False)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=False
+        )
 
         assert result["success"] is True
         mock_db.add.assert_called_once()
@@ -977,7 +1158,9 @@ class TestSyncManager:
             "grist_user_id": "user_auto_error",
         }
 
-        result = self.manager.run_synchronization_task(config, auto=True)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
 
         assert result["success"] is False
         mock_db.add.assert_called_once()
@@ -1015,7 +1198,9 @@ class TestSyncManager:
             "otp_config_id": 5,
         }
 
-        self.manager.run_synchronization_task(config, auto=True)
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, auto=True
+        )
 
         mock_cm_class.return_value.fetch_and_store_grist_user_email.assert_called_once_with(
             5, "https://test.grist.com", "test_key"
@@ -1045,7 +1230,9 @@ class TestSyncManager:
 
         log_calls = []
         result = self.manager.run_synchronization_task(
-            config, log_callback=log_calls.append
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
         )
 
         assert result["success"] is False
@@ -1079,7 +1266,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert result["error_code"] == 2
@@ -1106,7 +1295,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is False
         assert result["error_code"] == 2
@@ -1137,7 +1328,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is True
         mock_subprocess.assert_called_once()
@@ -1164,7 +1357,9 @@ class TestSyncManager:
             "grist_doc_id": "test_doc",
         }
 
-        result = self.manager.run_synchronization_task(config)
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
 
         assert result["success"] is True
         self.grist_access_mock.assert_not_called()

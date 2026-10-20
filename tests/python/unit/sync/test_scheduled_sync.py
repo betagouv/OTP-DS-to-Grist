@@ -65,9 +65,11 @@ class TestScheduledSyncJob:
 
             scheduled_sync_job(1, sync_manager)
 
-            mock_sync.assert_called_once_with(
-                mock_cm.load_config_by_id.return_value, auto=True
-            )
+            mock_sync.assert_called_once()
+            args, kwargs = mock_sync.call_args
+            assert args == (mock_cm.load_config_by_id.return_value,)
+            assert kwargs["auto"] is True
+            assert callable(kwargs["progress_callback"])
             assert mock_user_schedule.last_status == "success"
             assert mock_user_schedule.last_run is not None
 

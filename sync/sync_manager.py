@@ -9,7 +9,7 @@ from typing import Callable, Any
 from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sync.sync_result_parser import parse_output
+from sync.sync_result_parser import SYNC_METADATA_PREFIX, parse_output
 from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
 from database.models import SyncLog
@@ -53,7 +53,8 @@ class SyncManager:
     def run_synchronization_task(
         self,
         config: dict[str, Any],
-        progress_callback: Callable[[float, str], None] | None = None,
+        *,
+        progress_callback: Callable[[float, str], None],
         log_callback: Callable[[str], None] | None = None,
         auto: bool = False,
     ) -> dict[str, Any]:
@@ -95,22 +96,11 @@ class SyncManager:
                     }
                     return result
 
-            if progress_callback:
-                progress_callback(5, "Préparation de l'environnement...")
-
             # Copie de l'environnement pour éviter la pollution globale
             env_copy = build_environment(config)
 
-            if progress_callback:
-                progress_callback(10, "Configuration des variables d'environnement...")
-
             # Appliquer les variables d'environnement pour ce thread
             os.environ.update(env_copy)
-
-            if progress_callback:
-                progress_callback(
-                    15, "Chargement des données depuis Démarches Simplifiées..."
-                )
 
             # ✅ Afficher les filtres effectivement utilisés (après définition)
             if log_callback:
@@ -144,14 +134,7 @@ class SyncManager:
 
                 log_callback("====================================")
 
-            if progress_callback:
-                progress_callback(20, "Configuration des variables d'environnement...")
-
-            # Appliquer les variables d'environnement pour ce thread
-            os.environ.update(env_copy)
-
-            if progress_callback:
-                progress_callback(25, "Lancement du script de synchronisation...")
+            progress_callback(1, "Lancement du script de synchronisation...")
 
             # Lancer le script de synchronisation principal
             script_path = os.path.join(
@@ -181,9 +164,10 @@ class SyncManager:
                     parts = line.split(": ", 1)[1].split(" - ")
                     progress_value = float(parts[0])
                     phase_name = parts[1] if len(parts) > 1 else ""
-                    if progress_callback:
-                        progress_callback(progress_value, f"{phase_name}")
-                elif not line.startswith("Progression pourcentage:"):
+                    progress_callback(progress_value, phase_name)
+                elif not line.startswith(
+                    ("Progression pourcentage:", SYNC_METADATA_PREFIX)
+                ):
                     if log_callback:
                         log_callback(line)
 
@@ -204,8 +188,15 @@ class SyncManager:
 
             result = parse_output(output_lines)
 
-            if progress_callback:
-                progress_callback(99, "Finalisation...")
+            # Métadonnées de fin de sync illisibles : prévenir l'utilisateur
+            # sans faire échouer une sync dont les dossiers sont synchronisés.
+            if result.get("sync_metadata_error") and log_callback:
+                log_callback(
+                    "Métadonnées de synchronisation (SYNC_METADATA) illisibles : "
+                    "durée et filtres non enregistrés"
+                )
+
+            progress_callback(99, "Finalisation...")
 
             if log_callback:
                 log_callback(
@@ -214,8 +205,7 @@ class SyncManager:
                     f", {result['error_count']} erreurs"
                 )
 
-            if progress_callback:
-                progress_callback(100, result["message"])
+            progress_callback(100, result["message"])
 
             return result
 
@@ -261,6 +251,9 @@ class SyncManager:
                 auto=auto,
                 success_count=result.get("success_count", 0),
                 error_count=result.get("error_count", 0),
+                duration_seconds=result.get("duration_seconds"),
+                force_full_sync=result.get("force_full_sync"),
+                filters_hash=result.get("filters_hash"),
             )
             db_session.add(sync_log)
             db_session.commit()

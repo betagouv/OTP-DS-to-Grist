@@ -38,6 +38,7 @@ from sync.filters import (
     filter_dossiers,
     read_filters_from_env,
 )
+from sync.sync_result_parser import emit_sync_metadata
 from sync.tasks.deleted_dossiers import check_deleted_dossiers
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
@@ -877,8 +878,11 @@ def process_demarche_for_grist_optimized(
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
+        # Pas de métadonnées (première sync ou table Sync_metadata supprimée) :
+        # aucun curseur disponible, la sync sera complète → déclarée
+        # force_full_sync.
         force_full_sync = (
-            sync_meta.get("force_full_sync", False) if sync_meta else False
+            sync_meta.get("force_full_sync", False) if sync_meta else True
         )
         current_filters_key = build_filters_cache_key()
 
@@ -1429,6 +1433,12 @@ def process_demarche_for_grist_optimized(
         elapsed_time = time.time() - start_time
         minutes = int(elapsed_time // 60)
         seconds = elapsed_time % 60
+
+        # Métadonnées de fin de sync enregistrées dans sync_logs : durée,
+        # force_full_sync effectif, empreinte des filtres en vigueur.
+        emit_sync_metadata(
+            round(elapsed_time, 1), force_full_sync, current_filters_key
+        )
 
         # Calculer les nombres à partir des ensembles : un dossier écrit dans la
         # table dossiers mais en échec sur une autre table est compté en échec

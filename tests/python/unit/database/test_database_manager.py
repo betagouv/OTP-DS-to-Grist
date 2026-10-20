@@ -102,6 +102,26 @@ class TestDatabaseManager(unittest.TestCase):
             "La migration doit contenir la colonne grist_user_email",
         )
 
+    def test_create_table_includes_sync_log_metadata_columns(self):
+        """Test que la migration ajoute les colonnes de métadonnées de sync_logs"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Column id existe
+        mock_cursor.fetchone.return_value = [1]
+
+        DatabaseManager.create_table_if_not_exists(mock_conn)
+
+        executed_sql = [
+            str(call.args[0]) for call in mock_cursor.execute.call_args_list
+        ]
+        for column_name in ("duration_seconds", "force_full_sync", "filters_hash"):
+            self.assertTrue(
+                any(column_name in sql for sql in executed_sql),
+                f"La migration doit contenir la colonne {column_name}",
+            )
+
     def test_create_table_if_not_exists_is_idempotent(self):
         """Test que l'exécution répétée de la migration ne provoque pas d'erreur"""
         mock_conn = MagicMock()
