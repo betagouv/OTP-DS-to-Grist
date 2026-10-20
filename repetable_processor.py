@@ -633,7 +633,7 @@ def process_repetables_batch(
             chaque création et chaque suppression.
 
     Les lignes Grist d'un dossier que DN ne renvoie plus (ligne supprimée par
-    l'usager ou l'instructeur) sont supprimées. Voir `_stale_row_ids` pour les
+    l'usager ou l'instructeur) sont supprimées. Voir `_stale_row_keys` pour les
     garde-fous.
 
     Returns:
@@ -655,7 +655,7 @@ def process_repetables_batch(
     # Grouper les dossiers et extraire les lignes par bloc
     rows_by_block = {}  # {block_label_normalized: {"to_update": [], "to_create": [], "existing_rows": {}}}
 
-    # État nécessaire à la purge (voir _stale_row_ids)
+    # État nécessaire à la purge (voir _stale_row_keys)
     seen_keys_by_block = {}  # {bloc: clés des lignes renvoyées par DN}
     purge_dossiers = {"champs": set(), "annotations": set()}  # dossiers purgeables
     protected_blocks = {}  # {numéro normalisé: blocs à ne jamais purger}
