@@ -88,3 +88,17 @@ def format_value(
         return bool(value)
 
     return value
+
+
+def normalize_dossier_number(dossier_number: Any) -> str | None:
+    """
+    Numéro de dossier sous forme de texte, pour comparer les numéros d'où qu'ils
+    viennent : 123 (DN) et 123.0 (relu depuis Grist) donnent "123".
+    Une valeur non numérique est rendue telle quelle, en texte.
+    """
+    if dossier_number in (None, ""):
+        return None
+    try:
+        return str(int(float(dossier_number)))
+    except (TypeError, ValueError):
+        return str(dossier_number)

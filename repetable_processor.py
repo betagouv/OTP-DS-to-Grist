@@ -10,9 +10,12 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
-from grist.client import GristReadError
-from grist.formatter import format_value
+from grist.client import GristClient, GristReadError
+from grist.formatter import format_value, normalize_dossier_number
 from utils.log import log, log_verbose, log_error
+
+# Taille max d'un lot de suppressions envoyé à Grist.
+DELETE_BATCH_SIZE = 500
 
 
 def auto_fix_missing_columns_optimized(client, table_id, records_payload):
@@ -509,7 +512,7 @@ def extract_geo_data(geo_area: Dict[str, Any]) -> Dict[str, Any]:
     return geo_data
 
 
-def repetable_row_key(dossier_number, block_row_id):
+def repetable_row_key(dossier_number: Any, block_row_id: str) -> str:
     """
     Clé unique d'une ligne de bloc répétable dans la table de son bloc :
     couple (numéro de dossier, block_row_id).
@@ -519,14 +522,10 @@ def repetable_row_key(dossier_number, block_row_id):
     écraserait celle de l'autre. Le numéro est normalisé pour que 123 et 123.0
     (valeur relue depuis Grist) donnent la même clé.
     """
-    try:
-        number = str(int(float(dossier_number)))
-    except (TypeError, ValueError):
-        number = str(dossier_number)
-    return f"{number}:{block_row_id}"
+    return f"{normalize_dossier_number(dossier_number)}:{block_row_id}"
 
 
-def get_existing_repetable_rows(client, table_id):
+def get_existing_repetable_rows(client: GristClient, table_id: str) -> dict[str, int]:
     """
     Charge les lignes existantes d'une table de bloc répétable.
 
@@ -662,7 +661,7 @@ def process_repetables_batch(
 
     for dossier_data in dossiers_data:
         dossier_number = dossier_data.get("number")
-        dossier_key = _normalized_number(dossier_number)
+        dossier_key = normalize_dossier_number(dossier_number)
         dossier_ok = True
         try:
             # Extraire les blocs répétables de ce dossier (champs + annotations)
@@ -940,14 +939,9 @@ def process_repetables_batch(
     return total_success, total_errors
 
 
-def _normalized_number(dossier_number):
-    """Numéro de dossier sous la forme utilisée dans repetable_row_key."""
-    if dossier_number in (None, ""):
-        return None
-    return repetable_row_key(dossier_number, "").rsplit(":", 1)[0]
-
-
-def _stale_row_keys(existing_rows, eligible_numbers, seen_keys):
+def _stale_row_keys(
+    existing_rows: dict[str, int], eligible_numbers: set[str], seen_keys: set[str]
+) -> list[str]:
     """
     Clés du cache appartenant à un dossier purgeable mais que DN n'a pas
     renvoyées pendant cette synchro.
@@ -967,16 +961,16 @@ def _stale_row_keys(existing_rows, eligible_numbers, seen_keys):
     ]
 
 
-DELETE_BATCH_SIZE = 500
-
-
-def _delete_stale_rows(client, table_id, existing_rows, stale_keys):
+def _delete_stale_rows(
+    client: GristClient,
+    table_id: str,
+    existing_rows: dict[str, int],
+    stale_keys: list[str],
+) -> tuple[int, int]:
     """
     Supprime de Grist les lignes `stale_keys` par lots de DELETE_BATCH_SIZE,
     et les retire du cache partagé quand la suppression réussit.
-
-    Returns:
-        tuple: (lignes supprimées, lignes en échec)
+    Retourne (lignes supprimées, lignes en échec).
     """
     ids_to_keys = {}
     for key in stale_keys:

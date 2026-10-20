@@ -90,7 +90,7 @@ class TestAutoFixMissingColumnsOptimized:
         self.client.post_records.assert_not_called()
 
 
-class TestGetExistingRepetableRowsImprovedNoFilter:
+class TestGetExistingRepetableRows:
     """Tests unitaires pour get_existing_repetable_rows"""
 
     def setup_method(self):

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from grist.formatter import format_value
+from grist.formatter import format_value, normalize_dossier_number
 
 CTX = {"dossier_number": 1, "champ_label": "test"}
 
@@ -192,3 +192,21 @@ class TestFormatValue:
             format_value("42", "Int", dossier_number=1)
         with pytest.raises(TypeError):
             format_value("42", "Int", champ_label="quantite")
+
+
+class TestNormalizeDossierNumber:
+    """Tests unitaires pour normalize_dossier_number"""
+
+    @pytest.mark.parametrize("value", [123, 123.0, "123", "123.0"])
+    def test_meme_numero_quelle_que_soit_la_source(self, value):
+        """123 (DN) et 123.0 (relu depuis Grist) donnent la même valeur"""
+        assert normalize_dossier_number(value) == "123"
+
+    @pytest.mark.parametrize("value", [None, ""])
+    def test_numero_absent(self, value):
+        """Pas de numéro : None"""
+        assert normalize_dossier_number(value) is None
+
+    def test_valeur_non_numerique(self):
+        """Valeur non numérique rendue telle quelle"""
+        assert normalize_dossier_number("abc") == "abc"
