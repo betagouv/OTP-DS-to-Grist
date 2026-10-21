@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "baseline-browser-mapping": "^2.11.6",
+    "baseline-browser-mapping": "^2.11.29",
     "eslint": "^10.10.0",
     "globals": "^17.13.0",
     "jest": "^30.5.1",
