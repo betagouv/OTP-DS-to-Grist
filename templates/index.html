@@ -104,14 +104,22 @@ const saveConfigAction = async () => {
          if (!await testDemarchesConnection(true))
            return setButtonsDisabled(false)
 
-         // Test connexion Grist seulement si clé présente
-         if (
-           (gristKey || config.has_grist_key)
-             && !await testGristConnection(true)
-         )
+         // Création : la clé Grist est requise côté serveur. On attend qu'elle
+         // soit saisie plutôt que de tenter une sauvegarde vouée à l'échec,
+         // qui rechargerait le formulaire et effacerait les champs saisis.
+         if (!gristKey && !config.has_grist_key) {
+           console.log('Sauvegarde en attente de la clé API Grist')
+           return setButtonsDisabled(false)
+         }
+
+         if (!await testGristConnection(true))
            return setButtonsDisabled(false)
 
-         await saveConfiguration()
+         // Ne pas recharger le formulaire si rien n'a été enregistré :
+         // loadConfiguration() viderait les champs saisis
+         if (!await saveConfiguration())
+           return
+
          const checkedConfig = await checkConfiguration()
          window.otp_config_id = checkedConfig.otp_config_id
 

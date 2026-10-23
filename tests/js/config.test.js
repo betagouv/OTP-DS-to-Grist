@@ -614,9 +614,10 @@ describe('saveConfiguration', () => {
       jest.useFakeTimers()
 
       // Appel
-      await saveConfiguration()
+      const saved = await saveConfiguration()
 
       // Vérifications
+      expect(saved).toBe(true)
       expect(fetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -687,9 +688,10 @@ describe('saveConfiguration', () => {
       jest.useFakeTimers()
 
       // Appel
-      await saveConfiguration()
+      const saved = await saveConfiguration()
 
-      // Vérifications : notification d'erreur, aucune sauvegarde
+      // Vérifications : notification d'erreur, aucune sauvegarde, échec signalé
+      expect(saved).toBe(false)
       expect(showNotification).toHaveBeenCalledWith('Le champ "Clé API Grist" est requis', 'error')
       expect(fetch).toHaveBeenCalledTimes(1) // Seul le GET /api/config de contexte
       const postCalls = fetch.mock.calls.filter(([, options]) => options?.method === 'POST')
@@ -718,9 +720,10 @@ describe('saveConfiguration', () => {
       )
 
       // Appel
-      await saveConfiguration()
+      const saved = await saveConfiguration()
 
       // Vérifications
+      expect(saved).toBe(false)
       expect(fetch).toHaveBeenCalled()
       expect(showNotification).toHaveBeenCalledWith('Le champ "Token API Démarches Simplifiées" est requis', 'error')
     }

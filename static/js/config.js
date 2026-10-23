@@ -236,6 +236,7 @@ const setButtonsDisabled = (disabled) => {
   if (deleteConfigBtn) deleteConfigBtn.disabled = disabled
 }
 
+// Retourne true si la configuration a été enregistrée, false sinon
 const saveConfiguration = async () => {
   const dsApiTokenElement = document.getElementById('ds_api_token')
   const dsToken = dsApiTokenElement.value
@@ -276,7 +277,7 @@ const saveConfiguration = async () => {
       showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
       // Réactiver les boutons en cas d'erreur de validation
       setButtonsDisabled(false)
-      return
+      return false
     }
 
     // Vérification spécifique pour grist_api_key : obligatoire si pas en base
@@ -284,7 +285,7 @@ const saveConfiguration = async () => {
       showNotification('Le champ "Clé API Grist" est requis', 'error')
       // Réactiver les boutons en cas d'erreur de validation
       setButtonsDisabled(false)
-      return
+      return false
     }
 
     for (const field of requiredFields) {
@@ -292,7 +293,7 @@ const saveConfiguration = async () => {
         showNotification(`Le champ "${field.name}" est requis`, 'error')
         // Réactiver les boutons en cas d'erreur de validation
         setButtonsDisabled(false)
-        return
+        return false
       }
     }
 
@@ -335,11 +336,15 @@ const saveConfiguration = async () => {
     // Réactiver les boutons après succès ou erreur
     setButtonsDisabled(false)
 
+    return !!result.success
+
   } catch (error) {
     console.error('Erreur:', error)
     showNotification('Erreur lors de la sauvegarde', 'error')
     // Réactiver les boutons en cas d'exception
     setButtonsDisabled(false)
+
+    return false
   }
 }
 
