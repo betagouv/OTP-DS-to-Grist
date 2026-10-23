@@ -11,6 +11,12 @@ from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedErr
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 
 
+def _inline_enqueue(otp_config_id, grist_doc_id, fn):
+    """Enfilement synchrone pour les tests : exécute l'étape immédiatement."""
+    fn()
+    return f"fake_step_config_{otp_config_id}"
+
+
 class TestEndpoints:
     """Tests d'intégration pour les endpoints Flask"""
 
@@ -1339,6 +1345,7 @@ class TestErrorHandling:
         assert data["success"] is False
         assert "non trouvée" in data["message"]
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
@@ -1352,10 +1359,13 @@ class TestErrorHandling:
         mock_load_config,
         mock_sessionmaker,
         mock_create_engine,
+        mock_sequencer,
     ):
         """Test exécution réussie d'une synchronisation planifiée"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db = MagicMock()
         mock_engine = MagicMock()
@@ -1427,6 +1437,7 @@ class TestErrorHandling:
                 2026, 9, 3, 9, 14, tzinfo=timezone.utc
             )
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
     @patch(
@@ -1434,11 +1445,13 @@ class TestErrorHandling:
         return_value=datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc),
     )
     def test_scheduled_sync_job_error(
-        self, mock_compute_next_run, mock_load_config, mock_sessionmaker
+        self, mock_compute_next_run, mock_load_config, mock_sessionmaker, mock_sequencer
     ):
         """Test sync échouée (success=False) : last_status=error, schedule reste actif"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db = MagicMock()
         mock_session_class = MagicMock(return_value=mock_db)
@@ -1509,15 +1522,18 @@ class TestErrorHandling:
             )
             assert mock_schedule.enabled is True
 
+    @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
     def test_scheduled_sync_job_external_api_error_disables_schedule(
-        self, mock_load_config, mock_sessionmaker
+        self, mock_load_config, mock_sessionmaker, mock_sequencer
     ):
         """Test erreur API externe : schedule désactivé automatiquement"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
         from utils.constants import EXIT_CODE_EXTERNAL_API_ERROR
+
+        mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db = MagicMock()
         mock_session_class = MagicMock(return_value=mock_db)

@@ -45,6 +45,7 @@ from security.widget_auth import (
     grist_doc_access_level,
 )
 from sync.scheduled_sync import reload_scheduler_jobs, scheduler
+from sync.sequencer import sequencer
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
 from utils.api_validator import (
@@ -237,6 +238,7 @@ if not scheduler.running:
     reload_scheduler_jobs(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
     atexit.register(lambda: scheduler.shutdown(wait=True))
+    atexit.register(sequencer.shutdown)
 
 
 # Routes Flask

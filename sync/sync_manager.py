@@ -96,11 +96,8 @@ class SyncManager:
                     }
                     return result
 
-            # Copie de l'environnement pour éviter la pollution globale
+            # Copie de l'environnement pour le sous-processus
             env_copy = build_environment(config)
-
-            # Appliquer les variables d'environnement pour ce thread
-            os.environ.update(env_copy)
 
             # ✅ Afficher les filtres effectivement utilisés (après définition)
             if log_callback:

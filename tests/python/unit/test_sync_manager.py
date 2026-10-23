@@ -832,9 +832,9 @@ class TestSyncManager:
     def test_parent_ne_recalcule_jamais_les_filtres(self):
         """Verrou chokepoint : `filters_hash` stocké dans `sync_logs` vient
         exclusivement du sous-processus (ligne stdout parsée). Le parent ne
-        doit pas dépendre de `build_filters_cache_key` — son environnement est
-        globalement pollué (os.environ.update) et divergerait de la vérité du
-        pipeline."""
+        doit pas dépendre de `build_filters_cache_key` — les filtres vivent
+        dans l'environnement construit à partir de la config, propre au
+        sous-processus, et non dans l'environnement du parent."""
         assert not hasattr(sync_manager_module, "build_filters_cache_key")
 
     @patch("sync.sync_manager.create_engine")
