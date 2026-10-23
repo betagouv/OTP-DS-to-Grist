@@ -101,6 +101,9 @@ const saveConfigAction = async () => {
            return setButtonsDisabled(false)
          }
 
+         if (!await testDemarchesConnection(true))
+           return setButtonsDisabled(false)
+
          // Création : la clé Grist est requise côté serveur. On attend qu'elle
          // soit saisie plutôt que de tenter une sauvegarde vouée à l'échec,
          // qui rechargerait le formulaire et effacerait les champs saisis.
@@ -109,14 +112,7 @@ const saveConfigAction = async () => {
            return setButtonsDisabled(false)
          }
 
-         if (!await testDemarchesConnection(true))
-           return setButtonsDisabled(false)
-
-         // Test connexion Grist seulement si clé présente
-         if (
-           (gristKey || config.has_grist_key)
-             && !await testGristConnection(true)
-         )
+         if (!await testGristConnection(true))
            return setButtonsDisabled(false)
 
          // Ne pas recharger le formulaire si rien n'a été enregistré :
