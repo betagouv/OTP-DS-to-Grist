@@ -1,13 +1,10 @@
 import concurrent.futures
 import gc
-import hashlib
 import json as json_module
 import os
-import re
 import sys
 import time
 import traceback
-import unicodedata
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -19,6 +16,7 @@ from grist.client import GristClient, GristReadError, extract_dossier_numbers
 from grist.column_cache import ColumnCache
 from grist.columns import hide_columns_with_id
 from grist.formatter import format_value
+from grist.utils import normalize_column_name
 from dn.client import (
     PAGE_SIZE_DOSSIERS_MAX,
     iter_demarche_dossier_pages,
@@ -94,60 +92,6 @@ def log_schema_improvements(schema, demarche_number):
         log("Filtrage automatique des champs problématiques activé")
         log("Gestion robuste des erreurs activée")
         log("Métadonnées enrichies disponibles")
-
-
-# Fonction pour supprimer les accents d'une chaîne de caractères
-def normalize_column_name(name, max_length=150):
-    """
-    Normalise un nom de colonne pour Grist en garantissant des identifiants valides.
-    Supprime les espaces en début, fin et les espaces consécutifs.
-
-    Args:
-        name: Le nom original de la colonne
-        max_length: Longueur maximale autorisée (défaut: 50)
-
-    Returns:
-        str: Nom de colonne normalisé pour Grist
-    """
-    if not name:
-        return "column"
-
-    # Supprimer les espaces en début et fin, et remplacer les espaces consécutifs par un seul espace
-    name = name.strip()
-    name = re.sub(r"\s+", " ", name)
-
-    name = name.replace("'", "_")
-    name = name.replace("'", "_")  # Apostrophe typographique
-    name = name.replace("`", "_")  # Accent grave utilisé comme apostrophe
-
-    # ✅ NOUVEAU : Supprimer les numéros de début type "1. ", "2. ", etc.
-    name = re.sub(r"^[\d]+[\.\)]\s*", "", name)
-
-    # Supprimer les accents
-    name = unicodedata.normalize("NFKD", name)
-    name = "".join([c for c in name if not unicodedata.combining(c)])
-
-    # Convertir en minuscules et remplacer les caractères non alphanumériques par des underscores
-    name = name.lower()
-    name = re.sub(r"[^a-z0-9_]", "_", name)
-
-    # Éliminer les underscores multiples consécutifs
-    name = re.sub(r"_+", "_", name)
-
-    # Éliminer les underscores en début et fin
-    name = name.strip("_")
-
-    # S'assurer que le nom commence par une lettre
-    if not name or not name[0].isalpha():
-        name = "col_" + (name or "")
-
-    # Tronquer si nécessaire à max_length caractères
-    if len(name) > max_length:
-        # Générer un hash pour garantir l'unicité
-        hash_part = hashlib.md5(name.encode()).hexdigest()[:6]
-        name = f"{name[: max_length - 7]}_{hash_part}"
-
-    return name
 
 
 def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=None):

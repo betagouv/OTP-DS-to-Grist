@@ -3,15 +3,13 @@ Module spécialisé pour le traitement
 des blocs répétables dans les formulaires Démarches Simplifiées.
 Ce module extrait, transforme et stocke les données des blocs répétables dans Grist.
 """
-import unicodedata
-import hashlib
-import re
 import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
 from grist.client import GristClient, GristReadError
 from grist.formatter import format_value, normalize_dossier_number
+from grist.utils import normalize_column_name
 from utils.log import log, log_verbose, log_error
 
 # Taille max d'un lot de suppressions envoyé à Grist.
@@ -157,61 +155,6 @@ def should_skip_field_unified(field, problematic_ids=None):
         return True
 
     return False
-
-
-def normalize_column_name(name, max_length=150):
-    """
-    Normalise un nom de colonne pour Grist en garantissant des identifiants valides.
-    Gère correctement les apostrophes et autres caractères spéciaux.
-
-    Args:
-        name: Le nom original de la colonne
-        max_length: Longueur maximale autorisée (défaut: 150)
-
-    Returns:
-        str: Nom de colonne normalisé pour Grist
-    """
-    if not name:
-        return "column"
-
-    # Supprimer les espaces en début et fin, et remplacer les espaces consécutifs par un seul espace
-
-    name = name.strip()
-    name = re.sub(r'\s+', ' ', name)
-
-    # ÉTAPE CRITIQUE: Remplacer les apostrophes par des underscores AVANT de supprimer les accents
-    # Cela évite que "l'enseignant" devienne "lenseignant" au lieu de "l_enseignant"
-    name = name.replace("'", "_")
-    name = name.replace("'", "_")  # Apostrophe typographique
-    name = name.replace("`", "_")  # Accent grave utilisé comme apostrophe
-
-    # Supprimer les accents
-    name = unicodedata.normalize('NFKD', name)
-    name = ''.join([c for c in name if not unicodedata.combining(c)])
-
-    # Convertir en minuscules et remplacer les caractères non alphanumériques par des underscores
-    name = name.lower()
-    name = re.sub(r'[^a-z0-9_]', '_', name)
-
-    # Éliminer les underscores multiples consécutifs
-    name = re.sub(r'_+', '_', name)
-
-    # Éliminer les underscores en début et fin
-    name = name.strip('_')
-
-    # S'assurer que le nom commence par une lettre
-    if not name or not name[0].isalpha():
-        name = "col_" + (name or "")
-
-    # Tronquer si nécessaire à max_length caractères
-    if len(name) > max_length:
-        # Générer un hash pour garantir l'unicité
-        hash_part = hashlib.md5(name.encode()).hexdigest()[:6]
-        name = f"{name[:max_length-7]}_{hash_part}"
-
-    return name
-
-
 
 
 def extract_field_value(
