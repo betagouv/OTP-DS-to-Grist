@@ -1,10 +1,11 @@
 """
 Séquenceur de synchronisations.
 
-Ordonnance les synchronisations automatiques : une file par document Grist,
-exécution séquentielle au sein d'un document, parallélisme borné entre
-documents différents. Aucune surface HTTP : les appelants (la planification)
-enfilent des étapes, l'état est conservé en mémoire.
+Ordonnance les synchronisations automatiques dans une file globale : une
+seule synchronisation s'exécute à la fois. Une file par document Grist
+conserve l'ordre des étapes d'un même document. Aucune surface HTTP : les
+appelants (la planification) enfilent des étapes, l'état est conservé en
+mémoire.
 """
 
 import logging
@@ -16,7 +17,8 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT_DOCS = 2
+MAX_CONCURRENT_SYNCS = 1
+MAX_FINISHED_STEPS = 100
 
 STATUS_PENDING = "pending"
 STATUS_RUNNING = "running"
@@ -32,7 +34,7 @@ class _Step:
         step_id: str,
         otp_config_id: int,
         grist_doc_id: str,
-        fn: Callable[[], None],
+        fn: Callable[[], None] | None,
     ) -> None:
         self.step_id = step_id
         self.otp_config_id = otp_config_id
@@ -48,16 +50,14 @@ class SyncSequencer:
     """
     Ordonnanceur de synchronisations en mémoire.
 
-    Les étapes d'un même document Grist s'exécutent séquentiellement ; les
-    documents différents peuvent avancer en parallèle (plafond
-    MAX_CONCURRENT_DOCS). Une configuration déjà en attente ou en cours
-    n'est pas remise en file. Une étape dont l'appel lève une exception passe
-    en erreur sans empêcher la suite de la file.
+    Les étapes s'exécutent une par une. Une configuration déjà en attente ou
+    en cours n'est pas remise en file. Une étape dont l'appel lève une
+    exception passe en erreur sans empêcher la suite de la file.
     """
 
-    def __init__(self, max_concurrent_docs: int = MAX_CONCURRENT_DOCS) -> None:
+    def __init__(self, max_concurrent_syncs: int = MAX_CONCURRENT_SYNCS) -> None:
         self._executor = ThreadPoolExecutor(
-            max_workers=max_concurrent_docs, thread_name_prefix="sync-sequencer"
+            max_workers=max_concurrent_syncs, thread_name_prefix="sync-sequencer"
         )
         self._lock = threading.Lock()
         self._queues: dict[str, deque[_Step]] = {}
@@ -127,12 +127,13 @@ class SyncSequencer:
     # --- Helpers privés ---
 
     def _drain_doc(self, grist_doc_id: str) -> None:
-        """Exécute séquentiellement les étapes en file pour un document."""
+        """Exécute les étapes en file pour un document, une par une."""
         while True:
             with self._lock:
                 queue = self._queues.get(grist_doc_id)
                 if not queue:
                     self._active_docs.discard(grist_doc_id)
+                    self._queues.pop(grist_doc_id, None)
                     return
                 step = queue.popleft()
                 step.status = STATUS_RUNNING
@@ -151,7 +152,21 @@ class SyncSequencer:
                     step.status = STATUS_ERROR
             finally:
                 with self._lock:
+                    step.fn = None
                     step.finished_at = datetime.now(timezone.utc)
+                    self._prune_finished_steps()
+
+    def _prune_finished_steps(self) -> None:
+        """Conserve uniquement les dernières étapes terminées."""
+        finished_count = 0
+        kept_reversed: list[_Step] = []
+        for step in reversed(self._steps):
+            if step.status in (STATUS_DONE, STATUS_ERROR):
+                finished_count += 1
+                if finished_count > MAX_FINISHED_STEPS:
+                    continue
+            kept_reversed.append(step)
+        self._steps = list(reversed(kept_reversed))
 
 
 # Singleton partagé par la planification et l'application
