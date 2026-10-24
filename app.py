@@ -232,8 +232,24 @@ def check_and_count_ip(response: Response) -> Response:
 
     return response
 
-# Démarrage du scheduler au niveau module
-if not scheduler.running:
+# Démarrage du scheduler au niveau module : c'est le seul endroit commun à tous
+# les modes de service (gunicorn importe `app:app` sans jamais passer par
+# `__main__`).
+# Il ne doit le faire qu'une fois, et seulement dans le processus qui exécute
+# réellement le serveur :
+# - en mode debug, le reloader Werkzeug importe aussi app.py dans son processus
+#   parent, qui ne sert rien : c'est l'enfant (`WERKZEUG_RUN_MAIN`) qui doit
+#   démarrer, sinon chaque cron partirait deux fois ;
+# - gunicorn expose `SERVER_SOFTWARE` : aucun reloader dans ce cas, donc pas de
+#   parent à laisser faire. `app.debug` ne doit pas le bloquer, sous peine de
+#   ne jamais démarrer de scheduler quand un `.env` porte `FLASK_DEBUG=True`.
+_scheduler_is_worker_process = (
+    not app.debug
+    or os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    or os.environ.get("SERVER_SOFTWARE", "").startswith("gunicorn")
+)
+
+if not scheduler.running and _scheduler_is_worker_process:
     scheduler.start()
     reload_scheduler_jobs(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
