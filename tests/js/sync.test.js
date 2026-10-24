@@ -594,9 +594,7 @@ it(
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            enabled: true,
-            last_run: '2024-01-15T10:00:00Z',
-            last_status: 'success'
+            enabled: true
           })
         })
         .mockResolvedValueOnce({
@@ -635,9 +633,7 @@ it(
       global.fetch = jest.fn()
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
-            enabled: false,
-            last_run: null,
-            last_status: null
+            enabled: false
           })
         })
         .mockResolvedValueOnce({

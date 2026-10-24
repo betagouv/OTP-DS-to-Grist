@@ -102,9 +102,6 @@ class TestUserSchedule:
         assert schedule.otp_config_id == 1
         assert schedule.frequency == "daily"
         assert schedule.enabled is True
-        assert schedule.last_run is None
-        assert schedule.next_run is None
-        assert schedule.last_status is None
 
     def test_user_schedule_table_name(self):
         """Test que le nom de table est correct"""
