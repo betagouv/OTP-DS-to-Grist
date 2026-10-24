@@ -232,8 +232,17 @@ def check_and_count_ip(response: Response) -> Response:
 
     return response
 
-# Démarrage du scheduler au niveau module
-if not scheduler.running:
+# Un seul scheduler par processus réellement servi : en mode debug, le
+# processus reloader importe app.py sans devoir exécuter les jobs.
+_scheduler_is_worker_process = (
+    not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+)
+
+# Démarrage du scheduler au niveau module.
+# En mode debug, Werkzeug lance un second processus (reloader) qui importe lui
+# aussi app.py : démarrer le scheduler des deux côtés le ferait s'exécuter deux
+# fois pour chaque cron. Seul le processus qui sert réellement l'app le démarre.
+if not scheduler.running and _scheduler_is_worker_process:
     scheduler.start()
     reload_scheduler_jobs(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
