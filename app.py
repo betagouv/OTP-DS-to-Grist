@@ -537,10 +537,6 @@ def api_schedule():
                     "success": True,
                     "enabled": schedule.enabled if schedule else False,
                     "next_run": next_run,
-                    "last_run": schedule.last_run.isoformat()
-                    if schedule and schedule.last_run
-                    else None,
-                    "last_status": schedule.last_status if schedule else None,
                 }
             )
 

@@ -82,11 +82,17 @@ class DatabaseManager:
                     otp_config_id INTEGER,
                     frequency TEXT DEFAULT 'daily',
                     enabled BOOLEAN DEFAULT FALSE,
-                    last_run TIMESTAMP,
-                    next_run TIMESTAMP,
-                    last_status TEXT,
                     FOREIGN KEY (otp_config_id) REFERENCES otp_configurations(id) ON DELETE SET NULL
                 )
+            """)
+
+            # Migration ticket 569 : next_run/last_run/last_status n'étaient
+            # jamais lues (l'API se sert du scheduler) et doublonnent sync_logs
+            cursor.execute("""
+                ALTER TABLE user_schedules
+                    DROP COLUMN IF EXISTS next_run,
+                    DROP COLUMN IF EXISTS last_run,
+                    DROP COLUMN IF EXISTS last_status
             """)
 
             cursor.execute("""

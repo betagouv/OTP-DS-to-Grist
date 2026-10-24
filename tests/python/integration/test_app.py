@@ -1236,8 +1236,6 @@ class TestErrorHandling:
             mock_db.query.return_value.filter_by.return_value.first.return_value
         )
         mock_schedule.enabled = True
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
         mock_job = MagicMock()
         mock_job.next_run_time = datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc)
         mock_scheduler.get_job.return_value = mock_job
@@ -1264,8 +1262,6 @@ class TestErrorHandling:
             mock_db.query.return_value.filter_by.return_value.first.return_value
         )
         mock_schedule.enabled = True
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
         mock_scheduler.get_job.return_value = None
 
         response = client.get("/api/schedule?otp_config_id=1")
@@ -1289,8 +1285,6 @@ class TestErrorHandling:
             mock_db.query.return_value.filter_by.return_value.first.return_value
         )
         mock_schedule.enabled = False
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
         mock_scheduler.get_job.return_value = None
 
         response = client.get("/api/schedule?otp_config_id=1")
@@ -1300,6 +1294,8 @@ class TestErrorHandling:
         assert data_resp["success"] is True
         assert data_resp["enabled"] is False
         assert data_resp["next_run"] is None
+        assert "last_run" not in data_resp
+        assert "last_status" not in data_resp
 
     @patch("app.SessionLocal")
     def test_api_schedule_get_missing_param(self, mock_session, client):
@@ -1349,13 +1345,8 @@ class TestErrorHandling:
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
-    @patch(
-        "sync.scheduled_sync.compute_next_run",
-        return_value=datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc),
-    )
     def test_scheduled_sync_job_success(
         self,
-        mock_compute_next_run,
         mock_load_config,
         mock_sessionmaker,
         mock_create_engine,
@@ -1366,37 +1357,6 @@ class TestErrorHandling:
         from sync.sync_manager import SyncManager
 
         mock_sequencer.enqueue.side_effect = _inline_enqueue
-
-        mock_db = MagicMock()
-        mock_engine = MagicMock()
-        mock_create_engine.return_value = mock_engine
-
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-
-        mock_config = MagicMock()
-        mock_config.id = 1
-        mock_config.grist_user_id = "user123"
-        mock_config.grist_doc_id = "doc456"
-
-        mock_schedule = MagicMock()
-        mock_schedule.otp_config_id = 1
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
-        mock_schedule.next_run = None
-
-        def query_side_effect(model):
-            if model.__name__ == "OtpConfiguration":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_config
-                return mock_q
-            elif model.__name__ == "UserSchedule":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_schedule
-                return mock_q
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
 
         mock_load_config.return_value = {
             "otp_config_id": 1,
@@ -1430,57 +1390,20 @@ class TestErrorHandling:
             )
             assert kwargs["auto"] is True
             assert callable(kwargs["progress_callback"])
-
-            assert mock_schedule.last_run is not None
-            assert mock_schedule.last_status == "success"
-            assert mock_schedule.next_run == datetime(
-                2026, 9, 3, 9, 14, tzinfo=timezone.utc
-            )
+            mock_create_engine.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
+    @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
-    @patch(
-        "sync.scheduled_sync.compute_next_run",
-        return_value=datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc),
-    )
     def test_scheduled_sync_job_error(
-        self, mock_compute_next_run, mock_load_config, mock_sessionmaker, mock_sequencer
+        self, mock_load_config, mock_sessionmaker, mock_create_engine, mock_sequencer
     ):
-        """Test sync échouée (success=False) : last_status=error, schedule reste actif"""
+        """Test sync échouée (success=False) : le planning reste actif"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
 
         mock_sequencer.enqueue.side_effect = _inline_enqueue
-
-        mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-
-        mock_config = MagicMock()
-        mock_config.id = 1
-        mock_config.grist_user_id = "user123"
-        mock_config.grist_doc_id = "doc456"
-
-        mock_schedule = MagicMock()
-        mock_schedule.otp_config_id = 1
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
-        mock_schedule.next_run = None
-        mock_schedule.enabled = True
-
-        def query_side_effect(model):
-            if model.__name__ == "OtpConfiguration":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_config
-                return mock_q
-            elif model.__name__ == "UserSchedule":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_schedule
-                return mock_q
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
 
         mock_load_config.return_value = {
             "otp_config_id": 1,
@@ -1514,13 +1437,7 @@ class TestErrorHandling:
             )
             assert kwargs["auto"] is True
             assert callable(kwargs["progress_callback"])
-
-            assert mock_schedule.last_run is not None
-            assert mock_schedule.last_status == "error"
-            assert mock_schedule.next_run == datetime(
-                2026, 9, 3, 9, 14, tzinfo=timezone.utc
-            )
-            assert mock_schedule.enabled is True
+            mock_create_engine.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.sessionmaker")
@@ -1539,24 +1456,12 @@ class TestErrorHandling:
         mock_session_class = MagicMock(return_value=mock_db)
         mock_sessionmaker.return_value = mock_session_class
 
-        mock_config = MagicMock()
-        mock_config.id = 1
-        mock_config.grist_user_id = "user123"
-        mock_config.grist_doc_id = "doc456"
-
         mock_schedule = MagicMock()
         mock_schedule.otp_config_id = 1
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
-        mock_schedule.next_run = None
         mock_schedule.enabled = True
 
         def query_side_effect(model):
-            if model.__name__ == "OtpConfiguration":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_config
-                return mock_q
-            elif model.__name__ == "UserSchedule":
+            if model.__name__ == "UserSchedule":
                 mock_q = MagicMock()
                 mock_q.filter_by.return_value.first.return_value = mock_schedule
                 return mock_q
@@ -1587,9 +1492,6 @@ class TestErrorHandling:
 
             mock_sync.assert_called_once()
 
-            assert mock_schedule.last_run is not None
-            assert mock_schedule.next_run is None
-            assert mock_schedule.last_status is None
             assert mock_schedule.enabled is False
 
     @patch("sync.scheduled_sync.SYNC_MINUTE", 0)
