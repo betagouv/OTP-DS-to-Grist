@@ -6,7 +6,6 @@ Contient le scheduler APScheduler et les jobs de synchronisation automatique.
 import os
 from dotenv import load_dotenv
 import logging
-from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -36,20 +35,6 @@ scheduler = BackgroundScheduler(
 )
 
 config_manager = ConfigManager(DATABASE_URL)
-
-
-def compute_next_run(now: datetime) -> datetime:
-    """Calcule la prochaine exécution planifiée (SYNC_HOUR:SYNC_MINUTE dans SYNC_TZ)."""
-    tz = ZoneInfo(SYNC_TZ)
-    now_local = now.astimezone(tz) if now.tzinfo else now.replace(tzinfo=tz)
-    next_run = now_local.replace(
-        hour=SYNC_HOUR, minute=SYNC_MINUTE, second=0, microsecond=0
-    )
-
-    if now_local >= next_run:
-        next_run = next_run + timedelta(days=1)
-
-    return next_run
 
 
 def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
@@ -178,17 +163,41 @@ def _run_scheduled_sync_step(
 ) -> None:
     """
     Corps d'une étape de synchronisation planifiée, exécuté par le séquenceur.
-    Ouvre sa propre session de base : l'exécution a lieu dans un thread du
-    séquenceur, potentiellement longtemps après la mise en file.
-    - Positionne last_run au début réel de l'exécution
+    Ouvre sa propre session de base uniquement pour désactiver un planning :
+    l'exécution a lieu dans un thread du séquenceur, potentiellement
+    longtemps après la mise en file.
     - Exécute run_synchronization_task
-    - Désactive le planning sur EXIT_CODE_EXTERNAL_API_ERROR ; calcule
-      next_run et last_status dans les autres cas
+    - Désactive le planning sur EXIT_CODE_EXTERNAL_API_ERROR ; les autres
+      codes laissent le planning actif, qui retentera au prochain créneau
     """
     logger.info(
         f"Démarrage de la synchronisation planifiée pour config {otp_config_id}"
     )
 
+    result = sync_manager.run_synchronization_task(
+        config,
+        progress_callback=lambda progress, message: None,
+        auto=True,
+    )
+
+    if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
+        # Erreur définitive (token invalide, document ou démarche
+        # introuvable) : relancer chaque jour ne servirait à rien.
+        logger.error(
+            f"Erreur API externe pour config {otp_config_id}: {result.get('message')}"
+        )
+        _disable_schedule(otp_config_id)
+        return
+
+    status = "success" if result.get("success") else "error"
+
+    logger.info(
+        f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}"
+    )
+
+
+def _disable_schedule(otp_config_id: int) -> None:
+    """Désactive le planning d'une configuration ; une erreur est loguée sans relance."""
     engine = create_engine(DATABASE_URL)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
@@ -198,53 +207,17 @@ def _run_scheduled_sync_step(
             db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
         )
 
-        if user_schedule:
-            user_schedule.last_run = datetime.now(timezone.utc)
-            db.commit()
-
-        result = sync_manager.run_synchronization_task(
-            config,
-            progress_callback=lambda progress, message: None,
-            auto=True,
-        )
-
-        if result.get("error_code") == EXIT_CODE_EXTERNAL_API_ERROR:
-            # Erreur définitive (token invalide, document ou démarche
-            # introuvable) : relancer chaque jour ne servirait à rien.
-            logger.error(
-                f"Erreur API externe pour config {otp_config_id}: {result.get('message')}"
-            )
-            if user_schedule:
-                user_schedule.enabled = False
-                db.commit()
-                logger.info(
-                    f"Planning désactivé pour config {otp_config_id} à cause d'erreur"
-                )
+        if not user_schedule:
+            logger.warning(f"Aucun planning trouvé pour config {otp_config_id}")
             return
 
-        now = datetime.now(timezone.utc)
-        next_run = compute_next_run(now)
-
-        if user_schedule:
-            user_schedule.next_run = next_run
-            db.commit()
-
-        status = "success" if result.get("success") else "error"
-
-        if user_schedule:
-            user_schedule.last_status = status
-            db.commit()
-
-        logger.info(
-            f"Synchronisation planifiée terminée pour config {otp_config_id}: {status}"
-        )
-        logger.info(f"next_run DB mis à jour: {next_run}")
+        user_schedule.enabled = False
+        db.commit()
+        logger.info(f"Planning désactivé pour config {otp_config_id} à cause d'erreur")
 
     except Exception as e:
-        # Erreur inattendue (base de données, configuration…) : journalisée,
-        # sans désactiver le planning, qui retentera au prochain créneau.
         logger.error(
-            f"Erreur lors de la synchronisation planifiée pour config {otp_config_id}: {str(e)}"
+            f"Erreur lors de la désactivation du planning pour config {otp_config_id}: {str(e)}"
         )
 
     finally:
