@@ -1096,8 +1096,8 @@ def process_demarche_for_grist_optimized(
         cache_repetables = {}
         if column_types.get("has_repetable_blocks", False):
             for block_key, block_table_id in table_ids.get("repetable_blocks", {}).items():
-                cache_repetables[block_key] = rp.get_existing_repetable_rows_improved_no_filter(
-                    client, block_table_id, None
+                cache_repetables[block_key] = rp.get_existing_repetable_rows(
+                    client, block_table_id
                 )
         log(f"Cache global préchargé en {time.time() - start_cache:.1f}s")
 
@@ -1339,56 +1339,64 @@ def process_demarche_for_grist_optimized(
                     if flat_data.get("repetable_rows"):
                         all_repetable_rows.extend(flat_data["repetable_rows"])
 
-                # Grouper par block_label
+                # Grouper par bloc (libellé normalisé, comme les clés de table)
                 rows_by_block = {}
                 for row in all_repetable_rows:
-                    block_label = row.get("block_label", "")
-                    if block_label not in rows_by_block:
-                        rows_by_block[block_label] = []
-                    rows_by_block[block_label].append(row)
+                    block_key = normalize_column_name(row.get("block_label", ""))
+                    rows_by_block.setdefault(block_key, []).append(row)
 
-                # Traiter chaque bloc
-                for block_label, rows in rows_by_block.items():
-                    normalized_block = normalize_column_name(block_label)
+                # Tous les blocs ayant une table, même sans ligne dans cette page :
+                # un bloc entièrement vidé dans DN doit aussi être purgé.
+                for normalized_block, block_table_id in table_ids[
+                    "repetable_blocks"
+                ].items():
+                    rows = rows_by_block.get(normalized_block, [])
+                    if normalized_block not in column_types.get("repetable_blocks", {}):
+                        continue
+                    if not rows and not cache_repetables.get(normalized_block):
+                        continue
 
-                    if normalized_block in table_ids.get("repetable_blocks", {}):
-                        block_table_id = table_ids["repetable_blocks"][normalized_block]
-
-                        try:
-                            if normalized_block not in cache_repetables:
-                                cache_repetables[normalized_block] = (
-                                    rp.get_existing_repetable_rows_improved_no_filter(
-                                        client, block_table_id, None
-                                    )
-                                )
-
-                            success_count, error_count = rp.process_repetables_batch(
-                                client,
-                                list(page_dossiers.values()),
-                                {normalized_block: block_table_id},
-                                {
-                                    normalized_block: column_types["repetable_blocks"][
-                                        normalized_block
-                                    ]
-                                },
-                                problematic_ids=problematic_descriptor_ids,
-                                batch_size=50,
-                                existing_rows_cache={
-                                    normalized_block: cache_repetables[normalized_block]
-                                },
+                    try:
+                        if normalized_block not in cache_repetables:
+                            cache_repetables[normalized_block] = (
+                                rp.get_existing_repetable_rows(client, block_table_id)
                             )
+
+                        success_count, error_count = rp.process_repetables_batch(
+                            client,
+                            list(page_dossiers.values()),
+                            {normalized_block: block_table_id},
+                            {
+                                normalized_block: column_types["repetable_blocks"][
+                                    normalized_block
+                                ]
+                            },
+                            problematic_ids=problematic_descriptor_ids,
+                            batch_size=50,
+                            existing_rows_cache={
+                                normalized_block: cache_repetables[normalized_block]
+                            },
+                        )
+                        if rows or error_count:
                             log(
-                                f"  Bloc '{block_label}': {success_count} réussis, {error_count} échecs"
+                                f"  Bloc '{normalized_block}': {success_count} réussis, "
+                                f"{error_count} échecs"
                             )
-                            if error_count:
-                                failed_dossiers.update(extract_dossier_numbers(rows))
-                        except GristReadError:
-                            raise
-                        except Exception as e:
-                            log_error(
-                                f"  Erreur traitement bloc '{block_label}': {str(e)}"
+                        if error_count:
+                            failed_dossiers.update(
+                                extract_dossier_numbers(rows)
+                                or {str(number) for number in page_dossiers}
                             )
-                            failed_dossiers.update(extract_dossier_numbers(rows))
+                    except GristReadError:
+                        raise
+                    except Exception as e:
+                        log_error(
+                            f"  Erreur traitement bloc '{normalized_block}': {str(e)}"
+                        )
+                        failed_dossiers.update(
+                            extract_dossier_numbers(rows)
+                            or {str(number) for number in page_dossiers}
+                        )
 
             log(f"[TIMING] Après blocs répétables: {time.time() - page_start:.1f}s")
             log_progress.log("Traitement des champs répétables")
