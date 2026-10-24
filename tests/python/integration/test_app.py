@@ -1596,7 +1596,7 @@ class TestErrorHandling:
     @patch("sync.scheduled_sync.SYNC_HOUR", 11)
     @patch("sync.scheduled_sync.sessionmaker")
     def test_reload_scheduler_jobs(self, mock_sessionmaker):
-        """Test rechargement des jobs du scheduler (stagger +5 min par config)"""
+        """Test rechargement des jobs du scheduler (même heure pour toutes les configs)"""
         from sync.scheduled_sync import reload_scheduler_jobs, scheduler
         from sync.sync_manager import SyncManager
 
@@ -1604,10 +1604,12 @@ class TestErrorHandling:
         mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
 
         mock_schedule1 = MagicMock()
+        mock_schedule1.id = 11
         mock_schedule1.otp_config_id = 1
         mock_schedule1.enabled = True
 
         mock_schedule2 = MagicMock()
+        mock_schedule2.id = 12
         mock_schedule2.otp_config_id = 2
         mock_schedule2.enabled = True
 
@@ -1623,21 +1625,25 @@ class TestErrorHandling:
         mock_config2.grist_doc_id = "doc2"
         mock_config2.demarche_number = "456"
 
-        def mock_filter_by(**kwargs):
-            if kwargs.get("enabled"):
-                mock_query = MagicMock()
-                mock_query.filter.return_value.all.return_value = [
-                    mock_schedule1,
-                    mock_schedule2,
-                ]
-                return mock_query
-            if kwargs.get("id") == 1:
-                return MagicMock(first=MagicMock(return_value=mock_config1))
-            elif kwargs.get("id") == 2:
-                return MagicMock(first=MagicMock(return_value=mock_config2))
-            return MagicMock(first=MagicMock(return_value=None))
+        mock_schedule_query = MagicMock()
+        mock_schedule_query.filter_by.return_value.filter.return_value.all.return_value = [
+            mock_schedule1,
+            mock_schedule2,
+        ]
+        mock_config_query = MagicMock()
+        mock_config_query.filter.return_value.all.return_value = [
+            mock_config1,
+            mock_config2,
+        ]
 
-        mock_db.query.return_value.filter_by.side_effect = mock_filter_by
+        def mock_query(model):
+            if model.__name__ == "UserSchedule":
+                return mock_schedule_query
+            if model.__name__ == "OtpConfiguration":
+                return mock_config_query
+            return MagicMock()
+
+        mock_db.query.side_effect = mock_query
 
         mock_notifier = MagicMock()
         sync_manager = SyncManager(notify_callback=mock_notifier)
@@ -1665,7 +1671,7 @@ class TestErrorHandling:
             assert trigger_value(first_trigger, "hour") == 11
             assert trigger_value(first_trigger, "minute") == 0
             assert trigger_value(second_trigger, "hour") == 11
-            assert trigger_value(second_trigger, "minute") == 5
+            assert trigger_value(second_trigger, "minute") == 0
 
 
 class SyncLogMock:

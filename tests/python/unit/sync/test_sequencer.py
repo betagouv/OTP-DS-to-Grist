@@ -24,7 +24,7 @@ def _all_statuses(sequencer, expected):
 
 
 class TestSyncSequencer:
-    """Comportement du séquenceur : séquentialité, parallélisme borné, dédup."""
+    """Comportement du séquenceur : séquentialité globale, dédup."""
 
     def test_etapes_dun_meme_document_s_executent_sequentiellement(self):
         """Deux étapes du même document ne se chevauchent jamais."""
@@ -48,30 +48,30 @@ class TestSyncSequencer:
         finally:
             sequencer.shutdown(wait=True)
 
-    def test_deux_documents_distincts_s_executent_en_parallèle(self):
-        """Deux documents différents avancent simultanément (barrière à 2)."""
+    def test_deux_documents_distincts_s_executent_sequentiellement(self):
+        """File globale : deux documents différents ne s'exécutent pas en même temps."""
         sequencer = SyncSequencer()
-        barrier = threading.Barrier(2, timeout=_TIMEOUT)
+        events = []
 
-        def fn():
-            barrier.wait()
+        def _make_step(label):
+            def fn():
+                events.append(f"start:{label}")
+                time.sleep(0.1)
+                events.append(f"end:{label}")
+
+            return fn
 
         try:
-            sequencer.enqueue(1, "doc_a", fn)
-            sequencer.enqueue(2, "doc_b", fn)
+            sequencer.enqueue(1, "doc_a", _make_step("1"))
+            sequencer.enqueue(2, "doc_b", _make_step("2"))
 
-            _wait_until(
-                lambda: all(
-                    s["status"] in ("done", "error") for s in sequencer.snapshot()
-                )
-            )
-            # Une exécution séquentielle ferait expirer la barrière -> error
-            assert _all_statuses(sequencer, "done")
+            _wait_until(lambda: _all_statuses(sequencer, "done"))
+            assert events == ["start:1", "end:1", "start:2", "end:2"]
         finally:
             sequencer.shutdown(wait=True)
 
-    def test_plafond_de_documents_en_parallèle(self):
-        """Jamais plus de MAX_CONCURRENT_DOCS documents en exécution."""
+    def test_une_seule_synchro_a_la_fois(self):
+        """File globale : jamais plus d'une synchronisation en exécution."""
         sequencer = SyncSequencer()
         lock = threading.Lock()
         release = threading.Event()
@@ -91,14 +91,14 @@ class TestSyncSequencer:
             for config_id in (1, 2, 3):
                 sequencer.enqueue(config_id, f"doc_{config_id}", fn)
 
-            _wait_until(lambda: max_running >= 2)
-            # Laisse une éventuelle 3e étape démarrer si le plafond était cassé
+            _wait_until(lambda: max_running >= 1)
+            # Laisse une éventuelle 2e étape démarrer si le plafond était cassé
             time.sleep(0.3)
-            assert max_running == 2
+            assert max_running == 1
 
             release.set()
             _wait_until(lambda: _all_statuses(sequencer, "done"))
-            assert max_running == 2
+            assert max_running == 1
         finally:
             release.set()
             sequencer.shutdown(wait=True)
