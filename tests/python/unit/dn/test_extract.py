@@ -1,7 +1,7 @@
 import pytest
 
 from dn.extract import dossier_to_flat_data, extract_champ_values
-from grist_processor_working_all import normalize_column_name
+from grist.utils import normalize_column_name
 from schema_utils import create_columns_from_schema
 
 

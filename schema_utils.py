@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from dn.client import get_pj_natures
+from grist.utils import normalize_column_name
 from utils.constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
@@ -446,8 +447,6 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     Returns:
         tuple: (dict définitions des colonnes, set IDs problématiques)
     """
-    # IMPORT LOCAL pour éviter la dépendance circulaire
-    from grist_processor_working_all import normalize_column_name
     from utils.log import log
 
     #  NOUVEAU : Logging optionnel
