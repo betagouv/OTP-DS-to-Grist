@@ -72,9 +72,6 @@ from utils.constants import (
 )
 from utils.socketio import socketio
 
-# Déterminer le répertoire du script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
 VITE_DEV_ORIGIN = "http://localhost:5173"
 
 # Chargement des variables d'environnement
@@ -236,28 +233,22 @@ def check_and_count_ip(response: Response) -> Response:
 
     return response
 
-# Démarrage du scheduler au niveau module : c'est le seul endroit commun à tous
-# les modes de service (gunicorn importe `app:app` sans jamais passer par
-# `__main__`).
-# Il ne doit le faire qu'une fois, et seulement dans le processus qui exécute
-# réellement le serveur :
-# - en mode debug, le reloader Werkzeug importe aussi app.py dans son processus
-#   parent, qui ne sert rien : c'est l'enfant (`WERKZEUG_RUN_MAIN`) qui doit
-#   démarrer, sinon chaque cron partirait deux fois ;
-# - gunicorn expose `SERVER_SOFTWARE` : aucun reloader dans ce cas, donc pas de
-#   parent à laisser faire. `app.debug` ne doit pas le bloquer, sous peine de
-#   ne jamais démarrer de scheduler quand un `.env` porte `FLASK_DEBUG=True`.
-_scheduler_is_worker_process = (
-    not app.debug
-    or os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    or os.environ.get("SERVER_SOFTWARE", "").startswith("gunicorn")
-)
 
-if not scheduler.running and _scheduler_is_worker_process:
+def _shutdown_scheduler() -> None:
+    """Arrête le scheduler à la sortie du process, s'il n'a pas déjà été arrêté."""
+    if scheduler.running:
+        scheduler.shutdown(wait=True)
+
+
+# Démarrage du scheduler au niveau module : c'est le seul endroit commun aux
+# deux points d'entrée, gunicorn (`app:app`) et `dev.py` (`poe dev`). Seul le
+# processus qui sert l'appli importe ce module : le processus parent du
+# reloader de `dev.py` ne l'importe jamais, aucun cron ne part donc deux fois.
+if not scheduler.running:
     scheduler.start()
     register_daily_sync_job(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
-    atexit.register(lambda: scheduler.shutdown(wait=True))
+    atexit.register(_shutdown_scheduler)
     atexit.register(sequencer.shutdown)
 
 
@@ -891,23 +882,3 @@ def handle_connect():
 def handle_disconnect():
     """Gestion de la déconnexion WebSocket"""
     logger.info("Client déconnecté")
-
-
-if __name__ == "__main__":
-    # Désactiver les logs de werkzeug pour les requêtes statiques
-    werkzeug_logger = logging.getLogger("werkzeug")
-    werkzeug_logger.setLevel(logging.ERROR)
-
-    print("🦄 One Trick Pony DS to Grist - Version Flask")
-    print(f"📁 Répertoire de travail: {script_dir}")
-    print("🌐 Application disponible sur: http://localhost:5000")
-    print("🔌 WebSocket activé pour les mises à jour en temps réel")
-    print("💾 Gestion améliorée de la sauvegarde des configurations")
-
-    # Démarrer l'application
-    socketio.run(
-        app,
-        host="0.0.0.0",
-        port=5000,
-        debug=os.getenv("FLASK_DEBUG", "False").lower() == "true",
-    )

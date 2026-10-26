@@ -19,7 +19,6 @@ import os
 
 from dotenv import load_dotenv
 
-# Même port que le bloc `__main__` d'app.py.
 PORT = 5000
 
 # .env est chargé ici, avant tout import d'app : c'est ici que la présence d'un

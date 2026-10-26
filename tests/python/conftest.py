@@ -1,5 +1,6 @@
 # tests/python/conftest.py
 import os
+import sys
 
 # Configuration de test explicite
 # L'URL est intentionnellement invalide pour indiquer qu'aucune vraie DB n'est utilisée
@@ -21,3 +22,13 @@ os.environ['GRIST_BASE_URL_WHITELIST']=','.join([
     'localhost',
     '127.0.0.1',
 ])
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    Arrête le scheduler démarré à l'import d'app tant que pytest capture encore
+    les logs : laissé à atexit, son arrêt loggue dans un flux déjà fermé.
+    """
+    scheduled_sync = sys.modules.get("sync.scheduled_sync")
+    if scheduled_sync and scheduled_sync.scheduler.running:
+        scheduled_sync.scheduler.shutdown(wait=False)
