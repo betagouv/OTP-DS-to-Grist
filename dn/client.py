@@ -1075,6 +1075,111 @@ def get_pj_ocr_columns(demarche_number: int) -> dict[str, list[tuple[str, str]]]
         return {}
 
 
+def get_demarche_descriptors(demarche_number: int) -> dict[str, Any]:
+    """
+    Récupère la démarche avec les descripteurs de champs et d'annotations de sa
+    révision active, sans dépendre des dossiers existants.
+
+    Les erreurs GraphQL de permissions sont ignorées ; les autres erreurs,
+    l'absence de démarche ou de révision active lèvent une exception.
+    """
+    if not API_TOKEN:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    query = """
+    query getDemarcheSchema($demarcheNumber: Int!) {
+        demarche(number: $demarcheNumber) {
+            id
+            number
+            title
+            activeRevision {
+                id
+                champDescriptors {
+                    ...ChampDescriptorFragment
+                    ... on RepetitionChampDescriptor {
+                        champDescriptors {
+                            ...ChampDescriptorFragment
+                        }
+                    }
+                }
+                annotationDescriptors {
+                    ...ChampDescriptorFragment
+                    ... on RepetitionChampDescriptor {
+                        champDescriptors {
+                            ...ChampDescriptorFragment
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fragment ChampDescriptorFragment on ChampDescriptor {
+        __typename
+        id
+        type
+        label
+        description
+        required
+        ... on DropDownListChampDescriptor {
+            options
+            otherOption
+        }
+        ... on MultipleDropDownListChampDescriptor {
+            options
+        }
+        ... on LinkedDropDownListChampDescriptor {
+            options
+        }
+        ... on PieceJustificativeChampDescriptor {
+            fileTemplate {
+                filename
+            }
+        }
+        ... on ExplicationChampDescriptor {
+            collapsibleExplanationEnabled
+            collapsibleExplanationText
+        }
+    }
+    """
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    session = get_session_with_retries()
+    response = session.post(
+        DEMARCHES_API_URL,
+        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
+        headers=headers,
+    )
+    response.raise_for_status()
+    result = response.json()
+
+    if "errors" in result:
+        filtered_errors = [
+            error.get("message", "")
+            for error in result["errors"]
+            if "permissions" not in error.get("message", "")
+        ]
+        if filtered_errors:
+            raise Exception(f"GraphQL errors: {', '.join(filtered_errors)}")
+
+    if not result.get("data") or not result["data"].get("demarche"):
+        raise Exception(
+            f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}"
+        )
+
+    demarche = result["data"]["demarche"]
+
+    if not demarche.get("activeRevision"):
+        raise Exception(
+            f"Aucune révision active trouvée pour la démarche {demarche_number}"
+        )
+
+    return demarche
+
+
 # --- Helpers privés (module) ---
 def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
     """Retire des `champs` et des `annotations` les éléments purement d'affichage."""

@@ -8,7 +8,6 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
-import requests
 from dotenv import load_dotenv
 
 import repetable_processor as rp
@@ -19,6 +18,7 @@ from grist.formatter import format_value
 from grist.utils import normalize_column_name
 from dn.client import (
     PAGE_SIZE_DOSSIERS_MAX,
+    get_demarche_descriptors,
     iter_demarche_dossier_pages,
     iter_filtered_dossier_pages,
 )
@@ -27,6 +27,7 @@ from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
     get_demarche_schema,
+    get_problematic_descriptor_ids_from_schema,
     get_demarche_schema_enhanced,
     update_grist_tables_from_schema,
 )
@@ -42,14 +43,10 @@ from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import (
-    DEMARCHES_API_URL,
     EXIT_CODE_EXTERNAL_API_ERROR,
     EXIT_CODE_GRIST_READ_ERROR,
 )
 from utils.log import format_numbers, log, log_verbose, log_error, log_progress
-
-API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
-API_URL = DEMARCHES_API_URL
 
 
 def print_api_timings():
@@ -285,92 +282,6 @@ def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=No
             ]
 
     return result
-
-
-def get_problematic_descriptor_ids(demarche_number):
-    """
-    Récupère les IDs des descripteurs de champs problématiques (HeaderSectionChamp et ExplicationChamp)
-    pour une démarche donnée, y compris dans les blocs répétables.
-    """
-
-    #  REQUÊTE CORRIGÉE avec exploration des blocs répétables
-    query = """
-    query getDemarche($demarcheNumber: Int!) {
-      demarche(number: $demarcheNumber) {
-        activeRevision {
-          champDescriptors {
-            __typename
-            id
-            type
-            ... on RepetitionChampDescriptor {
-              champDescriptors {
-                __typename
-                id
-                type
-              }
-            }
-          }
-        }
-      }
-    }
-    """
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    response = requests.post(
-        API_URL,
-        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
-        headers=headers,
-    )
-
-    response.raise_for_status()
-    result = response.json()
-
-    problematic_ids = set()
-
-    # Vérifier les erreurs
-    if "errors" in result:
-        log_error(
-            f"GraphQL errors: {', '.join([error.get('message', 'Unknown error') for error in result['errors']])}"
-        )
-        return problematic_ids
-
-    #  FONCTION RÉCURSIVE pour explorer tous les descripteurs
-    def explore_descriptors(descriptors):
-        for descriptor in descriptors:
-            # Ajouter si problématique
-            if descriptor.get("type") in [
-                "header_section",
-                "explication",
-            ] or descriptor.get("__typename") in [
-                "HeaderSectionChampDescriptor",
-                "ExplicationChampDescriptor",
-            ]:
-                problematic_ids.add(descriptor.get("id"))
-
-            # Explorer récursivement les blocs répétables
-            if (
-                descriptor.get("__typename") == "RepetitionChampDescriptor"
-                and "champDescriptors" in descriptor
-            ):
-                explore_descriptors(descriptor["champDescriptors"])
-
-    # Extraire les IDs des champs problématiques
-    if (
-        result.get("data")
-        and result["data"].get("demarche")
-        and result["data"]["demarche"].get("activeRevision")
-        and result["data"]["demarche"]["activeRevision"].get("champDescriptors")
-    ):
-        descriptors = result["data"]["demarche"]["activeRevision"]["champDescriptors"]
-        explore_descriptors(descriptors)
-
-    log(f"Nombre de descripteurs problématiques identifiés: {len(problematic_ids)}")
-
-    return problematic_ids
 
 
 # ========================================
@@ -781,10 +692,17 @@ def process_demarche_for_grist_optimized(
             log_error(f"Erreur lors de la mise à jour des tables Grist: {str(e)}")
             # Fallback sur la méthode classique si pas de column_types
             if not schema_method_successful:
-                # Récupérer les IDs des champs problématiques à filtrer
-                problematic_descriptor_ids = get_problematic_descriptor_ids(
-                    demarche_number
-                )
+                # Récupérer les IDs des champs problématiques à filtrer : un
+                # échec laisse la synchronisation continuer sans filtrage
+                try:
+                    problematic_descriptor_ids = (
+                        get_problematic_descriptor_ids_from_schema(
+                            get_demarche_descriptors(demarche_number)
+                        )
+                    )
+                except Exception as e:
+                    log_error(f"Descripteurs problématiques non récupérés: {e}")
+                    problematic_descriptor_ids = set()
                 log(
                     f"Filtrage de {len(problematic_descriptor_ids)} descripteurs problématiques"
                 )

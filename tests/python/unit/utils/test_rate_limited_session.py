@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from utils.rate_limited_session import (
+    HTTP_TIMEOUT_MAX_SECONDS,
     RateLimitedSession,
     build_rate_limited_session,
 )
@@ -105,9 +106,29 @@ class TestRateLimitedSession:
         response = self._session().request("POST", "http://dn")
 
         assert response.status_code == 200
-        mock_request.assert_called_once_with("POST", "http://dn")
+        mock_request.assert_called_once_with(
+            "POST", "http://dn", timeout=HTTP_TIMEOUT_MAX_SECONDS
+        )
         mock_sleep.assert_not_called()
         mock_log.assert_not_called()
+
+    @patch.object(requests.Session, "request")
+    def test_default_timeout_applied_when_absent(self, mock_request):
+        """Sans timeout explicite → le timeout par défaut est transmis"""
+        mock_request.return_value = _mock_response(200)
+
+        self._session().request("GET", "http://grist")
+
+        assert mock_request.call_args.kwargs["timeout"] == HTTP_TIMEOUT_MAX_SECONDS
+
+    @patch.object(requests.Session, "request")
+    def test_explicit_timeout_kept(self, mock_request):
+        """Timeout explicite → conservé tel quel"""
+        mock_request.return_value = _mock_response(200)
+
+        self._session().request("GET", "http://grist", timeout=10)
+
+        assert mock_request.call_args.kwargs["timeout"] == 10
 
     @patch.object(requests.Session, "request")
     @patch("utils.rate_limited_session.log")

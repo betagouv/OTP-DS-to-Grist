@@ -1,5 +1,8 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+import requests
+
 from dn.extract import PJ_OCR_VALUE_KEYS
 from schema_utils import (
     PJ_OCR_GRIST_TYPES,
@@ -493,55 +496,121 @@ class TestCreateColumnsFromSchemaPjOcrBlocs:
 class TestGetDemarcheSchemaPjOcrColumns:
     """Tests sur la récupération des sous-colonnes OCR des PJ par get_demarche_schema"""
 
-    def _mock_schema_response(self, demarche):
-        response = MagicMock()
-        response.status_code = 200
-        response.json.return_value = {"data": {"demarche": demarche}}
-        return response
 
-    @patch("schema_utils.API_TOKEN", "token")
+def _mock_graphql_response(payload):
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = payload
+    return response
+
+
+def _text_demarche():
+    return {
+        "title": "Test démarche",
+        "activeRevision": {
+            "id": "rev_1",
+            "champDescriptors": [
+                {"__typename": "TextChampDescriptor", "id": "d1", "label": "Nom"}
+            ],
+            "annotationDescriptors": [],
+        },
+    }
+
+
+# Les appels HTTP sont simulés au niveau de requests.Session.request, commun à
+# requests.post et aux sessions : les tests ne dépendent pas du client utilisé.
+@patch("dn.client.API_TOKEN", "token")
+@patch("schema_utils.API_TOKEN", "token")
+@patch.object(requests.Session, "request")
+class TestGetDemarcheSchema:
+    """Tests sur la récupération du schéma d'une démarche par get_demarche_schema"""
+
     @patch(
         "schema_utils.get_pj_ocr_columns",
         return_value={"desc_pj": [("RIB – IBAN", "TextColumn")]},
     )
-    @patch("schema_utils.requests.post")
-    def test_colonnes_ajoutees_si_pj(self, mock_post, mock_natures):
+    def test_colonnes_ajoutees_si_pj(self, mock_natures, mock_request):
         demarche = _make_pj_schema("Coordonnées bancaires")
-        mock_post.return_value = self._mock_schema_response(demarche)
+        mock_request.return_value = _mock_graphql_response(
+            {"data": {"demarche": demarche}}
+        )
 
         result = get_demarche_schema(123)
 
         mock_natures.assert_called_once_with(123)
         assert result["pj_ocr_columns"] == {"desc_pj": [("RIB – IBAN", "TextColumn")]}
 
-    @patch("schema_utils.API_TOKEN", "token")
     @patch("schema_utils.get_pj_ocr_columns", return_value={"desc_pj": []})
-    @patch("schema_utils.requests.post")
-    def test_colonnes_ajoutees_si_pj_dans_un_bloc(self, mock_post, mock_natures):
-        mock_post.return_value = self._mock_schema_response(_make_block_pj_schema())
+    def test_colonnes_ajoutees_si_pj_dans_un_bloc(self, mock_natures, mock_request):
+        mock_request.return_value = _mock_graphql_response(
+            {"data": {"demarche": _make_block_pj_schema()}}
+        )
 
         result = get_demarche_schema(123)
 
         mock_natures.assert_called_once_with(123)
         assert result["pj_ocr_columns"] == {"desc_pj": []}
 
-    @patch("schema_utils.API_TOKEN", "token")
     @patch("schema_utils.get_pj_ocr_columns")
-    @patch("schema_utils.requests.post")
-    def test_pas_d_appel_sans_pj(self, mock_post, mock_natures):
-        demarche = {
-            "title": "Test démarche",
-            "activeRevision": {
-                "id": "rev_1",
-                "champDescriptors": [
-                    {"__typename": "TextChampDescriptor", "id": "d1", "label": "Nom"}
-                ],
-                "annotationDescriptors": [],
-            },
-        }
-        mock_post.return_value = self._mock_schema_response(demarche)
+    def test_pas_d_appel_sans_pj(self, mock_natures, mock_request):
+        mock_request.return_value = _mock_graphql_response(
+            {"data": {"demarche": _text_demarche()}}
+        )
 
         result = get_demarche_schema(123)
 
         mock_natures.assert_not_called()
         assert "pj_ocr_columns" not in result
+
+    def test_erreur_de_permissions_ignoree(self, mock_request):
+        """Une erreur GraphQL de permissions n'empêche pas de lire le schéma"""
+        mock_request.return_value = _mock_graphql_response(
+            {
+                "data": {"demarche": _text_demarche()},
+                "errors": [{"message": "hidden due to permissions"}],
+            }
+        )
+
+        result = get_demarche_schema(123)
+
+        assert result["title"] == "Test démarche"
+
+    def test_autre_erreur_graphql_leve_une_exception(self, mock_request):
+        mock_request.return_value = _mock_graphql_response(
+            {"data": None, "errors": [{"message": "Demarche introuvable"}]}
+        )
+
+        with pytest.raises(Exception, match="Demarche introuvable"):
+            get_demarche_schema(123)
+
+    def test_demarche_absente_leve_une_exception(self, mock_request):
+        mock_request.return_value = _mock_graphql_response({"data": {"demarche": None}})
+
+        with pytest.raises(Exception, match="Aucune donnée de démarche"):
+            get_demarche_schema(123)
+
+    def test_revision_active_absente_leve_une_exception(self, mock_request):
+        mock_request.return_value = _mock_graphql_response(
+            {"data": {"demarche": {"title": "Test", "activeRevision": None}}}
+        )
+
+        with pytest.raises(Exception, match="Aucune révision active"):
+            get_demarche_schema(123)
+
+    def test_erreur_http_leve_une_exception(self, mock_request):
+        response = _mock_graphql_response({})
+        response.raise_for_status.side_effect = requests.HTTPError("500")
+        mock_request.return_value = response
+
+        with pytest.raises(requests.HTTPError):
+            get_demarche_schema(123)
+
+    def test_sans_token_leve_une_erreur(self, mock_request):
+        with (
+            patch("dn.client.API_TOKEN", ""),
+            patch("schema_utils.API_TOKEN", ""),
+            pytest.raises(ValueError),
+        ):
+            get_demarche_schema(123)
+
+        mock_request.assert_not_called()
