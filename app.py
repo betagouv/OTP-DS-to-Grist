@@ -44,7 +44,11 @@ from security.widget_auth import (
     authorize_request,
     grist_doc_access_level,
 )
-from sync.scheduled_sync import reload_scheduler_jobs, scheduler
+from sync.scheduled_sync import (
+    DAILY_SYNC_JOB_ID,
+    register_daily_sync_job,
+    scheduler,
+)
 from sync.sequencer import sequencer
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
@@ -251,7 +255,7 @@ _scheduler_is_worker_process = (
 
 if not scheduler.running and _scheduler_is_worker_process:
     scheduler.start()
-    reload_scheduler_jobs(sync_manager)
+    register_daily_sync_job(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
     atexit.register(lambda: scheduler.shutdown(wait=True))
     atexit.register(sequencer.shutdown)
@@ -501,9 +505,6 @@ def api_delete_config(otp_config_id):
         db.delete(otp_config)
         db.commit()
 
-        # Recharger les jobs du scheduler
-        reload_scheduler_jobs(sync_manager)
-
         logger.info(f"Configuration supprimée: {otp_config_id}")
         return jsonify(
             {"success": True, "message": "Configuration supprimée avec succès"}
@@ -545,13 +546,16 @@ def api_schedule():
                 db.query(UserSchedule).filter_by(otp_config_id=otp_config.id).first()
             )
 
-            job = scheduler.get_job(f"scheduled_sync_{otp_config.id}")
+            enabled = schedule.enabled if schedule else False
+
+            # Un seul job quotidien pour tous les plannings activés
+            job = scheduler.get_job(DAILY_SYNC_JOB_ID) if enabled else None
             next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
 
             return jsonify(
                 {
                     "success": True,
-                    "enabled": schedule.enabled if schedule else False,
+                    "enabled": enabled,
                     "next_run": next_run,
                 }
             )
@@ -588,9 +592,6 @@ def api_schedule():
                 db.add(schedule)
             db.commit()
 
-            # Recharger les jobs du scheduler
-            reload_scheduler_jobs(sync_manager)
-
             return jsonify({"success": True, "message": "Schedule enabled"})
 
         elif request.method == "DELETE":
@@ -602,9 +603,6 @@ def api_schedule():
             if schedule:
                 schedule.enabled = False
                 db.commit()
-
-            # Recharger les jobs du scheduler
-            reload_scheduler_jobs(sync_manager)
 
             return jsonify({"success": True, "message": "Schedule disabled"})
 

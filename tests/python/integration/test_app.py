@@ -9,6 +9,7 @@ from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
+from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 
 
 def _inline_enqueue(otp_config_id, grist_doc_id, fn):
@@ -1247,7 +1248,30 @@ class TestErrorHandling:
         assert data_resp["success"] is True
         assert data_resp["enabled"] is True
         assert data_resp["next_run"] == "2026-09-03T09:14:00+00:00"
-        mock_scheduler.get_job.assert_called_once_with("scheduled_sync_1")
+        mock_scheduler.get_job.assert_called_once_with(DAILY_SYNC_JOB_ID)
+
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_disabled_ignores_daily_job(
+        self, mock_session, mock_scheduler, client
+    ):
+        """Planning désactivé : pas de prochaine exécution, même si le job quotidien existe"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_config.enabled = False
+        mock_job = MagicMock()
+        mock_job.next_run_time = datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc)
+        mock_scheduler.get_job.return_value = mock_job
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["enabled"] is False
+        assert data_resp["next_run"] is None
 
     @patch("app.scheduler")
     @patch("app.SessionLocal")
@@ -1309,8 +1333,7 @@ class TestErrorHandling:
         assert "required" in data_resp["message"]
 
     @patch("app.SessionLocal")
-    @patch("app.reload_scheduler_jobs")
-    def test_api_delete_config_success(self, mock_reload, mock_session, client):
+    def test_api_delete_config_success(self, mock_session, client):
         """Test suppression de configuration réussie"""
         mock_db = mock_session.return_value
         mock_config = (
@@ -1326,7 +1349,6 @@ class TestErrorHandling:
         assert "supprimée" in data["message"]
         mock_db.delete.assert_called_once_with(mock_config)
         mock_db.commit.assert_called_once()
-        mock_reload.assert_called_once()
 
     @patch("app.SessionLocal")
     def test_api_delete_config_not_found(self, mock_session, client):
@@ -1496,84 +1518,28 @@ class TestErrorHandling:
 
     @patch("sync.scheduled_sync.SYNC_MINUTE", 0)
     @patch("sync.scheduled_sync.SYNC_HOUR", 11)
-    @patch("sync.scheduled_sync.sessionmaker")
-    def test_reload_scheduler_jobs(self, mock_sessionmaker):
-        """Test rechargement des jobs du scheduler (même heure pour toutes les configs)"""
-        from sync.scheduled_sync import reload_scheduler_jobs, scheduler
+    def test_register_daily_sync_job(self):
+        """Un seul job quotidien, à l'heure configurée, pour toutes les configs"""
+        from sync.scheduled_sync import register_daily_sync_job, scheduler
         from sync.sync_manager import SyncManager
 
-        mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        sync_manager = SyncManager(notify_callback=MagicMock())
 
-        mock_schedule1 = MagicMock()
-        mock_schedule1.id = 11
-        mock_schedule1.otp_config_id = 1
-        mock_schedule1.enabled = True
+        with patch.object(scheduler, "add_job") as mock_add:
+            register_daily_sync_job(sync_manager)
 
-        mock_schedule2 = MagicMock()
-        mock_schedule2.id = 12
-        mock_schedule2.otp_config_id = 2
-        mock_schedule2.enabled = True
+            mock_add.assert_called_once()
+            assert mock_add.call_args.kwargs["id"] == DAILY_SYNC_JOB_ID
 
-        mock_config1 = MagicMock()
-        mock_config1.id = 1
-        mock_config1.grist_user_id = "user1"
-        mock_config1.grist_doc_id = "doc1"
-        mock_config1.demarche_number = "123"
-
-        mock_config2 = MagicMock()
-        mock_config2.id = 2
-        mock_config2.grist_user_id = "user2"
-        mock_config2.grist_doc_id = "doc2"
-        mock_config2.demarche_number = "456"
-
-        mock_schedule_query = MagicMock()
-        mock_schedule_query.filter_by.return_value.filter.return_value.all.return_value = [
-            mock_schedule1,
-            mock_schedule2,
-        ]
-        mock_config_query = MagicMock()
-        mock_config_query.filter.return_value.all.return_value = [
-            mock_config1,
-            mock_config2,
-        ]
-
-        def mock_query(model):
-            if model.__name__ == "UserSchedule":
-                return mock_schedule_query
-            if model.__name__ == "OtpConfiguration":
-                return mock_config_query
-            return MagicMock()
-
-        mock_db.query.side_effect = mock_query
-
-        mock_notifier = MagicMock()
-        sync_manager = SyncManager(notify_callback=mock_notifier)
-
-        with patch.object(scheduler, "remove_all_jobs") as mock_remove, patch.object(
-            scheduler, "add_job"
-        ) as mock_add:
-            reload_scheduler_jobs(sync_manager)
-
-            mock_remove.assert_called_once()
-
-            assert mock_add.call_count == 2
-
-            job_ids = [call.kwargs["id"] for call in mock_add.call_args_list]
-            assert job_ids == ["scheduled_sync_1", "scheduled_sync_2"]
-
-            first_trigger = mock_add.call_args_list[0].kwargs["trigger"]
-            second_trigger = mock_add.call_args_list[1].kwargs["trigger"]
+            trigger = mock_add.call_args.kwargs["trigger"]
 
             def trigger_value(trigger, name):
                 return [
                     f for f in trigger.fields if f.name == name
                 ][0].expressions[0].first
 
-            assert trigger_value(first_trigger, "hour") == 11
-            assert trigger_value(first_trigger, "minute") == 0
-            assert trigger_value(second_trigger, "hour") == 11
-            assert trigger_value(second_trigger, "minute") == 0
+            assert trigger_value(trigger, "hour") == 11
+            assert trigger_value(trigger, "minute") == 0
 
 
 class SyncLogMock:

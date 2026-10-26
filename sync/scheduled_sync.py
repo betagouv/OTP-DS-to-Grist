@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 
-from database.models import OtpConfiguration, UserSchedule
+from database.models import UserSchedule
 from configuration.config_manager import ConfigManager, ConfigNotFoundError
 from sync.sequencer import sequencer
 from sync.sync_manager import SyncManager
@@ -30,8 +30,15 @@ SYNC_HOUR = int(os.getenv("SYNC_HOUR", "0"))
 SYNC_MINUTE = int(os.getenv("SYNC_MINUTE", "0"))
 SYNC_TZ = os.getenv("SYNC_TZ", "Europe/Paris")
 
+DAILY_SYNC_JOB_ID = "daily_scheduled_sync"
+# Retard toléré au déclenchement du job quotidien (process occupé, mise en
+# veille) : au-delà, l'exécution du jour est abandonnée
+DAILY_SYNC_MISFIRE_GRACE_SECONDS = 3600
+
+# Un seul job quotidien : un seul thread suffit, les synchros elles-mêmes
+# s'exécutent dans le séquenceur
 scheduler = BackgroundScheduler(
-    executors={"default": ThreadPoolExecutor(max_workers=2)}
+    executors={"default": ThreadPoolExecutor(max_workers=1)}
 )
 
 config_manager = ConfigManager(DATABASE_URL)
@@ -39,15 +46,10 @@ config_manager = ConfigManager(DATABASE_URL)
 
 def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     """
-    Job exécuté automatiquement par APScheduler pour une configuration donnée.
+    Mise en file de la synchronisation planifiée d'une configuration donnée,
+    appelée par daily_sync_job pour chaque planning activé.
     Valide la configuration puis l'enfile dans le séquenceur, qui exécute
     les synchros les unes après les autres.
-    - Fréquence :
-      - Quotidienne, à l'heure configurée (SYNC_HOUR:SYNC_MINUTE)
-        dans la timezone SYNC_TZ (défaut Europe/Paris)
-      - Au démarrage de l'app
-      - Lors de l'activation/désactivation d'un planning via les endpoints API
-    - Condition : Uniquement pour les synchronisations activées
     - Actions :
       - Charge la configuration depuis la base
       - Enfile une étape dans le séquenceur
@@ -81,81 +83,69 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     )
 
 
-def reload_scheduler_jobs(sync_manager: SyncManager) -> None:
+def daily_sync_job(sync_manager: SyncManager) -> None:
     """
-    Recharge tous les jobs actifs du scheduler selon les plannings activés.
-    Exécutée au démarrage et après activation/désactivation de plannings,
-    pour éviter des jobs persistant pour des configs modifiées ou supprimées
+    Job quotidien unique, déclenché à SYNC_HOUR:SYNC_MINUTE (timezone SYNC_TZ) :
+    enfile dans le séquenceur chaque configuration dont le planning est activé.
+    Les plannings sont lus à chaque exécution : une activation ou une
+    désactivation est prise en compte sans recharger le scheduler. Une
+    configuration en échec n'empêche pas d'enfiler les suivantes.
     """
-    logger.info("Rechargement des jobs du scheduler...")
+    otp_config_ids = _enabled_schedule_config_ids()
+    logger.info(
+        f"Synchronisation quotidienne : {len(otp_config_ids)} planning(s) activé(s)"
+    )
 
-    try:
-        scheduler.remove_all_jobs()
-
-        engine = create_engine(DATABASE_URL)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        db = SessionLocal()
-        tz = ZoneInfo(SYNC_TZ)
-
+    for otp_config_id in otp_config_ids:
         try:
-            active_schedules = (
-                db.query(UserSchedule)
-                .filter_by(enabled=True)
-                .filter(UserSchedule.otp_config_id.isnot(None))
-                .all()
+            scheduled_sync_job(otp_config_id, sync_manager)
+        except Exception as e:
+            logger.error(
+                f"Mise en file impossible pour config {otp_config_id}: {str(e)}"
             )
 
-            config_ids = {schedule.otp_config_id for schedule in active_schedules}
-            configs_by_id: dict[int, OtpConfiguration] = {}
-            if config_ids:
-                configs = (
-                    db.query(OtpConfiguration)
-                    .filter(OtpConfiguration.id.in_(config_ids))
-                    .all()
-                )
-                configs_by_id = {otp_config.id: otp_config for otp_config in configs}
 
-            sorted_schedules = sorted(active_schedules, key=lambda s: s.otp_config_id)
-
-            for schedule in sorted_schedules:
-                otp_config = configs_by_id.get(schedule.otp_config_id)
-                if not otp_config:
-                    logger.warning(
-                        f"Configuration manquante pour schedule {schedule.id}, skipping"
-                    )
-                    continue
-
-                job_id = f"scheduled_sync_{schedule.otp_config_id}"
-
-                scheduler.add_job(
-                    func=scheduled_sync_job,
-                    trigger=CronTrigger(
-                        hour=SYNC_HOUR, minute=SYNC_MINUTE, timezone=tz
-                    ),
-                    args=[schedule.otp_config_id, sync_manager],
-                    id=job_id,
-                    name=f"Sync planifiée pour config {schedule.otp_config_id}",
-                    replace_existing=True,
-                    max_instances=1,
-                )
-
-                logger.info(
-                    f"Job ajouté pour schedule {schedule.id} "
-                    f"(config {schedule.otp_config_id}, démarche {otp_config.demarche_number}) "
-                    f"à {SYNC_HOUR:02d}:{SYNC_MINUTE:02d} "
-                    f"(document {otp_config.grist_doc_id})"
-                )
-
-        finally:
-            db.close()
-
-        logger.info(f"Scheduler rechargé avec {len(scheduler.get_jobs())} jobs actifs")
-
-    except Exception as e:
-        logger.error(f"Erreur lors du rechargement des jobs scheduler: {str(e)}")
+def register_daily_sync_job(sync_manager: SyncManager) -> None:
+    """Programme le job quotidien unique ; un job déjà programmé est remplacé."""
+    scheduler.add_job(
+        func=daily_sync_job,
+        trigger=CronTrigger(
+            hour=SYNC_HOUR, minute=SYNC_MINUTE, timezone=ZoneInfo(SYNC_TZ)
+        ),
+        args=[sync_manager],
+        id=DAILY_SYNC_JOB_ID,
+        name="Synchronisation quotidienne des plannings activés",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=DAILY_SYNC_MISFIRE_GRACE_SECONDS,
+    )
+    logger.info(
+        f"Synchronisation quotidienne programmée à "
+        f"{SYNC_HOUR:02d}:{SYNC_MINUTE:02d} ({SYNC_TZ})"
+    )
 
 
 # --- Helpers privés (module) ---
+
+
+def _enabled_schedule_config_ids() -> list[int]:
+    """Identifiants des configurations dont le planning est activé, par ordre croissant."""
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = SessionLocal()
+
+    try:
+        rows = (
+            db.query(UserSchedule.otp_config_id)
+            .filter_by(enabled=True)
+            .filter(UserSchedule.otp_config_id.isnot(None))
+            .order_by(UserSchedule.otp_config_id)
+            .all()
+        )
+        return [row.otp_config_id for row in rows]
+    finally:
+        db.close()
 
 
 def _run_scheduled_sync_step(

@@ -2,8 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from database.models import UserSchedule, OtpConfiguration
-
 
 def _make_session_mock():
     """Crée un mock de session SQLAlchemy où filter_by().first() retourne un mock dédié."""
@@ -235,158 +233,92 @@ class TestScheduledSyncJob:
             mock_sync.assert_not_called()
 
 
-class TestReloadSchedulerJobs:
-    """Tests pour reload_scheduler_jobs"""
+class TestDailySyncJob:
+    """Tests pour daily_sync_job"""
+
+    @patch("sync.scheduled_sync.scheduled_sync_job")
+    @patch("sync.scheduled_sync._enabled_schedule_config_ids", return_value=[])
+    def test_aucun_planning_active(self, mock_ids, mock_job):
+        """0 planning activé : rien n'est enfilé"""
+        from sync.scheduled_sync import daily_sync_job
+
+        daily_sync_job(MagicMock())
+
+        mock_job.assert_not_called()
+
+    @patch("sync.scheduled_sync.scheduled_sync_job")
+    @patch("sync.scheduled_sync._enabled_schedule_config_ids", return_value=[1, 2])
+    def test_enfile_chaque_planning_active_dans_l_ordre(self, mock_ids, mock_job):
+        from sync.scheduled_sync import daily_sync_job
+
+        sync_manager = MagicMock()
+
+        daily_sync_job(sync_manager)
+
+        assert [call.args for call in mock_job.call_args_list] == [
+            (1, sync_manager),
+            (2, sync_manager),
+        ]
+
+    @patch("sync.scheduled_sync.scheduled_sync_job")
+    @patch("sync.scheduled_sync._enabled_schedule_config_ids", return_value=[1, 2])
+    def test_echec_d_une_config_n_arrete_pas_les_suivantes(self, mock_ids, mock_job):
+        from sync.scheduled_sync import daily_sync_job
+
+        mock_job.side_effect = [RuntimeError("déchiffrement impossible"), None]
+
+        daily_sync_job(MagicMock())
+
+        assert mock_job.call_count == 2
 
     @patch("sync.scheduled_sync.create_engine")
     @patch("sync.scheduled_sync.sessionmaker")
-    def test_zero_active_schedules(self, mock_sessionmaker, mock_create_engine):
-        """0 schedules actifs : 0 jobs ajoutés"""
-        from sync.scheduled_sync import reload_scheduler_jobs
-        from sync.sync_manager import SyncManager
+    def test_lit_les_plannings_actives_a_chaque_execution(
+        self, mock_sessionmaker, mock_create_engine
+    ):
+        """Les plannings sont relus en base : seuls les activés sont enfilés"""
+        from sync.scheduled_sync import daily_sync_job
 
         mock_db, mock_session_class = _make_session_mock()
         mock_sessionmaker.return_value = mock_session_class
+        query = mock_db.query.return_value
+        query.filter_by.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            MagicMock(otp_config_id=3)
+        ]
 
-        mock_db.query.return_value.filter_by.return_value.filter.return_value.all.return_value = (
-            []
-        )
+        with patch("sync.scheduled_sync.scheduled_sync_job") as mock_job:
+            daily_sync_job(MagicMock())
 
-        mock_notifier = MagicMock()
-        sync_manager = SyncManager(notify_callback=mock_notifier)
+        query.filter_by.assert_called_once_with(enabled=True)
+        assert mock_job.call_args.args[0] == 3
+        mock_db.close.assert_called_once()
 
-        mock_scheduler = MagicMock()
 
-        with patch("sync.scheduled_sync.scheduler", mock_scheduler):
-            reload_scheduler_jobs(sync_manager)
+class TestRegisterDailySyncJob:
+    """Tests pour register_daily_sync_job"""
 
-            mock_scheduler.remove_all_jobs.assert_called_once()
-            mock_scheduler.add_job.assert_not_called()
-
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
-    def test_two_schedules_same_configured_time(
-        self, mock_sessionmaker, mock_create_engine
-    ):
-        """2 schedules actifs : les 2 jobs tombent à la même heure, sans décalage"""
+    def test_un_seul_job_a_l_heure_configuree(self):
         from sync.scheduled_sync import (
-            reload_scheduler_jobs,
+            DAILY_SYNC_JOB_ID,
             SYNC_HOUR,
             SYNC_MINUTE,
+            daily_sync_job,
+            register_daily_sync_job,
         )
-        from sync.sync_manager import SyncManager
 
-        mock_db, mock_session_class = _make_session_mock()
-        mock_sessionmaker.return_value = mock_session_class
-
-        mock_schedule1 = MagicMock()
-        mock_schedule1.id = 11
-        mock_schedule1.otp_config_id = 1
-        mock_schedule1.enabled = True
-
-        mock_schedule2 = MagicMock()
-        mock_schedule2.id = 12
-        mock_schedule2.otp_config_id = 2
-        mock_schedule2.enabled = True
-
-        mock_config1 = MagicMock()
-        mock_config1.id = 1
-        mock_config1.demarche_number = "100"
-        mock_config1.grist_doc_id = "doc_a"
-
-        mock_config2 = MagicMock()
-        mock_config2.id = 2
-        mock_config2.demarche_number = "200"
-        mock_config2.grist_doc_id = "doc_b"
-
-        mock_schedule_query = MagicMock()
-        mock_schedule_query.filter_by.return_value.filter.return_value.all.return_value = [
-            mock_schedule1,
-            mock_schedule2,
-        ]
-
-        mock_config_query = MagicMock()
-        mock_config_query.filter.return_value.all.return_value = [
-            mock_config1,
-            mock_config2,
-        ]
-
-        def query_side_effect(model):
-            if model is UserSchedule:
-                return mock_schedule_query
-            if model is OtpConfiguration:
-                return mock_config_query
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
-
-        mock_notifier = MagicMock()
-        sync_manager = SyncManager(notify_callback=mock_notifier)
-
+        sync_manager = MagicMock()
         mock_scheduler = MagicMock()
 
         with patch("sync.scheduled_sync.scheduler", mock_scheduler):
-            reload_scheduler_jobs(sync_manager)
+            register_daily_sync_job(sync_manager)
 
-            assert mock_scheduler.add_job.call_count == 2
-
-            for call in mock_scheduler.add_job.call_args_list:
-                trigger = call[1]["trigger"]
-                assert _trigger_value(trigger, "hour") == SYNC_HOUR
-                assert _trigger_value(trigger, "minute") == SYNC_MINUTE
-
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
-    def test_missing_config_skips_schedule(
-        self, mock_sessionmaker, mock_create_engine
-    ):
-        """Config manquante pour un schedule : skip, les autres sont ajoutés"""
-        from sync.scheduled_sync import reload_scheduler_jobs
-        from sync.sync_manager import SyncManager
-
-        mock_db, mock_session_class = _make_session_mock()
-        mock_sessionmaker.return_value = mock_session_class
-
-        mock_schedule1 = MagicMock()
-        mock_schedule1.id = 11
-        mock_schedule1.otp_config_id = 1
-        mock_schedule1.enabled = True
-
-        mock_schedule2 = MagicMock()
-        mock_schedule2.id = 12
-        mock_schedule2.otp_config_id = 2
-        mock_schedule2.enabled = True
-
-        mock_config1 = MagicMock()
-        mock_config1.id = 1
-        mock_config1.demarche_number = "100"
-        mock_config1.grist_doc_id = "doc_a"
-
-        mock_schedule_query = MagicMock()
-        mock_schedule_query.filter_by.return_value.filter.return_value.all.return_value = [
-            mock_schedule1,
-            mock_schedule2,
-        ]
-
-        mock_config_query = MagicMock()
-        mock_config_query.filter.return_value.all.return_value = [mock_config1]
-
-        def query_side_effect(model):
-            if model is UserSchedule:
-                return mock_schedule_query
-            if model is OtpConfiguration:
-                return mock_config_query
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
-
-        mock_notifier = MagicMock()
-        sync_manager = SyncManager(notify_callback=mock_notifier)
-
-        mock_scheduler = MagicMock()
-
-        with patch("sync.scheduled_sync.scheduler", mock_scheduler):
-            reload_scheduler_jobs(sync_manager)
-
-            assert mock_scheduler.add_job.call_count == 1
-            assert mock_scheduler.add_job.call_args_list[0][1]["id"] == "scheduled_sync_1"
+        mock_scheduler.add_job.assert_called_once()
+        kwargs = mock_scheduler.add_job.call_args.kwargs
+        assert kwargs["func"] is daily_sync_job
+        assert kwargs["args"] == [sync_manager]
+        assert kwargs["id"] == DAILY_SYNC_JOB_ID
+        assert kwargs["replace_existing"] is True
+        assert kwargs["coalesce"] is True
+        assert kwargs["misfire_grace_time"] > 1
+        assert _trigger_value(kwargs["trigger"], "hour") == SYNC_HOUR
+        assert _trigger_value(kwargs["trigger"], "minute") == SYNC_MINUTE
