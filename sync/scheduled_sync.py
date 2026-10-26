@@ -74,7 +74,7 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     step_id = sequencer.enqueue(
         otp_config_id=otp_config_id,
         grist_doc_id=config["grist_doc_id"],
-        fn=lambda: _run_scheduled_sync_step(otp_config_id, config, sync_manager),
+        fn=lambda: _run_scheduled_sync_step(otp_config_id, sync_manager),
     )
     logger.info(
         f"Synchronisation planifiée {otp_config_id} enfile "
@@ -145,18 +145,47 @@ def _enabled_schedule_config_ids() -> list[int]:
         db.close()
 
 
-def _run_scheduled_sync_step(
-    otp_config_id: int, config: dict, sync_manager: SyncManager
-) -> None:
+def _is_schedule_enabled(otp_config_id: int) -> bool:
+    """Indique si le planning de la configuration est activé en base."""
+    db = SessionLocal()
+
+    try:
+        schedule = (
+            db.query(UserSchedule).filter_by(otp_config_id=otp_config_id).first()
+        )
+        return bool(schedule and schedule.enabled)
+    finally:
+        db.close()
+
+
+def _run_scheduled_sync_step(otp_config_id: int, sync_manager: SyncManager) -> None:
     """
     Corps d'une étape de synchronisation planifiée, exécuté par le séquenceur.
-    Ouvre sa propre session de base uniquement pour désactiver un planning :
-    l'exécution a lieu dans un thread du séquenceur, potentiellement
-    longtemps après la mise en file.
-    - Exécute run_synchronization_task
+    L'exécution a lieu dans un thread du séquenceur, potentiellement
+    longtemps après la mise en file : le planning et la configuration sont
+    donc relus au démarrage de l'étape.
+    - Ignore l'étape si le planning a été désactivé ou la configuration
+      supprimée depuis la mise en file
+    - Exécute run_synchronization_task avec la configuration à jour
     - Désactive le planning sur EXIT_CODE_EXTERNAL_API_ERROR ; les autres
       codes laissent le planning actif, qui retentera au prochain créneau
     """
+    if not _is_schedule_enabled(otp_config_id):
+        logger.info(
+            f"Planning désactivé depuis la mise en file pour config {otp_config_id}, "
+            "synchronisation ignorée"
+        )
+        return
+
+    try:
+        config = config_manager.load_config_by_id(otp_config_id)
+    except ConfigNotFoundError:
+        logger.info(
+            f"Configuration {otp_config_id} supprimée depuis la mise en file, "
+            "synchronisation ignorée"
+        )
+        return
+
     logger.info(
         f"Démarrage de la synchronisation planifiée pour config {otp_config_id}"
     )

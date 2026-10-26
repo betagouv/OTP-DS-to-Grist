@@ -1363,6 +1363,7 @@ class TestErrorHandling:
         assert data["success"] is False
         assert "non trouvée" in data["message"]
 
+    @patch("sync.scheduled_sync._is_schedule_enabled", return_value=True)
     @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
@@ -1371,6 +1372,7 @@ class TestErrorHandling:
         mock_load_config,
         mock_session_local,
         mock_sequencer,
+        _mock_schedule_enabled,
     ):
         """Test exécution réussie d'une synchronisation planifiée"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -1395,7 +1397,9 @@ class TestErrorHandling:
 
             scheduled_sync_job(1, sync_manager)
 
-            mock_load_config.assert_called_once_with(1)
+            # Chargée à la mise en file, puis rechargée au démarrage de l'étape
+            assert mock_load_config.call_count == 2
+            mock_load_config.assert_called_with(1)
             mock_sync.assert_called_once()
             args, kwargs = mock_sync.call_args
             assert args == (
@@ -1412,11 +1416,13 @@ class TestErrorHandling:
             assert callable(kwargs["progress_callback"])
             mock_session_local.assert_not_called()
 
+    @patch("sync.scheduled_sync._is_schedule_enabled", return_value=True)
     @patch("sync.scheduled_sync.sequencer")
     @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
     def test_scheduled_sync_job_error(
-        self, mock_load_config, mock_session_local, mock_sequencer
+        self, mock_load_config, mock_session_local, mock_sequencer,
+        _mock_schedule_enabled,
     ):
         """Test sync échouée (success=False) : le planning reste actif"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -1441,7 +1447,9 @@ class TestErrorHandling:
 
             scheduled_sync_job(1, sync_manager)
 
-            mock_load_config.assert_called_once_with(1)
+            # Chargée à la mise en file, puis rechargée au démarrage de l'étape
+            assert mock_load_config.call_count == 2
+            mock_load_config.assert_called_with(1)
             mock_sync.assert_called_once()
             args, kwargs = mock_sync.call_args
             assert args == (
