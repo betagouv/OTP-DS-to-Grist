@@ -255,6 +255,51 @@ class TestProcessRepetablesBatchRecords:
         ]
         self.client.patch_records.assert_not_called()
 
+    def test_create_writes_pj_ocr_subcolumns(self):
+        """PJ d'un bloc -> nom du fichier et sous-colonnes OCR typées, pas le fichier"""
+        dossier = self._dossier()
+        dossier["champs"][0]["rows"][0]["champs"] = [
+            {
+                "__typename": "PieceJustificativeChamp",
+                "label": "Avis",
+                "files": [{"filename": "avis.pdf", "url": "https://dn/avis.pdf"}],
+                "columns": [
+                    {"__typename": "AttachmentsColumn", "id": "c0", "label": "Avis"},
+                    {
+                        "__typename": "DecimalColumn",
+                        "id": "c1",
+                        "label": "Avis – Nombre de parts",
+                        "decimalValue": "2.5",
+                    },
+                    {
+                        "__typename": "DateColumn",
+                        "id": "c2",
+                        "label": "Avis – Date de mise en recouvrement",
+                        "dateValue": "2025-07-31",
+                    },
+                ],
+            }
+        ]
+        column_types = {
+            "maquettes": {
+                "columns": [
+                    {"id": "avis", "type": "Text"},
+                    {"id": "avis_nombre_de_parts", "type": "Numeric"},
+                    {"id": "avis_date_de_mise_en_recouvrement", "type": "Date"},
+                ]
+            }
+        }
+        self.client.post_records.return_value = self._mock_response(201)
+        with patch("repetable_processor.get_existing_repetable_rows", return_value={}):
+            process_repetables_batch(
+                self.client, [dossier], self._table_ids(), column_types
+            )
+
+        fields = self.client.post_records.call_args.args[1][0]["fields"]
+        assert fields["avis"] == "avis.pdf"
+        assert fields["avis_nombre_de_parts"] == 2.5
+        assert fields["avis_date_de_mise_en_recouvrement"] == "2025-07-31"
+
     def _create_with_labels(self, block_label, field_label):
         """Crée les lignes d'un bloc dont les libellés viennent de DN tels quels"""
         dossier = self._dossier()

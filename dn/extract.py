@@ -1,5 +1,6 @@
 import json
 import os
+from collections.abc import Iterator
 from typing import Any, Dict, List
 
 from dn.client import get_session_with_retries
@@ -10,6 +11,18 @@ from utils.formatter import format_json_value, unwrap_json_list
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
+
+# Clé portant la valeur de chaque type de sous-colonne OCR d'une pièce
+# justificative, telle que demandée par ChampFragment (alias pour les types
+# non textuels). Les autres types, dont AttachmentsColumn (les fichiers), sont
+# ignorés : seuls les noms de fichiers sont synchronisés.
+PJ_OCR_VALUE_KEYS = {
+    "TextColumn": "value",
+    "EnumColumn": "value",
+    "DateColumn": "dateValue",
+    "IntegerColumn": "integerValue",
+    "DecimalColumn": "decimalValue",
+}
 
 
 def extract_champ_values(
@@ -107,42 +120,23 @@ def extract_champ_values(
             value = ", ".join([f["filename"] for f in files]) if files else None
             json_value = None
 
-            columns = champ.get("columns", [])
-            if columns:
-                for col in columns:
-                    col_typename = col.get("__typename")
-                    col_label = col.get("label", "")
-                    col_value = col.get("value")
-
-                    if col_typename == "AttachmentsColumn" or not col_value:
-                        continue
-
-                    if col_typename == "TextColumn":
-                        # DN libelle les sous-colonnes OCR "<libellé du champ> – <sous-libellé>"
-                        # (ex. "RIB – Nom de la Banque"). On repart du libellé du champ pour
-                        # que l'id normalisé corresponde à "<libellé normalisé>_<suffixe>"
-                        # créé par schema_utils.
-                        sub_label = col_label.rsplit(" – ", 1)[-1]
-                        full_label = f"{champ['label']} {sub_label}"
-
-                        result.append(
-                            {
-                                "id": col.get("id"),
-                                "numeric_id": None,
-                                "descriptor_id": champ.get("champDescriptorId"),
-                                "decoded_descriptor_id": decoded_descriptor_id,
-                                "label": f"{prefix}{full_label}",
-                                "base_label": full_label,
-                                "type": "TextColumn",
-                                "value": col_value,
-                                "json_value": None,
-                                "updated_at": champ.get("updatedAt"),
-                                "prefilled": champ.get("prefilled", False),
-                                "row_id": original_id
-                                if original_id != champ["id"]
-                                else None,
-                            }
-                        )
+            for col, full_label, col_value in iter_pj_ocr_columns(champ):
+                result.append(
+                    {
+                        "id": col.get("id"),
+                        "numeric_id": None,
+                        "descriptor_id": champ.get("champDescriptorId"),
+                        "decoded_descriptor_id": decoded_descriptor_id,
+                        "label": f"{prefix}{full_label}",
+                        "base_label": full_label,
+                        "type": col["__typename"],
+                        "value": col_value,
+                        "json_value": None,
+                        "updated_at": champ.get("updatedAt"),
+                        "prefilled": champ.get("prefilled", False),
+                        "row_id": original_id if original_id != champ["id"] else None,
+                    }
+                )
 
         elif champ["__typename"] == "AddressChamp" and champ.get("address"):
             address = champ.get("address", {})
@@ -559,6 +553,40 @@ def extract_champ_values(
         )
 
     return result
+
+
+def iter_pj_ocr_columns(
+    champ: dict[str, Any],
+) -> Iterator[tuple[dict[str, Any], str, Any]]:
+    """
+    Sous-colonnes OCR renseignées d'une pièce justificative :
+    (colonne DN, libellé complet, valeur).
+
+    DN libelle les sous-colonnes "<libellé du champ> – <sous-libellé>"
+    (ex. "RIB – Nom de la Banque"). Le libellé complet repart du libellé du
+    champ, pour que son nom normalisé corresponde à la colonne créée par
+    schema_utils.
+    """
+    for col in champ.get("columns") or []:
+        value_key = PJ_OCR_VALUE_KEYS.get(col.get("__typename"))
+        if value_key is None:
+            continue
+
+        value = col.get(value_key)
+        if value is None or value == "":
+            continue
+
+        yield col, f"{champ['label']} {pj_ocr_sub_label(col.get('label'))}", value
+
+
+def pj_ocr_sub_label(column_label: str | None) -> str:
+    """
+    Sous-libellé d'une sous-colonne OCR : DN libelle les sous-colonnes
+    "<libellé du champ> – <sous-libellé>" (ex. "RIB – Nom de la Banque").
+    Partagé avec schema_utils pour que l'extraction et le schéma produisent
+    le même id de colonne.
+    """
+    return (column_label or "").rsplit(" – ", 1)[-1]
 
 
 def extract_repetable_blocks(

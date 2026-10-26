@@ -16,7 +16,7 @@ API_TOKEN = os.getenv("DEMARCHES_API_TOKEN") or ""
 PAGE_SIZE_DOSSIERS_MAX = 100
 # Dossiers lus pour déterminer la nature des pièces justificatives
 # (un dossier sur une ancienne révision peut ne pas porter toutes les PJ)
-PJ_NATURES_SAMPLE_SIZE = 10
+PJ_OCR_SAMPLE_SIZE = 10
 
 # Requêtes GraphQL (fragmentées en quelques constantes)
 # Pour les fragments communs
@@ -233,10 +233,17 @@ fragment ChampFragment on Champ {
             ... on TextColumn {
                 value
             }
-            ... on AttachmentsColumn {
-                value {
-                    ...FileFragment
-                }
+            ... on EnumColumn {
+                value
+            }
+            ... on DateColumn {
+                dateValue: value
+            }
+            ... on IntegerColumn {
+                integerValue: value
+            }
+            ... on DecimalColumn {
+                decimalValue: value
             }
         }
     }
@@ -966,29 +973,45 @@ def get_groups(
         return []
 
 
-def get_pj_natures(demarche_number: int) -> dict[str, str]:
+def get_pj_ocr_columns(demarche_number: int) -> dict[str, list[tuple[str, str]]]:
     """
-    Retourne la nature de chaque pièce justificative de la démarche
-    ({champDescriptorId: "RIB", "TITRE_IDENTITE", ...}).
+    Sous-colonnes OCR de chaque pièce justificative de la démarche, blocs
+    répétables inclus : {champDescriptorId: [(libellé DN, type DN), ...]}
+    (ex. ("RIB – IBAN", "TextColumn")).
 
-    La nature n'est exposée que sur les champs (PieceJustificativeChamp), pas
-    sur les descripteurs : on la lit sur un échantillon de dossiers. Retourne
-    {} si la démarche n'a aucun dossier ou en cas d'erreur.
+    DN ne les expose pas sur les descripteurs mais sur les champs : leur liste
+    dépend de la nature de la PJ et est renvoyée même sans valeur OCR. On les
+    lit donc sur un échantillon de dossiers. Une PJ sans OCR a une liste vide.
+    Retourne {} si la démarche n'a aucun dossier ou en cas d'erreur.
     """
     query = """
-    query getPjNatures($demarcheNumber: Int!, $first: Int!) {
+    query getPjOcrColumns($demarcheNumber: Int!, $first: Int!) {
         demarche(number: $demarcheNumber) {
             dossiers(first: $first) {
                 nodes {
                     champs {
                         __typename
                         champDescriptorId
-                        ... on PieceJustificativeChamp {
-                            nature
+                        ...PjColumns
+                        ... on RepetitionChamp {
+                            rows {
+                                champs {
+                                    __typename
+                                    champDescriptorId
+                                    ...PjColumns
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    fragment PjColumns on PieceJustificativeChamp {
+        columns {
+            __typename
+            label
         }
     }
     """
@@ -998,7 +1021,7 @@ def get_pj_natures(demarche_number: int) -> dict[str, str]:
     }
     variables = {
         "demarcheNumber": int(demarche_number),
-        "first": PJ_NATURES_SAMPLE_SIZE,
+        "first": PJ_OCR_SAMPLE_SIZE,
     }
 
     try:
@@ -1012,7 +1035,7 @@ def get_pj_natures(demarche_number: int) -> dict[str, str]:
 
         if response.status_code != 200:
             log_error(
-                f"Natures des pièces justificatives non récupérées "
+                f"Sous-colonnes OCR des pièces justificatives non récupérées "
                 f"(HTTP {response.status_code})"
             )
             return {}
@@ -1021,25 +1044,33 @@ def get_pj_natures(demarche_number: int) -> dict[str, str]:
         if "errors" in result:
             messages = [e.get("message", "Unknown error") for e in result["errors"]]
             log_error(
-                "Erreur GraphQL lors de la récupération des natures des pièces "
-                "justificatives: " + ", ".join(messages)
+                "Erreur GraphQL lors de la récupération des sous-colonnes OCR des "
+                "pièces justificatives: " + ", ".join(messages)
             )
             return {}
 
         dossiers = (
             ((result.get("data") or {}).get("demarche") or {}).get("dossiers") or {}
         ).get("nodes") or []
-        return {
-            champ["champDescriptorId"]: champ["nature"]
-            for dossier in dossiers
-            for champ in dossier.get("champs") or []
-            if champ.get("__typename") == "PieceJustificativeChamp"
-            and champ.get("nature")
-        }
+        ocr_columns: dict[str, list[tuple[str, str]]] = {}
+        for dossier in dossiers:
+            for champ in _with_repetition_champs(dossier.get("champs") or []):
+                if champ.get("__typename") != "PieceJustificativeChamp":
+                    continue
+                columns = [
+                    (column.get("label") or "", column.get("__typename"))
+                    for column in champ.get("columns") or []
+                    if column.get("__typename") != "AttachmentsColumn"
+                ]
+                descriptor_id = champ.get("champDescriptorId")
+                if columns or descriptor_id not in ocr_columns:
+                    ocr_columns[descriptor_id] = columns
+        return ocr_columns
 
     except Exception as e:
         log_error(
-            f"Erreur lors de la récupération des natures des pièces justificatives: {e}"
+            "Erreur lors de la récupération des sous-colonnes OCR des pièces "
+            f"justificatives: {e}"
         )
         return {}
 
@@ -1057,6 +1088,14 @@ def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
             ]
 
     return filtered
+
+
+def _with_repetition_champs(champs: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """Champs d'un dossier suivis des champs des lignes de ses blocs répétables."""
+    for champ in champs:
+        yield champ
+        for row in champ.get("rows") or []:
+            yield from row.get("champs") or []
 
 
 def _dossier_nodes(data: dict[str, Any]) -> list[dict[str, Any]]:

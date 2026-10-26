@@ -1,6 +1,8 @@
 from unittest.mock import MagicMock, patch
 
+from dn.extract import PJ_OCR_VALUE_KEYS
 from schema_utils import (
+    PJ_OCR_GRIST_TYPES,
     get_problematic_descriptor_ids_from_schema,
     auto_clean_schema_descriptors,
     create_columns_from_schema,
@@ -241,8 +243,49 @@ class TestUpdateGristTablesFromSchema:
 
 RIB_SUFFIXES = ["titulaire", "iban", "bic", "nom_de_la_banque"]
 
+# Sous-colonnes renvoyées par DN selon la nature (libellés et types repris des
+# définitions DN : PieceJustificativeTypeDeChamp#columns et locales).
+_DN_ADDRESS = [
+    ("Code postal (5 chiffres)", "TextColumn"),
+    ("Commune", "TextColumn"),
+    ("Département", "EnumColumn"),
+    ("Région", "EnumColumn"),
+]
+_DN_OCR_SUBCOLUMNS = {
+    "RIB": [
+        ("Titulaire", "TextColumn"),
+        ("IBAN", "TextColumn"),
+        ("BIC", "TextColumn"),
+        ("Nom de la Banque", "TextColumn"),
+    ],
+    "JUSTIFICATIF_DOMICILE": [
+        ("Bénéficiaire", "TextColumn"),
+        ("Adresse", "TextColumn"),
+        ("Date d’émission", "DateColumn"),
+        *_DN_ADDRESS,
+    ],
+    "AVIS_IMPOT": [
+        ("Déclarant 1", "TextColumn"),
+        ("Déclarant 2", "TextColumn"),
+        ("Référence de l’avis", "TextColumn"),
+        ("Année des revenus", "IntegerColumn"),
+        ("Nombre de parts", "DecimalColumn"),
+        ("Revenu fiscal de référence", "IntegerColumn"),
+        ("Date de mise en recouvrement", "DateColumn"),
+        *_DN_ADDRESS,
+    ],
+}
 
-def _make_pj_schema(label, descriptor_id="desc_pj", pj_natures=None):
+
+def _dn_ocr_columns(label, nature):
+    """Sous-colonnes OCR telles que renvoyées par get_pj_ocr_columns"""
+    return [
+        (f"{label} – {sub_label}", dn_type)
+        for sub_label, dn_type in _DN_OCR_SUBCOLUMNS.get(nature, [])
+    ]
+
+
+def _make_pj_schema(label, descriptor_id="desc_pj", pj_ocr_columns=None):
     schema = {
         "title": "Test démarche",
         "activeRevision": {
@@ -260,8 +303,8 @@ def _make_pj_schema(label, descriptor_id="desc_pj", pj_natures=None):
             "annotationDescriptors": [],
         },
     }
-    if pj_natures is not None:
-        schema["pj_natures"] = pj_natures
+    if pj_ocr_columns is not None:
+        schema["pj_ocr_columns"] = pj_ocr_columns
     return schema
 
 
@@ -275,37 +318,180 @@ class TestCreateColumnsFromSchemaRib:
 
     def test_nature_rib_sans_mot_cle_cree_les_sous_colonnes(self):
         """Régression #556 : un RIB libellé sans « rib »/« iban » n'avait aucune colonne"""
-        schema = _make_pj_schema("Coordonnées bancaires", pj_natures={"desc_pj": "RIB"})
+        schema = _make_pj_schema(
+            "Coordonnées bancaires",
+            pj_ocr_columns={"desc_pj": _dn_ocr_columns("Coordonnées bancaires", "RIB")},
+        )
         ids = _champ_column_ids(schema)
         assert {f"coordonnees_bancaires_{s}" for s in RIB_SUFFIXES} <= ids
         assert "coordonnees_bancaires" in ids
 
-    def test_nature_non_rib_ne_cree_pas_de_sous_colonnes(self):
-        """La nature fait foi sur le libellé"""
-        schema = _make_pj_schema("RIB scanné", pj_natures={"desc_pj": "NON_SPECIFIE"})
+    def test_pj_sans_ocr_ne_cree_pas_de_sous_colonnes(self):
+        """Les colonnes renvoyées par DN font foi sur le libellé"""
+        schema = _make_pj_schema("RIB scanné", pj_ocr_columns={"desc_pj": []})
         ids = _champ_column_ids(schema)
         assert ids == {"dossier_number", "champ_id", "rib_scanne"}
 
-    def test_sans_nature_repli_sur_mot_cle(self):
+    def test_sans_dossier_repli_sur_mot_cle(self):
         """Démarche sans dossier : repli sur le libellé"""
         ids = _champ_column_ids(_make_pj_schema("RIB du demandeur"))
         assert {f"rib_du_demandeur_{s}" for s in RIB_SUFFIXES} <= ids
 
-    def test_sans_nature_ni_mot_cle_pas_de_sous_colonnes(self):
+    def test_sans_dossier_ni_mot_cle_pas_de_sous_colonnes(self):
         ids = _champ_column_ids(_make_pj_schema("Coordonnées bancaires"))
         assert ids == {"dossier_number", "champ_id", "coordonnees_bancaires"}
 
-    def test_nature_d_une_autre_pj_ignoree(self):
-        """Une nature connue pour un autre descripteur ne s'applique pas"""
-        schema = _make_pj_schema(
-            "RIB du demandeur", pj_natures={"autre_desc": "NON_SPECIFIE"}
-        )
+    def test_colonnes_d_une_autre_pj_ignorees(self):
+        """Les colonnes connues pour un autre descripteur ne s'appliquent pas"""
+        schema = _make_pj_schema("RIB du demandeur", pj_ocr_columns={"autre_desc": []})
         ids = _champ_column_ids(schema)
         assert {f"rib_du_demandeur_{s}" for s in RIB_SUFFIXES} <= ids
 
 
-class TestGetDemarcheSchemaPjNatures:
-    """Tests sur la récupération des natures des PJ par get_demarche_schema"""
+class TestCreateColumnsFromSchemaPjOcr:
+    """Tests sur les sous-colonnes OCR des autres natures de pièces justificatives"""
+
+    def _ocr_types(self, label, nature):
+        schema = _make_pj_schema(
+            label, pj_ocr_columns={"desc_pj": _dn_ocr_columns(label, nature)}
+        )
+        column_types, _ = create_columns_from_schema(schema)
+        return {
+            col["id"]: col["fields"]["type"]
+            for col in column_types["champs"]
+            if col["id"] not in {"dossier_number", "champ_id", "justificatif", "avis"}
+        }
+
+    def test_justificatif_domicile(self):
+        assert self._ocr_types("Justificatif", "JUSTIFICATIF_DOMICILE") == {
+            "justificatif_beneficiaire": "Text",
+            "justificatif_adresse": "Text",
+            "justificatif_date_d_emission": "Date",
+            "justificatif_code_postal_5_chiffres": "Text",
+            "justificatif_commune": "Text",
+            "justificatif_departement": "Text",
+            "justificatif_region": "Text",
+        }
+
+    def test_avis_impot(self):
+        assert self._ocr_types("Avis", "AVIS_IMPOT") == {
+            "avis_declarant_1": "Text",
+            "avis_declarant_2": "Text",
+            "avis_reference_de_l_avis": "Text",
+            "avis_annee_des_revenus": "Int",
+            "avis_nombre_de_parts": "Numeric",
+            "avis_revenu_fiscal_de_reference": "Int",
+            "avis_date_de_mise_en_recouvrement": "Date",
+            "avis_code_postal_5_chiffres": "Text",
+            "avis_commune": "Text",
+            "avis_departement": "Text",
+            "avis_region": "Text",
+        }
+
+    def test_libelle_affiche_comme_dn(self):
+        schema = _make_pj_schema(
+            "Avis", pj_ocr_columns={"desc_pj": _dn_ocr_columns("Avis", "AVIS_IMPOT")}
+        )
+        column_types, _ = create_columns_from_schema(schema)
+        labels = {
+            col["fields"]["label"] for col in column_types["champs"] if "fields" in col
+        }
+        assert "Avis – Nombre de parts" in labels
+
+    def test_sans_dossier_pas_de_repli_hors_rib(self):
+        """Le repli sur le libellé ne vaut que pour le RIB"""
+        ids = _champ_column_ids(_make_pj_schema("Avis d'impôt"))
+        assert ids == {"dossier_number", "champ_id", "avis_d_impot"}
+
+    def test_libelles_suivis_depuis_dn(self):
+        """Libellé ou nature inconnus du code : repris tels que DN les renvoie"""
+        schema = _make_pj_schema(
+            "Facture",
+            pj_ocr_columns={
+                "desc_pj": [
+                    ("Facture – Montant TTC", "DecimalColumn"),
+                    ("Facture – Échéance", "DateColumn"),
+                ]
+            },
+        )
+        column_types, _ = create_columns_from_schema(schema)
+        fields = {
+            col["id"]: col["fields"]
+            for col in column_types["champs"]
+            if "fields" in col
+        }
+        assert fields["facture_montant_ttc"] == {
+            "type": "Numeric",
+            "label": "Facture – Montant TTC",
+        }
+        assert fields["facture_echeance"]["type"] == "Date"
+
+    def test_types_non_lus_par_l_extraction_ignores(self):
+        """Sous-colonne d'un type que dn.extract ne lit pas -> pas de colonne"""
+        schema = _make_pj_schema(
+            "Avis", pj_ocr_columns={"desc_pj": [("Avis – Coché", "BooleanColumn")]}
+        )
+        assert _champ_column_ids(schema) == {"dossier_number", "champ_id", "avis"}
+
+    def test_types_grist_alignes_sur_l_extraction(self):
+        """Chaque type lu par dn.extract a un type Grist, et inversement"""
+        assert PJ_OCR_GRIST_TYPES.keys() == PJ_OCR_VALUE_KEYS.keys()
+
+
+def _make_block_pj_schema(pj_ocr_columns=None):
+    schema = {
+        "title": "Test démarche",
+        "activeRevision": {
+            "id": "rev_1",
+            "champDescriptors": [
+                {
+                    "__typename": "RepetitionChampDescriptor",
+                    "id": "desc_bloc",
+                    "type": "repetition",
+                    "label": "Foyer",
+                    "champDescriptors": [
+                        {
+                            "__typename": "PieceJustificativeChampDescriptor",
+                            "id": "desc_pj",
+                            "type": "piece_justificative",
+                            "label": "Avis",
+                        }
+                    ],
+                }
+            ],
+            "annotationDescriptors": [],
+        },
+    }
+    if pj_ocr_columns is not None:
+        schema["pj_ocr_columns"] = pj_ocr_columns
+    return schema
+
+
+class TestCreateColumnsFromSchemaPjOcrBlocs:
+    """Tests sur les sous-colonnes OCR des pièces justificatives des blocs répétables"""
+
+    def _block_types(self, schema):
+        column_types, _ = create_columns_from_schema(schema)
+        block = column_types["repetable_blocks"]["foyer"]
+        return {col["id"]: col["type"] for col in block["columns"]}
+
+    def test_avis_impot_dans_un_bloc(self):
+        types = self._block_types(
+            _make_block_pj_schema({"desc_pj": _dn_ocr_columns("Avis", "AVIS_IMPOT")})
+        )
+        assert types["avis"] == "Text"
+        assert types["avis_nombre_de_parts"] == "Numeric"
+        assert types["avis_revenu_fiscal_de_reference"] == "Int"
+        assert types["avis_date_de_mise_en_recouvrement"] == "Date"
+        assert types["avis_region"] == "Text"
+
+    def test_pj_sans_ocr_dans_un_bloc(self):
+        types = self._block_types(_make_block_pj_schema({"desc_pj": []}))
+        assert not [col for col in types if col.startswith("avis_")]
+
+
+class TestGetDemarcheSchemaPjOcrColumns:
+    """Tests sur la récupération des sous-colonnes OCR des PJ par get_demarche_schema"""
 
     def _mock_schema_response(self, demarche):
         response = MagicMock()
@@ -314,19 +500,33 @@ class TestGetDemarcheSchemaPjNatures:
         return response
 
     @patch("schema_utils.API_TOKEN", "token")
-    @patch("schema_utils.get_pj_natures", return_value={"desc_pj": "RIB"})
+    @patch(
+        "schema_utils.get_pj_ocr_columns",
+        return_value={"desc_pj": [("RIB – IBAN", "TextColumn")]},
+    )
     @patch("schema_utils.requests.post")
-    def test_natures_ajoutees_si_pj(self, mock_post, mock_natures):
+    def test_colonnes_ajoutees_si_pj(self, mock_post, mock_natures):
         demarche = _make_pj_schema("Coordonnées bancaires")
         mock_post.return_value = self._mock_schema_response(demarche)
 
         result = get_demarche_schema(123)
 
         mock_natures.assert_called_once_with(123)
-        assert result["pj_natures"] == {"desc_pj": "RIB"}
+        assert result["pj_ocr_columns"] == {"desc_pj": [("RIB – IBAN", "TextColumn")]}
 
     @patch("schema_utils.API_TOKEN", "token")
-    @patch("schema_utils.get_pj_natures")
+    @patch("schema_utils.get_pj_ocr_columns", return_value={"desc_pj": []})
+    @patch("schema_utils.requests.post")
+    def test_colonnes_ajoutees_si_pj_dans_un_bloc(self, mock_post, mock_natures):
+        mock_post.return_value = self._mock_schema_response(_make_block_pj_schema())
+
+        result = get_demarche_schema(123)
+
+        mock_natures.assert_called_once_with(123)
+        assert result["pj_ocr_columns"] == {"desc_pj": []}
+
+    @patch("schema_utils.API_TOKEN", "token")
+    @patch("schema_utils.get_pj_ocr_columns")
     @patch("schema_utils.requests.post")
     def test_pas_d_appel_sans_pj(self, mock_post, mock_natures):
         demarche = {
@@ -344,4 +544,4 @@ class TestGetDemarcheSchemaPjNatures:
         result = get_demarche_schema(123)
 
         mock_natures.assert_not_called()
-        assert "pj_natures" not in result
+        assert "pj_ocr_columns" not in result
