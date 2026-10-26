@@ -226,3 +226,28 @@ class TestSyncSequencer:
         sequencer.shutdown(wait=True)
 
         assert finished.is_set()
+
+    def test_shutdown_cancel_pending_annule_la_file_et_attend_l_etape_en_cours(self):
+        """cancel_pending : l'étape en cours se termine, les étapes en attente ne partent pas."""
+        sequencer = SyncSequencer()
+        started = threading.Event()
+        release = threading.Event()
+        executed = []
+
+        def blocking_fn():
+            started.set()
+            release.wait(timeout=_TIMEOUT)
+            executed.append(1)
+
+        sequencer.enqueue(1, "doc_a", blocking_fn)
+        _wait_until(started.is_set)
+        sequencer.enqueue(2, "doc_b", lambda: executed.append(2))
+        sequencer.enqueue(3, "doc_c", lambda: executed.append(3))
+
+        # Libère l'étape en cours peu après le début de l'arrêt
+        threading.Timer(0.2, release.set).start()
+        sequencer.shutdown(wait=True, cancel_pending=True)
+
+        assert executed == [1]
+        statuses = {s["otp_config_id"]: s["status"] for s in sequencer.snapshot()}
+        assert statuses == {1: "done", 2: "pending", 3: "pending"}

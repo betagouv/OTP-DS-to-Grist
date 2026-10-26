@@ -249,7 +249,8 @@ if not scheduler.running:
     register_daily_sync_job(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
     atexit.register(_shutdown_scheduler)
-    atexit.register(sequencer.shutdown)
+    # Un arrêt (redéploiement) n'attend que la synchro en cours, pas toute la file
+    atexit.register(sequencer.shutdown, cancel_pending=True)
 
 
 # Routes Flask

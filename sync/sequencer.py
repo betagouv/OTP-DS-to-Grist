@@ -115,9 +115,24 @@ class SyncSequencer:
                 for step in self._steps
             ]
 
-    def shutdown(self, wait: bool = True) -> None:
-        """Arrête le pool d'exécution, en attendant les étapes en cours si demandé."""
-        self._executor.shutdown(wait=wait)
+    def shutdown(self, wait: bool = True, cancel_pending: bool = False) -> None:
+        """
+        Arrête le pool d'exécution, en attendant les étapes en cours si demandé.
+        Avec cancel_pending, les étapes encore en attente sont annulées : seule
+        l'étape en cours est attendue (arrêt de l'app pendant une longue file).
+        """
+        if cancel_pending:
+            with self._lock:
+                pending_count = sum(
+                    1 for step in self._steps if step.status == STATUS_PENDING
+                )
+            if pending_count:
+                logger.warning(
+                    f"Arrêt du séquenceur : {pending_count} synchronisation(s) "
+                    "en attente annulée(s)"
+                )
+
+        self._executor.shutdown(wait=wait, cancel_futures=cancel_pending)
 
     # --- Helpers privés ---
 
