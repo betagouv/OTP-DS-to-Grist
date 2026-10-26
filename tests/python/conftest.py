@@ -27,7 +27,7 @@ os.environ['GRIST_BASE_URL_WHITELIST']=','.join([
 def pytest_sessionfinish(session, exitstatus):
     """
     Arrête le scheduler démarré à l'import d'app tant que pytest capture encore
-    les logs : laissé à atexit, son arrêt loggue dans un flux déjà fermé.
+    les logs : laissé à la sortie du process, son arrêt loggue dans un flux déjà fermé.
     """
     scheduled_sync = sys.modules.get("sync.scheduled_sync")
     if scheduled_sync and scheduled_sync.scheduler.running:

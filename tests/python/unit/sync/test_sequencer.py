@@ -1,7 +1,11 @@
 """Tests du séquenceur de synchronisations (sync.sequencer)."""
 
+import subprocess
+import sys
+import textwrap
 import threading
 import time
+from pathlib import Path
 
 from sync.sequencer import SyncSequencer
 
@@ -251,3 +255,43 @@ class TestSyncSequencer:
         assert executed == [1]
         statuses = {s["otp_config_id"]: s["status"] for s in sequencer.snapshot()}
         assert statuses == {1: "done", 2: "pending", 3: "pending"}
+
+    def test_sortie_du_process_n_execute_pas_la_file(self):
+        """
+        Vraie sortie de process : l'arrêt enregistré via threading._register_atexit
+        (comme dans app.py) annule la file avant que Python attende les threads
+        du pool. Avec atexit.register, toute la file s'exécutait.
+        """
+        script = textwrap.dedent(
+            """
+            import threading, time
+            from sync.sequencer import SyncSequencer
+
+            sequencer = SyncSequencer()
+            started = threading.Event()
+
+            def first():
+                started.set()
+                time.sleep(0.3)
+                print("1", flush=True)
+
+            sequencer.enqueue(1, "doc_a", first)
+            started.wait(5)
+            sequencer.enqueue(2, "doc_b", lambda: print("2", flush=True))
+            sequencer.enqueue(3, "doc_c", lambda: print("3", flush=True))
+            threading._register_atexit(lambda: sequencer.shutdown(cancel_pending=True))
+            """
+        )
+        project_root = Path(__file__).resolve().parents[4]
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=_TIMEOUT,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.split() == ["1"]
+        assert "2 synchronisation(s) en attente annulée(s)" in result.stderr

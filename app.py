@@ -2,11 +2,11 @@
 Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
-import atexit
 import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import timezone
 from pathlib import Path
@@ -229,10 +229,15 @@ def check_and_count_ip(response: Response) -> Response:
     return response
 
 
-def _shutdown_scheduler() -> None:
-    """Arrête le scheduler à la sortie du process, s'il n'a pas déjà été arrêté."""
+def _shutdown_background_tasks() -> None:
+    """
+    Arrêt à la sortie du process : le scheduler d'abord, pour qu'aucun job
+    n'enfile pendant l'arrêt, puis le séquenceur, qui n'attend que la synchro
+    en cours (redéploiement pendant une longue file).
+    """
     if scheduler.running:
         scheduler.shutdown(wait=True)
+    sequencer.shutdown(cancel_pending=True)
 
 
 # Démarrage du scheduler au niveau module : c'est le seul endroit commun aux
@@ -243,11 +248,11 @@ if not scheduler.running:
     scheduler.start()
     register_daily_sync_job(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
-    # atexit exécute dans l'ordre inverse d'enregistrement : le scheduler est
-    # arrêté en premier, pour qu'aucun job n'enfile pendant l'arrêt du séquenceur.
-    # Un arrêt (redéploiement) n'attend que la synchro en cours, pas toute la file
-    atexit.register(sequencer.shutdown, cancel_pending=True)
-    atexit.register(_shutdown_scheduler)
+    # Pas atexit.register : à la sortie, Python attend la fin des threads du
+    # pool (qui exécutent alors toute la file) avant les handlers atexit.
+    # threading._register_atexit (API privée) passe avant cette attente, et
+    # avant le handler du pool, enregistré plus tôt (ordre inverse).
+    threading._register_atexit(_shutdown_background_tasks)
 
 
 # Routes Flask
