@@ -70,6 +70,36 @@ class TestSyncSequencer:
         finally:
             sequencer.shutdown(wait=True)
 
+    def test_ordre_d_execution_est_l_ordre_d_arrivee(self):
+        """File FIFO globale : un document ne double pas un autre arrivé avant lui."""
+        sequencer = SyncSequencer()
+        started = threading.Event()
+        release = threading.Event()
+        order = []
+
+        def _make_step(label, blocking=False):
+            def fn():
+                order.append(label)
+                if blocking:
+                    started.set()
+                    release.wait(timeout=_TIMEOUT)
+
+            return fn
+
+        try:
+            sequencer.enqueue(1, "doc_a", _make_step("1", blocking=True))
+            _wait_until(started.is_set)
+            # Pendant que doc_a s'exécute : doc_b arrive avant une 2e étape de doc_a
+            sequencer.enqueue(2, "doc_b", _make_step("2"))
+            sequencer.enqueue(3, "doc_a", _make_step("3"))
+
+            release.set()
+            _wait_until(lambda: _all_statuses(sequencer, "done"))
+            assert order == ["1", "2", "3"]
+        finally:
+            release.set()
+            sequencer.shutdown(wait=True)
+
     def test_une_seule_synchro_a_la_fois(self):
         """File globale : jamais plus d'une synchronisation en exécution."""
         sequencer = SyncSequencer()

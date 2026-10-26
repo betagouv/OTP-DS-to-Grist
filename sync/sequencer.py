@@ -2,22 +2,19 @@
 Séquenceur de synchronisations.
 
 Ordonnance les synchronisations automatiques dans une file globale : une
-seule synchronisation s'exécute à la fois. Une file par document Grist
-conserve l'ordre des étapes d'un même document. Aucune surface HTTP : les
-appelants (la planification) enfilent des étapes, l'état est conservé en
-mémoire.
+seule synchronisation s'exécute à la fois, dans l'ordre d'arrivée. Aucune
+surface HTTP : les appelants (la planification) enfilent des étapes, l'état
+est conservé en mémoire.
 """
 
 import logging
 import threading
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT_SYNCS = 1
 MAX_FINISHED_STEPS = 100
 
 STATUS_PENDING = "pending"
@@ -50,18 +47,20 @@ class SyncSequencer:
     """
     Ordonnanceur de synchronisations en mémoire.
 
-    Les étapes s'exécutent une par une. Une configuration déjà en attente ou
-    en cours n'est pas remise en file. Une étape dont l'appel lève une
-    exception passe en erreur sans empêcher la suite de la file.
+    Les étapes s'exécutent une par une, dans l'ordre d'arrivée. Une
+    configuration déjà en attente ou en cours n'est pas remise en file. Une
+    étape dont l'appel lève une exception passe en erreur sans empêcher la
+    suite de la file.
     """
 
-    def __init__(self, max_concurrent_syncs: int = MAX_CONCURRENT_SYNCS) -> None:
+    def __init__(self) -> None:
+        # Un seul worker : le pool exécute les tâches dans leur ordre de
+        # soumission, il sert donc lui-même de file FIFO globale. Plus d'un
+        # worker ferait tourner en parallèle deux synchros d'un même document.
         self._executor = ThreadPoolExecutor(
-            max_workers=max_concurrent_syncs, thread_name_prefix="sync-sequencer"
+            max_workers=1, thread_name_prefix="sync-sequencer"
         )
         self._lock = threading.Lock()
-        self._queues: dict[str, deque[_Step]] = {}
-        self._active_docs: set[str] = set()
         self._steps: list[_Step] = []
         self._step_counter = 0
 
@@ -96,11 +95,7 @@ class SyncSequencer:
                 fn=fn,
             )
             self._steps.append(step)
-            self._queues.setdefault(grist_doc_id, deque()).append(step)
-
-            if grist_doc_id not in self._active_docs:
-                self._active_docs.add(grist_doc_id)
-                self._executor.submit(self._drain_doc, grist_doc_id)
+            self._executor.submit(self._run_step, step)
 
             return step.step_id
 
@@ -126,35 +121,28 @@ class SyncSequencer:
 
     # --- Helpers privés ---
 
-    def _drain_doc(self, grist_doc_id: str) -> None:
-        """Exécute les étapes en file pour un document, une par une."""
-        while True:
-            with self._lock:
-                queue = self._queues.get(grist_doc_id)
-                if not queue:
-                    self._active_docs.discard(grist_doc_id)
-                    self._queues.pop(grist_doc_id, None)
-                    return
-                step = queue.popleft()
-                step.status = STATUS_RUNNING
-                step.started_at = datetime.now(timezone.utc)
+    def _run_step(self, step: _Step) -> None:
+        """Exécute une étape, appelée par le pool quand vient son tour."""
+        with self._lock:
+            step.status = STATUS_RUNNING
+            step.started_at = datetime.now(timezone.utc)
 
-            try:
-                step.fn()
-                with self._lock:
-                    step.status = STATUS_DONE
-            except Exception:
-                logger.exception(
-                    f"Échec de l'étape {step.step_id} "
-                    f"(config {step.otp_config_id}, document {step.grist_doc_id})"
-                )
-                with self._lock:
-                    step.status = STATUS_ERROR
-            finally:
-                with self._lock:
-                    step.fn = None
-                    step.finished_at = datetime.now(timezone.utc)
-                    self._prune_finished_steps()
+        try:
+            step.fn()
+            with self._lock:
+                step.status = STATUS_DONE
+        except Exception:
+            logger.exception(
+                f"Échec de l'étape {step.step_id} "
+                f"(config {step.otp_config_id}, document {step.grist_doc_id})"
+            )
+            with self._lock:
+                step.status = STATUS_ERROR
+        finally:
+            with self._lock:
+                step.fn = None
+                step.finished_at = datetime.now(timezone.utc)
+                self._prune_finished_steps()
 
     def _prune_finished_steps(self) -> None:
         """Conserve uniquement les dernières étapes terminées."""
