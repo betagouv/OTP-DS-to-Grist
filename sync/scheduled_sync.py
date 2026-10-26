@@ -61,15 +61,17 @@ def scheduled_sync_job(otp_config_id: int, sync_manager: SyncManager) -> None:
     logger.info(
         f"Mise en file de la synchronisation planifiée pour config ID: {otp_config_id}"
     )
-    logger.debug(
-        f"Scheduler running: {scheduler.running}, jobs count: {len(scheduler.get_jobs())}"
-    )
 
     try:
         config = config_manager.load_config_by_id(otp_config_id)
     except ConfigNotFoundError:
         logger.error(f"Configuration {otp_config_id} non trouvée")
         return
+
+    logger.debug(
+        f"Config {otp_config_id} chargée : démarche {config.get('demarche_number')}, "
+        f"document {config['grist_doc_id']}, utilisateur Grist {config.get('grist_user_id')}"
+    )
 
     step_id = sequencer.enqueue(
         otp_config_id=otp_config_id,
