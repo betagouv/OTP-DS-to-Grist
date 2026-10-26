@@ -75,8 +75,7 @@ def _run_sync_and_capture_child_env(manager: SyncManager, config: dict) -> dict:
         patch(
             "sync.sync_manager.grist_doc_access_level", return_value="owners"
         ),
-        patch("sync.sync_manager.create_engine"),
-        patch("sync.sync_manager.sessionmaker"),
+        patch("sync.sync_manager.SessionLocal"),
         patch("sync.sync_manager.ConfigManager"),
     ):
         manager.run_synchronization_task(

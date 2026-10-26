@@ -10,11 +10,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 
 from database.models import UserSchedule
+from database.session import SessionLocal
 from configuration.config_manager import ConfigManager, ConfigNotFoundError
 from sync.sequencer import sequencer
 from sync.sync_manager import SyncManager
@@ -131,8 +130,6 @@ def register_daily_sync_job(sync_manager: SyncManager) -> None:
 
 def _enabled_schedule_config_ids() -> list[int]:
     """Identifiants des configurations dont le planning est activé, par ordre croissant."""
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
 
     try:
@@ -188,8 +185,6 @@ def _run_scheduled_sync_step(
 
 def _disable_schedule(otp_config_id: int) -> None:
     """Désactive le planning d'une configuration ; une erreur est loguée sans relance."""
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
 
     try:

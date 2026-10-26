@@ -3,13 +3,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-def _make_session_mock():
-    """Crée un mock de session SQLAlchemy où filter_by().first() retourne un mock dédié."""
-    mock_db = MagicMock()
-    mock_session_class = MagicMock(return_value=mock_db)
-    return mock_db, mock_session_class
-
-
 def _inline_enqueue(otp_config_id, grist_doc_id, fn):
     """Enfilement synchrone pour les tests : exécute l'étape immédiatement."""
     fn()
@@ -25,11 +18,10 @@ class TestScheduledSyncJob:
     """Tests pour scheduled_sync_job"""
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager")
     def test_success(
-        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
+        self, mock_cm, mock_session_local, mock_sequencer
     ):
         """Synchro réussie : l'étape s'exécute sans désactiver le planning"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -63,14 +55,13 @@ class TestScheduledSyncJob:
             assert args == (mock_cm.load_config_by_id.return_value,)
             assert kwargs["auto"] is True
             assert callable(kwargs["progress_callback"])
-            mock_create_engine.assert_not_called()
+            mock_session_local.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager")
     def test_sync_failure_keeps_schedule_enabled(
-        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
+        self, mock_cm, mock_session_local, mock_sequencer
     ):
         """Échec sync (success=False) : schedule reste activé"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -93,14 +84,13 @@ class TestScheduledSyncJob:
 
             scheduled_sync_job(1, sync_manager)
 
-            mock_create_engine.assert_not_called()
+            mock_session_local.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager")
     def test_api_error_disables_schedule(
-        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
+        self, mock_cm, mock_session_local, mock_sequencer
     ):
         """Erreur API (EXIT_CODE_EXTERNAL_API_ERROR) : schedule désactivé"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -109,8 +99,8 @@ class TestScheduledSyncJob:
 
         mock_sequencer.enqueue.side_effect = _inline_enqueue
 
-        mock_db, mock_session_class = _make_session_mock()
-        mock_sessionmaker.return_value = mock_session_class
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
 
         mock_user_schedule = MagicMock()
         mock_user_schedule.otp_config_id = 1
@@ -140,11 +130,10 @@ class TestScheduledSyncJob:
             assert mock_user_schedule.enabled is False
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager")
     def test_unexpected_exception_keeps_schedule_enabled(
-        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
+        self, mock_cm, mock_session_local, mock_sequencer
     ):
         """Exception inattendue : propagée au séquenceur, qui la journalise et
         marque l'étape en erreur. Le planning reste actif, seule une erreur
@@ -170,14 +159,13 @@ class TestScheduledSyncJob:
             with pytest.raises(RuntimeError):
                 scheduled_sync_job(1, sync_manager)
 
-            mock_create_engine.assert_not_called()
+            mock_session_local.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager")
     def test_grist_read_error_keeps_schedule_enabled(
-        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
+        self, mock_cm, mock_session_local, mock_sequencer
     ):
         """Lecture Grist en échec (EXIT_CODE_GRIST_READ_ERROR) : erreur
         transitoire, schedule toujours actif"""
@@ -205,14 +193,13 @@ class TestScheduledSyncJob:
 
             scheduled_sync_job(1, sync_manager)
 
-            mock_create_engine.assert_not_called()
+            mock_session_local.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager")
     def test_config_not_found(
-        self, mock_cm, mock_sessionmaker, mock_create_engine, mock_sequencer
+        self, mock_cm, mock_session_local, mock_sequencer
     ):
         """Config introuvable : retourne sans crash sans appeler la sync"""
         from configuration.config_manager import ConfigNotFoundError
@@ -271,16 +258,15 @@ class TestDailySyncJob:
 
         assert mock_job.call_count == 2
 
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     def test_lit_les_plannings_actives_a_chaque_execution(
-        self, mock_sessionmaker, mock_create_engine
+        self, mock_session_local
     ):
         """Les plannings sont relus en base : seuls les activés sont enfilés"""
         from sync.scheduled_sync import daily_sync_job
 
-        mock_db, mock_session_class = _make_session_mock()
-        mock_sessionmaker.return_value = mock_session_class
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
         query = mock_db.query.return_value
         query.filter_by.return_value.filter.return_value.order_by.return_value.all.return_value = [
             MagicMock(otp_config_id=3)

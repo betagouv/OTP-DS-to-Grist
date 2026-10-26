@@ -13,8 +13,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, Response, g, jsonify, render_template, request, url_for
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from werkzeug.exceptions import HTTPException
 
 from api.responses import config_not_found_response, error_response
@@ -25,6 +23,7 @@ from configuration.config_manager import (
 )
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
+from database.session import SessionLocal
 from dn.client import get_groups
 from grist.base_url import (
     GristBaseUrlImmutableError,
@@ -82,10 +81,6 @@ DatabaseManager.init_db(DATABASE_URL)
 
 # Instance de ConfigManager
 config_manager = ConfigManager(DATABASE_URL)
-
-# SQLAlchemy setup (doit être avant les fonctions qui l'utilisent)
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Configuration de l'application Flask
 app = Flask(__name__)

@@ -7,12 +7,11 @@ import sys
 import traceback
 from typing import Callable, Any
 from datetime import datetime, timezone
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sync.sync_result_parser import SYNC_METADATA_PREFIX, parse_output
 from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
 from database.models import SyncLog
+from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
 from security.widget_auth import grist_doc_access_level, is_key_write_allowed
 
@@ -234,10 +233,6 @@ class SyncManager:
 
             return result
         finally:
-            engine = create_engine(DATABASE_URL)
-            SessionLocal = sessionmaker(bind=engine)
-            db_session = SessionLocal()
-
             sync_log = SyncLog(
                 grist_user_id=config.get("grist_user_id"),
                 grist_doc_id=config.get("grist_doc_id"),
@@ -252,9 +247,12 @@ class SyncManager:
                 force_full_sync=result.get("force_full_sync"),
                 filters_hash=result.get("filters_hash"),
             )
-            db_session.add(sync_log)
-            db_session.commit()
-            db_session.close()
+            db_session = SessionLocal()
+            try:
+                db_session.add(sync_log)
+                db_session.commit()
+            finally:
+                db_session.close()
 
             try:
                 ConfigManager(DATABASE_URL).fetch_and_store_grist_user_email(

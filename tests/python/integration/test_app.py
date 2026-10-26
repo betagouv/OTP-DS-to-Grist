@@ -1364,14 +1364,12 @@ class TestErrorHandling:
         assert "non trouvée" in data["message"]
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
     def test_scheduled_sync_job_success(
         self,
         mock_load_config,
-        mock_sessionmaker,
-        mock_create_engine,
+        mock_session_local,
         mock_sequencer,
     ):
         """Test exécution réussie d'une synchronisation planifiée"""
@@ -1412,14 +1410,13 @@ class TestErrorHandling:
             )
             assert kwargs["auto"] is True
             assert callable(kwargs["progress_callback"])
-            mock_create_engine.assert_not_called()
+            mock_session_local.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
     def test_scheduled_sync_job_error(
-        self, mock_load_config, mock_sessionmaker, mock_create_engine, mock_sequencer
+        self, mock_load_config, mock_session_local, mock_sequencer
     ):
         """Test sync échouée (success=False) : le planning reste actif"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -1459,13 +1456,13 @@ class TestErrorHandling:
             )
             assert kwargs["auto"] is True
             assert callable(kwargs["progress_callback"])
-            mock_create_engine.assert_not_called()
+            mock_session_local.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
     def test_scheduled_sync_job_external_api_error_disables_schedule(
-        self, mock_load_config, mock_sessionmaker, mock_sequencer
+        self, mock_load_config, mock_session_local, mock_sequencer
     ):
         """Test erreur API externe : schedule désactivé automatiquement"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -1475,8 +1472,7 @@ class TestErrorHandling:
         mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
+        mock_session_local.return_value = mock_db
 
         mock_schedule = MagicMock()
         mock_schedule.otp_config_id = 1
