@@ -15,12 +15,34 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from dn.client import get_pj_natures
+from dn.client import get_pj_ocr_columns
+from dn.extract import pj_ocr_sub_label
 from grist.utils import normalize_column_name
 from utils.constants import DEMARCHES_API_URL
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
+
+# Type de colonne Grist pour chaque type de sous-colonne OCR DN. Mêmes types
+# que ceux dont dn.extract sait lire la valeur (PJ_OCR_VALUE_KEYS, vérifié
+# par les tests).
+PJ_OCR_GRIST_TYPES = {
+    "TextColumn": "Text",
+    "EnumColumn": "Text",
+    "DateColumn": "Date",
+    "IntegerColumn": "Int",
+    "DecimalColumn": "Numeric",
+}
+
+# Repli quand aucun dossier de l'échantillon ne contient la PJ : seules les
+# sous-colonnes RIB sont créées, si le libellé évoque un RIB. Les autres
+# natures le seront à la première synchro qui trouve un dossier.
+PJ_OCR_RIB_FALLBACK = [
+    ("Titulaire", "TextColumn"),
+    ("IBAN", "TextColumn"),
+    ("BIC", "TextColumn"),
+    ("Nom de la Banque", "TextColumn"),
+]
 
 # ========================================
 # DÉTECTION DU TYPE DE DEMANDEUR
@@ -373,10 +395,10 @@ def get_demarche_schema(demarche_number):
             f"Aucune révision active trouvée pour la démarche {demarche_number}"
         )
 
-    # La nature des PJ (RIB...) n'est pas exposée par les descripteurs :
-    # elle décide des sous-colonnes OCR créées par create_columns_from_schema
+    # Les sous-colonnes OCR des PJ ne sont pas exposées par les descripteurs :
+    # elles sont lues sur des dossiers pour create_columns_from_schema
     if _has_piece_justificative(demarche["activeRevision"]):
-        demarche["pj_natures"] = get_pj_natures(demarche_number)
+        demarche["pj_ocr_columns"] = get_pj_ocr_columns(demarche_number)
 
     return demarche
 
@@ -539,7 +561,7 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     repetable_blocks = {}  # Dict au lieu d'une seule liste
     has_carto_fields = False
     descriptor_to_column_id = {}  # {descriptor_id: colonne_id_suffixée stable}
-    pj_natures = demarche_schema.get("pj_natures") or {}
+    pj_ocr_columns = demarche_schema.get("pj_ocr_columns") or {}
 
     # Traiter les descripteurs de champs
     if demarche_schema.get("activeRevision") and demarche_schema["activeRevision"].get(
@@ -553,21 +575,16 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
             if descriptor.get("__typename") == "PieceJustificativeChampDescriptor":
                 normalized_label = normalize_column_name(champ_label)
 
-                if _is_rib(descriptor, pj_natures):
-                    rib_suffixes = ["titulaire", "iban", "bic", "nom_de_la_banque"]
-                    for suffix in rib_suffixes:
-                        rib_col_id = f"{normalized_label}_{suffix}"
-                        if not any(col["id"] == rib_col_id for col in champ_columns):
-                            # ✅ FORMAT AVEC FIELDS
-                            champ_columns.append(
-                                {
-                                    "id": rib_col_id,
-                                    "fields": {
-                                        "type": "Text",
-                                        "label": f"{champ_label} - {suffix}",
-                                    },
-                                }
-                            )
+                for column_id, column_type, label in _pj_ocr_columns(
+                    descriptor, pj_ocr_columns
+                ):
+                    if not any(col["id"] == column_id for col in champ_columns):
+                        champ_columns.append(
+                            {
+                                "id": column_id,
+                                "fields": {"type": column_type, "label": label},
+                            }
+                        )
 
                 # Ajouter aussi la colonne principale pour le nom du fichier
                 #  GESTION DES DOUBLONS
@@ -639,6 +656,19 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
                         counter += 1
 
                     block_columns.append({"id": normalized_label, "type": column_type})
+
+                    # Sous-colonnes OCR d'une pièce justificative du bloc
+                    if (
+                        inner_descriptor.get("__typename")
+                        == "PieceJustificativeChampDescriptor"
+                    ):
+                        for column_id, ocr_type, _ in _pj_ocr_columns(
+                            inner_descriptor, pj_ocr_columns
+                        ):
+                            if not any(col["id"] == column_id for col in block_columns):
+                                block_columns.append(
+                                    {"id": column_id, "type": ocr_type}
+                                )
 
                 # Ajouter les colonnes géographiques si nécessaire pour CE bloc
                 if block_has_carto:
@@ -1366,21 +1396,48 @@ def get_demarche_schema_enhanced(demarche_number: int, prefer_robust: bool = Tru
 
 
 def _has_piece_justificative(active_revision: dict[str, Any]) -> bool:
-    """Indique si la révision contient au moins une pièce justificative (hors blocs)."""
+    """Indique si la révision contient au moins une pièce justificative, blocs inclus."""
+    descriptors = active_revision.get("champDescriptors") or []
+    inner_descriptors = [
+        inner
+        for descriptor in descriptors
+        for inner in descriptor.get("champDescriptors") or []
+    ]
     return any(
         descriptor.get("__typename") == "PieceJustificativeChampDescriptor"
-        for descriptor in active_revision.get("champDescriptors") or []
+        for descriptor in descriptors + inner_descriptors
     )
 
 
-def _is_rib(descriptor: dict[str, Any], pj_natures: dict[str, str]) -> bool:
+def _pj_ocr_columns(
+    descriptor: dict[str, Any], pj_ocr_columns: dict[str, list[tuple[str, str]]]
+) -> list[tuple[str, str, str]]:
     """
-    Indique si une pièce justificative est un RIB (sous-colonnes OCR).
-    La nature fait foi quand elle est connue ; sinon (démarche sans dossier,
-    erreur de récupération), repli sur les mots-clés du libellé.
+    Sous-colonnes OCR d'une pièce justificative : (id de colonne, type Grist,
+    libellé affiché).
+
+    Les libellés et types viennent de DN (get_pj_ocr_columns). L'id est le nom
+    normalisé de "<libellé du champ> <sous-libellé>", comme dans
+    dn.extract.iter_pj_ocr_columns. Les types que l'extraction ne sait pas
+    lire sont ignorés.
     """
-    nature = pj_natures.get(descriptor.get("id"))
-    if nature:
-        return nature == "RIB"
-    label = (descriptor.get("label") or "").lower()
-    return "rib" in label or "iban" in label
+    champ_label = descriptor.get("label") or ""
+    dn_columns = pj_ocr_columns.get(descriptor.get("id"))
+    if dn_columns is None:
+        label = champ_label.lower()
+        is_rib = "rib" in label or "iban" in label
+        sub_labels = PJ_OCR_RIB_FALLBACK if is_rib else []
+    else:
+        sub_labels = [
+            (pj_ocr_sub_label(dn_label), dn_type) for dn_label, dn_type in dn_columns
+        ]
+
+    return [
+        (
+            normalize_column_name(f"{champ_label} {sub_label}"),
+            PJ_OCR_GRIST_TYPES[dn_type],
+            f"{champ_label} – {sub_label}",
+        )
+        for sub_label, dn_type in sub_labels
+        if dn_type in PJ_OCR_GRIST_TYPES
+    ]

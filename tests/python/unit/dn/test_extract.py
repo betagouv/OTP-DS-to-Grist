@@ -1,6 +1,10 @@
 import pytest
 
-from dn.extract import dossier_to_flat_data, extract_champ_values
+from dn.extract import (
+    dossier_to_flat_data,
+    extract_champ_values,
+    iter_pj_ocr_columns,
+)
 from grist.utils import normalize_column_name
 from schema_utils import create_columns_from_schema
 
@@ -548,3 +552,145 @@ class TestExtractChampValuesPieceJustificativeOcr:
             "rib_bic",
             "rib_nom_de_la_banque",
         } <= labels
+
+
+def make_avis_impot_champ(label="Avis"):
+    """PieceJustificativeChamp de nature AVIS_IMPOT : sous-colonnes typées, avec les
+    alias demandés par ChampFragment pour les types non textuels."""
+    return {
+        "__typename": "PieceJustificativeChamp",
+        "id": "id_avis",
+        "champDescriptorId": "desc_avis",
+        "label": label,
+        "files": [{"filename": "avis.pdf"}],
+        "columns": [
+            {"__typename": "AttachmentsColumn", "id": "c0", "label": label},
+            {
+                "__typename": "TextColumn",
+                "id": "c1",
+                "label": f"{label} – Déclarant 1",
+                "value": "Jean Dupont",
+            },
+            {
+                "__typename": "IntegerColumn",
+                "id": "c2",
+                "label": f"{label} – Revenu fiscal de référence",
+                "integerValue": "45000",
+            },
+            {
+                "__typename": "DecimalColumn",
+                "id": "c3",
+                "label": f"{label} – Nombre de parts",
+                "decimalValue": 2.5,
+            },
+            {
+                "__typename": "DateColumn",
+                "id": "c4",
+                "label": f"{label} – Date de mise en recouvrement",
+                "dateValue": "2025-07-31",
+            },
+            {
+                "__typename": "EnumColumn",
+                "id": "c5",
+                "label": f"{label} – Département",
+                "value": "34",
+            },
+        ],
+    }
+
+
+class TestIterPjOcrColumns:
+    """Tests pour iter_pj_ocr_columns"""
+
+    def _values(self, champ):
+        return {label: value for _, label, value in iter_pj_ocr_columns(champ)}
+
+    def test_valeurs_typees(self):
+        assert self._values(make_avis_impot_champ()) == {
+            "Avis Déclarant 1": "Jean Dupont",
+            "Avis Revenu fiscal de référence": "45000",
+            "Avis Nombre de parts": 2.5,
+            "Avis Date de mise en recouvrement": "2025-07-31",
+            "Avis Département": "34",
+        }
+
+    def test_zero_conserve(self):
+        champ = make_avis_impot_champ()
+        champ["columns"][2]["integerValue"] = 0
+        assert self._values(champ)["Avis Revenu fiscal de référence"] == 0
+
+    @pytest.mark.parametrize("empty", [None, ""])
+    def test_valeur_vide_ignoree(self, empty):
+        champ = make_avis_impot_champ()
+        champ["columns"][1]["value"] = empty
+        assert "Avis Déclarant 1" not in self._values(champ)
+
+    def test_fichiers_et_types_inconnus_ignores(self):
+        champ = make_avis_impot_champ()
+        champ["columns"] = [
+            {"__typename": "AttachmentsColumn", "id": "a", "label": "Avis"},
+            {
+                "__typename": "BooleanColumn",
+                "id": "b",
+                "label": "Avis – Inconnue",
+                "value": True,
+            },
+        ]
+        assert self._values(champ) == {}
+
+    def test_sans_colonnes(self):
+        champ = make_avis_impot_champ()
+        champ["columns"] = None
+        assert self._values(champ) == {}
+
+
+class TestExtractChampValuesPieceJustificativeOcrTypees:
+    """Tests pour extract_champ_values - sous-colonnes OCR non textuelles."""
+
+    def test_entrees_typees_avec_nom_de_fichier(self):
+        result = extract_champ_values(make_avis_impot_champ())
+        by_label = {item["label"]: item for item in result}
+
+        assert by_label["Avis"]["value"] == "avis.pdf"
+        assert by_label["Avis Nombre de parts"]["value"] == 2.5
+        assert by_label["Avis Nombre de parts"]["type"] == "DecimalColumn"
+        assert by_label["Avis Date de mise en recouvrement"]["type"] == "DateColumn"
+        assert len(result) == 6
+
+    def test_prefixe_de_bloc(self):
+        result = extract_champ_values(make_avis_impot_champ(), prefix="Bloc_1_")
+        labels = {item["label"] for item in result}
+        assert "Bloc_1_Avis Nombre de parts" in labels
+
+    def test_ids_correspondent_aux_colonnes_du_schema(self):
+        champ = make_avis_impot_champ()
+        schema = make_schema_with_pj("Avis", descriptor_id="desc_avis")
+        # Schéma et extraction partent des mêmes colonnes DN
+        schema["pj_ocr_columns"] = {
+            "desc_avis": [
+                (col["label"], col["__typename"])
+                for col in champ["columns"]
+                if col["__typename"] != "AttachmentsColumn"
+            ]
+        }
+        column_types, _ = create_columns_from_schema(schema)
+        schema_types = {
+            col["id"]: col.get("type") or col["fields"]["type"]
+            for col in column_types["champs"]
+        }
+
+        ocr_types = {
+            normalize_column_name(item["label"]): schema_types.get(
+                normalize_column_name(item["label"])
+            )
+            for item in extract_champ_values(champ)
+        }
+
+        assert ocr_types == {
+            "avis": "Text",
+            "avis_declarant_1": "Text",
+            "avis_revenu_fiscal_de_reference": "Int",
+            "avis_nombre_de_parts": "Numeric",
+            "avis_date_de_mise_en_recouvrement": "Date",
+            "avis_departement": "Text",
+        }

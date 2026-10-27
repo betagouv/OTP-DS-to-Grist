@@ -62,6 +62,9 @@ class GristClient:
         }
         log(f"Initialisation du client Grist avec l'URL de base: {self.base_url}")
         self._session: RateLimitedSession | None = None
+        # (table, colonne) déjà signalées : une clé ignorée n'est loggée
+        # qu'une fois par run, pas à chaque lot de dossiers.
+        self._reported_ignored_columns: set[tuple[str, str]] = set()
 
     def _get_session(self) -> RateLimitedSession:
         """Session HTTP du client, créée paresseusement (retry 429 + 5xx)."""
@@ -588,6 +591,7 @@ class GristClient:
         to_create = []
         to_update = []
         total_rejected = 0
+        ignored_columns = set()
 
         for row_dict in dossiers_list:
             # Filtrer les colonnes qui existent dans la table
@@ -599,6 +603,8 @@ class GristClient:
                     or key == "dossier_number"
                 ):
                     filtered_row_dict[key] = value
+                else:
+                    ignored_columns.add(key)
 
             # Obtenir le numéro de dossier
             dossier_number = _dossier_number(filtered_row_dict)
@@ -632,6 +638,8 @@ class GristClient:
             else:
                 # Création d'un nouvel enregistrement
                 to_create.append({"fields": filtered_row_dict})
+
+        self._report_ignored_columns(table_id, ignored_columns)
 
         # Variables pour suivre les succès
         total_success = 0
@@ -785,6 +793,25 @@ class GristClient:
             dossier_number = _dossier_number(record["fields"])
             if dossier_number:
                 existing_records[str(dossier_number)] = record_id
+
+    def _report_ignored_columns(self, table_id: str, columns: set[str]) -> None:
+        """
+        Signale les clés absentes de la table, écartées de l'écriture.
+        Chaque (table, colonne) n'est signalée qu'une fois par run.
+        """
+        new_columns = {
+            column
+            for column in columns
+            if (table_id, column) not in self._reported_ignored_columns
+        }
+        if not new_columns:
+            return
+
+        self._reported_ignored_columns |= {(table_id, column) for column in new_columns}
+        log(
+            f"Colonnes absentes de la table {table_id}, valeurs ignorées : "
+            f"{', '.join(sorted(new_columns))}"
+        )
 
     def _warn_record_too_large(self, records: list[dict[str, Any]]) -> None:
         """Journalise un envoi qui dépasse à lui seul la limite de taille de Grist."""

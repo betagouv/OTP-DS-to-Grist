@@ -10,7 +10,7 @@ from dn.client import (
     get_demarche_dossiers_labels_only,
     get_demarche_groupe_numbers,
     get_groups,
-    get_pj_natures,
+    get_pj_ocr_columns,
     get_session_with_retries,
     iter_demarche_dossier_pages,
     iter_filtered_dossier_pages,
@@ -121,8 +121,8 @@ class TestGetGroups:
         assert "Network error" in capsys.readouterr().out
 
 
-class TestGetPjNatures:
-    """Tests pour get_pj_natures"""
+class TestGetPjOcrColumns:
+    """Tests pour get_pj_ocr_columns"""
 
     @staticmethod
     def _session(mock_session_factory, response):
@@ -131,73 +131,126 @@ class TestGetPjNatures:
         mock_session_factory.return_value = session
         return session
 
-    @patch("dn.client.get_session_with_retries")
-    def test_success_fusionne_les_natures_des_dossiers(self, mock_session_factory):
-        """Natures lues sur plusieurs dossiers, champs non-PJ ignorés"""
-        response = _mock_response(
+    @staticmethod
+    def _response(dossiers_champs):
+        return _mock_response(
             json_data={
                 "data": {
                     "demarche": {
                         "dossiers": {
-                            "nodes": [
-                                {
-                                    "champs": [
-                                        {
-                                            "__typename": "PieceJustificativeChamp",
-                                            "champDescriptorId": "pj_rib",
-                                            "nature": "RIB",
-                                        },
-                                        {
-                                            "__typename": "TextChamp",
-                                            "champDescriptorId": "txt",
-                                        },
-                                    ]
-                                },
-                                {
-                                    "champs": [
-                                        {
-                                            "__typename": "PieceJustificativeChamp",
-                                            "champDescriptorId": "pj_autre",
-                                            "nature": "NON_SPECIFIE",
-                                        }
-                                    ]
-                                },
-                            ]
+                            "nodes": [{"champs": champs} for champs in dossiers_champs]
                         }
                     }
                 }
             }
         )
+
+    @patch("dn.client.get_session_with_retries")
+    def test_colonnes_des_pj_hors_fichiers(self, mock_session_factory):
+        """Libellés et types DN, colonne des fichiers et champs non-PJ ignorés,
+        PJ sans OCR -> liste vide"""
+        response = self._response(
+            [
+                [
+                    {
+                        "__typename": "PieceJustificativeChamp",
+                        "champDescriptorId": "pj_rib",
+                        "columns": [
+                            {"__typename": "AttachmentsColumn", "label": "RIB"},
+                            {"__typename": "TextColumn", "label": "RIB – IBAN"},
+                        ],
+                    },
+                    {"__typename": "TextChamp", "champDescriptorId": "txt"},
+                ],
+                [
+                    {
+                        "__typename": "PieceJustificativeChamp",
+                        "champDescriptorId": "pj_autre",
+                        "columns": [{"__typename": "AttachmentsColumn", "label": "PJ"}],
+                    }
+                ],
+            ]
+        )
         session = self._session(mock_session_factory, response)
 
-        assert get_pj_natures(123) == {"pj_rib": "RIB", "pj_autre": "NON_SPECIFIE"}
+        assert get_pj_ocr_columns(123) == {
+            "pj_rib": [("RIB – IBAN", "TextColumn")],
+            "pj_autre": [],
+        }
         variables = session.post.call_args.kwargs["json"]["variables"]
         assert variables["demarcheNumber"] == 123
 
     @patch("dn.client.get_session_with_retries")
-    def test_aucun_dossier_retourne_vide(self, mock_session_factory):
-        response = _mock_response(
-            json_data={"data": {"demarche": {"dossiers": {"nodes": []}}}}
+    def test_colonnes_des_blocs_repetables(self, mock_session_factory):
+        """PJ situées dans les lignes d'un bloc répétable"""
+        response = self._response(
+            [
+                [
+                    {
+                        "__typename": "RepetitionChamp",
+                        "champDescriptorId": "bloc",
+                        "rows": [
+                            {"champs": []},
+                            {
+                                "champs": [
+                                    {
+                                        "__typename": "PieceJustificativeChamp",
+                                        "champDescriptorId": "pj_avis",
+                                        "columns": [
+                                            {
+                                                "__typename": "DecimalColumn",
+                                                "label": "Avis – Nombre de parts",
+                                            }
+                                        ],
+                                    }
+                                ]
+                            },
+                        ],
+                    }
+                ]
+            ]
         )
         self._session(mock_session_factory, response)
-        assert get_pj_natures(123) == {}
+
+        assert get_pj_ocr_columns(123) == {
+            "pj_avis": [("Avis – Nombre de parts", "DecimalColumn")]
+        }
+
+    @patch("dn.client.get_session_with_retries")
+    def test_liste_non_vide_conservee_entre_dossiers(self, mock_session_factory):
+        """Une liste vide sur un dossier n'écrase pas celle d'un autre dossier"""
+        pj = {"__typename": "PieceJustificativeChamp", "champDescriptorId": "pj"}
+        response = self._response(
+            [
+                [{**pj, "columns": [{"__typename": "TextColumn", "label": "PJ – A"}]}],
+                [{**pj, "columns": []}],
+            ]
+        )
+        self._session(mock_session_factory, response)
+
+        assert get_pj_ocr_columns(123) == {"pj": [("PJ – A", "TextColumn")]}
+
+    @patch("dn.client.get_session_with_retries")
+    def test_aucun_dossier_retourne_vide(self, mock_session_factory):
+        self._session(mock_session_factory, self._response([]))
+        assert get_pj_ocr_columns(123) == {}
 
     @patch("dn.client.get_session_with_retries")
     def test_statut_http_en_erreur_retourne_vide(self, mock_session_factory, capsys):
         self._session(mock_session_factory, _mock_response(status_code=500))
-        assert get_pj_natures(123) == {}
+        assert get_pj_ocr_columns(123) == {}
         assert "500" in capsys.readouterr().out
 
     @patch("dn.client.get_session_with_retries")
     def test_erreurs_graphql_retourne_vide(self, mock_session_factory, capsys):
         response = _mock_response(json_data={"errors": [{"message": "Boom"}]})
         self._session(mock_session_factory, response)
-        assert get_pj_natures(123) == {}
+        assert get_pj_ocr_columns(123) == {}
         assert "Boom" in capsys.readouterr().out
 
     @patch("dn.client.get_session_with_retries", side_effect=Exception("Network"))
     def test_exception_retourne_vide(self, mock_session_factory, capsys):
-        assert get_pj_natures(123) == {}
+        assert get_pj_ocr_columns(123) == {}
         assert "Network" in capsys.readouterr().out
 
 

@@ -1288,6 +1288,63 @@ class TestUpsertMultipleDossiersInGrist:
         with pytest.raises(ValueError):
             client.upsert_multiple_dossiers_in_grist("dossiers", [])
 
+    def _upsert_with_columns(self, table_id: str, rows: list[dict]) -> None:
+        column_cache = MagicMock()
+        column_cache.get_columns.return_value = {"name", "dossier_number"}
+        session = MagicMock()
+        session.patch.return_value = MagicMock(status_code=200)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.upsert_multiple_dossiers_in_grist(
+                table_id,
+                rows,
+                existing_records={"1001": 5, "1002": 6},
+                column_cache=column_cache,
+            )
+
+    def test_logs_ignored_columns(self):
+        """clés absentes de la table -> un seul log listant toutes les clés"""
+        with patch("grist.client.log") as mock_log:
+            self._upsert_with_columns(
+                "champs",
+                [
+                    {"dossier_number": "1001", "name": "x", "rib_iban": "FR76"},
+                    {"dossier_number": "1002", "name": "y", "avis_nombre_de_parts": 2},
+                ],
+            )
+
+        messages = [
+            c.args[0] for c in mock_log.call_args_list if "ignorées" in c.args[0]
+        ]
+        assert messages == [
+            "Colonnes absentes de la table champs, valeurs ignorées : "
+            "avis_nombre_de_parts, rib_iban"
+        ]
+
+    def test_logs_ignored_columns_once_per_run(self):
+        """même clé ignorée sur plusieurs lots -> loggée une seule fois par table"""
+        rows = [{"dossier_number": "1001", "name": "x", "rib_iban": "FR76"}]
+        with patch("grist.client.log") as mock_log:
+            self._upsert_with_columns("champs", rows)
+            self._upsert_with_columns("champs", rows)
+            self._upsert_with_columns("annotations", rows)
+
+        messages = [
+            c.args[0] for c in mock_log.call_args_list if "ignorées" in c.args[0]
+        ]
+        assert messages == [
+            "Colonnes absentes de la table champs, valeurs ignorées : rib_iban",
+            "Colonnes absentes de la table annotations, valeurs ignorées : rib_iban",
+        ]
+
+    def test_no_log_without_ignored_columns(self):
+        """toutes les clés existent -> aucun log de clés ignorées"""
+        with patch("grist.client.log") as mock_log:
+            self._upsert_with_columns(
+                "champs", [{"dossier_number": "1001", "name": "x"}]
+            )
+
+        assert not [c for c in mock_log.call_args_list if "ignorées" in c.args[0]]
+
 
 class TestUpsertMultipleDossiersCache:
     """Cache des dossiers existants passé par l'appelant à

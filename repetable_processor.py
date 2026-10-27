@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 
+from dn.extract import iter_pj_ocr_columns
 from grist.client import GristClient, GristReadError
 from grist.formatter import format_value, normalize_dossier_number
 from grist.utils import normalize_column_name
@@ -672,6 +673,17 @@ def process_repetables_batch(
                                             column_type,
                                             dossier_number=dossier_number,
                                             champ_label=normalized_label,
+                                        )
+
+                                # Sous-colonnes OCR d'une pièce justificative
+                                if field["__typename"] == "PieceJustificativeChamp":
+                                    for _, ocr_label, ocr_value in iter_pj_ocr_columns(field):
+                                        ocr_column = normalize_column_name(ocr_label)
+                                        row_data[ocr_column] = format_value(
+                                            ocr_value,
+                                            block_column_types.get(ocr_column, "Text"),
+                                            dossier_number=dossier_number,
+                                            champ_label=ocr_column,
                                         )
 
                                 # Traitement des champs cartographiques
