@@ -43,7 +43,15 @@ pip-audit = "^2.10.1"
 shell = "python dev.py"
 
 [tool.poe.tasks.test]
-cmd = "pytest"
+# Les tests sur base réelle ne sont lancés que par test-db (Docker requis)
+cmd = "pytest --ignore=tests/python/db"
+
+[tool.poe.tasks.test-db]
+help = "Lance les tests sur base réelle (base <nom>_test du service docker db)"
+sequence = [
+  { cmd = "docker compose up -d --wait db" },
+  { script = "tests.python.db.runner:main" },
+]
 
 [tool.poe.tasks.test-coverage]
 help = "Lance les tests avec rapport de couverture"

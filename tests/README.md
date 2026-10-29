@@ -22,12 +22,18 @@ Tests qui utilisent des **composants réels** (client Flask, DB).
 Ces tests vérifient que les pièces s'assemblent correctement.
 Pour le moment, contient surtout des tests de route d'API Flask.
 
+### db/
+
+Tests sur une **vraie base PostgreSQL** (service docker `db`), lancés
+uniquement par `poe test-db` et exclus de `poe test`. Voir [python/db/README.md](python/db/README.md).
+
 ### Commandes
 
 ```sh
 poe test # Lancer tout les tests
 pytest tests/python/unit/ # Lancer seulement les tests unitaires
 pytest tests/python/integration/ # Lancer seulement les tests d'intégration
+poe test-db # Lancer les tests sur base réelle (démarre le service docker db)
 pytest -k "nom_du_test"  # Lancer un test spécifique
 ```
 

@@ -37,6 +37,13 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Permet à `docker compose up --wait` d'attendre que PostgreSQL accepte
+    # les connexions (utilisé par `poe test-db`)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 5s
+      retries: 15
 
 volumes:
   postgres_data:

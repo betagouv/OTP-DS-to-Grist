@@ -11,5 +11,6 @@ voir [../README.md](../README.md).
   gestionnaire de configuration et authentification simulés) réutilisé par les
   tests, plutôt que chaque test le recrée de son côté.
 - Garantir l'isolation : aucune dépendance externe réelle (réseau, base de
-  production) n'est sollicitée pendant les tests.
+  production) n'est sollicitée pendant les tests. Seule exception : `db/`,
+  sur une base de test dédiée fournie explicitement.
 - Couvrir les cas nominaux ET les cas d'erreur.

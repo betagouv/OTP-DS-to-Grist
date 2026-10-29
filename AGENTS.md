@@ -58,6 +58,17 @@ Le projet contient deux frontends coexistants :
 - Toujours vérifier si une fonctionnalité demandée existe déjà dans le legacy avant de la
   coder from scratch
 
+### Environnements d'exécution
+
+- **Développement local** : sans Docker (Python et PostgreSQL sur l'hôte).
+  Doit rester possible : ne pas rendre Docker nécessaire au lancement de
+  l'application ni à `poe test`. Un mode local avec Docker existe en option.
+- **Codespace** : Docker (devcontainer basé sur `docker-compose.yml`).
+- **Tests sur base réelle** (`poe test-db`, CI) : Docker, service `db`
+  (PostgreSQL 16, version de la production).
+- **Déploiement** : Scalingo via buildpack et `Procfile`, sans Docker.
+  Le `Dockerfile` ne sert pas en production.
+
 ### Contexte d'évolution
 
 L'application gère initialement une synchronisation unique (une démarche DS vers un document Grist).

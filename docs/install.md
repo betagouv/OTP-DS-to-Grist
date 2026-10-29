@@ -142,6 +142,9 @@ Vérifie les vulnérabilités des dépendances Python (`pip-audit`) et JavaScrip
 
 ## Mode développement avec Docker
 
+Docker est facultatif en local. Il est utilisé par le Codespace et par
+`poe test-db`, pas par le déploiement.
+
 ### Prérequis
 
 - **Docker** ([Télécharger Docker](https://www.docker.com/products/docker-desktop))
