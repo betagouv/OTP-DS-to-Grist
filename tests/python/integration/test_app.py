@@ -2371,7 +2371,7 @@ class TestApiStartSyncAll:
     def test_starts_series_with_complete_configs_only(
         self, mock_start_series, client, monkeypatch
     ):
-        """Seules les démarches sauvegardées et complètes sont envoyées, dans l'ordre"""
+        """Seules les démarches sauvegardées et complètes sont envoyées"""
         incomplete = {**_complete_config(2, "222"), "ds_api_token": ""}
         configs = [_complete_config(1, "111"), incomplete, _complete_config(3, "333")]
         monkeypatch.setattr(
@@ -2387,12 +2387,32 @@ class TestApiStartSyncAll:
         data = json.loads(response.data)
         assert data["success"] is True
         assert data["syncs"] == [
-            {"otp_config_id": 1, "demarche_number": "111", "task_id": "task_1"},
-            {"otp_config_id": 3, "demarche_number": "333", "task_id": "task_2"},
+            {"otp_config_id": 3, "demarche_number": "333", "task_id": "task_1"},
+            {"otp_config_id": 1, "demarche_number": "111", "task_id": "task_2"},
         ]
         series_key, sent_configs = mock_start_series.call_args.args
         assert series_key == ("userA", "docA")
-        assert [c["otp_config_id"] for c in sent_configs] == [1, 3]
+        assert [c["otp_config_id"] for c in sent_configs] == [3, 1]
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_series_follows_screen_order(self, mock_start_series, client, monkeypatch):
+        """Comme à l'écran, la démarche la plus récente (id le plus grand) passe d'abord"""
+        configs = [
+            _complete_config(5, "555"),
+            _complete_config(12, "1212"),
+            _complete_config(8, "888"),
+        ]
+        monkeypatch.setattr(
+            app_module.config_manager,
+            "load_config",
+            lambda grist_user_id, grist_doc_id: [dict(c) for c in configs],
+        )
+        mock_start_series.return_value = ["task_1", "task_2", "task_3"]
+
+        client.post("/api/start-sync-all")
+
+        _, sent_configs = mock_start_series.call_args.args
+        assert [c["otp_config_id"] for c in sent_configs] == [12, 8, 5]
 
     @patch.object(sync_manager, "start_sync_series")
     def test_loads_configs_of_token_identity(

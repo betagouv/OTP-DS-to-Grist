@@ -101,6 +101,27 @@ describe('InternalApi', () => {
     })
   })
 
+  describe('startSyncAll', () => {
+    it('calls POST /api/start-sync-all and returns json', async () => {
+      const response = { success: true, syncs: [{ otp_config_id: 1, demarche_number: '111', task_id: 'task_1' }] }
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(response)
+      })
+
+      const result = await api.startSyncAll()
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/start-sync-all', { method: 'POST' })
+      expect(result).toEqual(response)
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 409 })
+
+      await expect(api.startSyncAll()).rejects.toThrow('Erreur HTTP 409')
+    })
+  })
+
   describe('testConnection', () => {
     it('calls POST /api/test-connection with body', async () => {
       globalThis.fetch.mockResolvedValue({

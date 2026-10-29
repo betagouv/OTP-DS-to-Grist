@@ -3,6 +3,7 @@ const ROUTES = {
   GROUPS: '/api/groups',
   SCHEDULE: '/api/schedule',
   START_SYNC: '/api/start-sync',
+  START_SYNC_ALL: '/api/start-sync-all',
   SYNC_LOG_LATEST: '/api/sync-log/latest',
   TEST_CONNECTION: '/api/test-connection'
 }
@@ -42,6 +43,10 @@ class InternalApi {
       headers: JSON_HEADERS,
       body: JSON.stringify({ otp_config_id: otpConfigId })
     })
+  }
+
+  startSyncAll() {
+    return request(ROUTES.START_SYNC_ALL, { method: 'POST' })
   }
 
   testConnection(body) {

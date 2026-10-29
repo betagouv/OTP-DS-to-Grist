@@ -4,11 +4,15 @@ import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
-import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { useSyncTask } from '../composables/useSyncTask'
 
-const { totalDemarches, demarcheIndex } = useDemarcheContext()
-const { currentTaskId, setCurrentTaskId } = useSyncTask()
+const {
+  currentTaskId,
+  demarcheNumber,
+  demarcheIndex,
+  totalDemarches,
+  finishCurrentTask
+} = useSyncTask()
 const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
 const task = ref(null)
 const socket = ref(null)
@@ -40,7 +44,9 @@ onMounted(() => {
       emit('sync-started')
       emit('sync-running-changed', true)
     } else if (data.task.status === 'completed' || data.task.status === 'error') {
-      setCurrentTaskId(null)
+      // Série : la démarche suivante prend le relais, rien n'est terminé
+      if (finishCurrentTask()) return
+
       emit('sync-running-changed', false)
       emit('sync-finished', {
         status: data.task.status,
@@ -73,7 +79,9 @@ onUnmounted(() => {
     <div class="fr-card__body">
       <div class="fr-card__content fr-mb-3w">
         <h2 class="fr-card__title">Synchronisation des données</h2>
-        <p v-if="totalDemarches > 0" class="fr-text--bold fr-mb-2w">{{ demarcheIndex }}/{{ totalDemarches }} démarche(s) synchronisée(s)</p>
+        <p v-if="demarcheNumber" class="fr-text--bold fr-mb-2w">
+          Démarche n°{{ demarcheNumber }}<template v-if="totalDemarches > 1"> — {{ demarcheIndex }}/{{ totalDemarches }}</template>
+        </p>
         <p class="fr-mb-2w">{{ task.message }}</p>
         <p class="fr-text--bold fr-mb-1w">Progression</p>
         <div class="progress-wrapper">

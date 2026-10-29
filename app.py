@@ -845,13 +845,18 @@ def api_start_sync_all():
     grist_doc_id = str(identity.get("docId") or "")
 
     try:
-        configs = [
-            config
-            for config in config_manager.load_config(
-                grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
-            )
-            if config.get("otp_config_id") and not missing_sync_fields(config)
-        ]
+        # Ordre de l'écran (front, sortConfigs) : la plus récente d'abord
+        configs = sorted(
+            (
+                config
+                for config in config_manager.load_config(
+                    grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+                )
+                if config.get("otp_config_id") and not missing_sync_fields(config)
+            ),
+            key=lambda config: config["otp_config_id"],
+            reverse=True,
+        )
 
         if not configs:
             return jsonify(
