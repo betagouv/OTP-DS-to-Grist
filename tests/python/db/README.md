@@ -18,6 +18,8 @@ SQL brut par `DatabaseManager` et les modèles ORM de `database/models.py`.
   reste utilisable sans Docker.
 - Garde-fou : le nom de la base doit se terminer par `_test`, les tests
   supprimant les tables de l'application.
+- Seule la base est réelle : les autres dépendances externes (API Grist,
+  Démarches numériques) restent simulées.
 - La base de test est créée automatiquement si elle n'existe pas.
 - Chaque test part d'une base vidée de ces tables (fixture `empty_database`).
 

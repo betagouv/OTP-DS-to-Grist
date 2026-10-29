@@ -4,9 +4,12 @@ from collections.abc import Iterator
 
 import psycopg2
 import pytest
+from cryptography.fernet import Fernet
 from psycopg2 import sql
 from sqlalchemy import Engine, create_engine, make_url, text
+from sqlalchemy.orm import Session, sessionmaker
 
+from database.database_manager import DatabaseManager
 from database.models import Base
 from tests.python.db.runner import TEST_DATABASE_SUFFIX, TEST_DATABASE_URL_ENV
 
@@ -57,6 +60,36 @@ def empty_database(engine: Engine) -> Engine:
         connection.execute(text(f"DROP TABLE IF EXISTS {tables} CASCADE"))
 
     return engine
+
+
+@pytest.fixture
+def initialized_database(empty_database: Engine, database_url: str) -> Engine:
+    """Base de test au schéma créé par le SQL de DatabaseManager, sans données."""
+    DatabaseManager.init_db(database_url)
+
+    return empty_database
+
+
+@pytest.fixture
+def db_session(initialized_database: Engine) -> Iterator[Session]:
+    """Session ORM sur la base de test initialisée."""
+    session = sessionmaker(bind=initialized_database)()
+
+    yield session
+
+    session.close()
+
+
+@pytest.fixture
+def encryption_key(monkeypatch: pytest.MonkeyPatch) -> str:
+    """
+    Clé Fernet valide : celle de tests/python/conftest.py ne l'est pas, ce qui
+    suffit aux tests mockés mais pas au chiffrement réel des jetons.
+    """
+    key = Fernet.generate_key().decode()
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+
+    return key
 
 
 # --- Fonctions privées ---
