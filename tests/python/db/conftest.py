@@ -6,12 +6,15 @@ import psycopg2
 import pytest
 from cryptography.fernet import Fernet
 from psycopg2 import sql
-from sqlalchemy import Engine, create_engine, make_url, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import Engine, make_url, text
+from sqlalchemy.orm import Session
 
 from database.database_manager import DatabaseManager
 from database.models import Base
-from tests.python.db.runner import TEST_DATABASE_SUFFIX, TEST_DATABASE_URL_ENV
+from database.session import SessionLocal
+from database.session import engine as app_engine
+from tests.python.db.runner import TEST_DATABASE_URL_ENV
+from utils.constants import DATABASE_URL
 
 # Base présente sur tout serveur PostgreSQL, utilisée pour créer la base de test
 MAINTENANCE_DATABASE = "postgres"
@@ -20,35 +23,23 @@ MAINTENANCE_DATABASE = "postgres"
 @pytest.fixture(scope="session")
 def database_url() -> str:
     """
-    URL de la base de test, créée si besoin ; les tests sont ignorés si elle
-    n'est pas fournie.
-    """
-    url = os.getenv(TEST_DATABASE_URL_ENV)
+    URL de la base de test, telle que l'application la reçoit (DATABASE_URL),
+    créée si besoin ; les tests sont ignorés si elle n'est pas fournie.
 
-    if not url:
+    Le garde-fou sur son nom est appliqué par tests/python/conftest.py.
+    """
+    if not os.getenv(TEST_DATABASE_URL_ENV):
         pytest.skip(f"{TEST_DATABASE_URL_ENV} non définie : tests sur base réelle ignorés")
 
-    database_name = make_url(url).database or ""
+    _ensure_database_exists(DATABASE_URL)
 
-    if not database_name.endswith(TEST_DATABASE_SUFFIX):
-        pytest.fail(
-            f"{TEST_DATABASE_URL_ENV} doit cibler une base dont le nom se termine "
-            f"par '{TEST_DATABASE_SUFFIX}' (reçu : '{database_name}')"
-        )
-
-    _ensure_database_exists(url)
-
-    return url
+    return DATABASE_URL
 
 
 @pytest.fixture(scope="session")
-def engine(database_url: str) -> Iterator[Engine]:
-    """Moteur SQLAlchemy sur la base de test, partagé par la session de tests."""
-    test_engine = create_engine(database_url)
-
-    yield test_engine
-
-    test_engine.dispose()
+def engine(database_url: str) -> Engine:
+    """Moteur de l'application (database/session.py), pointé sur la base de test."""
+    return app_engine
 
 
 @pytest.fixture
@@ -72,8 +63,8 @@ def initialized_database(empty_database: Engine, database_url: str) -> Engine:
 
 @pytest.fixture
 def db_session(initialized_database: Engine) -> Iterator[Session]:
-    """Session ORM sur la base de test initialisée."""
-    session = sessionmaker(bind=initialized_database)()
+    """Session ORM de l'application sur la base de test initialisée."""
+    session = SessionLocal()
 
     yield session
 

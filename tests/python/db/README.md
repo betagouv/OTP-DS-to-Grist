@@ -12,12 +12,15 @@ SQL brut par `DatabaseManager` et les modèles ORM de `database/models.py`.
 
 ## Conventions
 
-- La base est fournie par `TEST_DATABASE_URL`, distincte de `DATABASE_URL`
-  (forcée vers une URL invalide pour les autres suites).
+- La base est fournie par `TEST_DATABASE_URL`. `tests/python/conftest.py`
+  la transmet comme `DATABASE_URL` (URL invalide sinon) : les tests passent
+  par la configuration réelle de l'application (`utils/constants.py`,
+  `database/session.py`), sans la recopier.
 - Ces tests ne sont lancés que par `poe test-db` : `poe test` les exclut et
-  reste utilisable sans Docker.
-- Garde-fou : le nom de la base doit se terminer par `_test`, les tests
-  supprimant les tables de l'application.
+  reste utilisable sans Docker. Ne pas exporter `TEST_DATABASE_URL` dans son
+  shell : les autres suites recevraient alors une vraie base.
+- Garde-fou (`tests/python/conftest.py`) : le nom de la base doit se terminer
+  par `_test`, les tests supprimant les tables de l'application.
 - Seule la base est réelle : les autres dépendances externes (API Grist,
   Démarches numériques) restent simulées.
 - La base de test est créée automatiquement si elle n'existe pas.
