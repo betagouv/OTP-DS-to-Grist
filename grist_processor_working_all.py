@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 import repetable_processor as rp
 from grist.client import GristClient, GristReadError, extract_dossier_numbers
 from grist.column_cache import ColumnCache
-from grist.columns import hide_columns_with_id
+from grist.columns import hide_columns_with_id, untie_column_ids
 from grist.formatter import format_value
 from grist.utils import normalize_column_name
 from dn.client import (
@@ -476,7 +476,14 @@ def run_demarche_level_tasks(
     except Exception as e:
         log_error(f"Erreur vérification dossiers supprimés : {e}")
 
-    # 4. Masquage des colonnes _id (toujours en dernier)
+    # 4. Déliage des identifiants de colonnes : ne dépend que de l'état du
+    #    document, donc exécuté même si la récupération du schéma DN a échoué
+    try:
+        untie_column_ids(client)
+    except Exception as e:
+        log_error(f"Erreur lors du déliage des identifiants de colonnes: {e}")
+
+    # 5. Masquage des colonnes _id (toujours en dernier)
     if schema_method_successful:
         try:
             hide_columns_with_id(client)
