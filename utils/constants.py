@@ -11,6 +11,12 @@ if not DATABASE_URL:
         "DATABASE_URL environment variable is required for database operations"
     )
 
+# SQLAlchemy 2.1 choisit psycopg (v3) par défaut pour postgresql:// ; le projet
+# utilise psycopg2, que DatabaseManager appelle aussi directement avec DATABASE_URL
+SQLALCHEMY_DATABASE_URL: str = DATABASE_URL.replace(
+    "postgresql://", "postgresql+psycopg2://", 1
+)
+
 DEMARCHES_API_URL: str = "https://www.demarches-simplifiees.fr/api/v2/graphql"
 
 # Liste blanche des instances Grist joignables, séparée par des virgules :

@@ -6,14 +6,15 @@ import pytest
 from database.models import IpBlocklist
 from security.ip_blocklist import ban_duration
 from security.ip_blocklist_store import IpBlocklistStore
+from utils.constants import SQLALCHEMY_DATABASE_URL
 
 IP = "203.0.113.7"
 
 
 @pytest.fixture
-def store(initialized_database, database_url) -> IpBlocklistStore:
-    # Sans cache : chaque lecture interroge la base
-    return IpBlocklistStore(database_url, cache_ttl=0)
+def store(initialized_database) -> IpBlocklistStore:
+    # Même URL que app.py ; sans cache : chaque lecture interroge la base
+    return IpBlocklistStore(SQLALCHEMY_DATABASE_URL, cache_ttl=0)
 
 
 class TestApplyBan:

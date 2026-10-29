@@ -68,6 +68,7 @@ from utils.constants import (
     IP_BLOCKLIST_THRESHOLD,
     IP_BLOCKLIST_WINDOW_SECONDS,
     IP_BLOCKLIST_WHITELIST,
+    SQLALCHEMY_DATABASE_URL,
 )
 from utils.socketio import socketio
 
@@ -104,7 +105,7 @@ logger = logging.getLogger(__name__)
 # Les compteurs vivent en mémoire, les bannissements en base :
 # voir le dossier `security/`.
 ip_blocklist_store = IpBlocklistStore(
-    DATABASE_URL, cache_ttl=IP_BLOCKLIST_CACHE_TTL_SECONDS
+    SQLALCHEMY_DATABASE_URL, cache_ttl=IP_BLOCKLIST_CACHE_TTL_SECONDS
 )
 ip_blocklist_whitelist = parse_whitelist(IP_BLOCKLIST_WHITELIST.split(","))
 ip_blocklist_hits: dict[str, list[float]] = {}
