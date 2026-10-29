@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from dn.client import get_pj_ocr_columns
+from dn.client import get_demarche_descriptors, get_pj_ocr_columns
 from dn.extract import pj_ocr_sub_label
 from grist.utils import normalize_column_name
 from utils.constants import DEMARCHES_API_URL
@@ -288,112 +288,7 @@ def get_demarche_schema(demarche_number):
     Returns:
         dict: Structure complète des descripteurs de champs et d'annotations
     """
-    if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré.")
-
-    # Requête GraphQL spécifique pour récupérer les descripteurs de champs
-    query = """
-    query getDemarcheSchema($demarcheNumber: Int!) {
-        demarche(number: $demarcheNumber) {
-            id
-            number
-            title
-            activeRevision {
-                id
-                champDescriptors {
-                    ...ChampDescriptorFragment
-                    ... on RepetitionChampDescriptor {
-                        champDescriptors {
-                            ...ChampDescriptorFragment
-                        }
-                    }
-                }
-                annotationDescriptors {
-                    ...ChampDescriptorFragment
-                    ... on RepetitionChampDescriptor {
-                        champDescriptors {
-                            ...ChampDescriptorFragment
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fragment ChampDescriptorFragment on ChampDescriptor {
-        __typename
-        id
-        type
-        label
-        description
-        required
-        ... on DropDownListChampDescriptor {
-            options
-            otherOption
-        }
-        ... on MultipleDropDownListChampDescriptor {
-            options
-        }
-        ... on LinkedDropDownListChampDescriptor {
-            options
-        }
-        ... on PieceJustificativeChampDescriptor {
-            fileTemplate {
-                filename
-            }
-        }
-        ... on ExplicationChampDescriptor {
-            collapsibleExplanationEnabled
-            collapsibleExplanationText
-        }
-    }
-    """
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    # Exécuter la requête
-    response = requests.post(
-        API_URL,
-        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
-        headers=headers,
-    )
-
-    # Vérifier le code de statut
-    response.raise_for_status()
-
-    # Analyser la réponse JSON
-    result = response.json()
-
-    # Vérifier les erreurs
-    if "errors" in result:
-        filtered_errors = []
-        for error in result["errors"]:
-            error_message = error.get("message", "")
-            if (
-                "permissions" not in error_message
-                and "hidden due to permissions" not in error_message
-            ):
-                filtered_errors.append(error_message)
-
-        if filtered_errors:
-            raise Exception(f"GraphQL errors: {', '.join(filtered_errors)}")
-
-    # Si aucune donnée n'est retournée, c'est un problème
-    if not result.get("data") or not result["data"].get("demarche"):
-        raise Exception(
-            f"Aucune donnée de démarche trouvée pour le numéro {demarche_number}"
-        )
-
-    demarche = result["data"]["demarche"]
-
-    # Vérifier que activeRevision existe
-    if not demarche.get("activeRevision"):
-        raise Exception(
-            f"Aucune révision active trouvée pour la démarche {demarche_number}"
-        )
+    demarche = get_demarche_descriptors(demarche_number)
 
     # Les sous-colonnes OCR des PJ ne sont pas exposées par les descripteurs :
     # elles sont lues sur des dossiers pour create_columns_from_schema

@@ -9,6 +9,7 @@ from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
+from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 
 
 def _inline_enqueue(otp_config_id, grist_doc_id, fn):
@@ -1236,8 +1237,6 @@ class TestErrorHandling:
             mock_db.query.return_value.filter_by.return_value.first.return_value
         )
         mock_schedule.enabled = True
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
         mock_job = MagicMock()
         mock_job.next_run_time = datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc)
         mock_scheduler.get_job.return_value = mock_job
@@ -1249,7 +1248,30 @@ class TestErrorHandling:
         assert data_resp["success"] is True
         assert data_resp["enabled"] is True
         assert data_resp["next_run"] == "2026-09-03T09:14:00+00:00"
-        mock_scheduler.get_job.assert_called_once_with("scheduled_sync_1")
+        mock_scheduler.get_job.assert_called_once_with(DAILY_SYNC_JOB_ID)
+
+    @patch("app.scheduler")
+    @patch("app.SessionLocal")
+    def test_api_schedule_get_disabled_ignores_daily_job(
+        self, mock_session, mock_scheduler, client
+    ):
+        """Planning désactivé : pas de prochaine exécution, même si le job quotidien existe"""
+        mock_db = mock_session.return_value
+        mock_config = (
+            mock_db.query.return_value.filter_by.return_value.first.return_value
+        )
+        mock_config.id = 1
+        mock_config.enabled = False
+        mock_job = MagicMock()
+        mock_job.next_run_time = datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc)
+        mock_scheduler.get_job.return_value = mock_job
+
+        response = client.get("/api/schedule?otp_config_id=1")
+        assert response.status_code == 200
+
+        data_resp = json.loads(response.data)
+        assert data_resp["enabled"] is False
+        assert data_resp["next_run"] is None
 
     @patch("app.scheduler")
     @patch("app.SessionLocal")
@@ -1264,8 +1286,6 @@ class TestErrorHandling:
             mock_db.query.return_value.filter_by.return_value.first.return_value
         )
         mock_schedule.enabled = True
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
         mock_scheduler.get_job.return_value = None
 
         response = client.get("/api/schedule?otp_config_id=1")
@@ -1289,8 +1309,6 @@ class TestErrorHandling:
             mock_db.query.return_value.filter_by.return_value.first.return_value
         )
         mock_schedule.enabled = False
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
         mock_scheduler.get_job.return_value = None
 
         response = client.get("/api/schedule?otp_config_id=1")
@@ -1300,6 +1318,8 @@ class TestErrorHandling:
         assert data_resp["success"] is True
         assert data_resp["enabled"] is False
         assert data_resp["next_run"] is None
+        assert "last_run" not in data_resp
+        assert "last_status" not in data_resp
 
     @patch("app.SessionLocal")
     def test_api_schedule_get_missing_param(self, mock_session, client):
@@ -1313,8 +1333,7 @@ class TestErrorHandling:
         assert "required" in data_resp["message"]
 
     @patch("app.SessionLocal")
-    @patch("app.reload_scheduler_jobs")
-    def test_api_delete_config_success(self, mock_reload, mock_session, client):
+    def test_api_delete_config_success(self, mock_session, client):
         """Test suppression de configuration réussie"""
         mock_db = mock_session.return_value
         mock_config = (
@@ -1330,7 +1349,6 @@ class TestErrorHandling:
         assert "supprimée" in data["message"]
         mock_db.delete.assert_called_once_with(mock_config)
         mock_db.commit.assert_called_once()
-        mock_reload.assert_called_once()
 
     @patch("app.SessionLocal")
     def test_api_delete_config_not_found(self, mock_session, client):
@@ -1345,58 +1363,22 @@ class TestErrorHandling:
         assert data["success"] is False
         assert "non trouvée" in data["message"]
 
+    @patch("sync.scheduled_sync._is_schedule_enabled", return_value=True)
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.create_engine")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
-    @patch(
-        "sync.scheduled_sync.compute_next_run",
-        return_value=datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc),
-    )
     def test_scheduled_sync_job_success(
         self,
-        mock_compute_next_run,
         mock_load_config,
-        mock_sessionmaker,
-        mock_create_engine,
+        mock_session_local,
         mock_sequencer,
+        _mock_schedule_enabled,
     ):
         """Test exécution réussie d'une synchronisation planifiée"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
 
         mock_sequencer.enqueue.side_effect = _inline_enqueue
-
-        mock_db = MagicMock()
-        mock_engine = MagicMock()
-        mock_create_engine.return_value = mock_engine
-
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-
-        mock_config = MagicMock()
-        mock_config.id = 1
-        mock_config.grist_user_id = "user123"
-        mock_config.grist_doc_id = "doc456"
-
-        mock_schedule = MagicMock()
-        mock_schedule.otp_config_id = 1
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
-        mock_schedule.next_run = None
-
-        def query_side_effect(model):
-            if model.__name__ == "OtpConfiguration":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_config
-                return mock_q
-            elif model.__name__ == "UserSchedule":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_schedule
-                return mock_q
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
 
         mock_load_config.return_value = {
             "otp_config_id": 1,
@@ -1415,7 +1397,9 @@ class TestErrorHandling:
 
             scheduled_sync_job(1, sync_manager)
 
-            mock_load_config.assert_called_once_with(1)
+            # Chargée à la mise en file, puis rechargée au démarrage de l'étape
+            assert mock_load_config.call_count == 2
+            mock_load_config.assert_called_with(1)
             mock_sync.assert_called_once()
             args, kwargs = mock_sync.call_args
             assert args == (
@@ -1430,57 +1414,21 @@ class TestErrorHandling:
             )
             assert kwargs["auto"] is True
             assert callable(kwargs["progress_callback"])
+            mock_session_local.assert_not_called()
 
-            assert mock_schedule.last_run is not None
-            assert mock_schedule.last_status == "success"
-            assert mock_schedule.next_run == datetime(
-                2026, 9, 3, 9, 14, tzinfo=timezone.utc
-            )
-
+    @patch("sync.scheduled_sync._is_schedule_enabled", return_value=True)
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
-    @patch(
-        "sync.scheduled_sync.compute_next_run",
-        return_value=datetime(2026, 9, 3, 9, 14, tzinfo=timezone.utc),
-    )
     def test_scheduled_sync_job_error(
-        self, mock_compute_next_run, mock_load_config, mock_sessionmaker, mock_sequencer
+        self, mock_load_config, mock_session_local, mock_sequencer,
+        _mock_schedule_enabled,
     ):
-        """Test sync échouée (success=False) : last_status=error, schedule reste actif"""
+        """Test sync échouée (success=False) : le planning reste actif"""
         from sync.scheduled_sync import scheduled_sync_job
         from sync.sync_manager import SyncManager
 
         mock_sequencer.enqueue.side_effect = _inline_enqueue
-
-        mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-
-        mock_config = MagicMock()
-        mock_config.id = 1
-        mock_config.grist_user_id = "user123"
-        mock_config.grist_doc_id = "doc456"
-
-        mock_schedule = MagicMock()
-        mock_schedule.otp_config_id = 1
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
-        mock_schedule.next_run = None
-        mock_schedule.enabled = True
-
-        def query_side_effect(model):
-            if model.__name__ == "OtpConfiguration":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_config
-                return mock_q
-            elif model.__name__ == "UserSchedule":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_schedule
-                return mock_q
-            return MagicMock()
-
-        mock_db.query.side_effect = query_side_effect
 
         mock_load_config.return_value = {
             "otp_config_id": 1,
@@ -1499,7 +1447,9 @@ class TestErrorHandling:
 
             scheduled_sync_job(1, sync_manager)
 
-            mock_load_config.assert_called_once_with(1)
+            # Chargée à la mise en file, puis rechargée au démarrage de l'étape
+            assert mock_load_config.call_count == 2
+            mock_load_config.assert_called_with(1)
             mock_sync.assert_called_once()
             args, kwargs = mock_sync.call_args
             assert args == (
@@ -1514,19 +1464,13 @@ class TestErrorHandling:
             )
             assert kwargs["auto"] is True
             assert callable(kwargs["progress_callback"])
-
-            assert mock_schedule.last_run is not None
-            assert mock_schedule.last_status == "error"
-            assert mock_schedule.next_run == datetime(
-                2026, 9, 3, 9, 14, tzinfo=timezone.utc
-            )
-            assert mock_schedule.enabled is True
+            mock_session_local.assert_not_called()
 
     @patch("sync.scheduled_sync.sequencer")
-    @patch("sync.scheduled_sync.sessionmaker")
+    @patch("sync.scheduled_sync.SessionLocal")
     @patch("sync.scheduled_sync.config_manager.load_config_by_id")
     def test_scheduled_sync_job_external_api_error_disables_schedule(
-        self, mock_load_config, mock_sessionmaker, mock_sequencer
+        self, mock_load_config, mock_session_local, mock_sequencer
     ):
         """Test erreur API externe : schedule désactivé automatiquement"""
         from sync.scheduled_sync import scheduled_sync_job
@@ -1536,27 +1480,14 @@ class TestErrorHandling:
         mock_sequencer.enqueue.side_effect = _inline_enqueue
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-
-        mock_config = MagicMock()
-        mock_config.id = 1
-        mock_config.grist_user_id = "user123"
-        mock_config.grist_doc_id = "doc456"
+        mock_session_local.return_value = mock_db
 
         mock_schedule = MagicMock()
         mock_schedule.otp_config_id = 1
-        mock_schedule.last_run = None
-        mock_schedule.last_status = None
-        mock_schedule.next_run = None
         mock_schedule.enabled = True
 
         def query_side_effect(model):
-            if model.__name__ == "OtpConfiguration":
-                mock_q = MagicMock()
-                mock_q.filter_by.return_value.first.return_value = mock_config
-                return mock_q
-            elif model.__name__ == "UserSchedule":
+            if model.__name__ == "UserSchedule":
                 mock_q = MagicMock()
                 mock_q.filter_by.return_value.first.return_value = mock_schedule
                 return mock_q
@@ -1587,85 +1518,32 @@ class TestErrorHandling:
 
             mock_sync.assert_called_once()
 
-            assert mock_schedule.last_run is not None
-            assert mock_schedule.next_run is None
-            assert mock_schedule.last_status is None
             assert mock_schedule.enabled is False
 
     @patch("sync.scheduled_sync.SYNC_MINUTE", 0)
     @patch("sync.scheduled_sync.SYNC_HOUR", 11)
-    @patch("sync.scheduled_sync.sessionmaker")
-    def test_reload_scheduler_jobs(self, mock_sessionmaker):
-        """Test rechargement des jobs du scheduler (stagger +5 min par config)"""
-        from sync.scheduled_sync import reload_scheduler_jobs, scheduler
+    def test_register_daily_sync_job(self):
+        """Un seul job quotidien, à l'heure configurée, pour toutes les configs"""
+        from sync.scheduled_sync import register_daily_sync_job, scheduler
         from sync.sync_manager import SyncManager
 
-        mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
+        sync_manager = SyncManager(notify_callback=MagicMock())
 
-        mock_schedule1 = MagicMock()
-        mock_schedule1.otp_config_id = 1
-        mock_schedule1.enabled = True
+        with patch.object(scheduler, "add_job") as mock_add:
+            register_daily_sync_job(sync_manager)
 
-        mock_schedule2 = MagicMock()
-        mock_schedule2.otp_config_id = 2
-        mock_schedule2.enabled = True
+            mock_add.assert_called_once()
+            assert mock_add.call_args.kwargs["id"] == DAILY_SYNC_JOB_ID
 
-        mock_config1 = MagicMock()
-        mock_config1.id = 1
-        mock_config1.grist_user_id = "user1"
-        mock_config1.grist_doc_id = "doc1"
-        mock_config1.demarche_number = "123"
-
-        mock_config2 = MagicMock()
-        mock_config2.id = 2
-        mock_config2.grist_user_id = "user2"
-        mock_config2.grist_doc_id = "doc2"
-        mock_config2.demarche_number = "456"
-
-        def mock_filter_by(**kwargs):
-            if kwargs.get("enabled"):
-                mock_query = MagicMock()
-                mock_query.filter.return_value.all.return_value = [
-                    mock_schedule1,
-                    mock_schedule2,
-                ]
-                return mock_query
-            if kwargs.get("id") == 1:
-                return MagicMock(first=MagicMock(return_value=mock_config1))
-            elif kwargs.get("id") == 2:
-                return MagicMock(first=MagicMock(return_value=mock_config2))
-            return MagicMock(first=MagicMock(return_value=None))
-
-        mock_db.query.return_value.filter_by.side_effect = mock_filter_by
-
-        mock_notifier = MagicMock()
-        sync_manager = SyncManager(notify_callback=mock_notifier)
-
-        with patch.object(scheduler, "remove_all_jobs") as mock_remove, patch.object(
-            scheduler, "add_job"
-        ) as mock_add:
-            reload_scheduler_jobs(sync_manager)
-
-            mock_remove.assert_called_once()
-
-            assert mock_add.call_count == 2
-
-            job_ids = [call.kwargs["id"] for call in mock_add.call_args_list]
-            assert job_ids == ["scheduled_sync_1", "scheduled_sync_2"]
-
-            first_trigger = mock_add.call_args_list[0].kwargs["trigger"]
-            second_trigger = mock_add.call_args_list[1].kwargs["trigger"]
+            trigger = mock_add.call_args.kwargs["trigger"]
 
             def trigger_value(trigger, name):
                 return [
                     f for f in trigger.fields if f.name == name
                 ][0].expressions[0].first
 
-            assert trigger_value(first_trigger, "hour") == 11
-            assert trigger_value(first_trigger, "minute") == 0
-            assert trigger_value(second_trigger, "hour") == 11
-            assert trigger_value(second_trigger, "minute") == 5
+            assert trigger_value(trigger, "hour") == 11
+            assert trigger_value(trigger, "minute") == 0
 
 
 class SyncLogMock:

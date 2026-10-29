@@ -7,6 +7,11 @@ from urllib3.util.retry import Retry
 
 from utils.log import log
 
+# Délai d'attente appliqué aux requêtes sans timeout explicite : sans lui, un
+# serveur qui ne répond plus bloque la requête indéfiniment. Il porte sur
+# l'attente entre deux paquets, pas sur la durée totale de la réponse.
+HTTP_TIMEOUT_MAX_SECONDS = 60
+
 
 class RateLimitedSession(requests.Session):
     """Session HTTP générique réagissant aux réponses 429.
@@ -33,6 +38,7 @@ class RateLimitedSession(requests.Session):
         self.max_random_delay = float(max_random_delay)
 
     def request(self, method, url, *args, **kwargs) -> requests.Response:
+        kwargs.setdefault("timeout", HTTP_TIMEOUT_MAX_SECONDS)
         for attempt in range(1, self.max_retries + 1):
             response = super().request(method, url, *args, **kwargs)
             if response.status_code != 429 or attempt == self.max_retries:

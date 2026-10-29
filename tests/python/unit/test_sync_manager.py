@@ -13,6 +13,9 @@ import os
 import time
 from io import StringIO
 from unittest.mock import patch, MagicMock
+
+import pytest
+
 import sync.sync_manager as sync_manager_module
 from sync.sync_manager import SyncManager
 
@@ -291,8 +294,7 @@ class TestSyncManager:
                 self.manager.run_synchronization_task, server_config, auto=False
             )
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch.dict(
         os.environ,
         {
@@ -306,7 +308,7 @@ class TestSyncManager:
     )
     @patch("subprocess.Popen")
     def test_run_synchronization_task_success(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test run_synchronization_task avec succès"""
         mock_subprocess.return_value = create_mock_process("""Récupération de la démarche 12345
@@ -364,11 +366,10 @@ class TestSyncManager:
         assert len(progress_calls) > 0
         assert progress_calls[-1][0] == 100  # Dernière progression à 100%
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_with_filters(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test run_synchronization_task avec des filtres"""
         mock_subprocess.return_value = create_mock_process(
@@ -376,9 +377,7 @@ class TestSyncManager:
         )
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -414,11 +413,10 @@ class TestSyncManager:
         assert env.get("STATUTS_DOSSIERS") == "en_construction,en_instruction"
         assert env.get("GROUPES_INSTRUCTEURS") == "1,2,3"
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_subprocess_error(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test run_synchronization_task avec erreur subprocess"""
         mock_subprocess.return_value = create_mock_process(
@@ -426,9 +424,7 @@ class TestSyncManager:
         )
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -454,11 +450,10 @@ class TestSyncManager:
         assert "Script error occurred" in result["message"]
         assert "traceback" in result
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_traceback_stderr_shows_short_message(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Un stderr de traceback Python ne déborde pas dans le message affiché"""
         stderr = (
@@ -472,8 +467,7 @@ class TestSyncManager:
         mock_subprocess.return_value = create_mock_process("", stderr, returncode=1)
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -491,11 +485,10 @@ class TestSyncManager:
         assert "GristReadError: Grist a refusé l'écriture (403)" in result["message"]
         assert len(result["message"]) < 200
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_long_error_is_truncated(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Un message d'erreur très long est tronqué pour rester affichable"""
         mock_subprocess.return_value = create_mock_process(
@@ -503,8 +496,7 @@ class TestSyncManager:
         )
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -521,11 +513,10 @@ class TestSyncManager:
         assert len(result["message"]) <= len("Erreur lors de la synchronisation: ") + 500
         assert result["message"].endswith("…")
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_error_code_api_error(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test error_code=2 retourné pour erreur API externe"""
         mock_subprocess.return_value = create_mock_process(
@@ -533,9 +524,7 @@ class TestSyncManager:
         )
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -550,11 +539,10 @@ class TestSyncManager:
 
         assert result["error_code"] == 2
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_error_code_general_error(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test error_code=1 retourné pour erreur générale"""
         mock_subprocess.return_value = create_mock_process(
@@ -562,9 +550,7 @@ class TestSyncManager:
         )
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -579,11 +565,10 @@ class TestSyncManager:
 
         assert result["error_code"] == 1
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_grist_read_error_message(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Lecture Grist en échec (code 3) : message affiché à l'utilisateur
         limité à l'erreur, sans trace d'appels"""
@@ -595,7 +580,7 @@ class TestSyncManager:
             "pas créer de doublons ; elle reprendra au prochain lancement.",
             returncode=3,
         )
-        mock_sessionmaker.return_value = MagicMock(return_value=MagicMock())
+        mock_session_local.return_value = MagicMock()
 
         config = {
             "ds_api_token": "test_token",
@@ -617,6 +602,32 @@ class TestSyncManager:
             "elle reprendra au prochain lancement."
         )
 
+    @patch("sync.sync_manager.ConfigManager")
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_sync_log_session_fermee_si_le_commit_echoue(
+        self, mock_subprocess, mock_session_local, mock_cm_class
+    ):
+        """La session d'écriture du SyncLog est fermée même si le commit échoue"""
+        mock_subprocess.return_value = create_mock_process("Terminé", returncode=0)
+        mock_db = MagicMock()
+        mock_db.commit.side_effect = RuntimeError("base indisponible")
+        mock_session_local.return_value = mock_db
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        with pytest.raises(RuntimeError, match="base indisponible"):
+            self.manager.run_synchronization_task(
+                config, progress_callback=_ignore_progress
+            )
+
+        mock_db.close.assert_called_once()
+
     def test_run_synchronization_task_exception_handling(self):
         """Test run_synchronization_task avec exception générale"""
         config = {
@@ -632,13 +643,10 @@ class TestSyncManager:
             log_calls.append(message)
 
         with (
-            patch("sync.sync_manager.create_engine") as mock_create_engine,
-            patch("sync.sync_manager.sessionmaker") as mock_sessionmaker,
+            patch("sync.sync_manager.SessionLocal") as mock_session_local,
         ):
             mock_db = MagicMock()
-            mock_session_class = MagicMock(return_value=mock_db)
-            mock_sessionmaker.return_value = mock_session_class
-            mock_create_engine.return_value = MagicMock()
+            mock_session_local.return_value = mock_db
 
             with patch("subprocess.Popen", side_effect=Exception("Unexpected error")):
                 result = self.manager.run_synchronization_task(
@@ -651,11 +659,10 @@ class TestSyncManager:
                 assert "Erreur lors de la synchronisation" in result["message"]
                 assert "traceback" in result
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_progress_parsing(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test le parsing de la progression depuis les logs"""
         mock_subprocess.return_value = create_mock_process("""Configuration Grist
@@ -664,9 +671,7 @@ class TestSyncManager:
         100 dossiers traités avec succès""")
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -691,19 +696,16 @@ class TestSyncManager:
         assert matching_34, f"Progression attendue ~34, recue: {progress_values}"
         assert matching_39, f"Progression attendue ~40, recue: {progress_values}"
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_environment_variables_setup(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test la configuration des variables d'environnement"""
         mock_subprocess.return_value = create_mock_process("Test output")
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "new_token",
@@ -724,11 +726,10 @@ class TestSyncManager:
         assert env.get("DEMARCHE_NUMBER") == "99999"
         assert env.get("GRIST_BASE_URL") == "https://new.grist.com"
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_statistics_parsing(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test le parsing des statistiques depuis la sortie"""
         mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 85
@@ -737,9 +738,7 @@ class TestSyncManager:
         """)
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -758,11 +757,10 @@ class TestSyncManager:
         assert result["dossier_count"] == 100
         assert result["success"] is False  # Parce qu'il y a des erreurs
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_sync_metadata_line_filtered_from_log_callback(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Les métadonnées de fin de sync alimentent parse_output mais ne
         doivent pas être re-loguées à l'utilisateur via log_callback."""
@@ -772,8 +770,7 @@ class TestSyncManager:
             '"filters_hash": "{}"}\n'
         )
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -795,11 +792,10 @@ class TestSyncManager:
         assert result["filters_hash"] == "{}"
         assert not any(message.startswith("SYNC_METADATA: ") for message in log_calls)
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_sync_metadata_malformee_alerte_sans_faire_echouer_la_sync(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Des métadonnées de fin de sync illisibles sont signalées à
         l'utilisateur via log_callback, sans faire échouer une sync dont les
@@ -808,8 +804,7 @@ class TestSyncManager:
             "Dossiers traités avec succès: 10\nSYNC_METADATA: {pas-du-json\n"
         )
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -837,11 +832,10 @@ class TestSyncManager:
         sous-processus, et non dans l'environnement du parent."""
         assert not hasattr(sync_manager_module, "build_filters_cache_key")
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_persists_sync_metadata_on_success(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Les métadonnées émises par le pipeline (durée, force_full_sync,
         hash de filtres) sont persistées dans le SyncLog en cas de succès."""
@@ -851,8 +845,7 @@ class TestSyncManager:
             '"filters_hash": "{}"}\n'
         )
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -870,18 +863,16 @@ class TestSyncManager:
         assert sync_log.force_full_sync is True
         assert sync_log.filters_hash == "{}"
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_persists_null_metadata_on_failure(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Échec du sous-processus : les métadonnées restent NULL (le parsing
         n'a pas lieu, la durée n'est pas intéressante en échec)."""
         mock_subprocess.return_value = create_mock_process("", returncode=1)
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -900,11 +891,10 @@ class TestSyncManager:
         assert sync_log.force_full_sync is None
         assert sync_log.filters_hash is None
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_creates_sync_log_on_success(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test que run_synchronization_task crée un SyncLog après succès"""
         mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 10
@@ -913,9 +903,7 @@ class TestSyncManager:
         """)
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -945,19 +933,16 @@ class TestSyncManager:
         assert sync_log.success_count == 10
         assert sync_log.error_count == 0
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_creates_sync_log_on_failure(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test que run_synchronization_task crée un SyncLog après échec"""
         mock_subprocess.return_value = create_mock_process("", returncode=1)
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1050,11 +1035,10 @@ class TestSyncManager:
         assert data["task_id"] == task_id
         assert data["task"]["status"] == "error"
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_with_auto_parameter(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test que le paramètre auto est correctement passé au SyncLog"""
         mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 5
@@ -1063,9 +1047,7 @@ class TestSyncManager:
         """)
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1094,11 +1076,10 @@ class TestSyncManager:
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.auto is False
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_success_manual_sync(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test que run_synchronization_task crée un SyncLog avec auto=False après succès"""
         mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 20
@@ -1107,9 +1088,7 @@ class TestSyncManager:
         """)
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1136,19 +1115,16 @@ class TestSyncManager:
         assert sync_log.success_count == 20
         assert sync_log.error_count == 0
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_failure_auto_sync(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Test que run_synchronization_task crée un SyncLog avec auto=True après échec"""
         mock_subprocess.return_value = create_mock_process("", returncode=1)
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1171,11 +1147,10 @@ class TestSyncManager:
         assert sync_log.auto is True
 
     @patch("sync.sync_manager.ConfigManager")
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_records_grist_user_email(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine, mock_cm_class
+        self, mock_subprocess, mock_session_local, mock_cm_class
     ):
         """Test que la synchro enregistre l'email Grist via fetch_and_store_grist_user_email"""
         mock_subprocess.return_value = create_mock_process("""Dossiers traités avec succès: 3
@@ -1184,9 +1159,7 @@ class TestSyncManager:
         """)
 
         mock_db = MagicMock()
-        mock_session_class = MagicMock(return_value=mock_db)
-        mock_sessionmaker.return_value = mock_session_class
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1206,18 +1179,16 @@ class TestSyncManager:
             5, "https://test.grist.com", "test_key"
         )
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_refuses_read_only_key(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Une clé en lecture seule bloque la synchro avant le sous-processus"""
         self.grist_access_mock.return_value = "viewers"
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1246,18 +1217,16 @@ class TestSyncManager:
 
         assert any("ERREUR" in line for line in log_calls)
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_refuses_editor_key(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Une clé éditeur (non propriétaire) bloque la synchro avant le sous-processus"""
         self.grist_access_mock.return_value = "editors"
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1275,18 +1244,16 @@ class TestSyncManager:
         assert "droits de propriétaire" in result["message"]
         mock_subprocess.assert_not_called()
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_refuses_key_without_access(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Une clé sans accès au document bloque la synchro"""
         self.grist_access_mock.return_value = "no-access"
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1304,11 +1271,10 @@ class TestSyncManager:
         assert "droits de propriétaire" in result["message"]
         mock_subprocess.assert_not_called()
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_unavailable_access_starts_subprocess(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Grist indisponible (None) ne bloque pas : le sous-processus prend le relais"""
         self.grist_access_mock.return_value = None
@@ -1318,8 +1284,7 @@ class TestSyncManager:
         )
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",
@@ -1335,11 +1300,10 @@ class TestSyncManager:
         assert result["success"] is True
         mock_subprocess.assert_called_once()
 
-    @patch("sync.sync_manager.create_engine")
-    @patch("sync.sync_manager.sessionmaker")
+    @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
     def test_run_synchronization_task_empty_key_skips_access_check(
-        self, mock_subprocess, mock_sessionmaker, mock_create_engine
+        self, mock_subprocess, mock_session_local
     ):
         """Une clé vide n'appelle pas le contrôle d'accès (pas de faux appel Grist)"""
         mock_subprocess.return_value = create_mock_process(
@@ -1347,8 +1311,7 @@ class TestSyncManager:
         )
 
         mock_db = MagicMock()
-        mock_sessionmaker.return_value = MagicMock(return_value=mock_db)
-        mock_create_engine.return_value = MagicMock()
+        mock_session_local.return_value = mock_db
 
         config = {
             "ds_api_token": "test_token",

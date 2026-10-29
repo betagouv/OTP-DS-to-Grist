@@ -40,7 +40,7 @@ ruff = "^0.17.2"
 pip-audit = "^2.10.1"
 
 [tool.poe.tasks.dev]
-shell = "python app.py"
+shell = "python dev.py"
 
 [tool.poe.tasks.test]
 cmd = "pytest"

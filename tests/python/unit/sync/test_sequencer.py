@@ -1,7 +1,11 @@
 """Tests du séquenceur de synchronisations (sync.sequencer)."""
 
+import subprocess
+import sys
+import textwrap
 import threading
 import time
+from pathlib import Path
 
 from sync.sequencer import SyncSequencer
 
@@ -24,7 +28,7 @@ def _all_statuses(sequencer, expected):
 
 
 class TestSyncSequencer:
-    """Comportement du séquenceur : séquentialité, parallélisme borné, dédup."""
+    """Comportement du séquenceur : séquentialité globale, dédup."""
 
     def test_etapes_dun_meme_document_s_executent_sequentiellement(self):
         """Deux étapes du même document ne se chevauchent jamais."""
@@ -48,30 +52,60 @@ class TestSyncSequencer:
         finally:
             sequencer.shutdown(wait=True)
 
-    def test_deux_documents_distincts_s_executent_en_parallèle(self):
-        """Deux documents différents avancent simultanément (barrière à 2)."""
+    def test_deux_documents_distincts_s_executent_sequentiellement(self):
+        """File globale : deux documents différents ne s'exécutent pas en même temps."""
         sequencer = SyncSequencer()
-        barrier = threading.Barrier(2, timeout=_TIMEOUT)
+        events = []
 
-        def fn():
-            barrier.wait()
+        def _make_step(label):
+            def fn():
+                events.append(f"start:{label}")
+                time.sleep(0.1)
+                events.append(f"end:{label}")
+
+            return fn
 
         try:
-            sequencer.enqueue(1, "doc_a", fn)
-            sequencer.enqueue(2, "doc_b", fn)
+            sequencer.enqueue(1, "doc_a", _make_step("1"))
+            sequencer.enqueue(2, "doc_b", _make_step("2"))
 
-            _wait_until(
-                lambda: all(
-                    s["status"] in ("done", "error") for s in sequencer.snapshot()
-                )
-            )
-            # Une exécution séquentielle ferait expirer la barrière -> error
-            assert _all_statuses(sequencer, "done")
+            _wait_until(lambda: _all_statuses(sequencer, "done"))
+            assert events == ["start:1", "end:1", "start:2", "end:2"]
         finally:
             sequencer.shutdown(wait=True)
 
-    def test_plafond_de_documents_en_parallèle(self):
-        """Jamais plus de MAX_CONCURRENT_DOCS documents en exécution."""
+    def test_ordre_d_execution_est_l_ordre_d_arrivee(self):
+        """File FIFO globale : un document ne double pas un autre arrivé avant lui."""
+        sequencer = SyncSequencer()
+        started = threading.Event()
+        release = threading.Event()
+        order = []
+
+        def _make_step(label, blocking=False):
+            def fn():
+                order.append(label)
+                if blocking:
+                    started.set()
+                    release.wait(timeout=_TIMEOUT)
+
+            return fn
+
+        try:
+            sequencer.enqueue(1, "doc_a", _make_step("1", blocking=True))
+            _wait_until(started.is_set)
+            # Pendant que doc_a s'exécute : doc_b arrive avant une 2e étape de doc_a
+            sequencer.enqueue(2, "doc_b", _make_step("2"))
+            sequencer.enqueue(3, "doc_a", _make_step("3"))
+
+            release.set()
+            _wait_until(lambda: _all_statuses(sequencer, "done"))
+            assert order == ["1", "2", "3"]
+        finally:
+            release.set()
+            sequencer.shutdown(wait=True)
+
+    def test_une_seule_synchro_a_la_fois(self):
+        """File globale : jamais plus d'une synchronisation en exécution."""
         sequencer = SyncSequencer()
         lock = threading.Lock()
         release = threading.Event()
@@ -91,14 +125,14 @@ class TestSyncSequencer:
             for config_id in (1, 2, 3):
                 sequencer.enqueue(config_id, f"doc_{config_id}", fn)
 
-            _wait_until(lambda: max_running >= 2)
-            # Laisse une éventuelle 3e étape démarrer si le plafond était cassé
+            _wait_until(lambda: max_running >= 1)
+            # Laisse une éventuelle 2e étape démarrer si le plafond était cassé
             time.sleep(0.3)
-            assert max_running == 2
+            assert max_running == 1
 
             release.set()
             _wait_until(lambda: _all_statuses(sequencer, "done"))
-            assert max_running == 2
+            assert max_running == 1
         finally:
             release.set()
             sequencer.shutdown(wait=True)
@@ -196,3 +230,68 @@ class TestSyncSequencer:
         sequencer.shutdown(wait=True)
 
         assert finished.is_set()
+
+    def test_shutdown_cancel_pending_annule_la_file_et_attend_l_etape_en_cours(self):
+        """cancel_pending : l'étape en cours se termine, les étapes en attente ne partent pas."""
+        sequencer = SyncSequencer()
+        started = threading.Event()
+        release = threading.Event()
+        executed = []
+
+        def blocking_fn():
+            started.set()
+            release.wait(timeout=_TIMEOUT)
+            executed.append(1)
+
+        sequencer.enqueue(1, "doc_a", blocking_fn)
+        _wait_until(started.is_set)
+        sequencer.enqueue(2, "doc_b", lambda: executed.append(2))
+        sequencer.enqueue(3, "doc_c", lambda: executed.append(3))
+
+        # Libère l'étape en cours peu après le début de l'arrêt
+        threading.Timer(0.2, release.set).start()
+        sequencer.shutdown(wait=True, cancel_pending=True)
+
+        assert executed == [1]
+        statuses = {s["otp_config_id"]: s["status"] for s in sequencer.snapshot()}
+        assert statuses == {1: "done", 2: "pending", 3: "pending"}
+
+    def test_sortie_du_process_n_execute_pas_la_file(self):
+        """
+        Vraie sortie de process : l'arrêt enregistré via threading._register_atexit
+        (comme dans app.py) annule la file avant que Python attende les threads
+        du pool. Avec atexit.register, toute la file s'exécutait.
+        """
+        script = textwrap.dedent(
+            """
+            import threading, time
+            from sync.sequencer import SyncSequencer
+
+            sequencer = SyncSequencer()
+            started = threading.Event()
+
+            def first():
+                started.set()
+                time.sleep(0.3)
+                print("1", flush=True)
+
+            sequencer.enqueue(1, "doc_a", first)
+            started.wait(5)
+            sequencer.enqueue(2, "doc_b", lambda: print("2", flush=True))
+            sequencer.enqueue(3, "doc_c", lambda: print("3", flush=True))
+            threading._register_atexit(lambda: sequencer.shutdown(cancel_pending=True))
+            """
+        )
+        project_root = Path(__file__).resolve().parents[4]
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=_TIMEOUT,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.split() == ["1"]
+        assert "2 synchronisation(s) en attente annulée(s)" in result.stderr

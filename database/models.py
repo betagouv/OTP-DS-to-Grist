@@ -32,9 +32,6 @@ class UserSchedule(Base):
     )
     frequency: Mapped[str | None] = mapped_column(String, default="daily")
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    last_run: Mapped[datetime | None] = mapped_column(DateTime)
-    next_run: Mapped[datetime | None] = mapped_column(DateTime)
-    last_status: Mapped[str | None] = mapped_column(String)
 
 
 class SyncLog(Base):

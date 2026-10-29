@@ -6,6 +6,10 @@ Ce dossier contient la gestion de la base de données PostgreSQL.
 
 Permet de gérer la configuration utilisateur et l'historique des synchronisations.
 
+Fournit la fabrique de sessions SQLAlchemy partagée par l'application : un seul
+engine (et donc un seul pool de connexions) par process. Les modules ouvrent leurs
+sessions via `database.session.SessionLocal` plutôt que de créer leur propre engine.
+
 ## Tables
 
 - `otp_configurations` : Configuration de chaque utilisateur (tokens, filtres)

@@ -2,19 +2,17 @@
 Application Flask pour la synchronisation Démarches Simplifiées vers Grist
 """
 
-import atexit
 import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, Response, g, jsonify, render_template, request, url_for
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from werkzeug.exceptions import HTTPException
 
 from api.responses import config_not_found_response, error_response
@@ -25,6 +23,7 @@ from configuration.config_manager import (
 )
 from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
+from database.session import SessionLocal
 from dn.client import get_groups
 from grist.base_url import (
     GristBaseUrlImmutableError,
@@ -44,7 +43,11 @@ from security.widget_auth import (
     authorize_request,
     grist_doc_access_level,
 )
-from sync.scheduled_sync import reload_scheduler_jobs, scheduler
+from sync.scheduled_sync import (
+    DAILY_SYNC_JOB_ID,
+    register_daily_sync_job,
+    scheduler,
+)
 from sync.sequencer import sequencer
 from sync.sync_manager import SyncManager
 from utils.formatter import to_local_iso
@@ -68,9 +71,6 @@ from utils.constants import (
 )
 from utils.socketio import socketio
 
-# Déterminer le répertoire du script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
 VITE_DEV_ORIGIN = "http://localhost:5173"
 
 # Chargement des variables d'environnement
@@ -81,10 +81,6 @@ DatabaseManager.init_db(DATABASE_URL)
 
 # Instance de ConfigManager
 config_manager = ConfigManager(DATABASE_URL)
-
-# SQLAlchemy setup (doit être avant les fonctions qui l'utilisent)
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Configuration de l'application Flask
 app = Flask(__name__)
@@ -232,13 +228,31 @@ def check_and_count_ip(response: Response) -> Response:
 
     return response
 
-# Démarrage du scheduler au niveau module
+
+def _shutdown_background_tasks() -> None:
+    """
+    Arrêt à la sortie du process : le scheduler d'abord, pour qu'aucun job
+    n'enfile pendant l'arrêt, puis le séquenceur, qui n'attend que la synchro
+    en cours (redéploiement pendant une longue file).
+    """
+    if scheduler.running:
+        scheduler.shutdown(wait=True)
+    sequencer.shutdown(cancel_pending=True)
+
+
+# Démarrage du scheduler au niveau module : c'est le seul endroit commun aux
+# deux points d'entrée, gunicorn (`app:app`) et `dev.py` (`poe dev`). Seul le
+# processus qui sert l'appli importe ce module : le processus parent du
+# reloader de `dev.py` ne l'importe jamais, aucun cron ne part donc deux fois.
 if not scheduler.running:
     scheduler.start()
-    reload_scheduler_jobs(sync_manager)
+    register_daily_sync_job(sync_manager)
     logger.info("Scheduler APScheduler démarré au chargement du module")
-    atexit.register(lambda: scheduler.shutdown(wait=True))
-    atexit.register(sequencer.shutdown)
+    # Pas atexit.register : à la sortie, Python attend la fin des threads du
+    # pool (qui exécutent alors toute la file) avant les handlers atexit.
+    # threading._register_atexit (API privée) passe avant cette attente, et
+    # avant le handler du pool, enregistré plus tôt (ordre inverse).
+    threading._register_atexit(_shutdown_background_tasks)
 
 
 # Routes Flask
@@ -485,9 +499,6 @@ def api_delete_config(otp_config_id):
         db.delete(otp_config)
         db.commit()
 
-        # Recharger les jobs du scheduler
-        reload_scheduler_jobs(sync_manager)
-
         logger.info(f"Configuration supprimée: {otp_config_id}")
         return jsonify(
             {"success": True, "message": "Configuration supprimée avec succès"}
@@ -529,18 +540,17 @@ def api_schedule():
                 db.query(UserSchedule).filter_by(otp_config_id=otp_config.id).first()
             )
 
-            job = scheduler.get_job(f"scheduled_sync_{otp_config.id}")
+            enabled = schedule.enabled if schedule else False
+
+            # Un seul job quotidien pour tous les plannings activés
+            job = scheduler.get_job(DAILY_SYNC_JOB_ID) if enabled else None
             next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
 
             return jsonify(
                 {
                     "success": True,
-                    "enabled": schedule.enabled if schedule else False,
+                    "enabled": enabled,
                     "next_run": next_run,
-                    "last_run": schedule.last_run.isoformat()
-                    if schedule and schedule.last_run
-                    else None,
-                    "last_status": schedule.last_status if schedule else None,
                 }
             )
 
@@ -576,9 +586,6 @@ def api_schedule():
                 db.add(schedule)
             db.commit()
 
-            # Recharger les jobs du scheduler
-            reload_scheduler_jobs(sync_manager)
-
             return jsonify({"success": True, "message": "Schedule enabled"})
 
         elif request.method == "DELETE":
@@ -590,9 +597,6 @@ def api_schedule():
             if schedule:
                 schedule.enabled = False
                 db.commit()
-
-            # Recharger les jobs du scheduler
-            reload_scheduler_jobs(sync_manager)
 
             return jsonify({"success": True, "message": "Schedule disabled"})
 
@@ -881,23 +885,3 @@ def handle_connect():
 def handle_disconnect():
     """Gestion de la déconnexion WebSocket"""
     logger.info("Client déconnecté")
-
-
-if __name__ == "__main__":
-    # Désactiver les logs de werkzeug pour les requêtes statiques
-    werkzeug_logger = logging.getLogger("werkzeug")
-    werkzeug_logger.setLevel(logging.ERROR)
-
-    print("🦄 One Trick Pony DS to Grist - Version Flask")
-    print(f"📁 Répertoire de travail: {script_dir}")
-    print("🌐 Application disponible sur: http://localhost:5000")
-    print("🔌 WebSocket activé pour les mises à jour en temps réel")
-    print("💾 Gestion améliorée de la sauvegarde des configurations")
-
-    # Démarrer l'application
-    socketio.run(
-        app,
-        host="0.0.0.0",
-        port=5000,
-        debug=os.getenv("FLASK_DEBUG", "False").lower() == "true",
-    )
