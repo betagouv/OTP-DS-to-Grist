@@ -49,7 +49,11 @@ from sync.scheduled_sync import (
     scheduler,
 )
 from sync.sequencer import sequencer
-from sync.sync_manager import SyncManager
+from sync.sync_manager import (
+    SyncManager,
+    SyncSeriesAlreadyRunningError,
+    missing_sync_fields,
+)
 from utils.formatter import to_local_iso
 from utils.api_validator import (
     test_demarches_api,
@@ -239,6 +243,7 @@ def _shutdown_background_tasks() -> None:
     if scheduler.running:
         scheduler.shutdown(wait=True)
     sequencer.shutdown(cancel_pending=True)
+    sync_manager.shutdown_series()
 
 
 # Démarrage du scheduler au niveau module : c'est le seul endroit commun aux
@@ -797,18 +802,7 @@ def api_start_sync():
         server_config = config_manager.load_config_by_id(otp_config_id)
 
         # Validation simple de la configuration serveur
-        required_fields = [
-            "ds_api_token",
-            "demarche_number",
-            "grist_api_key",
-            "grist_doc_id",
-            "grist_user_id",
-        ]
-        missing_fields = []
-
-        for field in required_fields:
-            if not server_config.get(field):
-                missing_fields.append(field)
+        missing_fields = missing_sync_fields(server_config)
 
         if missing_fields:
             return jsonify(
@@ -836,6 +830,59 @@ def api_start_sync():
         raise
     except Exception as e:
         logger.error(f"Erreur lors du démarrage de la synchronisation: {str(e)}")
+        return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
+
+
+@app.route("/api/start-sync-all", methods=["POST"])
+def api_start_sync_all():
+    """
+    Démarre la synchronisation de toutes les démarches de l'utilisateur
+    (« Tout synchroniser »), une par une. Les démarches incomplètes sont ignorées.
+    """
+    # L'identité vient du jeton widget, vérifié par l'authentification.
+    identity = g.get("widget_identity") or {}
+    grist_user_id = str(identity.get("userId") or "")
+    grist_doc_id = str(identity.get("docId") or "")
+
+    try:
+        configs = [
+            config
+            for config in config_manager.load_config(
+                grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+            )
+            if config.get("otp_config_id") and not missing_sync_fields(config)
+        ]
+
+        if not configs:
+            return jsonify(
+                {"success": False, "message": "Aucune démarche à synchroniser"}
+            ), 400
+
+        task_ids = sync_manager.start_sync_series(
+            (grist_user_id, grist_doc_id), configs
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "Synchronisation de toutes les démarches démarrée",
+                "syncs": [
+                    {
+                        "otp_config_id": config["otp_config_id"],
+                        "demarche_number": config["demarche_number"],
+                        "task_id": task_id,
+                    }
+                    for config, task_id in zip(configs, task_ids)
+                ],
+            }
+        )
+
+    except SyncSeriesAlreadyRunningError as e:
+        return jsonify({"success": False, "message": str(e)}), 409
+    except Exception as e:
+        logger.error(
+            f"Erreur lors du démarrage de la synchronisation de toutes les démarches: {str(e)}"
+        )
         return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
 
 

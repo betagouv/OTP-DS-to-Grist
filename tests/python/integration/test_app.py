@@ -5,11 +5,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+import app as app_module
 from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
+from sync.sync_manager import SyncSeriesAlreadyRunningError
 
 
 def _inline_enqueue(otp_config_id, grist_doc_id, fn):
@@ -2343,3 +2345,101 @@ class TestGristKeyAccessField:
         assert (
             self._config_from_response(response)["grist_key_access"] == "unavailable"
         )
+
+
+def _complete_config(otp_config_id, demarche_number):
+    return {
+        "otp_config_id": otp_config_id,
+        "ds_api_token": "token",
+        "demarche_number": demarche_number,
+        "grist_api_key": "key",
+        "grist_base_url": "https://grist.example.com/api",
+        "grist_doc_id": "docA",
+        "grist_user_id": "userA",
+    }
+
+
+class TestApiStartSyncAll:
+    """
+    POST /api/start-sync-all : « Tout synchroniser ».
+    load_config est remplacé sur l'instance de l'app : la route l'appelle par
+    elle, alors que la classe importée ici peut différer après un rechargement
+    de module par d'autres suites.
+    """
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_starts_series_with_complete_configs_only(
+        self, mock_start_series, client, monkeypatch
+    ):
+        """Seules les démarches sauvegardées et complètes sont envoyées, dans l'ordre"""
+        incomplete = {**_complete_config(2, "222"), "ds_api_token": ""}
+        configs = [_complete_config(1, "111"), incomplete, _complete_config(3, "333")]
+        monkeypatch.setattr(
+            app_module.config_manager,
+            "load_config",
+            lambda grist_user_id, grist_doc_id: [dict(c) for c in configs],
+        )
+        mock_start_series.return_value = ["task_1", "task_2"]
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["syncs"] == [
+            {"otp_config_id": 1, "demarche_number": "111", "task_id": "task_1"},
+            {"otp_config_id": 3, "demarche_number": "333", "task_id": "task_2"},
+        ]
+        series_key, sent_configs = mock_start_series.call_args.args
+        assert series_key == ("userA", "docA")
+        assert [c["otp_config_id"] for c in sent_configs] == [1, 3]
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_loads_configs_of_token_identity(
+        self, mock_start_series, client, monkeypatch
+    ):
+        """Les démarches sont celles de l'utilisateur et du document du jeton widget"""
+        load_config = MagicMock(return_value=[_complete_config(1, "111")])
+        monkeypatch.setattr(app_module.config_manager, "load_config", load_config)
+        mock_start_series.return_value = ["task_1"]
+
+        client.post("/api/start-sync-all")
+
+        load_config.assert_any_call(grist_user_id="userA", grist_doc_id="docA")
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_no_config_to_sync(self, mock_start_series, client, monkeypatch):
+        """Sans démarche sauvegardée et complète : 400, aucune série démarrée"""
+        monkeypatch.setattr(
+            app_module.config_manager,
+            "load_config",
+            lambda grist_user_id, grist_doc_id: [{"otp_config_id": None}],
+        )
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 400
+        assert json.loads(response.data)["success"] is False
+        mock_start_series.assert_not_called()
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_series_already_running(self, mock_start_series, client):
+        """Une série déjà en cours pour cet utilisateur et ce document : 409"""
+        mock_start_series.side_effect = SyncSeriesAlreadyRunningError("déjà en cours")
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 409
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == "déjà en cours"
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_unexpected_error(self, mock_start_series, client):
+        """Erreur inattendue : 500 avec message générique"""
+        mock_start_series.side_effect = RuntimeError("boom")
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 500
+        assert json.loads(response.data)["message"] == "Erreur interne du serveur"

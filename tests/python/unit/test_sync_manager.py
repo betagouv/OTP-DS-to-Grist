@@ -10,6 +10,7 @@ Ces tests couvrent l'ensemble des fonctionnalités de la classe :
 """
 
 import os
+import threading
 import time
 from io import StringIO
 from unittest.mock import patch, MagicMock
@@ -17,7 +18,11 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import sync.sync_manager as sync_manager_module
-from sync.sync_manager import SyncManager
+from sync.sync_manager import (
+    SyncManager,
+    SyncSeriesAlreadyRunningError,
+    missing_sync_fields,
+)
 
 
 def create_mock_process(stdout_text, stderr_text="", returncode=0):
@@ -1327,3 +1332,198 @@ class TestSyncManager:
         assert result["success"] is True
         self.grist_access_mock.assert_not_called()
         mock_subprocess.assert_called_once()
+
+
+_SERIES_TIMEOUT = 10.0
+_SERIES_KEY = ("userA", "docA")
+
+
+def _wait_until(predicate, timeout=_SERIES_TIMEOUT):
+    """Attend qu'un prédicat soit vrai (borné pour éviter les tests bloqués)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+    raise AssertionError("Condition non atteinte dans le délai imparti")
+
+
+def _series_config(otp_config_id):
+    return {"otp_config_id": otp_config_id, "grist_doc_id": "docA"}
+
+
+class TestStartSyncSeries:
+    """Série « Tout synchroniser » : une séquence propre, une démarche à la fois."""
+
+    def setup_method(self):
+        self.notify = MagicMock()
+        self.manager = SyncManager(notify_callback=self.notify)
+
+    def _all_tasks_finished(self, task_ids):
+        return all(task_id not in self.manager.tasks for task_id in task_ids)
+
+    def test_runs_configs_one_at_a_time_in_order(self):
+        """Les démarches passent une par une, dans l'ordre de la liste"""
+        events = []
+
+        def fake_sync(config, **_kwargs):
+            events.append(f"start:{config['otp_config_id']}")
+            time.sleep(0.05)
+            events.append(f"end:{config['otp_config_id']}")
+            return {"success": True}
+
+        with patch.object(self.manager, "run_synchronization_task", fake_sync):
+            task_ids = self.manager.start_sync_series(
+                _SERIES_KEY, [_series_config(1), _series_config(2), _series_config(3)]
+            )
+            _wait_until(lambda: self._all_tasks_finished(task_ids))
+
+        assert len(task_ids) == 3
+        assert events == ["start:1", "end:1", "start:2", "end:2", "start:3", "end:3"]
+
+    def test_error_does_not_stop_following_configs(self):
+        """Une démarche en erreur (ou qui lève) n'arrête pas les suivantes"""
+        ran = []
+
+        def fake_sync(config, **_kwargs):
+            ran.append(config["otp_config_id"])
+            if config["otp_config_id"] == 1:
+                raise RuntimeError("boom")
+            if config["otp_config_id"] == 2:
+                return {"success": False, "message": "Token DN périmé"}
+            return {"success": True}
+
+        with patch.object(self.manager, "run_synchronization_task", fake_sync):
+            task_ids = self.manager.start_sync_series(
+                _SERIES_KEY, [_series_config(1), _series_config(2), _series_config(3)]
+            )
+            _wait_until(lambda: self._all_tasks_finished(task_ids))
+
+        assert ran == [1, 2, 3]
+
+    def test_emits_queued_then_running_then_final_status(self):
+        """Chaque tâche est annoncée en attente, puis en cours, puis terminée"""
+        release = threading.Event()
+
+        def fake_sync(config, **_kwargs):
+            release.wait(_SERIES_TIMEOUT)
+            return {"success": True}
+
+        with patch.object(self.manager, "run_synchronization_task", fake_sync):
+            task_ids = self.manager.start_sync_series(
+                _SERIES_KEY, [_series_config(1), _series_config(2)]
+            )
+            release.set()
+            _wait_until(lambda: self._all_tasks_finished(task_ids))
+
+        for task_id in task_ids:
+            tasks = [
+                call.args[1]["task"]
+                for call in self.notify.call_args_list
+                if call.args[0] == "task_update" and call.args[1]["task_id"] == task_id
+            ]
+            statuses = [task["status"] for task in tasks]
+            assert statuses[0] == "queued"
+            assert tasks[0]["message"] == "En attente…"
+            assert "running" in statuses
+            assert statuses[-1] == "completed"
+
+    def test_second_series_refused_while_first_unfinished(self):
+        """Une seconde série de la même clé est refusée tant que la première tourne"""
+        release = threading.Event()
+
+        def fake_sync(config, **_kwargs):
+            release.wait(_SERIES_TIMEOUT)
+            return {"success": True}
+
+        def first_series_done():
+            steps = self.manager._series[_SERIES_KEY].snapshot()
+            return all(step["status"] in ("done", "error") for step in steps)
+
+        with patch.object(self.manager, "run_synchronization_task", fake_sync):
+            self.manager.start_sync_series(_SERIES_KEY, [_series_config(1)])
+
+            with pytest.raises(SyncSeriesAlreadyRunningError):
+                self.manager.start_sync_series(_SERIES_KEY, [_series_config(2)])
+
+            release.set()
+            # La première série terminée, une nouvelle est acceptée
+            _wait_until(first_series_done)
+            new_task_ids = self.manager.start_sync_series(
+                _SERIES_KEY, [_series_config(2)]
+            )
+            _wait_until(lambda: self._all_tasks_finished(new_task_ids))
+
+    def test_series_of_other_user_or_document_is_independent(self):
+        """Les séries de deux utilisateurs ou documents différents tournent en parallèle"""
+        release = threading.Event()
+        started = []
+
+        def fake_sync(config, **_kwargs):
+            started.append(config["otp_config_id"])
+            release.wait(_SERIES_TIMEOUT)
+            return {"success": True}
+
+        with patch.object(self.manager, "run_synchronization_task", fake_sync):
+            first = self.manager.start_sync_series(
+                ("userA", "docA"), [_series_config(1)]
+            )
+            other_user = self.manager.start_sync_series(
+                ("userB", "docA"), [_series_config(2)]
+            )
+            other_doc = self.manager.start_sync_series(
+                ("userA", "docB"), [_series_config(3)]
+            )
+            _wait_until(lambda: sorted(started) == [1, 2, 3])
+            release.set()
+            _wait_until(
+                lambda: self._all_tasks_finished(first + other_user + other_doc)
+            )
+
+    def test_shutdown_series_cancels_pending_configs(self):
+        """À l'arrêt, la synchro en cours est attendue, les suivantes sont annulées"""
+        release = threading.Event()
+        ran = []
+
+        def fake_sync(config, **_kwargs):
+            ran.append(config["otp_config_id"])
+            release.wait(_SERIES_TIMEOUT)
+            return {"success": True}
+
+        with patch.object(self.manager, "run_synchronization_task", fake_sync):
+            self.manager.start_sync_series(
+                _SERIES_KEY, [_series_config(1), _series_config(2)]
+            )
+            _wait_until(lambda: ran == [1])
+
+            stopper = threading.Thread(target=self.manager.shutdown_series)
+            stopper.start()
+            time.sleep(0.1)
+            release.set()
+            stopper.join(_SERIES_TIMEOUT)
+
+        assert not stopper.is_alive()
+        assert ran == [1]
+
+
+class TestMissingSyncFields:
+    """Champs nécessaires à une synchronisation"""
+
+    COMPLETE_CONFIG = {
+        "ds_api_token": "token",
+        "demarche_number": "123",
+        "grist_api_key": "key",
+        "grist_doc_id": "docA",
+        "grist_user_id": "userA",
+    }
+
+    def test_complete_config(self):
+        """Une configuration complète n'a aucun champ manquant"""
+        assert missing_sync_fields(self.COMPLETE_CONFIG) == []
+
+    def test_empty_or_absent_fields(self):
+        """Un champ vide ou absent est signalé, dans l'ordre des champs requis"""
+        config = {**self.COMPLETE_CONFIG, "ds_api_token": ""}
+        del config["grist_user_id"]
+
+        assert missing_sync_fields(config) == ["ds_api_token", "grist_user_id"]
