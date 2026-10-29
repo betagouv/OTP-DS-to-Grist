@@ -35,3 +35,8 @@ poe test-db
 ```
 
 Pour cibler une autre base : `TEST_DATABASE_URL=postgresql://…/<nom>_test pytest tests/python/db/`.
+
+## En CI
+
+Le job `test-db` de `.github/workflows/ci.yml` lance `poe test-db` sur une base
+jetable, avec des identifiants fixes définis dans le workflow (non secrets).
