@@ -3,10 +3,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from grist.columns import (
+    COLUMNS_TABLE,
     ID_SUFFIX,
     VIEW_FIELDS_TABLE,
     hide_columns_ending_with,
     hide_columns_with_id,
+    untie_column_ids,
 )
 
 CHAMPS = "grist.columns"
@@ -139,3 +141,121 @@ class TestHideColumnsEndingWith:
             with pytest.raises(Exception):
                 hide_columns_ending_with(client, suffix=ID_SUFFIX)
         assert "Cannot remove raw view section field" in mock_error.call_args.args[0]
+
+
+def _tied_client(*lines: tuple[str, str, int]) -> MagicMock:
+    """Client factice : `run_sql` renvoie des colonnes liées (tableId, colId, colRef)."""
+    client = MagicMock()
+    client.run_sql.return_value = [
+        {"colRef": col_ref, "tableId": table_id, "colId": col_id}
+        for table_id, col_id, col_ref in lines
+    ]
+    response = MagicMock()
+    response.status_code = 200
+    client.apply_user_actions.return_value = response
+    return client
+
+
+def _untied_col_refs(client: MagicMock) -> list[int]:
+    """colRefs déliés par la seule action d'écriture envoyée."""
+    (action,) = client.apply_user_actions.call_args.args[0]
+    return action[2]
+
+
+class TestUntieColumnIds:
+    """Tests unitaires pour grist.columns.untie_column_ids"""
+
+    def test_one_read_and_one_write_for_the_whole_document(self):
+        """N colonnes de plusieurs tables -> une seule lecture et une seule écriture"""
+        client = _tied_client(
+            ("Demarche_1_dossiers", "dossier_number", 10),
+            ("Demarche_1_champs", "nom", 11),
+            ("Demarche_2_annotations", "avis", 12),
+        )
+        with patch(f"{CHAMPS}.log"):
+            assert untie_column_ids(client) == 3
+        assert client.run_sql.call_count == 1
+        assert client.apply_user_actions.call_count == 1
+        assert _untied_col_refs(client) == [10, 11, 12]
+
+    def test_writes_untie_on_column_metadata(self):
+        """l'écriture met untieColIdFromLabel à vrai sur les colonnes, une valeur par colonne"""
+        client = _tied_client(
+            ("Demarche_1_dossiers", "dossier_number", 10),
+            ("Demarche_1_champs", "nom", 11),
+        )
+        with patch(f"{CHAMPS}.log"):
+            untie_column_ids(client)
+        (action,) = client.apply_user_actions.call_args.args[0]
+        assert action == [
+            "BulkUpdateRecord",
+            COLUMNS_TABLE,
+            [10, 11],
+            {"untieColIdFromLabel": [True, True]},
+        ]
+
+    def test_reads_only_tied_data_columns(self):
+        """la lecture écarte en SQL les colonnes déjà déliées et les formules"""
+        client = _tied_client()
+        with patch(f"{CHAMPS}.log_verbose"):
+            untie_column_ids(client)
+        sql = client.run_sql.call_args.args[0]
+        assert "_grist_Tables_column" in sql
+        assert "c.untieColIdFromLabel = 0" in sql
+        assert "c.isFormula = 0" in sql
+
+    def test_includes_sync_metadata_table(self):
+        """la table de métadonnées de synchro est une table OTP"""
+        client = _tied_client(("Sync_metadata", "last_sync_duration", 20))
+        with patch(f"{CHAMPS}.log"):
+            assert untie_column_ids(client) == 1
+        assert _untied_col_refs(client) == [20]
+
+    def test_leaves_user_tables_untouched(self):
+        """les tables ajoutées par les utilisateurs gardent leur réglage"""
+        client = _tied_client(
+            ("Demarche_1_dossiers", "dossier_number", 10),
+            ("Suivi_agents", "commentaire", 30),
+            ("Table1", "A", 31),
+        )
+        with patch(f"{CHAMPS}.log"):
+            assert untie_column_ids(client) == 1
+        assert _untied_col_refs(client) == [10]
+
+    def test_leaves_grist_internal_columns_untouched(self):
+        """manualSort et les colonnes gristHelper_ ne sont pas des colonnes OTP"""
+        client = _tied_client(
+            ("Demarche_1_dossiers", "manualSort", 40),
+            ("Demarche_1_dossiers", "gristHelper_Display", 41),
+            ("Demarche_1_dossiers", "dossier_number", 42),
+        )
+        with patch(f"{CHAMPS}.log"):
+            assert untie_column_ids(client) == 1
+        assert _untied_col_refs(client) == [42]
+
+    def test_nothing_to_untie_makes_no_write(self):
+        """tout est déjà délié -> aucune écriture"""
+        client = _tied_client(("Table1", "A", 31))
+        with patch(f"{CHAMPS}.log"), patch(f"{CHAMPS}.log_verbose") as mock_verbose:
+            assert untie_column_ids(client) == 0
+        assert client.apply_user_actions.call_count == 0
+        assert mock_verbose.call_count == 1
+
+    def test_logs_the_untied_columns(self):
+        """les colonnes déliées sont nommées, pour être vérifiables d'un coup d'œil"""
+        client = _tied_client(("Demarche_1_champs", "nom", 11))
+        with patch(f"{CHAMPS}.log") as mock_log:
+            untie_column_ids(client)
+        assert "Demarche_1_champs.nom" in mock_log.call_args.args[0]
+
+    def test_grist_error_is_reported_with_its_cause(self):
+        """un refus de Grist remonte la cause, sans être avalé"""
+        client = _tied_client(("Demarche_1_champs", "nom", 11))
+        response = client.apply_user_actions.return_value
+        response.status_code = 403
+        response.text = "No write access"
+        response.raise_for_status.side_effect = Exception("HTTP 403")
+        with patch(f"{CHAMPS}.log"), patch(f"{CHAMPS}.log_error") as mock_error:
+            with pytest.raises(Exception):
+                untie_column_ids(client)
+        assert "No write access" in mock_error.call_args.args[0]
