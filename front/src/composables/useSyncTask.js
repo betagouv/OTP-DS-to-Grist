@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 
 // Synchros suivies, dans leur ordre d'exécution : une seule pour une démarche,
-// plusieurs pour « Tout synchroniser ». Chacune : { taskId, demarcheNumber, demarcheTitle }.
+// plusieurs pour « Tout synchroniser ». Chacune : { taskId, demarcheNumber }.
 const _tasks = ref([])
 const _currentIndex = ref(0)
 const _finished = ref(true)
@@ -30,8 +30,8 @@ export const useSyncTask = () => {
     ]))
   }
 
-  const setCurrentTaskId = (id, demarcheNumber = null, demarcheTitle = null) => {
-    setTasks(id ? [{ taskId: id, demarcheNumber, demarcheTitle }] : [])
+  const setCurrentTaskId = (id, demarcheNumber = null) => {
+    setTasks(id ? [{ taskId: id, demarcheNumber }] : [])
   }
 
   // Passe à la synchro suivante ; retourne false quand la dernière est terminée

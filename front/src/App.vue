@@ -11,6 +11,8 @@ import NotificationToast from './components/NotificationToast.vue'
 const syncRunning = ref(false)
 const lastSyncResult = ref(null)
 const syncHistory = ref([])
+// Noms des démarches par numéro, reçus du test de connexion de chaque volet
+const demarcheTitles = ref({})
 
 const { lastAutoSync, lastManualSync, fetchAllLatestSyncs } = useSyncStatus()
 const { fetchHistory } = useSyncHistory()
@@ -21,6 +23,10 @@ const handleConfigLoaded = ({ configs, gristBaseUrl }) => {
   fetchHistory()
     .then(rows => { syncHistory.value = rows })
     .catch(() => {})
+}
+
+const handleTitleLoaded = (demarcheNumber, title) => {
+  demarcheTitles.value = { ...demarcheTitles.value, [demarcheNumber]: title }
 }
 
 const handleSyncStarted = () => {
@@ -78,7 +84,7 @@ const handleSyncFinished = (result) => {
         </template>
       </template>
 
-      <SyncSeriesTable :history="syncHistory" />
+      <SyncSeriesTable :history="syncHistory" :titles="demarcheTitles" />
 
       <SyncProgress
         @sync-running-changed="syncRunning = $event"
@@ -89,6 +95,7 @@ const handleSyncFinished = (result) => {
       <OTPForm
         :sync-running="syncRunning"
         @config-loaded="handleConfigLoaded"
+        @title-loaded="handleTitleLoaded"
       />
     </div>
   </header>

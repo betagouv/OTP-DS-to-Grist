@@ -8,9 +8,12 @@ import { useNotification } from '../../composables/useNotification'
 const { setTasks, setCurrentTaskId, recordTaskUpdate } = useSyncTask()
 
 const SERIES = [
-  { taskId: 'task_1', demarcheNumber: '111', demarcheTitle: 'Première démarche' },
-  { taskId: 'task_2', demarcheNumber: '222', demarcheTitle: null }
+  { taskId: 'task_1', demarcheNumber: '111' },
+  { taskId: 'task_2', demarcheNumber: '222' }
 ]
+
+// Noms connus (test de connexion des volets) : la démarche 222 n'en a pas
+const TITLES = { 111: 'Première démarche' }
 
 // Heure locale : le format attendu ne dépend pas du fuseau de la machine de test
 const END_TIME = new Date(2026, 10, 2, 14, 41).getTime() / 1000
@@ -31,41 +34,41 @@ describe('SyncSeriesTable', () => {
 
   it('is hidden when no sync is followed', () => {
     setCurrentTaskId(null)
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
 
     expect(wrapper.find('table').exists()).toBe(false)
   })
 
   it('shows one row for the sync of a single démarche', () => {
-    setCurrentTaskId('task_1', '111', 'Première démarche')
-    const wrapper = mount(SyncSeriesTable)
+    setCurrentTaskId('task_1', '111')
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
 
     expect(rows(wrapper)).toHaveLength(1)
     expect(cells(wrapper, 0)[0].text()).toBe('N°111 — Première démarche')
   })
 
   it('shows the header and one row per démarche', () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
 
     expect(wrapper.find('thead').text()).toBe('Détails des synchronisations')
     expect(rows(wrapper)).toHaveLength(2)
   })
 
   it('shows the démarche number and its title when known', () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
 
     expect(cells(wrapper, 0)[0].text()).toBe('N°111 — Première démarche')
     expect(cells(wrapper, 1)[0].text()).toBe('N°222')
   })
 
   it('renders the démarche as a tooltip, for when it is truncated', () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
 
     expect(cells(wrapper, 0)[0].attributes('title')).toBe('N°111 — Première démarche')
   })
 
   it('shows a grey pending badge before the démarche starts', () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
     const badge = cells(wrapper, 1)[2].find('.fr-badge')
 
     expect(badge.text()).toBe('En attente')
@@ -73,7 +76,7 @@ describe('SyncSeriesTable', () => {
   })
 
   it('shows a running badge and the server message during the sync', async () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
     recordTaskUpdate('task_1', { status: 'running', message: 'Récupération des dossiers', logs: [] })
     await wrapper.vm.$nextTick()
 
@@ -82,7 +85,7 @@ describe('SyncSeriesTable', () => {
   })
 
   it('shows the processed dossiers and a success badge when completed', async () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
     recordTaskUpdate('task_1', {
       status: 'completed',
       message: 'Tâche terminée avec succès',
@@ -97,7 +100,7 @@ describe('SyncSeriesTable', () => {
   })
 
   it('tells when Grist is already up to date', async () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
     recordTaskUpdate('task_1', {
       status: 'completed',
       message: 'Tâche terminée avec succès',
@@ -111,7 +114,7 @@ describe('SyncSeriesTable', () => {
   })
 
   it('shows the number of failed dossiers in a red badge', async () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
     recordTaskUpdate('task_1', {
       status: 'error',
       message: 'Erreur lors de la synchronisation',
@@ -125,7 +128,7 @@ describe('SyncSeriesTable', () => {
   })
 
   it('shows a plain error badge when no dossier failed', async () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
     recordTaskUpdate('task_1', {
       status: 'error',
       message: 'Token DN périmé',
@@ -139,7 +142,7 @@ describe('SyncSeriesTable', () => {
   })
 
   it('renders the message as a tooltip, for when it is truncated', async () => {
-    const wrapper = mount(SyncSeriesTable)
+    const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
     recordTaskUpdate('task_1', { status: 'error', message: 'Token DN périmé', logs: [] })
     await wrapper.vm.$nextTick()
 
@@ -148,7 +151,7 @@ describe('SyncSeriesTable', () => {
 
   describe('date and type', () => {
     it('adds the end date after the final message', async () => {
-      const wrapper = mount(SyncSeriesTable)
+      const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
       recordTaskUpdate('task_1', {
         status: 'completed',
         message: 'Tâche terminée avec succès',
@@ -162,7 +165,7 @@ describe('SyncSeriesTable', () => {
     })
 
     it('adds the end date after an error message', async () => {
-      const wrapper = mount(SyncSeriesTable)
+      const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
       recordTaskUpdate('task_1', { status: 'error', message: 'Token DN périmé', end_time: END_TIME, logs: [] })
       await wrapper.vm.$nextTick()
 
@@ -170,7 +173,7 @@ describe('SyncSeriesTable', () => {
     })
 
     it('shows no date while the sync is running', async () => {
-      const wrapper = mount(SyncSeriesTable)
+      const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
       recordTaskUpdate('task_1', { status: 'running', message: 'Récupération des dossiers', logs: [] })
       await wrapper.vm.$nextTick()
 
@@ -178,7 +181,7 @@ describe('SyncSeriesTable', () => {
     })
 
     it('shows a manual type badge next to the status', () => {
-      const wrapper = mount(SyncSeriesTable)
+      const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
 
       expect(cells(wrapper, 0)[2].find('[data-test-id="sync-type-badge"]').text()).toBe('Manuelle')
     })
@@ -192,13 +195,13 @@ describe('SyncSeriesTable', () => {
     })
 
     it('is disabled while the démarche has no logs', () => {
-      const wrapper = mount(SyncSeriesTable)
+      const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
 
       expect(copyButton(wrapper, 0).attributes('disabled')).toBeDefined()
     })
 
     it('copies only the logs of its row', async () => {
-      const wrapper = mount(SyncSeriesTable)
+      const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
       recordTaskUpdate('task_1', { status: 'running', message: '', logs: [{ message: 'un' }, { message: 'deux' }] })
       recordTaskUpdate('task_2', { status: 'queued', message: '', logs: [{ message: 'autre' }] })
       await wrapper.vm.$nextTick()
@@ -215,7 +218,7 @@ describe('SyncSeriesTable', () => {
 
     it('notifies an error when the copy fails', async () => {
       navigator.clipboard.writeText = vi.fn().mockRejectedValue(new Error('refus'))
-      const wrapper = mount(SyncSeriesTable)
+      const wrapper = mount(SyncSeriesTable, { props: { titles: TITLES } })
       recordTaskUpdate('task_1', { status: 'running', message: '', logs: [{ message: 'un' }] })
       await wrapper.vm.$nextTick()
 
@@ -253,7 +256,7 @@ describe('SyncSeriesTable', () => {
       }
     ]
 
-    const mountWithHistory = () => mount(SyncSeriesTable, { props: { history: HISTORY } })
+    const mountWithHistory = () => mount(SyncSeriesTable, { props: { history: HISTORY, titles: TITLES } })
 
     beforeEach(() => {
       setCurrentTaskId(null)
@@ -264,6 +267,7 @@ describe('SyncSeriesTable', () => {
 
       expect(rows(wrapper)).toHaveLength(2)
       expect(cells(wrapper, 0)[0].text()).toBe('N°222')
+      expect(cells(wrapper, 1)[0].text()).toBe('N°111 — Première démarche')
       expect(cells(wrapper, 0)[1].text()).toBe('Token DN périmé · 2026-11-02 14:41')
       expect(cells(wrapper, 0)[2].find('.fr-badge--error').text()).toBe('Erreur')
       expect(cells(wrapper, 1)[1].text()).toBe('14 dossiers mis à jour/ajoutés · 2026-11-01 09:05')

@@ -8,7 +8,9 @@ import { useNotification } from '../composables/useNotification'
 
 const props = defineProps({
   // Dernière synchro de chaque démarche, lue en base (useSyncHistory)
-  history: { type: Array, default: () => [] }
+  history: { type: Array, default: () => [] },
+  // Noms des démarches par numéro, connus après le test de connexion des volets
+  titles: { type: Object, default: () => ({}) }
 })
 
 const { seriesTasks } = useSyncTask()
@@ -21,10 +23,11 @@ const rows = computed(() => (isLive.value
   : props.history
 ))
 
-const formatDemarche = (task) => (task.demarcheTitle
-  ? `N°${task.demarcheNumber} — ${task.demarcheTitle}`
-  : `N°${task.demarcheNumber}`
-)
+const formatDemarche = (task) => {
+  const title = props.titles[task.demarcheNumber]
+
+  return title ? `N°${task.demarcheNumber} — ${title}` : `N°${task.demarcheNumber}`
+}
 
 const pad = (value) => String(value).padStart(2, '0')
 

@@ -1109,7 +1109,7 @@ describe('Sync action', () => {
     expect(totalDemarches.value).toBe(1)
   })
 
-  it('passes the démarche title of the synced section to useSyncTask', async () => {
+  it('re-emits the démarche title received from a section', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ configs: [
@@ -1122,16 +1122,9 @@ describe('Sync action', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    const dnSection = wrapper.findComponent(DNFormSection)
-    dnSection.vm.$emit('title-loaded', '111', 'Ma démarche')
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ task_id: 'task_1' })
-    })
-    dnSection.vm.$emit('sync', 0)
-    await new Promise(process.nextTick)
+    wrapper.findComponent(DNFormSection).vm.$emit('title-loaded', '111', 'Ma démarche')
 
-    expect(useSyncTask().seriesTasks.value[0].demarcheTitle).toBe('Ma démarche')
+    expect(wrapper.emitted('title-loaded')).toEqual([['111', 'Ma démarche']])
   })
 })
 
@@ -1188,28 +1181,6 @@ describe('Sync all button', () => {
     expect(currentTaskId.value).toBe('task_1')
     expect(demarcheNumber.value).toBe('222')
     expect(totalDemarches.value).toBe(2)
-  })
-
-  it('passes the démarche titles received from the sections to the series', async () => {
-    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, { otp_config_id: 2 }])
-    const dnSections = wrapper.findAllComponents(DNFormSection)
-    dnSections[0].vm.$emit('title-loaded', '222', 'Seconde démarche')
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        success: true,
-        syncs: [
-          { otp_config_id: 2, demarche_number: '222', task_id: 'task_1' },
-          { otp_config_id: 1, demarche_number: '111', task_id: 'task_2' }
-        ]
-      })
-    })
-
-    await syncAllButton(wrapper).trigger('click')
-    await new Promise(process.nextTick)
-
-    const { seriesTasks } = useSyncTask()
-    expect(seriesTasks.value.map(task => task.demarcheTitle)).toEqual(['Seconde démarche', null])
   })
 
   it('is disabled while a sync is running', async () => {

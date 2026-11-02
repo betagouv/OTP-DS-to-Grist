@@ -16,7 +16,7 @@ const props = defineProps({
   syncRunning: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['config-loaded'])
+const emit = defineEmits(['config-loaded', 'title-loaded'])
 
 const { setCurrentTaskId, setTasks } = useSyncTask()
 const { notify } = useNotification()
@@ -29,8 +29,6 @@ const syncAllError = ref(null)
 // Requête « Tout synchroniser » en vol : évite un second envoi avant le
 // démarrage effectif (syncRunning ne passe à vrai qu'au premier événement)
 const syncAllPending = ref(false)
-// Noms des démarches par numéro, reçus du test de connexion de chaque volet
-const demarcheTitles = ref({})
 
 // Indices des sections dont une sauvegarde est en vol : leurs boutons
 // d'action (synchronisation/suppression) sont désactivés le temps de la requête
@@ -193,8 +191,7 @@ const handleSync = async (index) => {
   actionErrors.value[index] = null
   try {
     const result = await api.startSync(otpConfigIdToSync)
-    const demarcheNumber = configs.value[index].demarche_number
-    setCurrentTaskId(result.task_id, demarcheNumber, demarcheTitles.value[demarcheNumber] ?? null)
+    setCurrentTaskId(result.task_id, configs.value[index].demarche_number)
     activeDnAccordion.value = -1
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'
@@ -209,8 +206,7 @@ const handleSyncAll = async () => {
     const result = await api.startSyncAll()
     setTasks(result.syncs.map(sync => ({
       taskId: sync.task_id,
-      demarcheNumber: sync.demarche_number,
-      demarcheTitle: demarcheTitles.value[sync.demarche_number] ?? null
+      demarcheNumber: sync.demarche_number
     })))
     activeDnAccordion.value = -1
   } catch (e) {
@@ -218,10 +214,6 @@ const handleSyncAll = async () => {
   } finally {
     syncAllPending.value = false
   }
-}
-
-const handleTitleLoaded = (demarcheNumber, title) => {
-  demarcheTitles.value = { ...demarcheTitles.value, [demarcheNumber]: title }
 }
 
 const handleAddDemarche = async () => {
@@ -287,7 +279,7 @@ const handleAddDemarche = async () => {
         @save="handleSave"
         @delete="handleDelete"
         @sync="handleSync"
-        @title-loaded="handleTitleLoaded"
+        @title-loaded="(demarcheNumber, title) => emit('title-loaded', demarcheNumber, title)"
         :grist-error="gristError"
         :can-delete="canDelete(config)"
         :can-sync="canSync(config)"

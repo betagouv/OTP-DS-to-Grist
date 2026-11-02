@@ -31,7 +31,7 @@ const SyncProgressStub = {
 
 const OTPFormStub = {
   template: '<div data-testid="otp-form" />',
-  emits: ['config-loaded']
+  emits: ['config-loaded', 'title-loaded']
 }
 
 const createWrapper = () => {
@@ -74,6 +74,19 @@ describe('App', () => {
     await wrapper.vm.$nextTick()
 
     expect(mockFetchHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes the démarche titles received from OTPForm to the sync table', async () => {
+    const wrapper = createWrapper()
+
+    wrapper.findComponent(OTPFormStub).vm.$emit('title-loaded', '111', 'Ma démarche')
+    wrapper.findComponent(OTPFormStub).vm.$emit('title-loaded', '222', 'Autre démarche')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(SyncSeriesTable).props('titles')).toEqual({
+      111: 'Ma démarche',
+      222: 'Autre démarche'
+    })
   })
 
   it('passes the loaded history to the sync table', async () => {
