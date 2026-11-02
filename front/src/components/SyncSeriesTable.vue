@@ -1,11 +1,25 @@
 <script setup>
 import { DsfrBadge, DsfrButton } from '@gouvminint/vue-dsfr'
 
+import { computed } from 'vue'
+
 import { useSyncTask } from '../composables/useSyncTask'
 import { useNotification } from '../composables/useNotification'
 
+const props = defineProps({
+  // Dernière synchro de chaque démarche, lue en base (useSyncHistory)
+  history: { type: Array, default: () => [] }
+})
+
 const { seriesTasks } = useSyncTask()
 const { notify } = useNotification()
+
+// Synchros lancées depuis la page ; à défaut, dernières synchros lues en base
+const isLive = computed(() => seriesTasks.value.length > 0)
+const rows = computed(() => (isLive.value
+  ? seriesTasks.value.map(task => ({ ...task, key: task.taskId }))
+  : props.history
+))
 
 const formatDemarche = (task) => (task.demarcheTitle
   ? `N°${task.demarcheNumber} — ${task.demarcheTitle}`
@@ -52,22 +66,23 @@ const copyLogs = (task) => {
 </script>
 
 <template>
-  <div v-if="seriesTasks.length" class="fr-table fr-mb-4w">
+  <div v-if="rows.length" class="fr-table fr-mb-4w">
     <table data-test-id="sync-series-table">
       <!-- Largeurs fixes : le contenu, qui change à chaque événement, ne redimensionne plus les colonnes -->
       <colgroup>
         <col class="col-demarche">
         <col>
         <col class="col-status">
-        <col class="col-logs">
+        <!-- Logs en mémoire seulement : pas de colonne pour les synchros lues en base -->
+        <col v-if="isLive" class="col-logs">
       </colgroup>
       <thead>
         <tr>
-          <th colspan="4">Détails des synchronisations</th>
+          <th :colspan="isLive ? 4 : 3">Détails des synchronisations</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="task in seriesTasks" :key="task.taskId">
+        <tr v-for="task in rows" :key="task.key">
           <td class="ellipsis" :title="formatDemarche(task)">{{ formatDemarche(task) }}</td>
           <td class="ellipsis" :title="formatMessage(task)">{{ formatMessage(task) }}</td>
           <td class="nowrap">
@@ -86,7 +101,7 @@ const copyLogs = (task) => {
               />
             </span>
           </td>
-          <td class="nowrap">
+          <td v-if="isLive" class="nowrap">
             <DsfrButton
               label="Copier les logs"
               tertiary

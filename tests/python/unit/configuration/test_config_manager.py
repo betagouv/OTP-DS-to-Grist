@@ -136,7 +136,7 @@ class TestConfigManager:
         os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
     )
     def test_load_config_not_found(self, mock_db_manager):
-        """Test du chargement quand aucune configuration n'existe - retourne liste avec config vide"""
+        """Aucune configuration enregistrée : liste vide"""
         # Mock de la connexion DB
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
@@ -149,23 +149,7 @@ class TestConfigManager:
         config_manager = ConfigManager("dummy_url")
         configs = config_manager.load_config("test_user", "test_doc")
 
-        # Vérifications - c'est une liste avec une config vide
-        assert isinstance(configs, list)
-        assert len(configs) == 1
-        config = configs[0]  # Prendre la première (config vide)
-
-        # Vérifications des valeurs par défaut
-        assert config["otp_config_id"] is None
-        assert config["ds_api_token"] == ""
-        assert config["demarche_number"] == ""
-        assert config["grist_base_url"] == ""
-        assert config["grist_api_key"] == ""
-        assert config["grist_doc_id"] == ""
-        assert config["grist_user_id"] == ""
-        assert config["filter_date_start"] == ""
-        assert config["filter_date_end"] == ""
-        assert config["filter_statuses"] == ""
-        assert config["filter_groups"] == ""
+        assert configs == []
 
     @patch("configuration.config_manager.DatabaseManager")
     @patch.dict(

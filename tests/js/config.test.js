@@ -54,6 +54,27 @@ describe('getConfiguration', () => {
   )
 
   it(
+    'returns an empty configuration when nothing is saved yet',
+    async () => {
+      fetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({ configs: [] })
+      })
+
+      const result = await getConfiguration()
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        otp_config_id: null,
+        demarche_number: '',
+        grist_base_url: '',
+        has_ds_token: false,
+        has_grist_key: false
+      })
+    }
+  )
+
+  it(
     'throws error on fetch failure',
     async () => {
       fetch.mockResolvedValue({

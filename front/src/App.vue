@@ -5,15 +5,22 @@ import SyncProgress from './components/SyncProgress.vue'
 import SyncSeriesTable from './components/SyncSeriesTable.vue'
 import SyncResultBanner from './components/SyncResultBanner.vue'
 import { useSyncStatus } from './composables/useSyncStatus'
+import { useSyncHistory } from './composables/useSyncHistory'
 import NotificationToast from './components/NotificationToast.vue'
 
 const syncRunning = ref(false)
 const lastSyncResult = ref(null)
+const syncHistory = ref([])
 
 const { lastAutoSync, lastManualSync, fetchAllLatestSyncs } = useSyncStatus()
+const { fetchHistory } = useSyncHistory()
 
 const handleConfigLoaded = ({ configs, gristBaseUrl }) => {
   fetchAllLatestSyncs(configs, gristBaseUrl).catch(() => {})
+  // Sans historique lisible, le tableau ne s'affiche simplement pas
+  fetchHistory()
+    .then(rows => { syncHistory.value = rows })
+    .catch(() => {})
 }
 
 const handleSyncStarted = () => {
@@ -71,7 +78,7 @@ const handleSyncFinished = (result) => {
         </template>
       </template>
 
-      <SyncSeriesTable />
+      <SyncSeriesTable :history="syncHistory" />
 
       <SyncProgress
         @sync-running-changed="syncRunning = $event"

@@ -228,4 +228,71 @@ describe('SyncSeriesTable', () => {
       })
     })
   })
+
+  describe('latest syncs read at load', () => {
+    const HISTORY = [
+      {
+        key: 'history_2',
+        demarcheNumber: '222',
+        status: 'error',
+        message: 'Token DN périmé',
+        result: { success_count: 0, error_count: 0 },
+        syncReason: null,
+        endTime: new Date(2026, 10, 2, 14, 41),
+        auto: true
+      },
+      {
+        key: 'history_1',
+        demarcheNumber: '111',
+        status: 'completed',
+        message: 'Synchronisation terminée',
+        result: { success_count: 14, error_count: 0 },
+        syncReason: null,
+        endTime: new Date(2026, 10, 1, 9, 5),
+        auto: false
+      }
+    ]
+
+    const mountWithHistory = () => mount(SyncSeriesTable, { props: { history: HISTORY } })
+
+    beforeEach(() => {
+      setCurrentTaskId(null)
+    })
+
+    it('shows one row per démarche with its latest sync', () => {
+      const wrapper = mountWithHistory()
+
+      expect(rows(wrapper)).toHaveLength(2)
+      expect(cells(wrapper, 0)[0].text()).toBe('N°222')
+      expect(cells(wrapper, 0)[1].text()).toBe('Token DN périmé · 2026-11-02 14:41')
+      expect(cells(wrapper, 0)[2].find('.fr-badge--error').text()).toBe('Erreur')
+      expect(cells(wrapper, 1)[1].text()).toBe('14 dossiers mis à jour/ajoutés · 2026-11-01 09:05')
+    })
+
+    it('shows whether each sync was automatic or manual', () => {
+      const wrapper = mountWithHistory()
+      const typeBadge = (index) => cells(wrapper, index)[2].find('[data-test-id="sync-type-badge"]')
+
+      expect(typeBadge(0).text()).toBe('Auto')
+      expect(typeBadge(1).text()).toBe('Manuelle')
+    })
+
+    it('has no logs column', () => {
+      const wrapper = mountWithHistory()
+
+      expect(wrapper.find('thead th').attributes('colspan')).toBe('3')
+      expect(cells(wrapper, 0)).toHaveLength(3)
+      expect(wrapper.text()).not.toContain('Copier les logs')
+    })
+
+    it('gives way to the syncs launched from the page', async () => {
+      const wrapper = mountWithHistory()
+      setTasks(SERIES)
+      await wrapper.vm.$nextTick()
+
+      expect(rows(wrapper)).toHaveLength(2)
+      expect(cells(wrapper, 0)[0].text()).toBe('N°111 — Première démarche')
+      expect(cells(wrapper, 0)).toHaveLength(4)
+    })
+  })
 })

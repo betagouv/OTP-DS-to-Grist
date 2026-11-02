@@ -10,6 +10,22 @@ const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'editors', 'no-access']
 const GRIST_KEY_ACCESS_WARNING =
   "La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document."
 
+// Configuration d'un utilisateur qui n'a encore rien enregistré : le legacy
+// lit toujours la première configuration (formulaire vierge)
+const EMPTY_CONFIGURATION = {
+  otp_config_id: null,
+  demarche_number: '',
+  grist_base_url: '',
+  grist_doc_id: '',
+  grist_user_id: '',
+  filter_date_start: '',
+  filter_date_end: '',
+  filter_statuses: '',
+  filter_groups: '',
+  has_ds_token: false,
+  has_grist_key: false
+}
+
 const getConfiguration = async () => {
   // Récupérer le contexte Grist
   const gristContext = await getGristContext()
@@ -19,7 +35,7 @@ const getConfiguration = async () => {
 
   const data = await response.json()
   // retourner la liste des configs (pour l'instant, on prend la première)
-  return data.configs
+  return data.configs.length ? data.configs : [{ ...EMPTY_CONFIGURATION }]
 }
 
 const updateButtonsState = () => {

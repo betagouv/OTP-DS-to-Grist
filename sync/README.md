@@ -101,6 +101,17 @@ automatiques :
 Le bouton de synchronisation d'une seule démarche (`POST /api/start-sync`) ne
 passe par aucune séquence : la synchro démarre immédiatement.
 
+## Historique des synchronisations
+
+Chaque synchronisation, automatique ou manuelle, est enregistrée dans la table
+`sync_logs` à sa fin. Les routes de `app.py` relisent cet historique pour
+l'affichage : `GET /api/sync-log/latest-by-demarche` renvoie la dernière
+synchronisation de chaque démarche sauvegardée (front Vue, tableau affiché au
+chargement). La
+route `GET /api/sync-log/latest`, qui donne la dernière synchro automatique et
+la dernière manuelle du document, sert au front legacy et aux bandeaux de
+statut du front Vue.
+
 ## tasks/
 
 Opérations de niveau démarche exécutées pendant une synchronisation, également

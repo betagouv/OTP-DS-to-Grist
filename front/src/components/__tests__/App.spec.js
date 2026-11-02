@@ -4,9 +4,15 @@ import { ref } from 'vue'
 
 import App from '../../App.vue'
 import SyncResultBanner from '../SyncResultBanner.vue'
+import SyncSeriesTable from '../SyncSeriesTable.vue'
 import { useSyncStatus } from '../../composables/useSyncStatus'
+import { useSyncHistory } from '../../composables/useSyncHistory'
 
 vi.mock('../../composables/useSyncStatus')
+vi.mock('../../composables/useSyncHistory')
+
+const mockFetchHistory = vi.fn().mockResolvedValue([])
+useSyncHistory.mockReturnValue({ fetchHistory: mockFetchHistory })
 
 const mockLastAutoSync = ref(null)
 const mockLastManualSync = ref(null)
@@ -44,6 +50,7 @@ describe('App', () => {
     mockLastAutoSync.value = null
     mockLastManualSync.value = null
     mockFetchAllLatestSyncs.mockClear()
+    mockFetchHistory.mockClear()
   })
 
   afterEach(() => {
@@ -58,6 +65,26 @@ describe('App', () => {
     await wrapper.vm.$nextTick()
 
     expect(mockFetchAllLatestSyncs).toHaveBeenCalledWith(configs, 'https://grist.example.com/api')
+  })
+
+  it('fetches the latest sync of each démarche when OTPForm emits config-loaded', async () => {
+    const wrapper = createWrapper()
+
+    wrapper.findComponent(OTPFormStub).vm.$emit('config-loaded', { configs: [], gristBaseUrl: null })
+    await wrapper.vm.$nextTick()
+
+    expect(mockFetchHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes the loaded history to the sync table', async () => {
+    const rows = [{ key: 'history_1', demarcheNumber: '111' }]
+    mockFetchHistory.mockResolvedValueOnce(rows)
+    const wrapper = createWrapper()
+
+    wrapper.findComponent(OTPFormStub).vm.$emit('config-loaded', { configs: [], gristBaseUrl: null })
+    await new Promise(process.nextTick)
+
+    expect(wrapper.findComponent(SyncSeriesTable).props('history')).toEqual(rows)
   })
 
   it('clears live result when SyncProgress emits sync-started', async () => {

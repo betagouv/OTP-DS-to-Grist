@@ -150,6 +150,27 @@ describe('InternalApi', () => {
     })
   })
 
+  describe('getLatestSyncsByDemarche', () => {
+    it('calls GET /api/sync-log/latest-by-demarche and returns json', async () => {
+      const response = { success: true, syncs: [] }
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(response)
+      })
+
+      const result = await api.getLatestSyncsByDemarche()
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/sync-log/latest-by-demarche')
+      expect(result).toEqual(response)
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
+
+      await expect(api.getLatestSyncsByDemarche()).rejects.toThrow('Erreur HTTP 500')
+    })
+  })
+
   describe('testConnection', () => {
     it('calls POST /api/test-connection with body', async () => {
       globalThis.fetch.mockResolvedValue({

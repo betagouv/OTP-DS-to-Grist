@@ -13,6 +13,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, Response, g, jsonify, render_template, request, url_for
+from sqlalchemy import func, select
 from werkzeug.exceptions import HTTPException
 
 from api.responses import config_not_found_response, error_response
@@ -787,6 +788,69 @@ def api_sync_log_latest():
         db.close()
 
 
+@app.route("/api/sync-log/latest-by-demarche", methods=["GET"])
+def api_sync_log_latest_by_demarche():
+    """
+    Dernière synchronisation de chaque démarche sauvegardée de l'utilisateur et
+    du document du jeton widget, dans l'ordre de l'écran ; les démarches jamais
+    synchronisées sont absentes
+    """
+    identity = g.get("widget_identity") or {}
+    grist_user_id = str(identity.get("userId") or "")
+    grist_doc_id = str(identity.get("docId") or "")
+
+    db = SessionLocal()
+
+    try:
+        configs = config_manager.load_config(
+            grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+        )
+
+        # Les lignes sont insérées en fin de synchro : l'identifiant le plus
+        # grand est la plus récente
+        latest_ids = (
+            select(func.max(SyncLog.id))
+            .where(
+                SyncLog.otp_config_id.in_(
+                    [config["otp_config_id"] for config in configs]
+                )
+            )
+            .group_by(SyncLog.otp_config_id)
+        )
+        latest_syncs = {
+            sync.otp_config_id: sync
+            for sync in db.scalars(select(SyncLog).where(SyncLog.id.in_(latest_ids)))
+        }
+
+        return jsonify(
+            {
+                "success": True,
+                "syncs": [
+                    {
+                        "otp_config_id": config["otp_config_id"],
+                        "demarche_number": config["demarche_number"],
+                        "timestamp": to_local_iso(sync.timestamp),
+                        "status": sync.status,
+                        "success_count": sync.success_count,
+                        "error_count": sync.error_count,
+                        "message": sync.message,
+                        "auto": sync.auto,
+                    }
+                    for config in configs
+                    if (sync := latest_syncs.get(config["otp_config_id"]))
+                ],
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Erreur lors de la lecture des dernières synchronisations par démarche: {str(e)}"
+        )
+        return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
+    finally:
+        db.close()
+
+
 @app.route("/api/start-sync", methods=["POST"])
 def api_start_sync():
     """API pour démarrer la synchronisation - Version sécurisée"""
@@ -845,18 +909,13 @@ def api_start_sync_all():
     grist_doc_id = str(identity.get("docId") or "")
 
     try:
-        # Ordre de l'écran (front, sortConfigs) : la plus récente d'abord
-        configs = sorted(
-            (
-                config
-                for config in config_manager.load_config(
-                    grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
-                )
-                if config.get("otp_config_id") and not missing_sync_fields(config)
-            ),
-            key=lambda config: config["otp_config_id"],
-            reverse=True,
-        )
+        configs = [
+            config
+            for config in config_manager.load_config(
+                grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+            )
+            if not missing_sync_fields(config)
+        ]
 
         if not configs:
             return jsonify(
