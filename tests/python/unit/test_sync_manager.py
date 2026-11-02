@@ -1505,6 +1505,48 @@ class TestStartSyncSeries:
         assert not stopper.is_alive()
         assert ran == [1]
 
+    def test_auto_sync_runs_while_series_is_running(self):
+        """
+        Une synchro auto n'attend pas la série, même pour une démarche de la
+        série : les deux files sont indépendantes (parallélisme accepté)
+        """
+        from sync.scheduled_sync import scheduled_sync_job
+        from sync.sequencer import SyncSequencer
+
+        release_series = threading.Event()
+        ran = []
+
+        def fake_sync(config, *, auto=False, **_kwargs):
+            ran.append(("auto" if auto else "series", config["otp_config_id"]))
+            if not auto:
+                release_series.wait(_SERIES_TIMEOUT)
+            return {"success": True}
+
+        # File auto réelle, mais propre au test (le singleton reste intact)
+        auto_sequencer = SyncSequencer()
+        with (
+            patch.object(self.manager, "run_synchronization_task", fake_sync),
+            patch("sync.scheduled_sync.sequencer", auto_sequencer),
+            patch("sync.scheduled_sync._is_schedule_enabled", return_value=True),
+            patch("sync.scheduled_sync.config_manager") as mock_cm,
+        ):
+            mock_cm.load_config_by_id.return_value = _series_config(1)
+            task_ids = self.manager.start_sync_series(
+                _SERIES_KEY, [_series_config(1), _series_config(2)]
+            )
+            _wait_until(lambda: ran == [("series", 1)])
+
+            scheduled_sync_job(1, self.manager)
+            _wait_until(lambda: ("auto", 1) in ran)
+            series_still_running = task_ids[0] in self.manager.tasks
+
+            release_series.set()
+            _wait_until(lambda: self._all_tasks_finished(task_ids))
+            auto_sequencer.shutdown()
+
+        assert series_still_running
+        assert ran == [("series", 1), ("auto", 1), ("series", 2)]
+
 
 class TestMissingSyncFields:
     """Champs nécessaires à une synchronisation"""
