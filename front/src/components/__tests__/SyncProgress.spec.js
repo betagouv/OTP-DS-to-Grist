@@ -47,14 +47,14 @@ describe('SyncProgress', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.fr-card').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Synchronisation')
+    expect(wrapper.text()).toContain('Progression')
   })
 
   it('display the démarche number without counter for a single sync', async () => {
     triggerTaskUpdate({ status: 'running', progress: 50, message: 'En cours' })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('Démarche n°12345')
+    expect(wrapper.text()).toContain('Progression de la démarche n°12345')
     expect(wrapper.text()).not.toContain('/1')
   })
 
@@ -68,14 +68,7 @@ describe('SyncProgress', () => {
     triggerTaskUpdate({ status: 'running', progress: 10, message: 'En cours' }, 'task_2')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('Démarche n°222 — 2/3')
-  })
-
-  it('display running message', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 42, message: 'Chargement...' })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('Chargement...')
+    expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/3')
   })
 
   it('display current percent', async () => {
@@ -201,7 +194,7 @@ describe('SyncProgress', () => {
       triggerTaskUpdate({ status: 'running', progress: 20, message: 'Seconde' }, 'task_2')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.text()).toContain('Seconde')
+      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/2')
       expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true]])
     })
 
@@ -214,7 +207,7 @@ describe('SyncProgress', () => {
 
       expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true], [false]])
       expect(wrapper.find('.fr-card').exists()).toBe(true)
-      expect(wrapper.text()).toContain('Démarche n°222 — 2/2')
+      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/2')
     })
 
     it('ignores updates of a démarche which is not the current one', async () => {

@@ -59,12 +59,9 @@ onUnmounted(() => {
   >
     <div class="fr-card__body">
       <div class="fr-card__content fr-mb-3w">
-        <h2 class="fr-card__title">Synchronisation des données</h2>
-        <p v-if="demarcheNumber" class="fr-text--bold fr-mb-2w">
-          Démarche n°{{ demarcheNumber }}<template v-if="totalDemarches > 1"> — {{ demarcheIndex }}/{{ totalDemarches }}</template>
+        <p class="fr-text--sm fr-mb-1w">
+          Progression<template v-if="demarcheNumber"> de la démarche n°{{ demarcheNumber }}<template v-if="totalDemarches > 1"> — {{ demarcheIndex }}/{{ totalDemarches }}</template></template>
         </p>
-        <p class="fr-mb-2w">{{ task.message }}</p>
-        <p class="fr-text--bold fr-mb-1w">Progression</p>
         <div class="progress-wrapper">
           <div class="progress-track">
             <div class="progress-bar" :style="{ width: Math.round(task.progress) + '%' }" />

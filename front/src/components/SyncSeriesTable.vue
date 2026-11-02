@@ -140,6 +140,12 @@ table {
   width: 11rem;
 }
 
+/* Texte aligné à gauche sur celui du bandeau de progression (marge des cartes DSFR) */
+th:first-child,
+td:first-child {
+  padding-left: 2rem;
+}
+
 .nowrap {
   white-space: nowrap;
 }
