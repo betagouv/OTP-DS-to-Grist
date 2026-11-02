@@ -12,6 +12,9 @@ const SERIES = [
   { taskId: 'task_2', demarcheNumber: '222', demarcheTitle: null }
 ]
 
+// Heure locale : le format attendu ne dépend pas du fuseau de la machine de test
+const END_TIME = new Date(2026, 10, 2, 14, 41).getTime() / 1000
+
 const rows = (wrapper) => wrapper.findAll('tbody tr')
 const cells = (wrapper, index) => rows(wrapper)[index].findAll('td')
 
@@ -141,6 +144,44 @@ describe('SyncSeriesTable', () => {
     await wrapper.vm.$nextTick()
 
     expect(cells(wrapper, 0)[1].attributes('title')).toBe('Token DN périmé')
+  })
+
+  describe('date and type', () => {
+    it('adds the end date after the final message', async () => {
+      const wrapper = mount(SyncSeriesTable)
+      recordTaskUpdate('task_1', {
+        status: 'completed',
+        message: 'Tâche terminée avec succès',
+        result: { success_count: 14, error_count: 0 },
+        end_time: END_TIME,
+        logs: []
+      })
+      await wrapper.vm.$nextTick()
+
+      expect(cells(wrapper, 0)[1].text()).toBe('14 dossiers mis à jour/ajoutés · 2026-11-02 14:41')
+    })
+
+    it('adds the end date after an error message', async () => {
+      const wrapper = mount(SyncSeriesTable)
+      recordTaskUpdate('task_1', { status: 'error', message: 'Token DN périmé', end_time: END_TIME, logs: [] })
+      await wrapper.vm.$nextTick()
+
+      expect(cells(wrapper, 0)[1].text()).toBe('Token DN périmé · 2026-11-02 14:41')
+    })
+
+    it('shows no date while the sync is running', async () => {
+      const wrapper = mount(SyncSeriesTable)
+      recordTaskUpdate('task_1', { status: 'running', message: 'Récupération des dossiers', logs: [] })
+      await wrapper.vm.$nextTick()
+
+      expect(cells(wrapper, 0)[1].text()).toBe('Récupération des dossiers')
+    })
+
+    it('shows a manual type badge next to the status', () => {
+      const wrapper = mount(SyncSeriesTable)
+
+      expect(cells(wrapper, 0)[2].find('[data-test-id="sync-type-badge"]').text()).toBe('Manuelle')
+    })
   })
 
   describe('Copier les logs', () => {

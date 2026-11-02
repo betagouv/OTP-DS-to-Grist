@@ -12,12 +12,24 @@ const formatDemarche = (task) => (task.demarcheTitle
   : `N°${task.demarcheNumber}`
 )
 
-const formatMessage = (task) => {
+const pad = (value) => String(value).padStart(2, '0')
+
+// Année, mois, jour, heure, minute : 2026-11-02 14:41
+const formatDate = (date) =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+
+const resultMessage = (task) => {
   if (task.status !== 'completed') return task.message
   if (task.syncReason === 'already_up_to_date') return 'Grist déjà à jour'
 
   return `${task.result?.success_count ?? 0} dossiers mis à jour/ajoutés`
 }
+
+// Message suivi, une fois la synchro terminée, de sa date au format court
+const formatMessage = (task) => (task.endTime
+  ? `${resultMessage(task)} · ${formatDate(task.endTime)}`
+  : resultMessage(task)
+)
 
 const statusBadge = (task) => {
   const errorCount = task.result?.error_count ?? 0
@@ -59,11 +71,20 @@ const copyLogs = (task) => {
           <td class="ellipsis" :title="formatDemarche(task)">{{ formatDemarche(task) }}</td>
           <td class="ellipsis" :title="formatMessage(task)">{{ formatMessage(task) }}</td>
           <td class="nowrap">
-            <DsfrBadge
-              :label="statusBadge(task).label"
-              :type="statusBadge(task).type"
-              small
-            />
+            <span class="badges">
+              <DsfrBadge
+                :label="statusBadge(task).label"
+                :type="statusBadge(task).type"
+                small
+              />
+              <DsfrBadge
+                :label="task.auto ? 'Auto' : 'Manuelle'"
+                type="standard"
+                small
+                no-icon
+                data-test-id="sync-type-badge"
+              />
+            </span>
           </td>
           <td class="nowrap">
             <DsfrButton
@@ -94,7 +115,7 @@ table {
 }
 
 .col-status {
-  width: 9rem;
+  width: 15rem;
 }
 
 .col-logs {
@@ -103,6 +124,11 @@ table {
 
 .nowrap {
   white-space: nowrap;
+}
+
+.badges {
+  display: inline-flex;
+  gap: 0.5rem;
 }
 
 .ellipsis {

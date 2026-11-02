@@ -171,6 +171,19 @@ describe('useSyncTask', () => {
       expect(seriesTasks.value[0].status).toBe('queued')
     })
 
+    it('records the end time and keeps the sync manual', () => {
+      const { seriesTasks, setTasks, recordTaskUpdate } = useSyncTask()
+      setTasks(SERIES)
+      recordTaskUpdate('task_1', { status: 'running', message: 'En cours', logs: [] })
+
+      expect(seriesTasks.value[0].endTime).toBe(null)
+
+      recordTaskUpdate('task_1', { status: 'completed', message: 'Fini', end_time: 1700000000, logs: [] })
+
+      expect(seriesTasks.value[0].endTime).toEqual(new Date(1700000000 * 1000))
+      expect(seriesTasks.value[0].auto).toBe(false)
+    })
+
     it('ignores updates of a task which is not tracked', () => {
       const { seriesTasks, setTasks, recordTaskUpdate } = useSyncTask()
       setTasks(SERIES)

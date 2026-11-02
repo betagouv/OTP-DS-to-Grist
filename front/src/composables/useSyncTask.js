@@ -25,7 +25,8 @@ export const useSyncTask = () => {
     _finished.value = tasks.length === 0
     _states.value = Object.fromEntries(tasks.map(task => [
       task.taskId,
-      { status: 'queued', message: '', result: null, syncReason: null, logs: [] }
+      // Lancées depuis la page : toujours manuelles
+      { status: 'queued', message: '', result: null, syncReason: null, endTime: null, auto: false, logs: [] }
     ]))
   }
 
@@ -52,10 +53,12 @@ export const useSyncTask = () => {
     _states.value = {
       ..._states.value,
       [taskId]: {
+        ...previous,
         status: task.status,
         message: task.message ?? '',
         result: task.result ?? null,
         syncReason: task.sync_reason ?? null,
+        endTime: task.end_time ? new Date(task.end_time * 1000) : null,
         logs: [...previous.logs, ...(task.logs ?? [])]
       }
     }
