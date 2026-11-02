@@ -2445,14 +2445,16 @@ class TestApiStartSyncAll:
     @patch.object(sync_manager, "start_sync_series")
     def test_series_already_running(self, mock_start_series, client):
         """Une série déjà en cours pour cet utilisateur et ce document : 409"""
-        mock_start_series.side_effect = SyncSeriesAlreadyRunningError("déjà en cours")
+        mock_start_series.side_effect = SyncSeriesAlreadyRunningError()
 
         response = client.post("/api/start-sync-all")
 
         assert response.status_code == 409
         data = json.loads(response.data)
         assert data["success"] is False
-        assert data["message"] == "déjà en cours"
+        assert data["message"] == (
+            "Une synchronisation de toutes les démarches est déjà en cours"
+        )
 
     @patch.object(sync_manager, "start_sync_series")
     def test_unexpected_error(self, mock_start_series, client):

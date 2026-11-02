@@ -882,8 +882,13 @@ def api_start_sync_all():
             }
         )
 
-    except SyncSeriesAlreadyRunningError as e:
-        return jsonify({"success": False, "message": str(e)}), 409
+    except SyncSeriesAlreadyRunningError:
+        return jsonify(
+            {
+                "success": False,
+                "message": "Une synchronisation de toutes les démarches est déjà en cours",
+            }
+        ), 409
     except Exception as e:
         logger.error(
             f"Erreur lors du démarrage de la synchronisation de toutes les démarches: {str(e)}"

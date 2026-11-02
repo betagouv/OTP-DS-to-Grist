@@ -82,9 +82,7 @@ class SyncManager:
         with self._series_lock:
             current_series = self._series.get(series_key)
             if current_series and _has_unfinished_steps(current_series):
-                raise SyncSeriesAlreadyRunningError(
-                    "Une synchronisation de toutes les démarches est déjà en cours"
-                )
+                raise SyncSeriesAlreadyRunningError()
 
             series = SyncSequencer()
             self._series[series_key] = series
