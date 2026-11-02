@@ -36,7 +36,7 @@ commitizen = "^4.19.2"
 poethepoet = "^0.48.0"
 pytest = "^9.1.1"
 pytest-cov = "^7.1.0"
-ruff = "^0.17.2"
+ruff = "^0.17.3"
 pip-audit = "^2.10.1"
 
 [tool.poe.tasks.dev]
