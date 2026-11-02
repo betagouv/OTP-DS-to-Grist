@@ -10,6 +10,34 @@ describe('InternalApi', () => {
     vi.restoreAllMocks()
   })
 
+  describe('error responses', () => {
+    it('attaches the message sent by the server', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ success: false, message: 'Déjà en cours' })
+      })
+
+      await expect(api.startSyncAll()).rejects.toMatchObject({
+        message: 'Erreur HTTP 409',
+        serverMessage: 'Déjà en cours'
+      })
+    })
+
+    it('has no server message when the body is not readable JSON', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new SyntaxError('Unexpected token <'))
+      })
+
+      await expect(api.startSyncAll()).rejects.toMatchObject({
+        message: 'Erreur HTTP 502',
+        serverMessage: null
+      })
+    })
+  })
+
   describe('getConfig', () => {
     it('calls GET /api/config with params and returns json', async () => {
       globalThis.fetch.mockResolvedValue({

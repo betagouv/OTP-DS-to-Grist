@@ -213,7 +213,7 @@ const handleSyncAll = async () => {
     })))
     activeDnAccordion.value = -1
   } catch (e) {
-    syncAllError.value = 'Erreur lors de la synchronisation de toutes les démarches'
+    syncAllError.value = e.serverMessage ?? 'Erreur lors de la synchronisation de toutes les démarches'
   } finally {
     syncAllPending.value = false
   }

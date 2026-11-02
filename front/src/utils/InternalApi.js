@@ -10,10 +10,24 @@ const ROUTES = {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
+// Message d'erreur renvoyé par le serveur ({ message }), s'il y en a un lisible
+const readServerMessage = async (response) => {
+  try {
+    const body = await response.json()
+    return typeof body?.message === 'string' ? body.message : null
+  } catch {
+    return null
+  }
+}
+
 const request = async (url, options) => {
   const doFetch = typeof apiFetch !== 'undefined' ? apiFetch : fetch
   const response = options === undefined ? await doFetch(url) : await doFetch(url, options)
-  if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`)
+  if (!response.ok) {
+    throw Object.assign(new Error(`Erreur HTTP ${response.status}`), {
+      serverMessage: await readServerMessage(response)
+    })
+  }
 
   return response.json()
 }

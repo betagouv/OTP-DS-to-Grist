@@ -1218,6 +1218,25 @@ describe('Sync all button', () => {
     expect(wrapper.text()).toContain('Erreur lors de la synchronisation de toutes les démarches')
     expect(useSyncTask().currentTaskId.value).toBe(null)
   })
+
+  it('shows the message sent by the server when there is one', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: () => Promise.resolve({
+        success: false,
+        message: 'Une synchronisation de toutes les démarches est déjà en cours'
+      })
+    })
+
+    await syncAllButton(wrapper).trigger('click')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Une synchronisation de toutes les démarches est déjà en cours')
+    expect(wrapper.text()).not.toContain('Erreur lors de la synchronisation de toutes les démarches')
+  })
 })
 
 describe('sortConfigs', () => {
