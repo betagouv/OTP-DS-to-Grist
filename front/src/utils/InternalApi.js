@@ -4,7 +4,6 @@ const ROUTES = {
   SCHEDULE: '/api/schedule',
   START_SYNC: '/api/start-sync',
   START_SYNC_ALL: '/api/start-sync-all',
-  SYNC_LOG_LATEST: '/api/sync-log/latest',
   SYNC_LOG_LATEST_BY_DEMARCHE: '/api/sync-log/latest-by-demarche',
   TEST_CONNECTION: '/api/test-connection'
 }
@@ -72,16 +71,8 @@ class InternalApi {
     })
   }
 
-  getSyncLogLatest(otpConfigId) {
-    return request(`${ROUTES.SYNC_LOG_LATEST}?otp_config_id=${otpConfigId}`)
-  }
-
   getLatestSyncsByDemarche() {
     return request(ROUTES.SYNC_LOG_LATEST_BY_DEMARCHE)
-  }
-
-  getSyncLogLatestByBaseUrl(gristBaseUrl) {
-    return request(`${ROUTES.SYNC_LOG_LATEST}?grist_base_url=${encodeURIComponent(gristBaseUrl)}`)
   }
 
   async getGroups(otpConfigId) {

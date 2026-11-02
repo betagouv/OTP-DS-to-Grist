@@ -3,22 +3,17 @@ import { ref } from 'vue'
 import OTPForm from './components/OTPForm.vue'
 import SyncProgress from './components/SyncProgress.vue'
 import SyncSeriesTable from './components/SyncSeriesTable.vue'
-import SyncResultBanner from './components/SyncResultBanner.vue'
-import { useSyncStatus } from './composables/useSyncStatus'
 import { useSyncHistory } from './composables/useSyncHistory'
 import NotificationToast from './components/NotificationToast.vue'
 
 const syncRunning = ref(false)
-const lastSyncResult = ref(null)
 const syncHistory = ref([])
 // Noms des démarches par numéro, reçus du test de connexion de chaque volet
 const demarcheTitles = ref({})
 
-const { lastAutoSync, lastManualSync, fetchAllLatestSyncs } = useSyncStatus()
 const { fetchHistory } = useSyncHistory()
 
-const handleConfigLoaded = ({ configs, gristBaseUrl }) => {
-  fetchAllLatestSyncs(configs, gristBaseUrl).catch(() => {})
+const handleConfigLoaded = () => {
   // Sans historique lisible, le tableau ne s'affiche simplement pas
   fetchHistory()
     .then(rows => { syncHistory.value = rows })
@@ -28,69 +23,15 @@ const handleConfigLoaded = ({ configs, gristBaseUrl }) => {
 const handleTitleLoaded = (demarcheNumber, title) => {
   demarcheTitles.value = { ...demarcheTitles.value, [demarcheNumber]: title }
 }
-
-const handleSyncStarted = () => {
-  lastSyncResult.value = null
-}
-
-const handleSyncFinished = (result) => {
-  lastSyncResult.value = {
-    status: result.status === 'completed' ? 'success' : 'error',
-    successCount: result.success_count,
-    errorCount: result.error_count,
-    timestamp: result.timestamp,
-    syncType: 'manual',
-    syncReason: result.sync_reason || null,
-  }
-}
 </script>
 
 <template>
   <NotificationToast />
   <header>
     <div class="wrapper">
-      <template v-if="!syncRunning">
-        <SyncResultBanner
-          v-if="lastSyncResult"
-          :status="lastSyncResult.status"
-          :success-count="lastSyncResult.successCount"
-          :error-count="lastSyncResult.errorCount"
-          :timestamp="lastSyncResult.timestamp"
-          :sync-type="lastSyncResult.syncType"
-          :sync-reason="lastSyncResult.syncReason"
-          class="fr-mb-4w"
-        />
-        <template v-else>
-          <div class="fr-grid-row fr-grid-row--gutters fr-mb-4w">
-            <SyncResultBanner
-              v-if="lastAutoSync"
-              :status="lastAutoSync.status"
-              :success-count="lastAutoSync.success_count"
-              :error-count="lastAutoSync.error_count"
-              :timestamp="lastAutoSync.timestamp"
-              sync-type="auto"
-              class="fr-col"
-            />
-            <SyncResultBanner
-              v-if="lastManualSync"
-              :status="lastManualSync.status"
-              :success-count="lastManualSync.success_count"
-              :error-count="lastManualSync.error_count"
-              :timestamp="lastManualSync.timestamp"
-              sync-type="manual"
-              class="fr-col"
-            />
-          </div>
-        </template>
-      </template>
-
       <SyncSeriesTable :history="syncHistory" :titles="demarcheTitles" />
 
-      <SyncProgress
-        @sync-running-changed="syncRunning = $event"
-        @sync-started="handleSyncStarted"
-        @sync-finished="handleSyncFinished"
-      />
+      <SyncProgress @sync-running-changed="syncRunning = $event" />
 
       <OTPForm
         :sync-running="syncRunning"

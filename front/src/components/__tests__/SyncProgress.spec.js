@@ -1,4 +1,4 @@
-import { vi, describe, beforeAll, afterAll, beforeEach, afterEach, it, expect } from 'vitest'
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import SyncProgress from '../SyncProgress.vue'
@@ -24,19 +24,6 @@ function triggerTaskUpdate(task, taskId = 'task_1') {
 
 describe('SyncProgress', () => {
   let wrapper
-
-  beforeAll(() => {
-    globalThis.parseLogMessage = vi.fn((msg, counts = { success: 0, error: 0, total: 0 }) => {
-      const r = { ...counts }
-      if (msg.includes('succès')) r.success++
-      if (msg === 'error') r.error++
-      return r
-    })
-  })
-
-  afterAll(() => {
-    delete globalThis.parseLogMessage
-  })
 
   beforeEach(() => {
     mockOn.mockClear()
@@ -134,58 +121,6 @@ describe('SyncProgress', () => {
     expect(emitted[1][0]).toBe(false)
   })
 
-  it('emit sync-started on running', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.emitted('sync-started')).toBeTruthy()
-    expect(wrapper.emitted('sync-started').length).toBe(1)
-  })
-
-  it('emit sync-finished with result on completed', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
-    triggerTaskUpdate({
-      status: 'completed', progress: 100, message: 'Terminé',
-      result: { success_count: 5, error_count: 1 },
-      end_time: 1752600000,
-      sync_reason: 'synced'
-    })
-    await wrapper.vm.$nextTick()
-
-    const emitted = wrapper.emitted('sync-finished')
-    expect(emitted).toBeTruthy()
-    expect(emitted[0][0]).toEqual({
-      status: 'completed',
-      success_count: 5,
-      error_count: 1,
-      timestamp: new Date(1752600000 * 1000).toISOString(),
-      sync_reason: 'synced',
-      message: 'Terminé'
-    })
-  })
-
-  it('emit sync-finished with error on error', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
-    triggerTaskUpdate({
-      status: 'error', progress: 50, message: 'Erreur',
-      result: { success_count: 2, error_count: 3 },
-      end_time: 1752600000,
-      sync_reason: 'synced'
-    })
-    await wrapper.vm.$nextTick()
-
-    const emitted = wrapper.emitted('sync-finished')
-    expect(emitted).toBeTruthy()
-    expect(emitted[0][0]).toEqual({
-      status: 'error',
-      success_count: 2,
-      error_count: 3,
-      timestamp: new Date(1752600000 * 1000).toISOString(),
-      sync_reason: 'synced',
-      message: 'Erreur'
-    })
-  })
-
   it('scrolls into view when sync starts running', async () => {
     triggerTaskUpdate({ status: 'running', progress: 0, message: 'Démarrage' })
 
@@ -219,8 +154,6 @@ describe('SyncProgress', () => {
 
     expect(wrapper.find('.fr-card').exists()).toBe(false)
     expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
-    expect(wrapper.emitted('sync-started')).toBeFalsy()
-    expect(wrapper.emitted('sync-finished')).toBeFalsy()
   })
 
   it('ignores all task_update when no current task is set', async () => {
@@ -270,7 +203,6 @@ describe('SyncProgress', () => {
 
       expect(wrapper.text()).toContain('Seconde')
       expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true]])
-      expect(wrapper.emitted('sync-finished')).toBeFalsy()
     })
 
     it('ends only after the last démarche, keeping the bar displayed', async () => {
@@ -280,8 +212,7 @@ describe('SyncProgress', () => {
       triggerTaskUpdate({ status: 'completed', progress: 100, message: 'Terminé' }, 'task_2')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.emitted('sync-running-changed').at(-1)).toEqual([false])
-      expect(wrapper.emitted('sync-finished')).toHaveLength(1)
+      expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true], [false]])
       expect(wrapper.find('.fr-card').exists()).toBe(true)
       expect(wrapper.text()).toContain('Démarche n°222 — 2/2')
     })

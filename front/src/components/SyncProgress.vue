@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
@@ -14,7 +14,7 @@ const {
   finishCurrentTask,
   recordTaskUpdate
 } = useSyncTask()
-const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
+const emit = defineEmits(['sync-running-changed'])
 const task = ref(null)
 const socket = ref(null)
 const syncCardEl = ref(null)
@@ -25,17 +25,6 @@ watch(() => task.value?.status, (status) => {
   }
 })
 
-const counts = computed(() => {
-  if (!task.value?.logs) return null
-
-  let syncStatus = { success: 0, error: 0, total: 0 }
-  for (const log of task.value.logs) {
-    syncStatus = parseLogMessage(log.message, syncStatus)
-  }
-
-  return syncStatus
-})
-
 onMounted(() => {
   socket.value = io()
   socket.value.on('task_update', (data) => {
@@ -44,23 +33,12 @@ onMounted(() => {
     if (data.task_id !== currentTaskId.value) return
     task.value = data.task
     if (data.task.status === 'running') {
-      emit('sync-started')
       emit('sync-running-changed', true)
     } else if (data.task.status === 'completed' || data.task.status === 'error') {
       // Série : la démarche suivante prend le relais, rien n'est terminé
       if (finishCurrentTask()) return
 
       emit('sync-running-changed', false)
-      emit('sync-finished', {
-        status: data.task.status,
-        success_count: data.task.result?.success_count ?? counts.value?.success ?? 0,
-        error_count: data.task.result?.error_count ?? counts.value?.error ?? 0,
-        timestamp: data.task.end_time
-          ? new Date(data.task.end_time * 1000).toISOString()
-          : new Date().toISOString(),
-        sync_reason: data.task.sync_reason,
-        message: data.task.message
-      })
     }
   })
 })

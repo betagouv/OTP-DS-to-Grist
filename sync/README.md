@@ -109,8 +109,7 @@ l'affichage : `GET /api/sync-log/latest-by-demarche` renvoie la dernière
 synchronisation de chaque démarche sauvegardée (front Vue, tableau affiché au
 chargement). La
 route `GET /api/sync-log/latest`, qui donne la dernière synchro automatique et
-la dernière manuelle du document, sert au front legacy et aux bandeaux de
-statut du front Vue.
+la dernière manuelle du document, ne sert plus qu'au front legacy.
 
 ## tasks/
 

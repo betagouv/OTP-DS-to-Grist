@@ -363,7 +363,7 @@ describe('Config loading on mount', () => {
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
   })
 
-  it('emits config-loaded with configs after successful load', async () => {
+  it('emits config-loaded after successful load', async () => {
     const configs = [
       { otp_config_id: 1, grist_base_url: 'https://example.com' },
       { otp_config_id: 2, grist_base_url: 'https://other.com' }
@@ -381,8 +381,7 @@ describe('Config loading on mount', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.emitted('config-loaded')).toBeTruthy()
-    expect(wrapper.emitted('config-loaded')[0][0]).toEqual({ configs, gristBaseUrl: 'https://grist.example.com/api' })
+    expect(wrapper.emitted('config-loaded')).toHaveLength(1)
   })
 })
 
