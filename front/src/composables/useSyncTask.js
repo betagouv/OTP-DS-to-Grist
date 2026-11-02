@@ -5,8 +5,6 @@ import { ref, computed } from 'vue'
 const _tasks = ref([])
 const _currentIndex = ref(0)
 const _finished = ref(true)
-// Vrai pour « Tout synchroniser », même avec une seule démarche
-const _isSeries = ref(false)
 // Dernier état connu de chaque synchro suivie, logs cumulés (le serveur les envoie en delta)
 const _states = ref({})
 
@@ -17,24 +15,22 @@ export const useSyncTask = () => {
   const demarcheIndex = computed(() => _currentIndex.value + 1)
   const totalDemarches = computed(() => _tasks.value.length)
 
-  const seriesTasks = computed(() => (_isSeries.value
-    ? _tasks.value.map(task => ({ ...task, ..._states.value[task.taskId] }))
-    : []
-  ))
+  const seriesTasks = computed(() =>
+    _tasks.value.map(task => ({ ...task, ..._states.value[task.taskId] }))
+  )
 
-  const setTasks = (tasks, isSeries = true) => {
+  const setTasks = (tasks) => {
     _tasks.value = tasks
     _currentIndex.value = 0
     _finished.value = tasks.length === 0
-    _isSeries.value = isSeries && tasks.length > 0
     _states.value = Object.fromEntries(tasks.map(task => [
       task.taskId,
       { status: 'queued', message: '', result: null, syncReason: null, logs: [] }
     ]))
   }
 
-  const setCurrentTaskId = (id, demarcheNumber = null) => {
-    setTasks(id ? [{ taskId: id, demarcheNumber }] : [], false)
+  const setCurrentTaskId = (id, demarcheNumber = null, demarcheTitle = null) => {
+    setTasks(id ? [{ taskId: id, demarcheNumber, demarcheTitle }] : [])
   }
 
   // Passe à la synchro suivante ; retourne false quand la dernière est terminée

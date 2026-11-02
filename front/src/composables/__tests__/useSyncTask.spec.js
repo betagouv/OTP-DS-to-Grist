@@ -115,11 +115,23 @@ describe('useSyncTask', () => {
   })
 
   describe('seriesTasks', () => {
-    it('is empty for a single sync', () => {
-      const { seriesTasks, setCurrentTaskId } = useSyncTask()
-      setCurrentTaskId('task_1', '12345')
+    it('is empty when no sync is followed', () => {
+      const { seriesTasks } = useSyncTask()
 
       expect(seriesTasks.value).toEqual([])
+    })
+
+    it('lists the single sync of one démarche, with its title', () => {
+      const { seriesTasks, setCurrentTaskId } = useSyncTask()
+      setCurrentTaskId('task_1', '12345', 'Ma démarche')
+
+      expect(seriesTasks.value).toHaveLength(1)
+      expect(seriesTasks.value[0]).toMatchObject({
+        taskId: 'task_1',
+        demarcheNumber: '12345',
+        demarcheTitle: 'Ma démarche',
+        status: 'queued'
+      })
     })
 
     it('lists every task of the series as queued at start', () => {

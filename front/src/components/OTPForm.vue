@@ -193,7 +193,8 @@ const handleSync = async (index) => {
   actionErrors.value[index] = null
   try {
     const result = await api.startSync(otpConfigIdToSync)
-    setCurrentTaskId(result.task_id, configs.value[index].demarche_number)
+    const demarcheNumber = configs.value[index].demarche_number
+    setCurrentTaskId(result.task_id, demarcheNumber, demarcheTitles.value[demarcheNumber] ?? null)
     activeDnAccordion.value = -1
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'

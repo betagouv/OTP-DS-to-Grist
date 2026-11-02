@@ -1108,6 +1108,31 @@ describe('Sync action', () => {
     expect(demarcheNumber.value).toBe('111')
     expect(totalDemarches.value).toBe(1)
   })
+
+  it('passes the démarche title of the synced section to useSyncTask', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 1, demarche_number: '111', grist_base_url: 'https://example.com' }
+      ] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    const dnSection = wrapper.findComponent(DNFormSection)
+    dnSection.vm.$emit('title-loaded', '111', 'Ma démarche')
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ task_id: 'task_1' })
+    })
+    dnSection.vm.$emit('sync', 0)
+    await new Promise(process.nextTick)
+
+    expect(useSyncTask().seriesTasks.value[0].demarcheTitle).toBe('Ma démarche')
+  })
 })
 
 describe('Sync all button', () => {

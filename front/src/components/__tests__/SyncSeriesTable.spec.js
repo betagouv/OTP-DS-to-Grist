@@ -26,11 +26,19 @@ describe('SyncSeriesTable', () => {
     vi.restoreAllMocks()
   })
 
-  it('is hidden for a single sync', () => {
-    setCurrentTaskId('task_1', '111')
+  it('is hidden when no sync is followed', () => {
+    setCurrentTaskId(null)
     const wrapper = mount(SyncSeriesTable)
 
     expect(wrapper.find('table').exists()).toBe(false)
+  })
+
+  it('shows one row for the sync of a single démarche', () => {
+    setCurrentTaskId('task_1', '111', 'Première démarche')
+    const wrapper = mount(SyncSeriesTable)
+
+    expect(rows(wrapper)).toHaveLength(1)
+    expect(cells(wrapper, 0)[0].text()).toBe('N°111 — Première démarche')
   })
 
   it('shows the header and one row per démarche', () => {
