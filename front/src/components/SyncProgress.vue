@@ -11,7 +11,8 @@ const {
   demarcheNumber,
   demarcheIndex,
   totalDemarches,
-  finishCurrentTask
+  finishCurrentTask,
+  recordTaskUpdate
 } = useSyncTask()
 const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
 const task = ref(null)
@@ -38,6 +39,8 @@ const counts = computed(() => {
 onMounted(() => {
   socket.value = io()
   socket.value.on('task_update', (data) => {
+    // Toutes les démarches de la série alimentent le tableau ; la barre ne suit que la courante
+    recordTaskUpdate(data.task_id, data.task)
     if (data.task_id !== currentTaskId.value) return
     task.value = data.task
     if (data.task.status === 'running') {

@@ -113,4 +113,68 @@ describe('useSyncTask', () => {
       expect(demarcheIndex.value).toBe(1)
     })
   })
+
+  describe('seriesTasks', () => {
+    it('is empty for a single sync', () => {
+      const { seriesTasks, setCurrentTaskId } = useSyncTask()
+      setCurrentTaskId('task_1', '12345')
+
+      expect(seriesTasks.value).toEqual([])
+    })
+
+    it('lists every task of the series as queued at start', () => {
+      const { seriesTasks, setTasks } = useSyncTask()
+      setTasks(SERIES)
+
+      expect(seriesTasks.value.map(task => [task.taskId, task.status])).toEqual([
+        ['task_1', 'queued'], ['task_2', 'queued'], ['task_3', 'queued']
+      ])
+    })
+
+    it('is kept for a series of a single démarche', () => {
+      const { seriesTasks, setTasks } = useSyncTask()
+      setTasks([SERIES[0]])
+
+      expect(seriesTasks.value).toHaveLength(1)
+    })
+
+    it('records status, message, result and accumulates log deltas', () => {
+      const { seriesTasks, setTasks, recordTaskUpdate } = useSyncTask()
+      setTasks(SERIES)
+      recordTaskUpdate('task_2', { status: 'running', message: 'En cours', logs: [{ message: 'a' }] })
+      recordTaskUpdate('task_2', {
+        status: 'completed',
+        message: 'Tâche terminée avec succès',
+        result: { success_count: 14, error_count: 0 },
+        sync_reason: 'synced',
+        logs: [{ message: 'b' }]
+      })
+
+      const task = seriesTasks.value[1]
+      expect(task.status).toBe('completed')
+      expect(task.message).toBe('Tâche terminée avec succès')
+      expect(task.result).toEqual({ success_count: 14, error_count: 0 })
+      expect(task.syncReason).toBe('synced')
+      expect(task.logs.map(log => log.message)).toEqual(['a', 'b'])
+      expect(seriesTasks.value[0].status).toBe('queued')
+    })
+
+    it('ignores updates of a task which is not tracked', () => {
+      const { seriesTasks, setTasks, recordTaskUpdate } = useSyncTask()
+      setTasks(SERIES)
+      recordTaskUpdate('task_99', { status: 'running', message: 'Autre', logs: [] })
+
+      expect(seriesTasks.value.every(task => task.status === 'queued')).toBe(true)
+    })
+
+    it('starts from fresh states when a new series is set', () => {
+      const { seriesTasks, setTasks, recordTaskUpdate } = useSyncTask()
+      setTasks(SERIES)
+      recordTaskUpdate('task_1', { status: 'error', message: 'KO', logs: [{ message: 'a' }] })
+      setTasks(SERIES)
+
+      expect(seriesTasks.value[0].status).toBe('queued')
+      expect(seriesTasks.value[0].logs).toEqual([])
+    })
+  })
 })

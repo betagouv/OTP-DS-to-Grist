@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import OTPForm from './components/OTPForm.vue'
 import SyncProgress from './components/SyncProgress.vue'
+import SyncSeriesTable from './components/SyncSeriesTable.vue'
 import SyncResultBanner from './components/SyncResultBanner.vue'
 import { useSyncStatus } from './composables/useSyncStatus'
 import NotificationToast from './components/NotificationToast.vue'
@@ -69,6 +70,8 @@ const handleSyncFinished = (result) => {
           </div>
         </template>
       </template>
+
+      <SyncSeriesTable />
 
       <SyncProgress
         @sync-running-changed="syncRunning = $event"

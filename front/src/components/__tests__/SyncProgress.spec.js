@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import SyncProgress from '../SyncProgress.vue'
 import { useSyncTask } from '../../composables/useSyncTask'
 
-const { setCurrentTaskId, setTasks } = useSyncTask()
+const { setCurrentTaskId, setTasks, seriesTasks } = useSyncTask()
 
 const mockOn = vi.fn()
 const mockDisconnect = vi.fn()
@@ -291,6 +291,13 @@ describe('SyncProgress', () => {
       await wrapper.vm.$nextTick()
 
       expect(wrapper.find('.fr-card').exists()).toBe(false)
+    })
+
+    it('records the updates of every démarche of the series for the table', () => {
+      triggerTaskUpdate({ status: 'queued', progress: 0, message: 'En attente…' }, 'task_2')
+      triggerTaskUpdate({ status: 'running', progress: 0, message: 'Première' }, 'task_1')
+
+      expect(seriesTasks.value.map(task => task.message)).toEqual(['Première', 'En attente…'])
     })
   })
 })

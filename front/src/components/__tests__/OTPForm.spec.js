@@ -1165,6 +1165,28 @@ describe('Sync all button', () => {
     expect(totalDemarches.value).toBe(2)
   })
 
+  it('passes the démarche titles received from the sections to the series', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, { otp_config_id: 2 }])
+    const dnSections = wrapper.findAllComponents(DNFormSection)
+    dnSections[0].vm.$emit('title-loaded', '222', 'Seconde démarche')
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        success: true,
+        syncs: [
+          { otp_config_id: 2, demarche_number: '222', task_id: 'task_1' },
+          { otp_config_id: 1, demarche_number: '111', task_id: 'task_2' }
+        ]
+      })
+    })
+
+    await syncAllButton(wrapper).trigger('click')
+    await new Promise(process.nextTick)
+
+    const { seriesTasks } = useSyncTask()
+    expect(seriesTasks.value.map(task => task.demarcheTitle)).toEqual(['Seconde démarche', null])
+  })
+
   it('is disabled while a sync is running', async () => {
     const wrapper = await mountWithConfigs([{ otp_config_id: 1 }], { syncRunning: true })
 

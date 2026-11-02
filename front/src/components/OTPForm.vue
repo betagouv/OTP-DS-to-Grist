@@ -29,6 +29,8 @@ const syncAllError = ref(null)
 // Requête « Tout synchroniser » en vol : évite un second envoi avant le
 // démarrage effectif (syncRunning ne passe à vrai qu'au premier événement)
 const syncAllPending = ref(false)
+// Noms des démarches par numéro, reçus du test de connexion de chaque volet
+const demarcheTitles = ref({})
 
 // Indices des sections dont une sauvegarde est en vol : leurs boutons
 // d'action (synchronisation/suppression) sont désactivés le temps de la requête
@@ -206,7 +208,8 @@ const handleSyncAll = async () => {
     const result = await api.startSyncAll()
     setTasks(result.syncs.map(sync => ({
       taskId: sync.task_id,
-      demarcheNumber: sync.demarche_number
+      demarcheNumber: sync.demarche_number,
+      demarcheTitle: demarcheTitles.value[sync.demarche_number] ?? null
     })))
     activeDnAccordion.value = -1
   } catch (e) {
@@ -214,6 +217,10 @@ const handleSyncAll = async () => {
   } finally {
     syncAllPending.value = false
   }
+}
+
+const handleTitleLoaded = (demarcheNumber, title) => {
+  demarcheTitles.value = { ...demarcheTitles.value, [demarcheNumber]: title }
 }
 
 const handleAddDemarche = async () => {
@@ -279,6 +286,7 @@ const handleAddDemarche = async () => {
         @save="handleSave"
         @delete="handleDelete"
         @sync="handleSync"
+        @title-loaded="handleTitleLoaded"
         :grist-error="gristError"
         :can-delete="canDelete(config)"
         :can-sync="canSync(config)"
