@@ -5,13 +5,13 @@ from pathlib import Path
 
 import psycopg2
 import pytest
+from alembic import command
 from alembic.config import Config
 from cryptography.fernet import Fernet
 from psycopg2 import sql
 from sqlalchemy import Engine, make_url, text
 from sqlalchemy.orm import Session
 
-from database.database_manager import DatabaseManager
 from database.models import Base
 from database.session import SessionLocal
 from database.session import engine as app_engine
@@ -63,9 +63,9 @@ def empty_database(engine: Engine) -> Engine:
 
 
 @pytest.fixture
-def initialized_database(empty_database: Engine, database_url: str) -> Engine:
-    """Base de test au schéma créé par le SQL de DatabaseManager, sans données."""
-    DatabaseManager.init_db(database_url)
+def initialized_database(empty_database: Engine, alembic_config: Config) -> Engine:
+    """Base de test au schéma créé par les migrations Alembic, sans données."""
+    command.upgrade(alembic_config, "head")
 
     return empty_database
 

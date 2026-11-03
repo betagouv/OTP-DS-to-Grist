@@ -21,6 +21,11 @@ aux modèles.
   reste idempotente : elle met à niveau une base existante quel que soit son
   état historique, sans `alembic stamp`.
 - Le mode hors ligne (`--sql`) n'est pas pris en charge.
+- Les migrations s'exécutent au déploiement (hook `postdeploy` du `Procfile`)
+  et au lancement de `poe dev`, jamais au démarrage de l'application.
+- Une migration reste compatible avec la version précédente du code, qui tourne
+  brièvement sur le nouveau schéma pendant un déploiement (voir
+  `docs/deploy.md`).
 
 ## Commandes
 

@@ -1,10 +1,11 @@
 """Schéma initial
 
-Reprend les migrations maison de DatabaseManager.create_table_if_not_exists,
-les ajouts de colonnes d'une même table étant regroupés. Idempotente : sur une base vide
-elle crée le schéma, sur une base déjà déployée elle la met à niveau quel que
-soit son état historique. C'est ce qui permet la bascule vers Alembic par un
-simple `alembic upgrade head`, sans `stamp`.
+Reprend les migrations maison de DatabaseManager.create_table_if_not_exists
+(supprimé depuis), les ajouts de colonnes d'une même table étant regroupés.
+Idempotente : sur une base vide elle crée le schéma, sur une base déjà
+déployée elle la met à niveau quel que soit son état historique. C'est ce qui
+permet la bascule vers Alembic par un simple `alembic upgrade head`, sans
+`stamp`.
 
 Revision ID: 1f2e27203e17
 Revises:

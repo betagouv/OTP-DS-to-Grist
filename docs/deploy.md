@@ -51,6 +51,26 @@ définir :
 * `SYNC_HOUR` : heure de la synchronisation quotidienne (0-23)
 * `SYNC_MINUTE` : minute de la synchronisation quotidienne (0-59)
 
+### Migrations de la base de données
+
+Le schéma est appliqué par Alembic à chaque déploiement, via le hook
+`postdeploy` du `Procfile` (`alembic upgrade head`). Scalingo démarre la
+nouvelle version sans lui envoyer de trafic, lance le hook, puis bascule le
+trafic s'il réussit. En cas d'échec, le déploiement passe en statut
+`hook-error` et l'ancienne version continue de servir
+([documentation Scalingo](https://doc.scalingo.com/platform/app/postdeploy-hook)).
+
+Aucune commande manuelle n'est nécessaire, y compris pour le premier
+déploiement avec Alembic : la migration initiale met à niveau une base
+existante sans `alembic stamp`.
+
+Pendant la bascule, l'ancienne version tourne brièvement sur le nouveau
+schéma : une migration doit rester compatible avec la version précédente du
+code. Ajouter une colonne nullable ne pose pas de problème ; supprimer ou
+renommer une colonne se fait en deux déploiements (le code cesse de l'utiliser,
+puis la migration la supprime). Voir
+[database/migrations/README.md](../database/migrations/README.md).
+
 ### Note à propos de DATABASE_URL
 
 Il est nécessaire de bien s'assurer que le protocol est bien `postgresql://` au lieu de juste `postgres://` (incompatible avec SQLAlchemy)

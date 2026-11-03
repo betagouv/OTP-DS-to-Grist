@@ -3,7 +3,7 @@ from tests.python.db.schema_helpers import assert_database_matches_models
 
 
 class TestModelsMatchDatabase:
-    """Les modèles ORM décrivent fidèlement la base créée par DatabaseManager"""
+    """Les modèles ORM décrivent fidèlement la base créée par les migrations"""
 
     def test_autogenerate_detects_no_difference(self, initialized_database):
         assert_database_matches_models(initialized_database)
