@@ -43,6 +43,10 @@ pip-audit = "^2.10.1"
 [tool.poe.tasks.dev]
 shell = "python dev.py"
 
+[tool.poe.tasks.migrate]
+help = "Applique les migrations de schéma en attente (Alembic) sur DATABASE_URL"
+cmd = "alembic upgrade head"
+
 [tool.poe.tasks.test]
 # Les tests sur base réelle ne sont lancés que par test-db (Docker requis)
 cmd = "pytest --ignore=tests/python/db"
@@ -69,6 +73,12 @@ shell = "python3 -c \"import secrets, base64; print('ENCRYPTION_KEY=' + base64.u
 [tool.poe.tasks.audit]
 help = "Audit de sécurité des dépendances (pip, npm racine, npm front)"
 shell = "s=0; pip-audit || s=1; npm audit || s=1; cd front && npm audit || s=1; exit $s"
+
+[tool.alembic]
+# Migrations du schéma : voir database/migrations/README.md. L'URL de la base
+# vient de DATABASE_URL (database/migrations/env.py), pas d'alembic.ini.
+script_location = "%(here)s/database/migrations"
+prepend_sys_path = ["."]
 
 [tool.ruff]
 line-length = 88

@@ -1,9 +1,11 @@
 # tests/python/db/conftest.py
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import psycopg2
 import pytest
+from alembic.config import Config
 from cryptography.fernet import Fernet
 from psycopg2 import sql
 from sqlalchemy import Engine, make_url, text
@@ -14,10 +16,17 @@ from database.models import Base
 from database.session import SessionLocal
 from database.session import engine as app_engine
 from tests.python.db.runner import TEST_DATABASE_URL_ENV
+from tests.python.db.schema_helpers import create_legacy_tables
 from utils.constants import DATABASE_URL
 
 # Base présente sur tout serveur PostgreSQL, utilisée pour créer la base de test
 MAINTENANCE_DATABASE = "postgres"
+
+# Table où Alembic enregistre la version du schéma appliquée
+ALEMBIC_VERSION_TABLE = "alembic_version"
+
+# Configuration Alembic du projet ([tool.alembic])
+PYPROJECT_PATH = Path(__file__).resolve().parents[3] / "pyproject.toml"
 
 
 @pytest.fixture(scope="session")
@@ -44,8 +53,8 @@ def engine(database_url: str) -> Engine:
 
 @pytest.fixture
 def empty_database(engine: Engine) -> Engine:
-    """Base de test vidée des tables de l'application avant le test."""
-    tables = ", ".join(Base.metadata.tables)
+    """Base de test vidée des tables de l'application et de la version Alembic."""
+    tables = ", ".join([*Base.metadata.tables, ALEMBIC_VERSION_TABLE])
 
     with engine.begin() as connection:
         connection.execute(text(f"DROP TABLE IF EXISTS {tables} CASCADE"))
@@ -59,6 +68,20 @@ def initialized_database(empty_database: Engine, database_url: str) -> Engine:
     DatabaseManager.init_db(database_url)
 
     return empty_database
+
+
+@pytest.fixture
+def legacy_database(empty_database: Engine) -> Engine:
+    """Base de test au schéma historique (première version), avec des données."""
+    create_legacy_tables(empty_database)
+
+    return empty_database
+
+
+@pytest.fixture(scope="session")
+def alembic_config(database_url: str) -> Config:
+    """Configuration Alembic du projet, appliquée à la base de test."""
+    return Config(toml_file=str(PYPROJECT_PATH))
 
 
 @pytest.fixture
