@@ -17,3 +17,14 @@ SCALINGO_<INSTANCE>_REGION=<région, vide pour la région par défaut de la CLI>
 
 Ajouter une instance revient à ajouter ces deux variables. L'agent opencode `@logs`
 s'appuie sur la même convention.
+
+## `poe inspect`
+
+Rassemble ce que la base sait d'une adresse IP (`--ip`), d'une configuration
+(`--config`) ou d'une démarche (`--demarche`) : état de blocage, réglages de la
+configuration, planning, synchros récentes. Les secrets ne sont jamais affichés.
+
+Sans `--app`, la base locale (`DATABASE_URL`) est interrogée. Avec `--app <instance>`,
+l'outil ouvre lui-même un tunnel `scalingo db-tunnel` vers la base de l'instance et le
+referme à la fin. La connexion est en lecture seule : toute écriture est refusée
+par PostgreSQL. La CLI `scalingo` doit être installée et authentifiée.
