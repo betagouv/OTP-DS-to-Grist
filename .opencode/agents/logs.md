@@ -30,22 +30,31 @@ Tu inspectes les logs d'exécution des instances Scalingo et signales les probl�
 
 ## Périmètre
 
-Deux instances, à examiner toutes les deux par défaut :
-
-- Production : `grist-otp-adn-prod`, **région obligatoire `osc-secnum-fr1`**
-- Test : `grist-otp-adn-test`, région par défaut (`osc-fr1`)
+Deux instances, à examiner toutes les deux par défaut : `prod` et `test`.
+Leur application et leur région Scalingo viennent de `.env` (voir
+tools/README.md). Dans le rapport, désigner les instances par `prod` et `test`
+uniquement, jamais par leur nom d'application ou leur région.
 
 À la demande, restreindre à une seule instance.
 
 ## Méthode
 
-Les commandes d'accès (toujours sous cette forme, les permissions en dépendent) :
+Avant toute commande Scalingo, lire l'application et la région des instances,
+et rien d'autre de `.env` (il contient des secrets) :
 
 ```
-scalingo --region osc-secnum-fr1 -a grist-otp-adn-prod logs -n 2000
-scalingo -a grist-otp-adn-test logs -n 2000
-scalingo --region osc-secnum-fr1 -a grist-otp-adn-prod deployments
-scalingo -a grist-otp-adn-test deployments
+grep -E '^SCALINGO_(PROD|TEST)_(APP|REGION)=' .env
+```
+
+Si la variable `_APP` d'une instance demandée est absente ou vide, le signaler
+comme un échec d'accès pour cette instance.
+
+Les commandes d'accès (toujours sous cette forme, les permissions en dépendent ;
+omettre `--region <région>` quand la variable `_REGION` est vide) :
+
+```
+scalingo --region <région> -a <application> logs -n 2000
+scalingo --region <région> -a <application> deployments
 ```
 
 Les horodatages sont en début de ligne (`2026-10-15 19:15:31 … +0200 CEST`) :
