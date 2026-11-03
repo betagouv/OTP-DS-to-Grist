@@ -1,34 +1,27 @@
-import pytest
-from sqlalchemy import inspect
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
+from sqlalchemy.sql import ClauseElement
 
 from database.models import Base, OtpConfiguration, SyncLog
 
 
-class TestModelsMatchSchema:
+class TestModelsMatchDatabase:
     """
-    Les modèles ORM décrivent le schéma créé en SQL brut par DatabaseManager :
-    les deux sont maintenus à la main et peuvent diverger.
+    Les modèles ORM décrivent fidèlement la base : la différence calculée par
+    l'autogénération d'Alembic (colonnes, types, nullabilité, valeurs par
+    défaut, index, contraintes, clés étrangères) est vide.
     """
 
-    @pytest.mark.parametrize("table", Base.metadata.sorted_tables, ids=str)
-    def test_same_columns(self, initialized_database, table):
-        inspector = inspect(initialized_database)
-        db_columns = {column["name"] for column in inspector.get_columns(table.name)}
+    def test_autogenerate_detects_no_difference(self, initialized_database):
+        with initialized_database.connect() as connection:
+            context = MigrationContext.configure(
+                connection, opts={"compare_server_default": True}
+            )
+            differences = compare_metadata(context, Base.metadata)
 
-        assert db_columns == set(table.columns.keys())
-
-    @pytest.mark.parametrize("table", Base.metadata.sorted_tables, ids=str)
-    def test_same_python_types(self, initialized_database, table):
-        inspector = inspect(initialized_database)
-        db_types = {
-            column["name"]: column["type"].python_type
-            for column in inspector.get_columns(table.name)
-        }
-        model_types = {
-            column.name: column.type.python_type for column in table.columns
-        }
-
-        assert db_types == model_types
+        assert differences == [], "Écarts entre la base et les modèles :\n" + "\n".join(
+            _describe_difference(difference) for difference in differences
+        )
 
 
 class TestModelsPersistence:
@@ -66,3 +59,38 @@ class TestModelsPersistence:
         sync_log = db_session.query(SyncLog).one()
 
         assert sync_log.otp_config_id is None
+
+
+# --- Fonctions privées ---
+
+
+def _describe_difference(difference: tuple | list) -> str:
+    """
+    Une ligne lisible par écart détecté par Alembic. Les modifications d'une
+    même colonne arrivent groupées en liste ; les autres écarts sont un tuple
+    (opération, …, objet concerné).
+    """
+    if isinstance(difference, list):
+        return "\n".join(_describe_difference(change) for change in difference)
+
+    operation = difference[0]
+
+    if operation.startswith("modify_"):
+        _, _, table, column, _, database_value, model_value = difference
+        return (
+            f"- {operation} {table}.{column} : "
+            f"base={_describe_value(database_value)}, "
+            f"modèle={_describe_value(model_value)}"
+        )
+
+    return f"- {operation} {difference[-1]!r}"
+
+
+def _describe_value(value: object) -> str:
+    """Valeur par défaut (DefaultClause) rendue en SQL, sinon telle quelle."""
+    argument = getattr(value, "arg", value)
+
+    if isinstance(argument, ClauseElement):
+        return str(argument)
+
+    return repr(argument)

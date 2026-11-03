@@ -21,6 +21,7 @@ dependencies = [
     "psycopg2-binary (>=2.9.13,<3.0.0)",
     "APScheduler (>=3.11.3,<4.0.0)",
     "SQLAlchemy (>=2.1.6,<3.0.0)",
+    "alembic (>=1.16,<2.0)",
 ]
 
 
