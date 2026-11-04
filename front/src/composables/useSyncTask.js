@@ -8,6 +8,8 @@ const _finished = ref(true)
 // Dernier état connu de chaque synchro suivie, logs cumulés (le serveur les envoie en delta)
 const _states = ref({})
 
+const FINISHED_STATUSES = ['completed', 'error']
+
 export const useSyncTask = () => {
   const currentTask = computed(() => _tasks.value[_currentIndex.value] ?? null)
   const currentTaskId = computed(() => (_finished.value ? null : currentTask.value?.taskId ?? null))
@@ -34,6 +36,25 @@ export const useSyncTask = () => {
     setTasks(id ? [{ taskId: id, demarcheNumber }] : [])
   }
 
+  // Reprend les synchros en cours renvoyées par le serveur (message sync_state),
+  // chacune { task_id, task } avec tous ses logs : la page rouverte suit la
+  // première non terminée
+  const restoreTasks = (syncs) => {
+    _tasks.value = syncs.map(sync => ({
+      taskId: sync.task_id,
+      demarcheNumber: sync.task.demarche_number ?? null
+    }))
+    _states.value = Object.fromEntries(syncs.map(sync => [
+      sync.task_id,
+      // Seules les synchros manuelles ont un état sur le serveur
+      { ...stateFromTask(sync.task), auto: false, logs: sync.task.logs ?? [] }
+    ]))
+
+    const currentIndex = syncs.findIndex(sync => !FINISHED_STATUSES.includes(sync.task.status))
+    _currentIndex.value = currentIndex === -1 ? Math.max(syncs.length - 1, 0) : currentIndex
+    _finished.value = currentIndex === -1
+  }
+
   // Passe à la synchro suivante ; retourne false quand la dernière est terminée
   const finishCurrentTask = () => {
     if (_currentIndex.value < _tasks.value.length - 1) {
@@ -54,12 +75,8 @@ export const useSyncTask = () => {
       ..._states.value,
       [taskId]: {
         ...previous,
-        status: task.status,
-        message: task.message ?? '',
-        result: task.result ?? null,
-        syncReason: task.sync_reason ?? null,
-        endTime: task.end_time ? new Date(task.end_time * 1000) : null,
-        logs: [...previous.logs, ...(task.logs ?? [])]
+        ...stateFromTask(task),
+        logs: [...previous.logs, ...newLogs(previous.logs, task.logs ?? [])]
       }
     }
   }
@@ -73,6 +90,27 @@ export const useSyncTask = () => {
     setTasks,
     setCurrentTaskId,
     finishCurrentTask,
-    recordTaskUpdate
+    recordTaskUpdate,
+    restoreTasks
   }
+}
+
+// --- Fonctions privées ---
+
+// Champs d'affichage d'une synchro, depuis une tâche du serveur
+const stateFromTask = (task) => ({
+  status: task.status,
+  message: task.message ?? '',
+  result: task.result ?? null,
+  syncReason: task.sync_reason ?? null,
+  endTime: task.end_time ? new Date(task.end_time * 1000) : null
+})
+
+// Logs reçus qui ne sont pas encore connus : un état complet (restoreTasks) et
+// les envois en delta peuvent se recouvrir, la position (index) les départage.
+// Un log sans position est toujours ajouté.
+const newLogs = (knownLogs, receivedLogs) => {
+  const lastIndex = knownLogs.at(-1)?.index ?? -1
+
+  return receivedLogs.filter(log => !(log.index <= lastIndex))
 }
