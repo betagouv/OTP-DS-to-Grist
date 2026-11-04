@@ -10,6 +10,10 @@ Fournit la fabrique de sessions SQLAlchemy partagée par l'application : un seul
 engine (et donc un seul pool de connexions) par process. Les modules ouvrent leurs
 sessions via `database.session.SessionLocal` plutôt que de créer leur propre engine.
 
+Le schéma est décrit par les modèles ORM (`database/models.py`) et appliqué par
+les migrations Alembic de `migrations/` (voir son README), au déploiement et
+au lancement de `poe dev`, jamais au démarrage de l'application.
+
 ## Tables
 
 - `otp_configurations` : Configuration de chaque utilisateur (tokens, filtres)

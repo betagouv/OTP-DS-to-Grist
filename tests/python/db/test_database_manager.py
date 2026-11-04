@@ -1,34 +1,6 @@
-from sqlalchemy import Engine, inspect, make_url
+from sqlalchemy import make_url
 
 from database.database_manager import DatabaseManager
-from database.models import Base
-
-
-def _columns_by_table(engine: Engine) -> dict[str, set[str]]:
-    inspector = inspect(engine)
-
-    return {
-        table: {column["name"] for column in inspector.get_columns(table)}
-        for table in inspector.get_table_names()
-    }
-
-
-class TestInitDb:
-    """Création et migration du schéma sur une vraie base PostgreSQL"""
-
-    def test_creates_all_application_tables(self, empty_database, database_url):
-        DatabaseManager.init_db(database_url)
-
-        tables = set(inspect(empty_database).get_table_names())
-        assert tables == set(Base.metadata.tables)
-
-    def test_is_idempotent(self, empty_database, database_url):
-        DatabaseManager.init_db(database_url)
-        columns_after_first_run = _columns_by_table(empty_database)
-
-        DatabaseManager.init_db(database_url)
-
-        assert _columns_by_table(empty_database) == columns_after_first_run
 
 
 class TestGetConnection:

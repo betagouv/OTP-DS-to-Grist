@@ -120,6 +120,10 @@ poe dev
 
 L'application sera accessible sur : **http://localhost:5000**
 
+`poe dev` applique d'abord les migrations de schéma en attente (`poe migrate`),
+puis lance le serveur : les tables sont créées au premier lancement. Voir
+[database/migrations/README.md](../database/migrations/README.md).
+
 ### Tests
 
 ```bash
@@ -202,6 +206,9 @@ docker-compose run --rm app bash
 ```bash
 # Variables d'environnement pour la production
 export FLASK_ENV=production  # Windows: set FLASK_ENV=production
+
+# Appliquer les migrations de schéma (gunicorn ne le fait pas)
+poe migrate
 
 # Lancer avec gunicorn (recommandé pour la production)
 pip install gunicorn

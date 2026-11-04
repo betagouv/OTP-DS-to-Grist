@@ -1,34 +1,12 @@
-import pytest
-from sqlalchemy import inspect
-
-from database.models import Base, OtpConfiguration, SyncLog
+from database.models import OtpConfiguration, SyncLog
+from tests.python.db.schema_helpers import assert_database_matches_models
 
 
-class TestModelsMatchSchema:
-    """
-    Les modèles ORM décrivent le schéma créé en SQL brut par DatabaseManager :
-    les deux sont maintenus à la main et peuvent diverger.
-    """
+class TestModelsMatchDatabase:
+    """Les modèles ORM décrivent fidèlement la base créée par les migrations"""
 
-    @pytest.mark.parametrize("table", Base.metadata.sorted_tables, ids=str)
-    def test_same_columns(self, initialized_database, table):
-        inspector = inspect(initialized_database)
-        db_columns = {column["name"] for column in inspector.get_columns(table.name)}
-
-        assert db_columns == set(table.columns.keys())
-
-    @pytest.mark.parametrize("table", Base.metadata.sorted_tables, ids=str)
-    def test_same_python_types(self, initialized_database, table):
-        inspector = inspect(initialized_database)
-        db_types = {
-            column["name"]: column["type"].python_type
-            for column in inspector.get_columns(table.name)
-        }
-        model_types = {
-            column.name: column.type.python_type for column in table.columns
-        }
-
-        assert db_types == model_types
+    def test_autogenerate_detects_no_difference(self, initialized_database):
+        assert_database_matches_models(initialized_database)
 
 
 class TestModelsPersistence:
@@ -66,3 +44,4 @@ class TestModelsPersistence:
         sync_log = db_session.query(SyncLog).one()
 
         assert sync_log.otp_config_id is None
+

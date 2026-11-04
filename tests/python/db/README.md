@@ -6,9 +6,10 @@ SQLAlchemy.
 ## Rôle
 
 Détecter ce que les tests mockés ne voient pas : une mise à jour de
-dépendance (psycopg2, SQLAlchemy, PostgreSQL) qui casse la connexion, la
-création du schéma ou les requêtes, ou une divergence entre le schéma créé en
-SQL brut par `DatabaseManager` et les modèles ORM de `database/models.py`.
+dépendance (psycopg2, SQLAlchemy, Alembic, PostgreSQL) qui casse la connexion,
+la création du schéma ou les requêtes, une migration qui échoue sur une base
+existante, ou une divergence entre le schéma créé par les migrations
+(`database/migrations/`) et les modèles ORM de `database/models.py`.
 
 ## Conventions
 
@@ -24,7 +25,9 @@ SQL brut par `DatabaseManager` et les modèles ORM de `database/models.py`.
 - Seule la base est réelle : les autres dépendances externes (API Grist,
   Démarches numériques) restent simulées.
 - La base de test est créée automatiquement si elle n'existe pas.
-- Chaque test part d'une base vidée de ces tables (fixture `empty_database`).
+- Chaque test part d'une base vidée de ces tables et de la version Alembic
+  (fixture `empty_database`). Le schéma est créé par les migrations
+  (fixture `initialized_database`), comme en production.
 
 ## Lancer en local
 

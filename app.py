@@ -22,7 +22,6 @@ from configuration.config_manager import (
     ConfigManager,
     ConfigNotFoundError,
 )
-from database.database_manager import DatabaseManager
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from database.session import SessionLocal
 from dn.client import get_groups
@@ -82,8 +81,7 @@ VITE_DEV_ORIGIN = "http://localhost:5173"
 # Chargement des variables d'environnement
 load_dotenv()
 
-# Initialiser la base de données au chargement du module
-DatabaseManager.init_db(DATABASE_URL)
+# Schéma de la base : appliqué par les migrations (database/migrations/README.md)
 
 # Instance de ConfigManager
 config_manager = ConfigManager(DATABASE_URL)
