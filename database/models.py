@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    UniqueConstraint,
     false,
     text,
     true,
@@ -90,3 +91,21 @@ class IpBlocklist(Base):
         Integer, default=0, server_default="0", nullable=False
     )
     banned_until: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class OtpConfigIp(Base):
+    """Dernier passage de chaque IP sur chaque configuration (exploitation)."""
+
+    __tablename__: str = "otp_config_ips"
+    # La contrainte d'unicité sert aussi d'index pour la recherche par IP
+    __table_args__ = (
+        UniqueConstraint("ip", "otp_config_id", name="uq_otp_config_ips_ip_config"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45))
+    otp_config_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("otp_configurations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    seen_at: Mapped[datetime] = mapped_column(DateTime)

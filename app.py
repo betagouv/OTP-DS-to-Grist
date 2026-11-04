@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import time
+from collections.abc import Iterable
 from datetime import timezone
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from configuration.config_manager import (
     ConfigManager,
     ConfigNotFoundError,
 )
+from configuration.config_usage import ConfigUsage
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from database.session import SessionLocal
 from dn.client import get_groups
@@ -113,6 +115,9 @@ ip_blocklist_store = IpBlocklistStore(
 ip_blocklist_whitelist = parse_whitelist(IP_BLOCKLIST_WHITELIST.split(","))
 ip_blocklist_hits: dict[str, list[float]] = {}
 
+# Trace des IP qui utilisent chaque configuration, pour l'exploitation
+config_usage = ConfigUsage()
+
 # Cache du niveau d'accès de la clé Grist sur le document, alimenté par
 # GET /api/config : (base_url, api_key, doc_id) -> (horodatage, niveau).
 _grist_key_access_cache: dict[tuple[str, str, str], tuple[float, str]] = {}
@@ -155,6 +160,26 @@ def _blocklist_target_ip() -> str | None:
         return None
 
     return client_ip
+
+
+def _mark_configs_used(otp_config_ids: Iterable[int]) -> None:
+    """
+    Note que le client de la requête en cours utilise ces configurations.
+
+    Sans IP exploitable, rien n'est noté. Un échec est journalisé sans faire
+    échouer la route : la trace sert l'exploitation, pas l'utilisateur.
+    """
+    client_ip = resolve_client_ip(request.headers)
+
+    if client_ip is None:
+        return
+
+    try:
+        config_usage.mark_used(client_ip, otp_config_ids)
+    except Exception:
+        logger.exception(
+            "Utilisation des configurations non enregistrée pour l'IP %s", client_ip
+        )
 
 
 @app.before_request
@@ -402,6 +427,7 @@ def api_config():
             configs = config_manager.load_config(
                 grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
             )
+            _mark_configs_used(config["otp_config_id"] for config in configs)
 
             # Masquer les tokens et ajouter les flags pour chaque config
             for config in configs:
@@ -460,6 +486,8 @@ def api_config():
                 ), 200
             else:
                 otp_config_id = config_manager.save_config(new_config)
+                _mark_configs_used([otp_config_id])
+
                 return jsonify(
                     {
                         "success": True,
@@ -877,6 +905,7 @@ def api_start_sync():
 
         # Démarrer la tâche avec la configuration serveur sécurisée
         task_id = sync_manager.start_sync(server_config, auto=False)
+        _mark_configs_used([server_config["otp_config_id"]])
 
         return jsonify(
             {
@@ -923,6 +952,7 @@ def api_start_sync_all():
         task_ids = sync_manager.start_sync_series(
             (grist_user_id, grist_doc_id), configs
         )
+        _mark_configs_used(config["otp_config_id"] for config in configs)
 
         return jsonify(
             {

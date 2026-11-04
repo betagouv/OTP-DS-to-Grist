@@ -16,7 +16,6 @@ from database.models import Base
 from database.session import SessionLocal
 from database.session import engine as app_engine
 from tests.python.db.runner import TEST_DATABASE_URL_ENV
-from tests.python.db.schema_helpers import create_legacy_tables
 from utils.constants import DATABASE_URL
 
 # Base présente sur tout serveur PostgreSQL, utilisée pour créer la base de test
@@ -66,14 +65,6 @@ def empty_database(engine: Engine) -> Engine:
 def initialized_database(empty_database: Engine, alembic_config: Config) -> Engine:
     """Base de test au schéma créé par les migrations Alembic, sans données."""
     command.upgrade(alembic_config, "head")
-
-    return empty_database
-
-
-@pytest.fixture
-def legacy_database(empty_database: Engine) -> Engine:
-    """Base de test au schéma historique (première version), avec des données."""
-    create_legacy_tables(empty_database)
 
     return empty_database
 

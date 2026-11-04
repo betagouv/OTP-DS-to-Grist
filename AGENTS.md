@@ -115,6 +115,9 @@ obsolète et fragile. Décrire le rôle et les responsabilités, pas l'inventair
 
 Consulter les fichiers de config à la racine (`eslint.config.js`, `pyproject.toml`) pour les règles de code.
 Conventions de nommage : standards Python (PEP 8) et JS.
+Nommer un module, une classe ou une fonction d'après le service rendu à son consommateur, pas
+d'après la façon dont il est rendu (éviter les suffixes techniques comme `Store`, `Manager`,
+`Helper`, qui ne décrivent rien).
 Typer les signatures des fonctions touchées lors d'une modification (approche incrémentale), en
 cohérence avec le style existant : types natifs (`dict[str, str]`, `set[str]`, ...) et unions
 `X | None`, sans type checker obligatoire.
