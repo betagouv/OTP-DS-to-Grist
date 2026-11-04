@@ -249,3 +249,51 @@ class TestMainGristReadError:
             "pas créer de doublons ; elle reprendra au prochain lancement."
         ]
         assert "Traceback" not in captured.err
+
+
+class TestRunDemarcheLevelTasks:
+    """Tests unitaires pour gpa.run_demarche_level_tasks (déliage et masquage)"""
+
+    TABLE_IDS = {"dossier_table_id": "Demarche_1_dossiers"}
+
+    def _run(self, schema_method_successful: bool, untie_error=None):
+        client = MagicMock()
+        with (
+            patch.object(
+                gpa, "check_deleted_dossiers", return_value={"newly_marked": 0}
+            ),
+            patch.object(gpa, "untie_column_ids", side_effect=untie_error) as untie,
+            patch.object(gpa, "hide_columns_with_id") as hide,
+            patch.object(gpa, "log"),
+            patch.object(gpa, "log_error") as log_error,
+        ):
+            gpa.run_demarche_level_tasks(
+                client,
+                self.TABLE_IDS,
+                1,
+                schema_method_successful=schema_method_successful,
+            )
+        return client, untie, hide, log_error
+
+    def test_unties_and_hides_when_schema_succeeded(self):
+        """schéma DN récupéré -> déliage puis masquage"""
+        client, untie, hide, _ = self._run(schema_method_successful=True)
+        untie.assert_called_once_with(client)
+        hide.assert_called_once_with(client)
+
+    def test_unties_even_when_schema_failed(self):
+        """le déliage ne dépend pas du schéma DN, le masquage si"""
+        client, untie, hide, _ = self._run(schema_method_successful=False)
+        untie.assert_called_once_with(client)
+        hide.assert_not_called()
+
+    def test_untie_error_does_not_block_hiding(self):
+        """un échec du déliage est journalisé et le masquage s'exécute quand même"""
+        client, _, hide, log_error = self._run(
+            schema_method_successful=True, untie_error=Exception("HTTP 403")
+        )
+        hide.assert_called_once_with(client)
+        assert any(
+            "déliage" in call.args[0] and "HTTP 403" in call.args[0]
+            for call in log_error.call_args_list
+        )

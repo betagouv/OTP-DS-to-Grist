@@ -17,8 +17,9 @@ abandonnerait les détails se verrait dans l'état final Grist.
 
 Sont mockés, pour isoler le périmètre : `get_optimized_schema` (schéma DS),
 `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
-`detect_demandeur_type` et `hide_columns_with_id` (dernière tâche de niveau
-démarche, dont on vérifie seulement qu'elle est exécutée).
+`detect_demandeur_type`, `untie_column_ids` et `hide_columns_with_id`
+(dernières tâches de niveau démarche, dont on vérifie seulement qu'elles sont
+exécutées).
 
 Aucun service externe (DN, Grist, DB) n'est requis.
 """
@@ -659,6 +660,7 @@ def run_pipeline(
             )
         )
         hiding = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
+        untying = stack.enter_context(patch.object(gpa, "untie_column_ids"))
 
         result = gpa.process_demarche_for_grist_optimized(
             client,
@@ -666,7 +668,7 @@ def run_pipeline(
             **pipeline_kwargs,
         )
 
-    mocks = SimpleNamespace(hiding=hiding)
+    mocks = SimpleNamespace(hiding=hiding, untying=untying)
     return result, mocks
 
 
@@ -730,6 +732,9 @@ class TestSyncPipelineGrist:
 
         # Le masquage des colonnes `_id` est toujours exécuté en fin de sync
         mocks.hiding.assert_called_once()
+
+        # Le déliage des identifiants de colonnes est exécuté en fin de sync
+        mocks.untying.assert_called_once()
 
     def test_pipeline_emits_sync_metadata_line(self, capsys):
         """Le pipeline émet une ligne SYNC_METADATA unique portant durée, flag et
