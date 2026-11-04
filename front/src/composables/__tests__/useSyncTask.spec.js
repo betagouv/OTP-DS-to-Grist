@@ -200,5 +200,120 @@ describe('useSyncTask', () => {
       expect(seriesTasks.value[0].status).toBe('queued')
       expect(seriesTasks.value[0].logs).toEqual([])
     })
+
+    it('skips logs already known by their index', () => {
+      const { seriesTasks, setTasks, recordTaskUpdate } = useSyncTask()
+      setTasks(SERIES)
+      recordTaskUpdate('task_1', {
+        status: 'running',
+        logs: [{ index: 0, message: 'a' }, { index: 1, message: 'b' }]
+      })
+      recordTaskUpdate('task_1', {
+        status: 'running',
+        logs: [{ index: 1, message: 'b' }, { index: 2, message: 'c' }]
+      })
+
+      expect(seriesTasks.value[0].logs.map(log => log.message)).toEqual(['a', 'b', 'c'])
+    })
+  })
+
+  describe('restoreTasks', () => {
+    const serverTask = (status, demarcheNumber, extra = {}) => ({
+      status,
+      demarche_number: demarcheNumber,
+      message: '',
+      progress: 0,
+      logs: [],
+      ...extra
+    })
+
+    it('follows a single running sync', () => {
+      const { currentTaskId, demarcheNumber, totalDemarches, restoreTasks } = useSyncTask()
+      restoreTasks([{ task_id: 'task_5', task: serverTask('running', '111') }])
+
+      expect(currentTaskId.value).toBe('task_5')
+      expect(demarcheNumber.value).toBe('111')
+      expect(totalDemarches.value).toBe(1)
+    })
+
+    it('follows the first unfinished task of a series', () => {
+      const { currentTaskId, demarcheIndex, totalDemarches, seriesTasks, restoreTasks } = useSyncTask()
+      restoreTasks([
+        { task_id: 'task_1', task: serverTask('completed', '111') },
+        { task_id: 'task_2', task: serverTask('error', '222') },
+        { task_id: 'task_3', task: serverTask('running', '333') },
+        { task_id: 'task_4', task: serverTask('queued', '444') }
+      ])
+
+      expect(currentTaskId.value).toBe('task_3')
+      expect(demarcheIndex.value).toBe(3)
+      expect(totalDemarches.value).toBe(4)
+      expect(seriesTasks.value.map(task => [task.taskId, task.status])).toEqual([
+        ['task_1', 'completed'], ['task_2', 'error'], ['task_3', 'running'], ['task_4', 'queued']
+      ])
+    })
+
+    it('moves on to the next task after the restored one finishes', () => {
+      const { currentTaskId, restoreTasks, finishCurrentTask } = useSyncTask()
+      restoreTasks([
+        { task_id: 'task_1', task: serverTask('running', '111') },
+        { task_id: 'task_2', task: serverTask('queued', '222') }
+      ])
+
+      expect(finishCurrentTask()).toBe(true)
+      expect(currentTaskId.value).toBe('task_2')
+    })
+
+    it('restores message, result, end time and all logs, as manual syncs', () => {
+      const { seriesTasks, restoreTasks } = useSyncTask()
+      restoreTasks([
+        {
+          task_id: 'task_1',
+          task: serverTask('completed', '111', {
+            message: 'Tâche terminée avec succès',
+            result: { success_count: 3, error_count: 0 },
+            sync_reason: 'synced',
+            end_time: 1700000000,
+            logs: [{ index: 0, message: 'a' }, { index: 1, message: 'b' }]
+          })
+        },
+        { task_id: 'task_2', task: serverTask('running', '222') }
+      ])
+
+      expect(seriesTasks.value[0]).toMatchObject({
+        message: 'Tâche terminée avec succès',
+        result: { success_count: 3, error_count: 0 },
+        syncReason: 'synced',
+        endTime: new Date(1700000000 * 1000),
+        auto: false
+      })
+      expect(seriesTasks.value[0].logs.map(log => log.message)).toEqual(['a', 'b'])
+    })
+
+    it('merges later deltas without duplicating restored logs', () => {
+      const { seriesTasks, restoreTasks, recordTaskUpdate } = useSyncTask()
+      restoreTasks([{
+        task_id: 'task_1',
+        task: serverTask('running', '111', { logs: [{ index: 0, message: 'a' }, { index: 1, message: 'b' }] })
+      }])
+      recordTaskUpdate('task_1', { status: 'running', logs: [{ index: 1, message: 'b' }, { index: 2, message: 'c' }] })
+
+      expect(seriesTasks.value[0].logs.map(log => log.message)).toEqual(['a', 'b', 'c'])
+    })
+
+    it('follows nothing when every task is finished', () => {
+      const { currentTaskId, restoreTasks } = useSyncTask()
+      restoreTasks([{ task_id: 'task_1', task: serverTask('completed', '111') }])
+
+      expect(currentTaskId.value).toBe(null)
+    })
+
+    it('follows nothing when the server has no sync', () => {
+      const { currentTaskId, seriesTasks, restoreTasks } = useSyncTask()
+      restoreTasks([])
+
+      expect(currentTaskId.value).toBe(null)
+      expect(seriesTasks.value).toEqual([])
+    })
   })
 })
