@@ -21,16 +21,21 @@ s'appuie sur la même convention.
 ## `poe inspect`
 
 Rassemble ce que la base sait d'une adresse IP (`--ip`), d'une configuration
-(`--config`) ou d'une démarche (`--demarche`) : état de blocage, réglages de la
-configuration, planning, synchros des dernières 24 h. Les secrets ne sont jamais
-affichés.
+(`--config`) ou d'une démarche (`--demarche`) : état de blocage, réglages et planning
+des configurations, synchros des dernières 24 h, et lien entre IP et configurations.
+Les secrets ne sont jamais affichés.
+
+Le lien IP ↔ configuration vient de la table `otp_config_ips` (dernière utilisation
+après authentification, voir `configuration/README.md`) et, avec `--app`, des requêtes
+des logs dont l'URL porte un `otp_config_id`, refusées comprises. Sur une instance où
+la migration de cette table n'est pas encore appliquée, seuls les logs servent, et un
+avertissement le signale.
 
 Avec `--app`, les logs d'accès gunicorn de l'instance sont aussi lus (24 dernières
 heures par défaut, `--since 30m|4h|2d` ; `--errors` pour les seules réponses 4xx et
-5xx) : requêtes de l'IP et configurations qu'elles visent, ou requêtes d'une
-configuration. Le lien IP ↔ configuration ne vient que des URL qui portent un
-`otp_config_id` : il est partiel. Les logs ne portent l'IP du client que si
-l'instance définit `GUNICORN_CMD_ARGS` (format décrit dans `tools/access_log.py`).
+5xx) : requêtes, dernière requête et refus (401/403) par IP et par configuration. Les
+logs ne portent l'IP du client que si l'instance définit `GUNICORN_CMD_ARGS` (format
+décrit dans `tools/access_log.py`).
 
 Sans `--app`, la base locale (`DATABASE_URL`) est interrogée. Avec `--app <instance>`,
 l'outil ouvre lui-même un tunnel `scalingo db-tunnel` vers la base de l'instance et le

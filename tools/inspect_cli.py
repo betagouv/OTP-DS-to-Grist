@@ -22,10 +22,16 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import Session
 
-from database.models import IpBlocklist, OtpConfiguration, SyncLog, UserSchedule
+from database.models import (
+    IpBlocklist,
+    OtpConfigIp,
+    OtpConfiguration,
+    SyncLog,
+    UserSchedule,
+)
 from tools import scalingo
 from tools.access_log import AccessLogEntry, parse_access_log
 
@@ -45,8 +51,12 @@ LOGS_DISPLAYED_MAX = 50
 
 SYNC_MESSAGE_MAX_LENGTH = 60
 
-# Le lien IP ↔ configuration ne vient que des URL qui portent un otp_config_id
-PARTIAL_NOTE = "  (d'après les URL des logs, liste partielle)"
+# Réponses comptées comme accès refusés : jeton widget absent ou invalide (401),
+# identité qui ne correspond pas à la configuration ou IP bannie (403)
+REFUSED_STATUSES = (401, 403)
+
+# Valeur des colonnes tirées des logs quand ils ne sont pas lus (sans --app)
+NO_LOGS = "-"
 
 # Toute écriture est refusée par PostgreSQL : l'outil ne peut rien abîmer
 READ_ONLY_CONNECT_ARGS = {"options": "-c default_transaction_read_only=on"}
@@ -59,21 +69,25 @@ def inspect_ip(
     entries: Sequence[AccessLogEntry] | None,
     logs_title: str,
 ) -> list[str]:
-    """Lignes du rapport pour une adresse IP."""
+    """
+    Lignes du rapport pour une adresse IP.
+
+    Les configurations sont celles que l'IP a utilisées (table otp_config_ips),
+    plus celles que visent ses requêtes dans les logs, même refusées.
+    """
     row = session.query(IpBlocklist).filter_by(ip=ip).one_or_none()
-    lines = [_title(f"IP {ip}"), f"Blocage : {_ban_status(row, now)}", ""]
-
-    if entries is None:
-        return [
-            *lines,
-            *_unavailable("Configurations"),
-            "",
-            *_unavailable(logs_title),
-        ]
-
-    ip_entries = [entry for entry in entries if entry.ip == ip]
+    last_uses = {
+        link.otp_config_id: link.seen_at
+        for link in _config_ip_links(session, OtpConfigIp.ip == ip)
+    }
+    ip_entries = (
+        [entry for entry in entries if entry.ip == ip] if entries is not None else None
+    )
     config_ids = sorted(
-        {entry.otp_config_id for entry in ip_entries if entry.otp_config_id}
+        {
+            *last_uses,
+            *(entry.otp_config_id for entry in ip_entries or [] if entry.otp_config_id),
+        }
     )
     configs = {
         config.id: config
@@ -81,12 +95,20 @@ def inspect_ip(
             OtpConfiguration.id.in_(config_ids)
         )
     }
+    lines = [
+        _title(f"IP {ip}"),
+        f"Blocage : {_ban_status(row, now)}",
+        f"Refus : {_refusals_summary(ip_entries)}",
+        "",
+        *_configs_table(session, config_ids, configs, last_uses, ip_entries),
+        "",
+    ]
+
+    if ip_entries is None:
+        return [*lines, *_unavailable(logs_title)]
 
     return [
         *lines,
-        *_configs_table(session, config_ids, configs, ip_entries),
-        PARTIAL_NOTE,
-        "",
         *_logs_section(logs_title, ip_entries, with_config=False, with_ip=False),
     ]
 
@@ -98,37 +120,46 @@ def inspect_configs(
     entries: Sequence[AccessLogEntry] | None,
     logs_title: str,
 ) -> list[str]:
-    """Lignes du rapport pour des configurations, une ligne par configuration."""
+    """
+    Lignes du rapport pour des configurations, une ligne par configuration.
+
+    Les adresses IP sont celles qui ont utilisé les configurations (table
+    otp_config_ips), plus celles des requêtes des logs qui les visent.
+    """
     config_ids = [config.id for config in configs]
+    links = _config_ip_links(session, OtpConfigIp.otp_config_id.in_(config_ids))
+    last_uses = {
+        config_id: max(
+            (link.seen_at for link in links if link.otp_config_id == config_id),
+            default=None,
+        )
+        for config_id in config_ids
+    }
+    config_entries = (
+        [entry for entry in entries if entry.otp_config_id in set(config_ids)]
+        if entries is not None
+        else None
+    )
     lines = [
         *_configs_table(
             session,
             config_ids,
             {config.id: config for config in configs},
-            entries,
+            last_uses,
+            config_entries,
         ),
         "",
         *_sync_logs_table(session, config_ids, now),
         "",
+        *_ips_table(session, links, config_entries, now),
+        "",
     ]
 
-    if entries is None:
-        return [
-            *lines,
-            *_unavailable("Adresses IP"),
-            "",
-            *_unavailable(logs_title),
-        ]
-
-    config_entries = [
-        entry for entry in entries if entry.otp_config_id in set(config_ids)
-    ]
+    if config_entries is None:
+        return [*lines, *_unavailable(logs_title)]
 
     return [
         *lines,
-        *_ips_table(session, config_entries, now),
-        PARTIAL_NOTE,
-        "",
         *_logs_section(logs_title, config_entries, with_config=True, with_ip=True),
     ]
 
@@ -279,31 +310,67 @@ def _report(
 
     try:
         with Session(engine) as session:
-            if arguments.ip:
-                return inspect_ip(session, arguments.ip, now, entries, logs_title)
-
-            demarche_number = (
-                str(arguments.demarche) if arguments.demarche is not None else None
+            notes = (
+                []
+                if _has_config_ip_links(session)
+                else [
+                    "Attention : table otp_config_ips absente (migration non "
+                    "appliquée sur l'instance) : seuls les logs relient IP et "
+                    "configurations",
+                    "",
+                ]
             )
-            configs = find_configs(session, arguments.config, demarche_number)
 
-            if not configs:
-                target = (
-                    f"configuration {arguments.config}"
-                    if arguments.config is not None
-                    else f"démarche {demarche_number}"
-                )
-                return [f"Aucune configuration pour la {target}"]
-
-            return inspect_configs(session, configs, now, entries, logs_title)
+            return [*notes, *_inspect(session, arguments, now, entries, logs_title)]
     finally:
         engine.dispose()
+
+
+def _inspect(
+    session: Session,
+    arguments: argparse.Namespace,
+    now: datetime,
+    entries: Sequence[AccessLogEntry] | None,
+    logs_title: str,
+) -> list[str]:
+    """Rapport de la cible demandée : IP, configuration ou démarche."""
+    if arguments.ip:
+        return inspect_ip(session, arguments.ip, now, entries, logs_title)
+
+    demarche_number = (
+        str(arguments.demarche) if arguments.demarche is not None else None
+    )
+    configs = find_configs(session, arguments.config, demarche_number)
+
+    if not configs:
+        target = (
+            f"configuration {arguments.config}"
+            if arguments.config is not None
+            else f"démarche {demarche_number}"
+        )
+        return [f"Aucune configuration pour la {target}"]
+
+    return inspect_configs(session, configs, now, entries, logs_title)
+
+
+def _has_config_ip_links(session: Session) -> bool:
+    """La base de l'instance a-t-elle la table otp_config_ips ?"""
+    return inspect(session.connection()).has_table(OtpConfigIp.__tablename__)
+
+
+def _config_ip_links(session: Session, criterion) -> list[OtpConfigIp]:
+    """Liens IP ↔ configuration, vides si la table n'existe pas encore."""
+    if not _has_config_ip_links(session):
+        return []
+
+    return session.query(OtpConfigIp).filter(criterion).all()
 
 
 def _configs_table(
     session: Session,
     config_ids: Sequence[int],
     configs: Mapping[int, OtpConfiguration],
+    last_uses: Mapping[int, datetime | None],
     entries: Sequence[AccessLogEntry] | None,
 ) -> list[str]:
     """Tableau des configurations ; les absentes de la base restent signalées."""
@@ -336,7 +403,19 @@ def _configs_table(
             if config is not None
             else ["inexistante en base", *[""] * 6]
         )
-        rows.append([str(config_id), *details, *_activity(entries, config_id)])
+        config_entries = (
+            [entry for entry in entries if entry.otp_config_id == config_id]
+            if entries is not None
+            else None
+        )
+        rows.append(
+            [
+                str(config_id),
+                *details,
+                _optional_local_time(last_uses.get(config_id)),
+                *_requests(config_entries),
+            ]
+        )
 
     headers = [
         "Config",
@@ -347,6 +426,7 @@ def _configs_table(
         "Email",
         "Planning",
         "Filtres",
+        "Dernière utilisation",
         "Requêtes",
         "Dernière requête",
     ]
@@ -386,10 +466,14 @@ def _sync_logs_table(
 
 
 def _ips_table(
-    session: Session, entries: Sequence[AccessLogEntry], now: datetime
+    session: Session,
+    links: Sequence[OtpConfigIp],
+    entries: Sequence[AccessLogEntry] | None,
+    now: datetime,
 ) -> list[str]:
-    """Tableau des IP des requêtes, la plus récemment vue en tête."""
-    ips = {entry.ip for entry in entries if entry.ip is not None}
+    """Tableau des IP des configurations, la plus récemment vue en tête."""
+    log_entries = [entry for entry in entries or [] if entry.ip is not None]
+    ips = {link.ip for link in links} | {entry.ip for entry in log_entries}
     lines = [_title("Adresses IP")]
 
     if not ips:
@@ -399,35 +483,81 @@ def _ips_table(
         row.ip: row
         for row in session.query(IpBlocklist).filter(IpBlocklist.ip.in_(ips))
     }
-    last_seen = {
-        ip: max(entry.moment for entry in entries if entry.ip == ip) for ip in ips
-    }
-    rows = [
-        [
+    rows = []
+
+    for ip in ips:
+        ip_links = [link for link in links if link.ip == ip]
+        ip_entries = (
+            [entry for entry in log_entries if entry.ip == ip]
+            if entries is not None
+            else None
+        )
+        config_ids = sorted(
+            {link.otp_config_id for link in ip_links}
+            | {entry.otp_config_id for entry in ip_entries or []}
+        )
+        last_use = max((link.seen_at for link in ip_links), default=None)
+        cells = [
             ip,
-            str(sum(entry.ip == ip for entry in entries)),
-            _local_time_aware(last_seen[ip]),
+            ", ".join(str(config_id) for config_id in config_ids),
+            _optional_local_time(last_use),
+            *_requests(ip_entries),
+            _refusals_count(ip_entries),
             _ban_status(bans.get(ip), now),
         ]
-        for ip in sorted(ips, key=last_seen.get, reverse=True)
+        rows.append((_last_seen(last_use, ip_entries or []), cells))
+
+    headers = [
+        "IP",
+        "Configs",
+        "Dernière utilisation",
+        "Requêtes",
+        "Dernière requête",
+        "Refus",
+        "Blocage",
     ]
+    ordered = [cells for _, cells in sorted(rows, key=lambda row: row[0], reverse=True)]
 
-    return [*lines, *_table(["IP", "Requêtes", "Dernière requête", "Blocage"], rows)]
+    return [*lines, *_table(headers, ordered)]
 
 
-def _activity(entries: Sequence[AccessLogEntry] | None, config_id: int) -> list[str]:
-    """Nombre de requêtes visant la configuration et date de la dernière."""
+def _last_seen(
+    last_use: datetime | None, entries: Sequence[AccessLogEntry]
+) -> datetime:
+    """Dernière trace de l'IP : utilisation (UTC naïf) ou requête (avec fuseau)."""
+    moments = [entry.moment for entry in entries]
+
+    if last_use is not None:
+        moments.append(last_use.replace(tzinfo=timezone.utc))
+
+    return max(moments)
+
+
+def _requests(entries: Sequence[AccessLogEntry] | None) -> list[str]:
+    """Nombre de requêtes des logs et date de la dernière."""
     if entries is None:
-        return ["-", "-"]
+        return [NO_LOGS, NO_LOGS]
 
-    config_entries = [entry for entry in entries if entry.otp_config_id == config_id]
-
-    if not config_entries:
+    if not entries:
         return ["0", "-"]
 
-    last = max(entry.moment for entry in config_entries)
+    last = max(entry.moment for entry in entries)
 
-    return [str(len(config_entries)), _local_time_aware(last)]
+    return [str(len(entries)), _local_time_aware(last)]
+
+
+def _refusals_count(entries: Sequence[AccessLogEntry] | None) -> str:
+    if entries is None:
+        return NO_LOGS
+
+    return str(sum(entry.status in REFUSED_STATUSES for entry in entries))
+
+
+def _refusals_summary(entries: Sequence[AccessLogEntry] | None) -> str:
+    if entries is None:
+        return "disponible seulement avec --app (logs de l'instance)"
+
+    return f"{_refusals_count(entries)} requête(s) refusée(s) (401/403)"
 
 
 def _logs_section(
@@ -581,6 +711,10 @@ def _count(value: int | None) -> str:
 def _local_time(moment: datetime) -> str:
     """Date UTC naïve de la base, affichée à l'heure locale."""
     return moment.replace(tzinfo=timezone.utc).astimezone().strftime("%d/%m %H:%M")
+
+
+def _optional_local_time(moment: datetime | None) -> str:
+    return _local_time(moment) if moment is not None else "-"
 
 
 def _local_time_aware(moment: datetime) -> str:
