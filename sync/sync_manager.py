@@ -66,7 +66,12 @@ class SyncManager:
 
     def start_sync(self, server_config: dict[str, Any], auto: bool = False) -> str:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
-        return self.start_task(self.run_synchronization_task, server_config, auto=auto)
+        return self.start_task(
+            self.run_synchronization_task,
+            server_config,
+            auto=auto,
+            config=server_config,
+        )
 
     def start_sync_series(
         self, series_key: tuple[str, str], configs: list[dict[str, Any]]
@@ -87,18 +92,19 @@ class SyncManager:
             series = SyncSequencer()
             self._series[series_key] = series
 
-            task_ids = []
-            for config in configs:
-                task_id = self._create_task(status="queued", message="En attente…")
+            task_ids = [
+                self._create_task(status="queued", message="En attente…", config=config)
+                for config in configs
+            ]
+            for task_id, config in zip(task_ids, configs):
                 self._emit_update(task_id)
                 series.enqueue(
                     otp_config_id=config["otp_config_id"],
                     grist_doc_id=config["grist_doc_id"],
                     fn=lambda task_id=task_id, config=config: self._run_queued_task(
-                        task_id, config
+                        task_id, config, task_ids
                     ),
                 )
-                task_ids.append(task_id)
 
             # Le pool exécute encore les étapes en file, puis libère son thread
             series.shutdown(wait=False)
@@ -115,6 +121,21 @@ class SyncManager:
 
         for series in all_series:
             series.shutdown(cancel_pending=True)
+
+    def sync_state(self, grist_user_id: str, grist_doc_id: str) -> list[dict[str, Any]]:
+        """
+        État complet (logs retenus compris) des synchros d'un utilisateur sur un
+        document, dans l'ordre de création : la synchro en cours, ou toutes
+        celles d'une série non terminée. Permet à une page rouverte de reprendre
+        l'affichage.
+        """
+        # Copie : les threads de synchro modifient self.tasks en parallèle
+        return [
+            {"task_id": task_id, "task": {**task, "logs": list(task["logs"])}}
+            for task_id, task in list(self.tasks.items())
+            if task.get("grist_user_id") == grist_user_id
+            and task.get("grist_doc_id") == grist_doc_id
+        ]
 
     def run_synchronization_task(
         self,
@@ -332,10 +353,16 @@ class SyncManager:
                     log_callback(f"Enregistrement de l'email Grist ignoré: {e}")
 
     def start_task(
-        self, task_function: Callable[..., Any], *args: Any, **kwargs: Any
+        self,
+        task_function: Callable[..., Any],
+        *args: Any,
+        config: dict[str, Any] | None = None,
+        **kwargs: Any,
     ) -> str:
         """Démarre une nouvelle tâche asynchrone"""
-        task_id = self._create_task(status="running", message="Initialisation...")
+        task_id = self._create_task(
+            status="running", message="Initialisation...", config=config
+        )
 
         # Démarrer la tâche dans un thread séparé
         thread = threading.Thread(
@@ -345,12 +372,22 @@ class SyncManager:
 
         return task_id
 
-    def _create_task(self, status: str, message: str) -> str:
-        """Enregistre une nouvelle tâche dans l'état donné ; retourne son identifiant."""
+    def _create_task(
+        self, status: str, message: str, config: dict[str, Any] | None = None
+    ) -> str:
+        """
+        Enregistre une nouvelle tâche dans l'état donné ; retourne son identifiant.
+        La configuration synchronisée, si fournie, désigne le propriétaire de la
+        tâche (utilisateur et document Grist) et sa démarche.
+        """
+        config = config or {}
         self.task_counter += 1
         task_id = f"task_{self.task_counter}"
 
         self.tasks[task_id] = {
+            "grist_user_id": config.get("grist_user_id"),
+            "grist_doc_id": config.get("grist_doc_id"),
+            "demarche_number": config.get("demarche_number"),
             "status": status,
             "progress": 0,
             "message": message,
@@ -361,8 +398,14 @@ class SyncManager:
 
         return task_id
 
-    def _run_queued_task(self, task_id: str, config: dict[str, Any]) -> None:
-        """Exécute, à son tour dans la série, une synchronisation mise en attente."""
+    def _run_queued_task(
+        self, task_id: str, config: dict[str, Any], series_task_ids: list[str]
+    ) -> None:
+        """
+        Exécute, à son tour dans la série, une synchronisation mise en attente.
+        Les tâches terminées de la série restent consultables (sync_state)
+        jusqu'à la fin de la dernière, puis sont toutes retirées.
+        """
         self.tasks[task_id].update(
             {
                 "status": "running",
@@ -371,12 +414,26 @@ class SyncManager:
             }
         )
         self._emit_update(task_id)
-        self._run_task(task_id, self.run_synchronization_task, config, auto=False)
+        self._run_task(
+            task_id, self.run_synchronization_task, config, auto=False, keep_task=True
+        )
+
+        if task_id == series_task_ids[-1]:
+            for series_task_id in series_task_ids:
+                self._remove_task(series_task_id)
 
     def _run_task(
-        self, task_id: str, task_function: Callable[..., Any], *args: Any, **kwargs: Any
+        self,
+        task_id: str,
+        task_function: Callable[..., Any],
+        *args: Any,
+        keep_task: bool = False,
+        **kwargs: Any,
     ) -> None:
-        """Exécute une tâche avec gestion des erreurs"""
+        """
+        Exécute une tâche avec gestion des erreurs. Une fois terminée, la tâche
+        est retirée, sauf avec keep_task (l'appelant s'en charge).
+        """
         try:
             # Ajouter le callback de progression
             kwargs["progress_callback"] = lambda progress, message: (
@@ -415,8 +472,13 @@ class SyncManager:
             self._emit_update(task_id)
 
         finally:
-            self.tasks.pop(task_id, None)
-            self._broadcast_offset.pop(task_id, None)
+            if not keep_task:
+                self._remove_task(task_id)
+
+    def _remove_task(self, task_id: str) -> None:
+        """Oublie une tâche terminée."""
+        self.tasks.pop(task_id, None)
+        self._broadcast_offset.pop(task_id, None)
 
     def _update_progress(self, task_id: str, progress: float, message: str) -> None:
         """Met à jour la progression d'une tâche"""
@@ -429,7 +491,12 @@ class SyncManager:
         """Ajoute un log à une tâche"""
         if task_id in self.tasks:
             task = self.tasks[task_id]
-            task["logs"].append({"timestamp": time.time(), "message": message})
+            # Position absolue du log : le client fusionne sans doublon les logs
+            # d'un état complet (sync_state) et ceux des envois en delta
+            index = task["log_base"] + len(task["logs"])
+            task["logs"].append(
+                {"timestamp": time.time(), "message": message, "index": index}
+            )
             if len(task["logs"]) > MAX_LOGS_PER_TASK:
                 trimmed = len(task["logs"]) - MAX_LOGS_PER_TASK
                 del task["logs"][:trimmed]
