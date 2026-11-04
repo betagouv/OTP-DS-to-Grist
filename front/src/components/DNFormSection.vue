@@ -70,6 +70,7 @@ const validateDSConnection = async () => {
     accordionTitleDN.value = result.success
       ? formatTitle(inputDNNumber.value, result.title || DEFAULT_DN_TITLE)
       : ERROR_DN_TITLE
+    if (result.success && result.title) emit('title-loaded', inputDNNumber.value, result.title)
   } catch (e) {
     dnErrorMessage.value = 'Erreur lors du test de connexion'
     accordionTitleDN.value = ERROR_DN_TITLE
@@ -79,7 +80,7 @@ const validateDSConnection = async () => {
   debouncedAutoSave()
 }
 
-const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error'])
+const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error', 'title-loaded'])
 
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null

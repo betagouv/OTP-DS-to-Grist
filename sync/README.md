@@ -79,8 +79,37 @@ Points à retenir :
   et reprendront au prochain job quotidien.
 - **Un seul worker gunicorn** : la file est en mémoire, elle n'est pas partagée
   entre plusieurs processus.
-- **Temporaire, à mettre à jour avec #570** : les synchros manuelles ne passent
-  pas encore par le séquenceur.
+
+## Synchronisation de toutes les démarches (« Tout synchroniser »)
+
+`POST /api/start-sync-all` synchronise toutes les démarches complètes de
+l'utilisateur et du document du jeton widget. La série a sa propre séquence
+(une instance de `SyncSequencer`), distincte de celle des synchros
+automatiques :
+
+- les démarches passent une par une, dans l'ordre, même si la page est fermée ;
+  une démarche en erreur n'arrête pas les suivantes ;
+- chaque démarche est une tâche suivie par les événements `task_update`, d'abord
+  à l'état `queued` (en attente), puis `running` à son tour ;
+- une seule série à la fois par utilisateur et document ; les séries de
+  plusieurs utilisateurs tournent en parallèle ;
+- une série peut tourner en même temps qu'une synchro automatique du même
+  document (risque accepté) ;
+- à l'arrêt de l'application, comme pour la séquence automatique, seule la
+  synchro en cours est attendue.
+
+Le bouton de synchronisation d'une seule démarche (`POST /api/start-sync`) ne
+passe par aucune séquence : la synchro démarre immédiatement.
+
+## Historique des synchronisations
+
+Chaque synchronisation, automatique ou manuelle, est enregistrée dans la table
+`sync_logs` à sa fin. Les routes de `app.py` relisent cet historique pour
+l'affichage : `GET /api/sync-log/latest-by-demarche` renvoie la dernière
+synchronisation de chaque démarche sauvegardée (front Vue, tableau affiché au
+chargement). La
+route `GET /api/sync-log/latest`, qui donne la dernière synchro automatique et
+la dernière manuelle du document, ne sert plus qu'au front legacy.
 
 ## tasks/
 

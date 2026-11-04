@@ -13,6 +13,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, Response, g, jsonify, render_template, request, url_for
+from sqlalchemy import func, select
 from werkzeug.exceptions import HTTPException
 
 from api.responses import config_not_found_response, error_response
@@ -49,7 +50,11 @@ from sync.scheduled_sync import (
     scheduler,
 )
 from sync.sequencer import sequencer
-from sync.sync_manager import SyncManager
+from sync.sync_manager import (
+    SyncManager,
+    SyncSeriesAlreadyRunningError,
+    missing_sync_fields,
+)
 from utils.formatter import to_local_iso
 from utils.api_validator import (
     test_demarches_api,
@@ -239,6 +244,7 @@ def _shutdown_background_tasks() -> None:
     if scheduler.running:
         scheduler.shutdown(wait=True)
     sequencer.shutdown(cancel_pending=True)
+    sync_manager.shutdown_series()
 
 
 # Démarrage du scheduler au niveau module : c'est le seul endroit commun aux
@@ -782,6 +788,69 @@ def api_sync_log_latest():
         db.close()
 
 
+@app.route("/api/sync-log/latest-by-demarche", methods=["GET"])
+def api_sync_log_latest_by_demarche():
+    """
+    Dernière synchronisation de chaque démarche sauvegardée de l'utilisateur et
+    du document du jeton widget, dans l'ordre de l'écran ; les démarches jamais
+    synchronisées sont absentes
+    """
+    identity = g.get("widget_identity") or {}
+    grist_user_id = str(identity.get("userId") or "")
+    grist_doc_id = str(identity.get("docId") or "")
+
+    db = SessionLocal()
+
+    try:
+        configs = config_manager.load_config(
+            grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+        )
+
+        # Les lignes sont insérées en fin de synchro : l'identifiant le plus
+        # grand est la plus récente
+        latest_ids = (
+            select(func.max(SyncLog.id))
+            .where(
+                SyncLog.otp_config_id.in_(
+                    [config["otp_config_id"] for config in configs]
+                )
+            )
+            .group_by(SyncLog.otp_config_id)
+        )
+        latest_syncs = {
+            sync.otp_config_id: sync
+            for sync in db.scalars(select(SyncLog).where(SyncLog.id.in_(latest_ids)))
+        }
+
+        return jsonify(
+            {
+                "success": True,
+                "syncs": [
+                    {
+                        "otp_config_id": config["otp_config_id"],
+                        "demarche_number": config["demarche_number"],
+                        "timestamp": to_local_iso(sync.timestamp),
+                        "status": sync.status,
+                        "success_count": sync.success_count,
+                        "error_count": sync.error_count,
+                        "message": sync.message,
+                        "auto": sync.auto,
+                    }
+                    for config in configs
+                    if (sync := latest_syncs.get(config["otp_config_id"]))
+                ],
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Erreur lors de la lecture des dernières synchronisations par démarche: {str(e)}"
+        )
+        return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
+    finally:
+        db.close()
+
+
 @app.route("/api/start-sync", methods=["POST"])
 def api_start_sync():
     """API pour démarrer la synchronisation - Version sécurisée"""
@@ -797,18 +866,7 @@ def api_start_sync():
         server_config = config_manager.load_config_by_id(otp_config_id)
 
         # Validation simple de la configuration serveur
-        required_fields = [
-            "ds_api_token",
-            "demarche_number",
-            "grist_api_key",
-            "grist_doc_id",
-            "grist_user_id",
-        ]
-        missing_fields = []
-
-        for field in required_fields:
-            if not server_config.get(field):
-                missing_fields.append(field)
+        missing_fields = missing_sync_fields(server_config)
 
         if missing_fields:
             return jsonify(
@@ -836,6 +894,64 @@ def api_start_sync():
         raise
     except Exception as e:
         logger.error(f"Erreur lors du démarrage de la synchronisation: {str(e)}")
+        return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
+
+
+@app.route("/api/start-sync-all", methods=["POST"])
+def api_start_sync_all():
+    """
+    Démarre la synchronisation de toutes les démarches de l'utilisateur
+    (« Tout synchroniser »), une par une. Les démarches incomplètes sont ignorées.
+    """
+    # L'identité vient du jeton widget, vérifié par l'authentification.
+    identity = g.get("widget_identity") or {}
+    grist_user_id = str(identity.get("userId") or "")
+    grist_doc_id = str(identity.get("docId") or "")
+
+    try:
+        configs = [
+            config
+            for config in config_manager.load_config(
+                grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
+            )
+            if not missing_sync_fields(config)
+        ]
+
+        if not configs:
+            return jsonify(
+                {"success": False, "message": "Aucune démarche à synchroniser"}
+            ), 400
+
+        task_ids = sync_manager.start_sync_series(
+            (grist_user_id, grist_doc_id), configs
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "Synchronisation de toutes les démarches démarrée",
+                "syncs": [
+                    {
+                        "otp_config_id": config["otp_config_id"],
+                        "demarche_number": config["demarche_number"],
+                        "task_id": task_id,
+                    }
+                    for config, task_id in zip(configs, task_ids)
+                ],
+            }
+        )
+
+    except SyncSeriesAlreadyRunningError:
+        return jsonify(
+            {
+                "success": False,
+                "message": "Une synchronisation de toutes les démarches est déjà en cours",
+            }
+        ), 409
+    except Exception as e:
+        logger.error(
+            f"Erreur lors du démarrage de la synchronisation de toutes les démarches: {str(e)}"
+        )
         return jsonify({"success": False, "message": "Erreur interne du serveur"}), 500
 
 

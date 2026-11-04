@@ -10,6 +10,34 @@ describe('InternalApi', () => {
     vi.restoreAllMocks()
   })
 
+  describe('error responses', () => {
+    it('attaches the message sent by the server', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ success: false, message: 'Déjà en cours' })
+      })
+
+      await expect(api.startSyncAll()).rejects.toMatchObject({
+        message: 'Erreur HTTP 409',
+        serverMessage: 'Déjà en cours'
+      })
+    })
+
+    it('has no server message when the body is not readable JSON', async () => {
+      globalThis.fetch.mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: () => Promise.reject(new SyntaxError('Unexpected token <'))
+      })
+
+      await expect(api.startSyncAll()).rejects.toMatchObject({
+        message: 'Erreur HTTP 502',
+        serverMessage: null
+      })
+    })
+  })
+
   describe('getConfig', () => {
     it('calls GET /api/config with params and returns json', async () => {
       globalThis.fetch.mockResolvedValue({
@@ -101,6 +129,48 @@ describe('InternalApi', () => {
     })
   })
 
+  describe('startSyncAll', () => {
+    it('calls POST /api/start-sync-all and returns json', async () => {
+      const response = { success: true, syncs: [{ otp_config_id: 1, demarche_number: '111', task_id: 'task_1' }] }
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(response)
+      })
+
+      const result = await api.startSyncAll()
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/start-sync-all', { method: 'POST' })
+      expect(result).toEqual(response)
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 409 })
+
+      await expect(api.startSyncAll()).rejects.toThrow('Erreur HTTP 409')
+    })
+  })
+
+  describe('getLatestSyncsByDemarche', () => {
+    it('calls GET /api/sync-log/latest-by-demarche and returns json', async () => {
+      const response = { success: true, syncs: [] }
+      globalThis.fetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(response)
+      })
+
+      const result = await api.getLatestSyncsByDemarche()
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/sync-log/latest-by-demarche')
+      expect(result).toEqual(response)
+    })
+
+    it('throws on non-ok response', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
+
+      await expect(api.getLatestSyncsByDemarche()).rejects.toThrow('Erreur HTTP 500')
+    })
+  })
+
   describe('testConnection', () => {
     it('calls POST /api/test-connection with body', async () => {
       globalThis.fetch.mockResolvedValue({
@@ -123,46 +193,6 @@ describe('InternalApi', () => {
       globalThis.fetch.mockResolvedValue({ ok: false, status: 502 })
 
       await expect(api.testConnection({})).rejects.toThrow('Erreur HTTP 502')
-    })
-  })
-
-  describe('getSyncLogLatest', () => {
-    it('calls GET /api/sync-log/latest with otp_config_id', async () => {
-      globalThis.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true, auto: null, manual: null })
-      })
-
-      const result = await api.getSyncLogLatest(3)
-
-      expect(globalThis.fetch).toHaveBeenCalledWith('/api/sync-log/latest?otp_config_id=3')
-      expect(result).toEqual({ success: true, auto: null, manual: null })
-    })
-
-    it('throws on non-ok response', async () => {
-      globalThis.fetch.mockResolvedValue({ ok: false, status: 503 })
-
-      await expect(api.getSyncLogLatest(1)).rejects.toThrow('Erreur HTTP 503')
-    })
-  })
-
-  describe('getSyncLogLatestByBaseUrl', () => {
-    it('calls GET /api/sync-log/latest with grist_base_url', async () => {
-      globalThis.fetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ success: true, auto: null, manual: null })
-      })
-
-      const result = await api.getSyncLogLatestByBaseUrl('https://grist.example.com/api')
-
-      expect(globalThis.fetch).toHaveBeenCalledWith('/api/sync-log/latest?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi')
-      expect(result).toEqual({ success: true, auto: null, manual: null })
-    })
-
-    it('throws on non-ok response', async () => {
-      globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
-
-      await expect(api.getSyncLogLatestByBaseUrl('https://grist.example.com/api')).rejects.toThrow('Erreur HTTP 500')
     })
   })
 

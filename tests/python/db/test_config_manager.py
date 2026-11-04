@@ -144,6 +144,18 @@ class TestMultiConfig:
             "456",
         ]
 
+    def test_load_config_returns_the_newest_demarche_first(self, config_manager):
+        for demarche_number in ["123", "456", "789"]:
+            config_manager.save_config(_new_config(demarche_number=demarche_number))
+
+        configs = config_manager.load_config(USER_ID, DOC_ID)
+
+        assert [config["demarche_number"] for config in configs] == [
+            "789",
+            "456",
+            "123",
+        ]
+
 
 class TestLoadConfig:
     """Lecture des configurations absentes"""
@@ -152,9 +164,5 @@ class TestLoadConfig:
         with pytest.raises(ConfigNotFoundError):
             config_manager.load_config_by_id(999)
 
-    def test_load_without_config_returns_single_empty_config(self, config_manager):
-        configs = config_manager.load_config(USER_ID, DOC_ID)
-
-        assert len(configs) == 1
-        assert configs[0]["otp_config_id"] is None
-        assert configs[0]["demarche_number"] == ""
+    def test_load_without_config_returns_empty_list(self, config_manager):
+        assert config_manager.load_config(USER_ID, DOC_ID) == []

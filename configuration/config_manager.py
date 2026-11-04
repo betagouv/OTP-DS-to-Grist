@@ -128,8 +128,8 @@ class ConfigManager:
         return normalized
 
     @staticmethod
-    def _build_config_from_row(row: tuple | None) -> dict:
-        """Construit une config normalisée à partir d'une ligne DB (None → vide avec defaults)"""
+    def _build_config_from_row(row: tuple) -> dict:
+        """Construit une config normalisée à partir d'une ligne DB"""
 
         config_columns = [
             "id",
@@ -145,21 +145,18 @@ class ConfigManager:
             "filter_groups",
         ]
 
-        if row is None:
-            raw: dict = {}
-        else:
-            raw = dict(zip(config_columns, row))
-            raw["otp_config_id"] = raw.pop("id")
-            raw["ds_api_token"] = (
-                ConfigManager.decrypt_value(raw["ds_api_token"])
-                if raw["ds_api_token"]
-                else ""
-            )
-            raw["grist_api_key"] = (
-                ConfigManager.decrypt_value(raw["grist_api_key"])
-                if raw["grist_api_key"]
-                else ""
-            )
+        raw = dict(zip(config_columns, row))
+        raw["otp_config_id"] = raw.pop("id")
+        raw["ds_api_token"] = (
+            ConfigManager.decrypt_value(raw["ds_api_token"])
+            if raw["ds_api_token"]
+            else ""
+        )
+        raw["grist_api_key"] = (
+            ConfigManager.decrypt_value(raw["grist_api_key"])
+            if raw["grist_api_key"]
+            else ""
+        )
 
         raw.setdefault("ds_api_url", DEMARCHES_API_URL)
         raw.setdefault("batch_size", os.getenv("BATCH_SIZE", "25"))
@@ -226,17 +223,14 @@ class ConfigManager:
                         filter_groups
                     FROM otp_configurations
                     WHERE grist_user_id = %s AND grist_doc_id = %s
+                    -- La plus récente d'abord, comme à l'écran
+                    ORDER BY id DESC
                 """,
                     (grist_user_id, grist_doc_id),
                 )
                 rows = cursor.fetchall()
 
-                configs = [ConfigManager._build_config_from_row(row) for row in rows]
-
-                if not configs:
-                    configs.append(ConfigManager._build_config_from_row(None))
-
-                return configs
+                return [ConfigManager._build_config_from_row(row) for row in rows]
 
         except Exception as e:
             logger.error(f"Erreur lors du chargement depuis la base: {str(e)}")

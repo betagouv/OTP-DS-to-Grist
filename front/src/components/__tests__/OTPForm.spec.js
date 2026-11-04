@@ -5,7 +5,6 @@ import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
 import OtpAlert from '../OtpAlert.vue'
-import { useDemarcheContext } from '../../composables/useDemarcheContext'
 import { useSyncTask } from '../../composables/useSyncTask'
 
 describe('hasUnsavedSection computation', () => {
@@ -364,7 +363,7 @@ describe('Config loading on mount', () => {
     expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
   })
 
-  it('emits config-loaded with configs after successful load', async () => {
+  it('emits config-loaded after successful load', async () => {
     const configs = [
       { otp_config_id: 1, grist_base_url: 'https://example.com' },
       { otp_config_id: 2, grist_base_url: 'https://other.com' }
@@ -382,8 +381,7 @@ describe('Config loading on mount', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.emitted('config-loaded')).toBeTruthy()
-    expect(wrapper.emitted('config-loaded')[0][0]).toEqual({ configs, gristBaseUrl: 'https://grist.example.com/api' })
+    expect(wrapper.emitted('config-loaded')).toHaveLength(1)
   })
 })
 
@@ -1080,15 +1078,12 @@ describe('Sync action', () => {
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la synchronisation')
   })
 
-  it('sets the demarcheIndex to the synced section position', async () => {
-    const { setDemarcheIndex, demarcheIndex } = useDemarcheContext()
-    setDemarcheIndex(1)
-
+  it('passes the démarche number of the synced section to useSyncTask', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ configs: [
-        { otp_config_id: 1, grist_base_url: 'https://example.com' },
-        { otp_config_id: 2, grist_base_url: 'https://example.com' }
+        { otp_config_id: 1, demarche_number: '111', grist_base_url: 'https://example.com' },
+        { otp_config_id: 2, demarche_number: '222', grist_base_url: 'https://example.com' }
       ] })
     })
 
@@ -1098,12 +1093,144 @@ describe('Sync action', () => {
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ task_id: 'task_1' })
+    })
+    // Tri décroissant : la 2e section est la config 1
     const dnSections = wrapper.findAllComponents(DNFormSection)
     dnSections[1].vm.$emit('sync', 1)
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(demarcheIndex.value).toBe(2)
+    const { demarcheNumber, totalDemarches } = useSyncTask()
+    expect(demarcheNumber.value).toBe('111')
+    expect(totalDemarches.value).toBe(1)
+  })
+
+  it('re-emits the démarche title received from a section', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [
+        { otp_config_id: 1, demarche_number: '111', grist_base_url: 'https://example.com' }
+      ] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    wrapper.findComponent(DNFormSection).vm.$emit('title-loaded', '111', 'Ma démarche')
+
+    expect(wrapper.emitted('title-loaded')).toEqual([['111', 'Ma démarche']])
+  })
+})
+
+describe('Sync all button', () => {
+  const mountWithConfigs = async (configs, props = {}) => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } },
+      props
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    return wrapper
+  }
+
+  const syncAllButton = (wrapper) => wrapper.find('[data-test-id="sync-all-button"]')
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
+    })
+    useSyncTask().setCurrentTaskId(null)
+  })
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('calls POST /api/start-sync-all and follows the returned series', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, { otp_config_id: 2 }])
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        success: true,
+        syncs: [
+          { otp_config_id: 2, demarche_number: '222', task_id: 'task_1' },
+          { otp_config_id: 1, demarche_number: '111', task_id: 'task_2' }
+        ]
+      })
+    })
+
+    await syncAllButton(wrapper).trigger('click')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/start-sync-all', { method: 'POST' })
+    const { currentTaskId, demarcheNumber, totalDemarches } = useSyncTask()
+    expect(currentTaskId.value).toBe('task_1')
+    expect(demarcheNumber.value).toBe('222')
+    expect(totalDemarches.value).toBe(2)
+  })
+
+  it('is disabled while a sync is running', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }], { syncRunning: true })
+
+    expect(syncAllButton(wrapper).attributes('disabled')).toBeDefined()
+  })
+
+  it('is disabled when no démarche is saved', async () => {
+    const wrapper = await mountWithConfigs([])
+
+    expect(syncAllButton(wrapper).attributes('disabled')).toBeDefined()
+  })
+
+  it('is enabled with an unsaved section next to a saved one', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+    wrapper.vm.serverConfigs.push(null)
+    await wrapper.vm.$nextTick()
+
+    expect(syncAllButton(wrapper).attributes('disabled')).toBeUndefined()
+  })
+
+  it('shows an error when the request fails', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 409 })
+
+    await syncAllButton(wrapper).trigger('click')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Erreur lors de la synchronisation de toutes les démarches')
+    expect(useSyncTask().currentTaskId.value).toBe(null)
+  })
+
+  it('shows the message sent by the server when there is one', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: () => Promise.resolve({
+        success: false,
+        message: 'Une synchronisation de toutes les démarches est déjà en cours'
+      })
+    })
+
+    await syncAllButton(wrapper).trigger('click')
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('Une synchronisation de toutes les démarches est déjà en cours')
+    expect(wrapper.text()).not.toContain('Erreur lors de la synchronisation de toutes les démarches')
   })
 })
 

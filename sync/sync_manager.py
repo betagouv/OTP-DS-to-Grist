@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from sync.sync_result_parser import SYNC_METADATA_PREFIX, parse_output
 from sync.environment_config import build_environment
 from sync.error_parser import extract_error_parts
+from sync.sequencer import STATUS_PENDING, STATUS_RUNNING, SyncSequencer
 from database.models import SyncLog
 from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
@@ -27,6 +28,19 @@ MAX_LOGS_PER_TASK = 2000
 # Le détail complet (stderr, tracebacks) reste dans les logs de la tâche.
 MAX_ERROR_MESSAGE_LENGTH = 500
 
+# Champs de configuration nécessaires à une synchronisation
+REQUIRED_SYNC_FIELDS = [
+    "ds_api_token",
+    "demarche_number",
+    "grist_api_key",
+    "grist_doc_id",
+    "grist_user_id",
+]
+
+
+class SyncSeriesAlreadyRunningError(Exception):
+    """Une série de synchronisations est déjà en cours pour cet utilisateur et ce document."""
+
 
 class SyncManager:
     """
@@ -39,6 +53,11 @@ class SyncManager:
         self.task_counter = 0
         self.notify_callback = notify_callback
         self._broadcast_offset: dict[str, int] = {}
+        # Séries « Tout synchroniser » par (utilisateur Grist, document Grist) :
+        # chacune a sa propre séquence, distincte de celle des synchros
+        # automatiques (sync.sequencer.sequencer)
+        self._series: dict[tuple[str, str], SyncSequencer] = {}
+        self._series_lock = threading.Lock()
 
     def notify(self, event_type: str, data: dict[str, Any]) -> None:
         """Méthode publique pour les notifications"""
@@ -48,6 +67,54 @@ class SyncManager:
     def start_sync(self, server_config: dict[str, Any], auto: bool = False) -> str:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
         return self.start_task(self.run_synchronization_task, server_config, auto=auto)
+
+    def start_sync_series(
+        self, series_key: tuple[str, str], configs: list[dict[str, Any]]
+    ) -> list[str]:
+        """
+        Démarre une série de synchronisations (« Tout synchroniser ») : les
+        configurations passent une par une, dans l'ordre, dans une séquence
+        propre à la série. Une erreur n'arrête pas les suivantes. Retourne les
+        identifiants de tâche, dans l'ordre des configurations.
+        Lève SyncSeriesAlreadyRunningError si une série de la même clé
+        (utilisateur, document) n'est pas terminée.
+        """
+        with self._series_lock:
+            current_series = self._series.get(series_key)
+            if current_series and _has_unfinished_steps(current_series):
+                raise SyncSeriesAlreadyRunningError()
+
+            series = SyncSequencer()
+            self._series[series_key] = series
+
+            task_ids = []
+            for config in configs:
+                task_id = self._create_task(status="queued", message="En attente…")
+                self._emit_update(task_id)
+                series.enqueue(
+                    otp_config_id=config["otp_config_id"],
+                    grist_doc_id=config["grist_doc_id"],
+                    fn=lambda task_id=task_id, config=config: self._run_queued_task(
+                        task_id, config
+                    ),
+                )
+                task_ids.append(task_id)
+
+            # Le pool exécute encore les étapes en file, puis libère son thread
+            series.shutdown(wait=False)
+
+        return task_ids
+
+    def shutdown_series(self) -> None:
+        """
+        Arrêt de l'application : pour chaque série, seule la synchro en cours
+        est attendue, celles en attente sont annulées.
+        """
+        with self._series_lock:
+            all_series = list(self._series.values())
+
+        for series in all_series:
+            series.shutdown(cancel_pending=True)
 
     def run_synchronization_task(
         self,
@@ -268,17 +335,7 @@ class SyncManager:
         self, task_function: Callable[..., Any], *args: Any, **kwargs: Any
     ) -> str:
         """Démarre une nouvelle tâche asynchrone"""
-        self.task_counter += 1
-        task_id = f"task_{self.task_counter}"
-
-        self.tasks[task_id] = {
-            "status": "running",
-            "progress": 0,
-            "message": "Initialisation...",
-            "start_time": time.time(),
-            "logs": [],
-            "log_base": 0,
-        }
+        task_id = self._create_task(status="running", message="Initialisation...")
 
         # Démarrer la tâche dans un thread séparé
         thread = threading.Thread(
@@ -287,6 +344,34 @@ class SyncManager:
         thread.start()
 
         return task_id
+
+    def _create_task(self, status: str, message: str) -> str:
+        """Enregistre une nouvelle tâche dans l'état donné ; retourne son identifiant."""
+        self.task_counter += 1
+        task_id = f"task_{self.task_counter}"
+
+        self.tasks[task_id] = {
+            "status": status,
+            "progress": 0,
+            "message": message,
+            "start_time": time.time(),
+            "logs": [],
+            "log_base": 0,
+        }
+
+        return task_id
+
+    def _run_queued_task(self, task_id: str, config: dict[str, Any]) -> None:
+        """Exécute, à son tour dans la série, une synchronisation mise en attente."""
+        self.tasks[task_id].update(
+            {
+                "status": "running",
+                "message": "Initialisation...",
+                "start_time": time.time(),
+            }
+        )
+        self._emit_update(task_id)
+        self._run_task(task_id, self.run_synchronization_task, config, auto=False)
 
     def _run_task(
         self, task_id: str, task_function: Callable[..., Any], *args: Any, **kwargs: Any
@@ -365,3 +450,18 @@ class SyncManager:
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         """Récupère les informations d'une tâche"""
         return self.tasks.get(task_id)
+
+
+def missing_sync_fields(config: dict[str, Any]) -> list[str]:
+    """Champs nécessaires à la synchronisation, absents ou vides dans la configuration."""
+    return [field for field in REQUIRED_SYNC_FIELDS if not config.get(field)]
+
+
+# --- Helpers privés (module) ---
+
+
+def _has_unfinished_steps(series: SyncSequencer) -> bool:
+    """Indique si une série a encore des étapes en attente ou en cours."""
+    return any(
+        step["status"] in (STATUS_PENDING, STATUS_RUNNING) for step in series.snapshot()
+    )

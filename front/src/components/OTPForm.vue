@@ -7,7 +7,6 @@ import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
 import OtpAlert from './OtpAlert.vue'
 
-import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { useSyncTask } from '../composables/useSyncTask'
 import { api } from '../utils/InternalApi'
 import { useNotification } from '../composables/useNotification'
@@ -17,16 +16,19 @@ const props = defineProps({
   syncRunning: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['config-loaded'])
+const emit = defineEmits(['config-loaded', 'title-loaded'])
 
-const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
-const { setCurrentTaskId } = useSyncTask()
+const { setCurrentTaskId, setTasks } = useSyncTask()
 const { notify } = useNotification()
 const gristError = ref(null)
 const dnSectionRefs = ref([])
 const gristSectionRef = ref(null)
 const configError = ref(null)
 const actionErrors = ref([])
+const syncAllError = ref(null)
+// Requête « Tout synchroniser » en vol : évite un second envoi avant le
+// démarrage effectif (syncRunning ne passe à vrai qu'au premier événement)
+const syncAllPending = ref(false)
 
 // Indices des sections dont une sauvegarde est en vol : leurs boutons
 // d'action (synchronisation/suppression) sont désactivés le temps de la requête
@@ -64,7 +66,7 @@ const loadConfig = async () => {
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
     loaded = true
-    emit('config-loaded', { configs: serverConfigs.value, gristBaseUrl: context.baseUrl })
+    emit('config-loaded')
   } catch (e) {
     configError.value = 'Erreur lors du chargement de la configuration'
   }
@@ -77,6 +79,8 @@ const configs = computed(() => {
 
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
+const hasSavedConfig = computed(() => configs.value.some(config => config?.otp_config_id))
+
 // Clé de remontage du DsfrAccordionsGroup : il indexe ses enfants par un
 // compteur interne monotone qui se désynchronise des index du v-for après
 // ajout/suppression/sauvegarde. Changer cette clé force le groupe à se
@@ -84,10 +88,6 @@ const hasUnsavedSection = computed(() => configs.value.some(config => !config ||
 const accordionGroupKey = computed(() =>
   configs.value.map(config => config?.otp_config_id ?? 'empty').join('|')
 )
-
-watch(serverConfigs, (val) => {
-  setDemarcheCount(val.length)
-}, { immediate: true })
 
 watch(configs, (sections) => {
   if (pendingOpenId !== null) {
@@ -190,12 +190,29 @@ const handleSync = async (index) => {
   if (!otpConfigIdToSync) return
   actionErrors.value[index] = null
   try {
-    setDemarcheIndex(index + 1)
     const result = await api.startSync(otpConfigIdToSync)
-    setCurrentTaskId(result.task_id)
+    setCurrentTaskId(result.task_id, configs.value[index].demarche_number)
     activeDnAccordion.value = -1
   } catch (e) {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'
+  }
+}
+
+const handleSyncAll = async () => {
+  if (props.syncRunning || syncAllPending.value) return
+  syncAllError.value = null
+  syncAllPending.value = true
+  try {
+    const result = await api.startSyncAll()
+    setTasks(result.syncs.map(sync => ({
+      taskId: sync.task_id,
+      demarcheNumber: sync.demarche_number
+    })))
+    activeDnAccordion.value = -1
+  } catch (e) {
+    syncAllError.value = e.serverMessage ?? 'Erreur lors de la synchronisation de toutes les démarches'
+  } finally {
+    syncAllPending.value = false
   }
 }
 
@@ -262,6 +279,7 @@ const handleAddDemarche = async () => {
         @save="handleSave"
         @delete="handleDelete"
         @sync="handleSync"
+        @title-loaded="(demarcheNumber, title) => emit('title-loaded', demarcheNumber, title)"
         :grist-error="gristError"
         :can-delete="canDelete(config)"
         :can-sync="canSync(config)"
@@ -274,4 +292,23 @@ const handleAddDemarche = async () => {
         :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
       />
     </DsfrAccordionsGroup>
+
+    <OtpAlert
+      v-if="syncAllError"
+      type="error"
+      :title="syncAllError"
+      closeable
+      @close="syncAllError = null"
+      class="fr-mt-4w"
+    />
+
+    <div class="fr-mt-4w" style="text-align: right">
+      <DsfrButton
+        label="Tout synchroniser"
+        icon="fr-icon-refresh-line"
+        data-test-id="sync-all-button"
+        @click="handleSyncAll"
+        :disabled="syncRunning || syncAllPending || !hasSavedConfig"
+      />
+    </div>
 </template>

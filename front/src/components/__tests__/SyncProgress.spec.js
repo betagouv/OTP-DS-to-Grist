@@ -1,11 +1,10 @@
-import { vi, describe, beforeAll, afterAll, beforeEach, afterEach, it, expect } from 'vitest'
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import SyncProgress from '../SyncProgress.vue'
-import { useDemarcheContext } from '../../composables/useDemarcheContext'
 import { useSyncTask } from '../../composables/useSyncTask'
 
-const { setCurrentTaskId } = useSyncTask()
+const { setCurrentTaskId, setTasks, seriesTasks } = useSyncTask()
 
 const mockOn = vi.fn()
 const mockDisconnect = vi.fn()
@@ -26,26 +25,11 @@ function triggerTaskUpdate(task, taskId = 'task_1') {
 describe('SyncProgress', () => {
   let wrapper
 
-  beforeAll(() => {
-    globalThis.parseLogMessage = vi.fn((msg, counts = { success: 0, error: 0, total: 0 }) => {
-      const r = { ...counts }
-      if (msg.includes('succès')) r.success++
-      if (msg === 'error') r.error++
-      return r
-    })
-  })
-
-  afterAll(() => {
-    delete globalThis.parseLogMessage
-  })
-
   beforeEach(() => {
     mockOn.mockClear()
     mockDisconnect.mockClear()
     scrollIntoView.mockClear()
-    setCurrentTaskId('task_1')
-    const { setDemarcheCount } = useDemarcheContext()
-    setDemarcheCount(0)
+    setCurrentTaskId('task_1', '12345')
     wrapper = mount(SyncProgress)
   })
 
@@ -63,24 +47,28 @@ describe('SyncProgress', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.fr-card').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Synchronisation')
+    expect(wrapper.text()).toContain('Progression')
   })
 
-  it('display démarches count from shared context', async () => {
-    const { setDemarcheCount, setDemarcheIndex } = useDemarcheContext()
-    setDemarcheCount(3)
-    setDemarcheIndex(2)
+  it('display the démarche number without counter for a single sync', async () => {
     triggerTaskUpdate({ status: 'running', progress: 50, message: 'En cours' })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('2/3 démarche(s) synchronisée(s)')
+    expect(wrapper.text()).toContain('Progression de la démarche n°12345')
+    expect(wrapper.text()).not.toContain('/1')
   })
 
-  it('display running message', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 42, message: 'Chargement...' })
+  it('display the démarche number and its position in a series', async () => {
+    setTasks([
+      { taskId: 'task_1', demarcheNumber: '111' },
+      { taskId: 'task_2', demarcheNumber: '222' },
+      { taskId: 'task_3', demarcheNumber: '333' }
+    ])
+    triggerTaskUpdate({ status: 'completed', progress: 100, message: 'Terminé' }, 'task_1')
+    triggerTaskUpdate({ status: 'running', progress: 10, message: 'En cours' }, 'task_2')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('Chargement...')
+    expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/3')
   })
 
   it('display current percent', async () => {
@@ -126,58 +114,6 @@ describe('SyncProgress', () => {
     expect(emitted[1][0]).toBe(false)
   })
 
-  it('emit sync-started on running', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.emitted('sync-started')).toBeTruthy()
-    expect(wrapper.emitted('sync-started').length).toBe(1)
-  })
-
-  it('emit sync-finished with result on completed', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
-    triggerTaskUpdate({
-      status: 'completed', progress: 100, message: 'Terminé',
-      result: { success_count: 5, error_count: 1 },
-      end_time: 1752600000,
-      sync_reason: 'synced'
-    })
-    await wrapper.vm.$nextTick()
-
-    const emitted = wrapper.emitted('sync-finished')
-    expect(emitted).toBeTruthy()
-    expect(emitted[0][0]).toEqual({
-      status: 'completed',
-      success_count: 5,
-      error_count: 1,
-      timestamp: new Date(1752600000 * 1000).toISOString(),
-      sync_reason: 'synced',
-      message: 'Terminé'
-    })
-  })
-
-  it('emit sync-finished with error on error', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Test' })
-    triggerTaskUpdate({
-      status: 'error', progress: 50, message: 'Erreur',
-      result: { success_count: 2, error_count: 3 },
-      end_time: 1752600000,
-      sync_reason: 'synced'
-    })
-    await wrapper.vm.$nextTick()
-
-    const emitted = wrapper.emitted('sync-finished')
-    expect(emitted).toBeTruthy()
-    expect(emitted[0][0]).toEqual({
-      status: 'error',
-      success_count: 2,
-      error_count: 3,
-      timestamp: new Date(1752600000 * 1000).toISOString(),
-      sync_reason: 'synced',
-      message: 'Erreur'
-    })
-  })
-
   it('scrolls into view when sync starts running', async () => {
     triggerTaskUpdate({ status: 'running', progress: 0, message: 'Démarrage' })
 
@@ -211,8 +147,6 @@ describe('SyncProgress', () => {
 
     expect(wrapper.find('.fr-card').exists()).toBe(false)
     expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
-    expect(wrapper.emitted('sync-started')).toBeFalsy()
-    expect(wrapper.emitted('sync-finished')).toBeFalsy()
   })
 
   it('ignores all task_update when no current task is set', async () => {
@@ -246,4 +180,48 @@ describe('SyncProgress', () => {
     expect(currentTaskId.value).toBe(null)
   })
 
+  describe('series', () => {
+    beforeEach(() => {
+      setTasks([
+        { taskId: 'task_1', demarcheNumber: '111' },
+        { taskId: 'task_2', demarcheNumber: '222' }
+      ])
+    })
+
+    it('follows the next task when a démarche of the series ends', async () => {
+      triggerTaskUpdate({ status: 'running', progress: 0, message: 'Première' }, 'task_1')
+      triggerTaskUpdate({ status: 'error', progress: 50, message: 'Token DN périmé' }, 'task_1')
+      triggerTaskUpdate({ status: 'running', progress: 20, message: 'Seconde' }, 'task_2')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/2')
+      expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true]])
+    })
+
+    it('ends only after the last démarche, keeping the bar displayed', async () => {
+      triggerTaskUpdate({ status: 'running', progress: 0, message: 'Première' }, 'task_1')
+      triggerTaskUpdate({ status: 'completed', progress: 100, message: 'Terminé' }, 'task_1')
+      triggerTaskUpdate({ status: 'running', progress: 0, message: 'Seconde' }, 'task_2')
+      triggerTaskUpdate({ status: 'completed', progress: 100, message: 'Terminé' }, 'task_2')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true], [false]])
+      expect(wrapper.find('.fr-card').exists()).toBe(true)
+      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/2')
+    })
+
+    it('ignores updates of a démarche which is not the current one', async () => {
+      triggerTaskUpdate({ status: 'running', progress: 0, message: 'Seconde' }, 'task_2')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.fr-card').exists()).toBe(false)
+    })
+
+    it('records the updates of every démarche of the series for the table', () => {
+      triggerTaskUpdate({ status: 'queued', progress: 0, message: 'En attente…' }, 'task_2')
+      triggerTaskUpdate({ status: 'running', progress: 0, message: 'Première' }, 'task_1')
+
+      expect(seriesTasks.value.map(task => task.message)).toEqual(['Première', 'En attente…'])
+    })
+  })
 })

@@ -1,15 +1,18 @@
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 
+import app as app_module
 from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
+from sync.sync_manager import SyncSeriesAlreadyRunningError
 
 
 def _inline_enqueue(otp_config_id, grist_doc_id, fn):
@@ -2343,3 +2346,255 @@ class TestGristKeyAccessField:
         assert (
             self._config_from_response(response)["grist_key_access"] == "unavailable"
         )
+
+
+def _complete_config(otp_config_id, demarche_number):
+    return {
+        "otp_config_id": otp_config_id,
+        "ds_api_token": "token",
+        "demarche_number": demarche_number,
+        "grist_api_key": "key",
+        "grist_base_url": "https://grist.example.com/api",
+        "grist_doc_id": "docA",
+        "grist_user_id": "userA",
+    }
+
+
+class TestApiStartSyncAll:
+    """
+    POST /api/start-sync-all : « Tout synchroniser ».
+    load_config est remplacé sur l'instance de l'app : la route l'appelle par
+    elle, alors que la classe importée ici peut différer après un rechargement
+    de module par d'autres suites.
+    """
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_starts_series_with_complete_configs_only(
+        self, mock_start_series, client, monkeypatch
+    ):
+        """Seules les démarches complètes sont envoyées"""
+        incomplete = {**_complete_config(2, "222"), "ds_api_token": ""}
+        configs = [_complete_config(3, "333"), incomplete, _complete_config(1, "111")]
+        monkeypatch.setattr(
+            app_module.config_manager,
+            "load_config",
+            lambda grist_user_id, grist_doc_id: [dict(c) for c in configs],
+        )
+        mock_start_series.return_value = ["task_1", "task_2"]
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["syncs"] == [
+            {"otp_config_id": 3, "demarche_number": "333", "task_id": "task_1"},
+            {"otp_config_id": 1, "demarche_number": "111", "task_id": "task_2"},
+        ]
+        series_key, sent_configs = mock_start_series.call_args.args
+        assert series_key == ("userA", "docA")
+        assert [c["otp_config_id"] for c in sent_configs] == [3, 1]
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_series_keeps_load_config_order(
+        self, mock_start_series, client, monkeypatch
+    ):
+        """
+        La série suit l'ordre de load_config (la plus récente d'abord, comme à
+        l'écran, vérifié sur base réelle) sans le retrier
+        """
+        configs = [
+            _complete_config(5, "555"),
+            _complete_config(12, "1212"),
+            _complete_config(8, "888"),
+        ]
+        monkeypatch.setattr(
+            app_module.config_manager,
+            "load_config",
+            lambda grist_user_id, grist_doc_id: [dict(c) for c in configs],
+        )
+        mock_start_series.return_value = ["task_1", "task_2", "task_3"]
+
+        client.post("/api/start-sync-all")
+
+        _, sent_configs = mock_start_series.call_args.args
+        assert [c["otp_config_id"] for c in sent_configs] == [5, 12, 8]
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_loads_configs_of_token_identity(
+        self, mock_start_series, client, monkeypatch
+    ):
+        """Les démarches sont celles de l'utilisateur et du document du jeton widget"""
+        load_config = MagicMock(return_value=[_complete_config(1, "111")])
+        monkeypatch.setattr(app_module.config_manager, "load_config", load_config)
+        mock_start_series.return_value = ["task_1"]
+
+        client.post("/api/start-sync-all")
+
+        load_config.assert_any_call(grist_user_id="userA", grist_doc_id="docA")
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_no_config_to_sync(self, mock_start_series, client, monkeypatch):
+        """Sans démarche sauvegardée et complète : 400, aucune série démarrée"""
+        monkeypatch.setattr(
+            app_module.config_manager,
+            "load_config",
+            lambda grist_user_id, grist_doc_id: [{"otp_config_id": None}],
+        )
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 400
+        assert json.loads(response.data)["success"] is False
+        mock_start_series.assert_not_called()
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_series_already_running(self, mock_start_series, client):
+        """Une série déjà en cours pour cet utilisateur et ce document : 409"""
+        mock_start_series.side_effect = SyncSeriesAlreadyRunningError()
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 409
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert data["message"] == (
+            "Une synchronisation de toutes les démarches est déjà en cours"
+        )
+
+    @patch.object(sync_manager, "start_sync_series")
+    def test_unexpected_error(self, mock_start_series, client):
+        """Erreur inattendue : 500 avec message générique"""
+        mock_start_series.side_effect = RuntimeError("boom")
+
+        response = client.post("/api/start-sync-all")
+
+        assert response.status_code == 500
+        assert json.loads(response.data)["message"] == "Erreur interne du serveur"
+
+
+class TestApiSyncLogLatestByDemarche:
+    """
+    GET /api/sync-log/latest-by-demarche : dernière synchro de chaque démarche,
+    pour le tableau affiché au chargement. La requête SQL elle-même est
+    vérifiée sur base réelle (tests/python/db/test_app.py).
+    """
+
+    def _stub_configs(self, monkeypatch, configs):
+        monkeypatch.setattr(
+            app_module.config_manager,
+            "load_config",
+            lambda grist_user_id, grist_doc_id: [dict(c) for c in configs],
+        )
+
+    def _stub_latest_syncs(self, mock_session, syncs):
+        mock_session.return_value.scalars.return_value = syncs
+
+    @staticmethod
+    def _sync_log(otp_config_id, **overrides):
+        fields = {
+            "otp_config_id": otp_config_id,
+            "timestamp": datetime(2026, 11, 2, 13, 41, tzinfo=timezone.utc),
+            "status": "success",
+            "success_count": 14,
+            "error_count": 0,
+            "message": "Synchronisation terminée",
+            "auto": True,
+        }
+        return SimpleNamespace(**{**fields, **overrides})
+
+    @patch("app.SessionLocal")
+    def test_returns_latest_sync_of_each_demarche_in_load_config_order(
+        self, mock_session, client, monkeypatch
+    ):
+        """Une ligne par démarche synchronisée, dans l'ordre de load_config"""
+        self._stub_configs(
+            monkeypatch, [_complete_config(3, "333"), _complete_config(1, "111")]
+        )
+        self._stub_latest_syncs(
+            mock_session,
+            [
+                self._sync_log(1),
+                self._sync_log(3, status="error", message="Token DN périmé", auto=False),
+            ],
+        )
+
+        response = client.get("/api/sync-log/latest-by-demarche")
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["syncs"] == [
+            {
+                "otp_config_id": 3,
+                "demarche_number": "333",
+                "timestamp": "2026-11-02T14:41:00",
+                "status": "error",
+                "success_count": 14,
+                "error_count": 0,
+                "message": "Token DN périmé",
+                "auto": False,
+            },
+            {
+                "otp_config_id": 1,
+                "demarche_number": "111",
+                "timestamp": "2026-11-02T14:41:00",
+                "status": "success",
+                "success_count": 14,
+                "error_count": 0,
+                "message": "Synchronisation terminée",
+                "auto": True,
+            },
+        ]
+        mock_session.return_value.close.assert_called_once()
+
+    @patch("app.SessionLocal")
+    def test_skips_demarches_never_synced(self, mock_session, client, monkeypatch):
+        """Une démarche sans synchro n'a pas de ligne"""
+        self._stub_configs(
+            monkeypatch, [_complete_config(1, "111"), _complete_config(2, "222")]
+        )
+        self._stub_latest_syncs(mock_session, [self._sync_log(2)])
+
+        response = client.get("/api/sync-log/latest-by-demarche")
+
+        data = json.loads(response.data)
+        assert [sync["otp_config_id"] for sync in data["syncs"]] == [2]
+
+    @patch("app.SessionLocal")
+    def test_reads_saved_demarches_of_the_widget_identity(
+        self, mock_session, client, monkeypatch
+    ):
+        """Seules les démarches sauvegardées de l'utilisateur et du document sont lues"""
+        load_calls = []
+
+        def fake_load_config(grist_user_id, grist_doc_id):
+            load_calls.append((grist_user_id, grist_doc_id))
+            return [_complete_config(4, "444"), {"otp_config_id": None}]
+
+        monkeypatch.setattr(app_module.config_manager, "load_config", fake_load_config)
+        self._stub_latest_syncs(mock_session, [])
+
+        response = client.get("/api/sync-log/latest-by-demarche")
+
+        assert json.loads(response.data) == {"success": True, "syncs": []}
+        assert ("userA", "docA") in load_calls
+
+    @patch("app.SessionLocal")
+    def test_internal_error_returns_generic_message(
+        self, mock_session, client, monkeypatch
+    ):
+        """Une erreur de lecture ne renvoie pas son détail au client"""
+        self._stub_configs(monkeypatch, [_complete_config(1, "111")])
+        mock_session.return_value.scalars.side_effect = RuntimeError(
+            "connexion perdue: postgresql://secret"
+        )
+
+        response = client.get("/api/sync-log/latest-by-demarche")
+
+        assert response.status_code == 500
+        assert json.loads(response.data) == {
+            "success": False,
+            "message": "Erreur interne du serveur",
+        }
+        mock_session.return_value.close.assert_called_once()

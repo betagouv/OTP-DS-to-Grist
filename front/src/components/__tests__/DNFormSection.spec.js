@@ -1322,3 +1322,34 @@ describe('Schedule refresh on reload', () => {
     expect(scheduleCalls().length).toBe(callsBefore + 1)
   })
 })
+
+describe('title-loaded', () => {
+  const mountWithConfig = (response) => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(response)
+    })
+
+    return mount(DNFormSection, {
+      props: {
+        index: 0,
+        existingConfig: { otp_config_id: 1, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
+      },
+      global: globalComponents
+    })
+  }
+
+  it('emits the démarche number and title after a successful connection test', async () => {
+    const wrapper = mountWithConfig({ success: true, title: 'Ma démarche' })
+    await flushPromises()
+
+    expect(wrapper.emitted('title-loaded')).toEqual([[DEMARCHE_NUMBER, 'Ma démarche']])
+  })
+
+  it('does not emit when the connection test fails', async () => {
+    const wrapper = mountWithConfig({ success: false, message: 'Token invalide' })
+    await flushPromises()
+
+    expect(wrapper.emitted('title-loaded')).toBeFalsy()
+  })
+})

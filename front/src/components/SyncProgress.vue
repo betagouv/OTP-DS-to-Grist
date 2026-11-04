@@ -1,15 +1,20 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
-import { useDemarcheContext } from '../composables/useDemarcheContext'
 import { useSyncTask } from '../composables/useSyncTask'
 
-const { totalDemarches, demarcheIndex } = useDemarcheContext()
-const { currentTaskId, setCurrentTaskId } = useSyncTask()
-const emit = defineEmits(['sync-running-changed', 'sync-started', 'sync-finished'])
+const {
+  currentTaskId,
+  demarcheNumber,
+  demarcheIndex,
+  totalDemarches,
+  finishCurrentTask,
+  recordTaskUpdate
+} = useSyncTask()
+const emit = defineEmits(['sync-running-changed'])
 const task = ref(null)
 const socket = ref(null)
 const syncCardEl = ref(null)
@@ -20,38 +25,20 @@ watch(() => task.value?.status, (status) => {
   }
 })
 
-const counts = computed(() => {
-  if (!task.value?.logs) return null
-
-  let syncStatus = { success: 0, error: 0, total: 0 }
-  for (const log of task.value.logs) {
-    syncStatus = parseLogMessage(log.message, syncStatus)
-  }
-
-  return syncStatus
-})
-
 onMounted(() => {
   socket.value = io()
   socket.value.on('task_update', (data) => {
+    // Toutes les démarches de la série alimentent le tableau ; la barre ne suit que la courante
+    recordTaskUpdate(data.task_id, data.task)
     if (data.task_id !== currentTaskId.value) return
     task.value = data.task
     if (data.task.status === 'running') {
-      emit('sync-started')
       emit('sync-running-changed', true)
     } else if (data.task.status === 'completed' || data.task.status === 'error') {
-      setCurrentTaskId(null)
+      // Série : la démarche suivante prend le relais, rien n'est terminé
+      if (finishCurrentTask()) return
+
       emit('sync-running-changed', false)
-      emit('sync-finished', {
-        status: data.task.status,
-        success_count: data.task.result?.success_count ?? counts.value?.success ?? 0,
-        error_count: data.task.result?.error_count ?? counts.value?.error ?? 0,
-        timestamp: data.task.end_time
-          ? new Date(data.task.end_time * 1000).toISOString()
-          : new Date().toISOString(),
-        sync_reason: data.task.sync_reason,
-        message: data.task.message
-      })
     }
   })
 })
@@ -72,10 +59,9 @@ onUnmounted(() => {
   >
     <div class="fr-card__body">
       <div class="fr-card__content fr-mb-3w">
-        <h2 class="fr-card__title">Synchronisation des données</h2>
-        <p v-if="totalDemarches > 0" class="fr-text--bold fr-mb-2w">{{ demarcheIndex }}/{{ totalDemarches }} démarche(s) synchronisée(s)</p>
-        <p class="fr-mb-2w">{{ task.message }}</p>
-        <p class="fr-text--bold fr-mb-1w">Progression</p>
+        <p class="fr-text--sm fr-mb-1w">
+          Progression<template v-if="demarcheNumber"> de la démarche n°{{ demarcheNumber }}<template v-if="totalDemarches > 1"> — {{ demarcheIndex }}/{{ totalDemarches }}</template></template>
+        </p>
         <div class="progress-wrapper">
           <div class="progress-track">
             <div class="progress-bar" :style="{ width: Math.round(task.progress) + '%' }" />
