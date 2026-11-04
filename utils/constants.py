@@ -75,3 +75,7 @@ if not HELP_LINK_DN_TOKEN_API:
 HELP_LINK_GRIST_API_KEY: str = os.getenv("HELP_LINK_GRIST_API_KEY", "")
 if not HELP_LINK_GRIST_API_KEY:
     raise ValueError("HELP_LINK_GRIST_API_KEY environment variable is required")
+
+# Origine du serveur de dev Vite (front/), servant les assets en mode debug.
+# Lue aussi par front/vite.config.js ; par défaut, celle de Vite.
+VITE_DEV_ORIGIN: str = os.getenv("VITE_DEV_ORIGIN", "http://localhost:5173")

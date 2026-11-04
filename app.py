@@ -76,9 +76,8 @@ from utils.constants import (
     IP_BLOCKLIST_WINDOW_SECONDS,
     IP_BLOCKLIST_WHITELIST,
     SQLALCHEMY_DATABASE_URL,
+    VITE_DEV_ORIGIN,
 )
-
-VITE_DEV_ORIGIN = "http://localhost:5173"
 
 # Chargement des variables d'environnement
 load_dotenv()
