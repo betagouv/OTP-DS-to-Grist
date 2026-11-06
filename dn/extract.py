@@ -33,6 +33,13 @@ SCALAR_VALUE_KEYS = {
     "CiviliteChamp": "civilite",
 }
 
+# Clé portant l'objet des champs territoriaux à nom et code (ex. `pays`)
+TERRITORY_KEYS = {
+    "PaysChamp": "pays",
+    "RegionChamp": "region",
+    "DepartementChamp": "departement",
+}
+
 
 def extract_champ_values(
     champ: Dict[str, Any], prefix: str = "", original_id: str = None
@@ -167,45 +174,17 @@ def extract_champ_values(
             else "Aucun dossier lié"
         )
         json_value = linked_dossier
-    elif champ["__typename"] == "PaysChamp" and champ.get("pays"):
-        # Traitement pour les pays
-        pays = champ.get("pays", {})
-        name = pays.get("name", "")
-        code = pays.get("code", "")
+    elif champ["__typename"] in TERRITORY_KEYS and champ.get(
+        TERRITORY_KEYS[champ["__typename"]]
+    ):
+        # Traitement pour les pays, régions et départements
+        territory = champ[TERRITORY_KEYS[champ["__typename"]]]
+        name = territory.get("name", "")
+        code = territory.get("code", "")
         value = f"{name} ({code})" if name and code else name or code
-        json_value = pays
+        json_value = territory
 
-        # Ajouter le nom et le code du pays comme champs séparés
-        for suffix, sub_value in (("nom", name), ("code", code)):
-            if sub_value:
-                result.append(
-                    _sub_column_entry(champ, prefix, original_id, suffix, sub_value)
-                )
-
-    elif champ["__typename"] == "RegionChamp" and champ.get("region"):
-        # Traitement pour les régions
-        region = champ.get("region", {})
-        name = region.get("name", "")
-        code = region.get("code", "")
-        value = f"{name} ({code})" if name and code else name or code
-        json_value = region
-
-        # Ajouter le nom et le code de la région comme champs séparés
-        for suffix, sub_value in (("nom", name), ("code", code)):
-            if sub_value:
-                result.append(
-                    _sub_column_entry(champ, prefix, original_id, suffix, sub_value)
-                )
-
-    elif champ["__typename"] == "DepartementChamp" and champ.get("departement"):
-        # Traitement pour les départements
-        departement = champ.get("departement", {})
-        name = departement.get("name", "")
-        code = departement.get("code", "")
-        value = f"{name} ({code})" if name and code else name or code
-        json_value = departement
-
-        # Ajouter le nom et le code du département comme champs séparés
+        # Ajouter le nom et le code comme champs séparés
         for suffix, sub_value in (("nom", name), ("code", code)):
             if sub_value:
                 result.append(
