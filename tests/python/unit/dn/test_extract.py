@@ -493,6 +493,428 @@ class TestDossierToFlatDataLabels:
 
 
 # ---------------------------------------------------------------------------
+# Tests de caractérisation de extract_champ_values, type par type
+#
+# Figent le comportement actuel avant remaniement, bizarreries comprises.
+# ---------------------------------------------------------------------------
+
+CHAMP_ID = "Q2hhbXAtMQ=="  # base64 de "Champ-1"
+DESCRIPTOR_ID = "Q2hhbXAtMTA="  # base64 de "Champ-10"
+
+
+def make_typed_champ(typename, label="Champ", **fields):
+    """Fabrique un champ DN minimal du type donné, complété par fields."""
+    return {
+        "__typename": typename,
+        "id": CHAMP_ID,
+        "champDescriptorId": DESCRIPTOR_ID,
+        "label": label,
+        "stringValue": "valeur texte",
+        "updatedAt": "2024-01-01T00:00:00Z",
+        "prefilled": False,
+        **fields,
+    }
+
+
+def expected_entry(champ, value, json_value, prefix=""):
+    """Entrée principale attendue pour un champ de premier niveau."""
+    return {
+        "id": champ["id"],
+        "numeric_id": "1",
+        "descriptor_id": DESCRIPTOR_ID,
+        "decoded_descriptor_id": "10",
+        "label": f"{prefix}{champ['label']}",
+        "base_label": champ["label"],
+        "type": champ["__typename"],
+        "value": value,
+        "json_value": json_value,
+        "updated_at": champ["updatedAt"],
+        "prefilled": False,
+        "row_id": None,
+    }
+
+
+def expected_sub_column(champ, suffix, value):
+    """Sous-colonne texte attendue (ex. `_nom`, `_code`) d'un champ."""
+    return {
+        "id": f"{champ['id']}_{suffix}",
+        "numeric_id": None,
+        "descriptor_id": DESCRIPTOR_ID,
+        "decoded_descriptor_id": "10",
+        "label": f"{champ['label']}_{suffix}",
+        "base_label": f"{champ['label']}_{suffix}",
+        "type": "TextColumn",
+        "value": value,
+        "json_value": None,
+        "updated_at": champ["updatedAt"],
+        "prefilled": False,
+        "row_id": None,
+    }
+
+
+ADDRESS = {"streetAddress": "1 rue Haute", "postalCode": "30000", "cityName": "Nîmes"}
+COMMUNE = {"name": "Nîmes", "code": "30189", "postalCode": "30000"}
+DEPARTEMENT = {"name": "Gard", "code": "30"}
+ETABLISSEMENT = {"siret": "12345678900011", "entreprise": {"raisonSociale": "ACME"}}
+EPCI = {"name": "Nîmes Métropole", "code": "243000643"}
+RNF = {
+    "title": "Fondation X",
+    "address": {"cityName": "Lyon", "postalCode": "69001"},
+}
+
+
+class TestExtractChampValuesSimpleTypes:
+    """Types de champ produisant une seule entrée : valeur et valeur JSON."""
+
+    @pytest.mark.parametrize(
+        "typename, fields, expected_value, expected_json",
+        [
+            ("TextChamp", {}, "valeur texte", None),
+            ("DateChamp", {"date": "2024-05-01"}, "2024-05-01", None),
+            (
+                "DatetimeChamp",
+                {"datetime": "2024-05-01T10:00:00+02:00"},
+                "2024-05-01T10:00:00+02:00",
+                None,
+            ),
+            ("CheckboxChamp", {"checked": True}, True, None),
+            ("YesNoChamp", {"selected": False}, False, None),
+            ("DecimalNumberChamp", {"decimalNumber": 3.5}, 3.5, None),
+            ("IntegerNumberChamp", {"integerNumber": 42}, 42, None),
+            ("CiviliteChamp", {"civilite": "Mme"}, "Mme", None),
+            # Listes déroulantes
+            ("DropDownListChamp", {"stringValue": "Option A"}, "Option A", None),
+            ("DropDownListChamp", {"stringValue": '["A", "B"]'}, "A, B", None),
+            (
+                "DropDownListChamp",
+                {"stringValue": None, "value": "Option B"},
+                "Option B",
+                None,
+            ),
+            (
+                "MultipleDropDownListChamp",
+                {"values": ["A", "B"]},
+                "A, B",
+                ["A", "B"],
+            ),
+            (
+                "MultipleDropDownListChamp",
+                {"values": [], "stringValue": '["A", "B"]'},
+                "A, B",
+                [],
+            ),
+            (
+                "LinkedDropDownListChamp",
+                {"primaryValue": "P", "secondaryValue": "S"},
+                "P - S",
+                {"primaryValue": "P", "secondaryValue": "S"},
+            ),
+            (
+                "LinkedDropDownListChamp",
+                {"primaryValue": "P"},
+                "P",
+                {"primaryValue": "P", "secondaryValue": ""},
+            ),
+            # Adresse
+            (
+                "AddressChamp",
+                {"address": ADDRESS},
+                "1 rue Haute, 30000 Nîmes",
+                ADDRESS,
+            ),
+            (
+                "AddressChamp",
+                {"address": ADDRESS, "commune": COMMUNE, "departement": DEPARTEMENT},
+                "1 rue Haute, 30000 Nîmes",
+                {"address": ADDRESS, "commune": COMMUNE, "departement": DEPARTEMENT},
+            ),
+            # Bizarrerie : séparateurs conservés quand la voie est absente
+            (
+                "AddressChamp",
+                {"address": {"cityName": "Nîmes"}},
+                ",  Nîmes",
+                {"cityName": "Nîmes"},
+            ),
+            # SIRET
+            (
+                "SiretChamp",
+                {"etablissement": ETABLISSEMENT},
+                "12345678900011 - ACME",
+                ETABLISSEMENT,
+            ),
+            (
+                "SiretChamp",
+                {"etablissement": {"siret": "12345678900011"}},
+                "12345678900011",
+                {"siret": "12345678900011"},
+            ),
+            # Lien vers un dossier
+            (
+                "DossierLinkChamp",
+                {"dossier": {"number": 12, "state": "en_construction"}},
+                "Dossier #12 (en_construction)",
+                {"number": 12, "state": "en_construction"},
+            ),
+            (
+                "DossierLinkChamp",
+                {"dossier": {"id": "D1"}},
+                "Aucun dossier lié",
+                {"id": "D1"},
+            ),
+            # EPCI
+            (
+                "EpciChamp",
+                {"epci": EPCI},
+                "Nîmes Métropole (243000643)",
+                {"epci": EPCI},
+            ),
+            (
+                "EpciChamp",
+                {"epci": EPCI, "departement": DEPARTEMENT},
+                "Nîmes Métropole (243000643), Gard",
+                {"epci": EPCI, "departement": DEPARTEMENT},
+            ),
+            # RNF
+            ("RNFChamp", {"rnf": RNF}, "Fondation X - Lyon (69001)", {"rnf": RNF}),
+            (
+                "RNFChamp",
+                {"rnf": RNF, "commune": COMMUNE, "departement": DEPARTEMENT},
+                "Fondation X - Lyon (69001)",
+                {"rnf": RNF, "commune": COMMUNE, "departement": DEPARTEMENT},
+            ),
+            (
+                "RNFChamp",
+                {"rnf": {"title": "Fondation X"}},
+                "Fondation X",
+                {"rnf": {"title": "Fondation X"}},
+            ),
+            (
+                "RNFChamp",
+                {"rnf": {"id": "R1"}},
+                "",
+                {"rnf": {"id": "R1"}},
+            ),
+            # Engagement juridique
+            (
+                "EngagementJuridiqueChamp",
+                {"engagementJuridique": {"montantEngage": 100, "montantPaye": 50}},
+                "Montant engagé: 100, Montant payé: 50",
+                {"montantEngage": 100, "montantPaye": 50},
+            ),
+            (
+                "EngagementJuridiqueChamp",
+                {"engagementJuridique": {"montantEngage": None, "montantPaye": 50}},
+                "Montant payé: 50",
+                {"montantEngage": None, "montantPaye": 50},
+            ),
+            (
+                "EngagementJuridiqueChamp",
+                {"engagementJuridique": {"montantEngage": None, "montantPaye": None}},
+                "",
+                {"montantEngage": None, "montantPaye": None},
+            ),
+        ],
+    )
+    def test_value_and_json_value(
+        self, typename, fields, expected_value, expected_json
+    ):
+        champ = make_typed_champ(typename, **fields)
+
+        result = extract_champ_values(champ)
+
+        assert len(result) == 1
+        assert result[0]["value"] == expected_value
+        assert result[0]["json_value"] == expected_json
+
+    def test_full_entry(self):
+        """Une entrée porte les identifiants, libellés et métadonnées du champ."""
+        champ = make_typed_champ("DateChamp", label="Date", date="2024-05-01")
+
+        assert extract_champ_values(champ) == [
+            expected_entry(champ, "2024-05-01", None)
+        ]
+
+
+class TestExtractChampValuesFallback:
+    """Sans son objet, un champ composé retombe sur stringValue."""
+
+    @pytest.mark.parametrize(
+        "typename, object_key",
+        [
+            ("AddressChamp", "address"),
+            ("SiretChamp", "etablissement"),
+            ("DossierLinkChamp", "dossier"),
+            ("PaysChamp", "pays"),
+            ("RegionChamp", "region"),
+            ("DepartementChamp", "departement"),
+            ("CommuneChamp", "commune"),
+            ("EpciChamp", "epci"),
+            ("RNFChamp", "rnf"),
+            ("EngagementJuridiqueChamp", "engagementJuridique"),
+        ],
+    )
+    def test_missing_object_falls_back_to_string_value(self, typename, object_key):
+        champ = make_typed_champ(typename, **{object_key: None})
+
+        assert extract_champ_values(champ) == [
+            expected_entry(champ, "valeur texte", None)
+        ]
+
+
+class TestExtractChampValuesSubColumns:
+    """Champs territoriaux : sous-colonnes texte produites avant l'entrée principale."""
+
+    @pytest.mark.parametrize(
+        "typename, object_key",
+        [
+            ("PaysChamp", "pays"),
+            ("RegionChamp", "region"),
+            ("DepartementChamp", "departement"),
+        ],
+    )
+    def test_name_and_code(self, typename, object_key):
+        territoire = {"name": "Gard", "code": "30"}
+        champ = make_typed_champ(typename, label="Lieu", **{object_key: territoire})
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Gard"),
+            expected_sub_column(champ, "code", "30"),
+            expected_entry(champ, "Gard (30)", territoire),
+        ]
+
+    @pytest.mark.parametrize(
+        "typename, object_key",
+        [
+            ("PaysChamp", "pays"),
+            ("RegionChamp", "region"),
+            ("DepartementChamp", "departement"),
+        ],
+    )
+    def test_name_only(self, typename, object_key):
+        """Sans code, la sous-colonne `_code` n'est pas produite."""
+        territoire = {"name": "Gard"}
+        champ = make_typed_champ(typename, label="Lieu", **{object_key: territoire})
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Gard"),
+            expected_entry(champ, "Gard", territoire),
+        ]
+
+    def test_commune_complete(self):
+        """Commune avec département : 5 sous-colonnes, dans l'ordre déclaré par le schéma."""
+        champ = make_typed_champ(
+            "CommuneChamp", label="Commune", commune=COMMUNE, departement=DEPARTEMENT
+        )
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Nîmes"),
+            expected_sub_column(champ, "code_postal", "30000"),
+            expected_sub_column(champ, "departement", "Gard"),
+            expected_sub_column(champ, "code_insee", "30189"),
+            expected_sub_column(champ, "code_departement", "30"),
+            expected_entry(
+                champ,
+                "Nîmes (30000), Gard",
+                {"commune": COMMUNE, "departement": DEPARTEMENT},
+            ),
+        ]
+
+    def test_commune_without_departement_nor_postal_code(self):
+        """Sans département ni code postal, seules `_nom` et `_code_insee` restent."""
+        commune = {"name": "Nîmes", "code": "30189"}
+        champ = make_typed_champ("CommuneChamp", label="Commune", commune=commune)
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Nîmes"),
+            expected_sub_column(champ, "code_insee", "30189"),
+            expected_entry(champ, "Nîmes", {"commune": commune}),
+        ]
+
+
+class TestExtractChampValuesRepetition:
+    """Blocs répétables : une entrée par champ de chaque rangée."""
+
+    def _bloc(self):
+        def row_champ(value, champ_id):
+            return {
+                **make_typed_champ("TextChamp", label="Nom", stringValue=value),
+                "id": champ_id,
+            }
+
+        header = make_typed_champ("HeaderSectionChamp", label="Titre")
+        return make_typed_champ(
+            "RepetitionChamp",
+            label="Bloc",
+            rows=[
+                {"id": "row1", "champs": [header, row_champ("A", "Q2hhbXAtMg==")]},
+                {"id": "row2", "champs": [row_champ("B", "Q2hhbXAtMw==")]},
+            ],
+        )
+
+    def test_rows_are_prefixed_and_linked(self):
+        """Libellé préfixé par bloc et rang, row_id portant l'id de la rangée."""
+        result = extract_champ_values(self._bloc())
+
+        assert [
+            (item["label"], item["base_label"], item["value"], item["row_id"])
+            for item in result
+        ] == [
+            ("Bloc_1_Nom", "Nom", "A", "row1"),
+            ("Bloc_2_Nom", "Nom", "B", "row2"),
+        ]
+        assert [item["numeric_id"] for item in result] == ["2", "3"]
+
+    def test_prefix_is_kept_before_bloc_label(self):
+        result = extract_champ_values(self._bloc(), prefix="annotation_")
+
+        assert [item["label"] for item in result] == [
+            "annotation_Bloc_1_Nom",
+            "annotation_Bloc_2_Nom",
+        ]
+
+    def test_empty_bloc_produces_nothing(self):
+        assert extract_champ_values(make_typed_champ("RepetitionChamp", rows=[])) == []
+
+
+class TestExtractChampValuesCommon:
+    """Règles communes à tous les types : identifiants, préfixe, champs ignorés."""
+
+    @pytest.mark.parametrize("typename", ["HeaderSectionChamp", "ExplicationChamp"])
+    def test_display_champs_are_ignored(self, typename):
+        assert extract_champ_values(make_typed_champ(typename)) == []
+
+    @pytest.mark.parametrize(
+        "champ_id, expected_numeric_id",
+        [
+            (CHAMP_ID, "1"),
+            ("gid://app/Champ/123", "123"),
+            ("gid://app/Autre/123", None),
+            ("a/b", None),
+        ],
+    )
+    def test_numeric_id(self, champ_id, expected_numeric_id):
+        champ = {**make_typed_champ("TextChamp"), "id": champ_id}
+
+        assert extract_champ_values(champ)[0]["numeric_id"] == expected_numeric_id
+
+    def test_prefix_applies_to_label_only(self):
+        champ = make_typed_champ("TextChamp", label="Avis")
+
+        assert extract_champ_values(champ, prefix="annotation_") == [
+            expected_entry(champ, "valeur texte", None, prefix="annotation_")
+        ]
+
+    def test_without_descriptor_id(self):
+        champ = make_typed_champ("TextChamp")
+        del champ["champDescriptorId"]
+
+        result = extract_champ_values(champ)
+
+        assert result[0]["descriptor_id"] is None
+        assert result[0]["decoded_descriptor_id"] is None
+
+
+# ---------------------------------------------------------------------------
 # Tests CarteChamp (champs carto top-level)
 #
 # Bug corrigé : un append inconditionnel en fin de extract_champ_values
