@@ -11,41 +11,14 @@ Variables d'environnement requises :
     GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER
 """
 
-import json
 import os
 import sys
 import time
 
 from dn.client import get_demarche_dossiers_labels_only
+from dn.extract import build_label_fields
 
 BATCH_SIZE = 500
-
-
-def _build_label_fields(labels):
-    """Construit label_names / labels_json à partir des labels d'un dossier."""
-    if not labels:
-        return {"label_names": "", "labels_json": ""}
-
-    label_names = [label.get("name", "") for label in labels if label.get("name")]
-
-    labels_with_colors = [
-        {
-            "id": label.get("id", ""),
-            "name": label.get("name", ""),
-            "color": label.get("color", ""),
-        }
-        for label in labels
-        if label.get("name") and label.get("color")
-    ]
-
-    return {
-        "label_names": ", ".join(label_names) if label_names else "",
-        "labels_json": (
-            json.dumps(labels_with_colors, ensure_ascii=False)
-            if labels_with_colors
-            else ""
-        ),
-    }
 
 
 def _fetch_existing_labels(client, table_id):
@@ -138,7 +111,7 @@ def sync_labels_for_demarche(
             missing_in_grist += 1
             continue
 
-        fields = _build_label_fields(dossier.get("labels"))
+        fields = build_label_fields(dossier.get("labels"))
         if (
             fields["label_names"] == current["label_names"]
             and fields["labels_json"] == current["labels_json"]
