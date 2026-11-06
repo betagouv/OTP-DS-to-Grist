@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from dn.extract import (
@@ -363,6 +365,75 @@ class TestDossierToFlatDataDuplicateLabels:
         labels = {item["label"]: item["value"] for item in flat["annotations"]}
         assert labels.get("annotation_Avis") == "OK"
         assert labels.get("annotation_Avis_1") == "KO"
+
+
+class TestDossierToFlatDataLabels:
+    """Tests sur les colonnes label_names / labels_json de dossier_to_flat_data."""
+
+    def _flatten_with_labels(self, labels):
+        dossier = make_dossier([])
+        dossier["labels"] = labels
+        return dossier_to_flat_data(dossier)["dossier"]
+
+    def test_empty_or_missing_labels(self):
+        """Sans labels, les deux colonnes sont vides."""
+        for labels in ([], None):
+            flat = self._flatten_with_labels(labels)
+            assert flat["label_names"] == ""
+            assert flat["labels_json"] == ""
+
+        dossier = make_dossier([])
+        del dossier["labels"]
+        flat = dossier_to_flat_data(dossier)["dossier"]
+        assert flat["label_names"] == ""
+        assert flat["labels_json"] == ""
+
+    def test_nominal(self):
+        """Les noms sont joints par des virgules, les labels sérialisés en JSON."""
+        labels = [
+            {"id": "l1", "name": "Urgent", "color": "red"},
+            {"id": "l2", "name": "À relancer", "color": "blue"},
+        ]
+        flat = self._flatten_with_labels(labels)
+
+        assert flat["label_names"] == "Urgent, À relancer"
+        assert json.loads(flat["labels_json"]) == labels
+
+    def test_label_without_color(self):
+        """Un label sans couleur est dans label_names mais pas dans labels_json."""
+        flat = self._flatten_with_labels(
+            [
+                {"id": "l1", "name": "Urgent", "color": "red"},
+                {"id": "l2", "name": "Sans couleur"},
+            ]
+        )
+
+        assert flat["label_names"] == "Urgent, Sans couleur"
+        assert json.loads(flat["labels_json"]) == [
+            {"id": "l1", "name": "Urgent", "color": "red"}
+        ]
+
+    def test_only_labels_without_color(self):
+        """Si aucun label n'a de couleur, labels_json est vide."""
+        flat = self._flatten_with_labels([{"id": "l1", "name": "Sans couleur"}])
+
+        assert flat["label_names"] == "Sans couleur"
+        assert flat["labels_json"] == ""
+
+    def test_label_without_name(self):
+        """Un label sans nom est absent des deux colonnes."""
+        flat = self._flatten_with_labels([{"id": "l1", "color": "red"}])
+
+        assert flat["label_names"] == ""
+        assert flat["labels_json"] == ""
+
+    def test_preserves_accents(self):
+        """Les accents sont conservés tels quels dans labels_json."""
+        flat = self._flatten_with_labels(
+            [{"id": "l1", "name": "Contrôlé", "color": "green"}]
+        )
+
+        assert "Contrôlé" in flat["labels_json"]
 
 
 # ---------------------------------------------------------------------------
