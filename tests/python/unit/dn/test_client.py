@@ -9,6 +9,7 @@ from dn.client import (
     get_deleted_dossiers,
     get_demarche_dossiers_labels_only,
     get_demarche_groupe_numbers,
+    get_demarche_instructeurs,
     get_groups,
     get_pj_ocr_columns,
     get_session_with_retries,
@@ -119,6 +120,109 @@ class TestGetGroups:
         get_groups("token", "123")
 
         assert "Network error" in capsys.readouterr().out
+
+
+class TestGetDemarcheInstructeurs:
+    """Tests pour get_demarche_instructeurs."""
+
+    def _mock_session(self, status_code=200, json_data=None):
+        response = MagicMock()
+        response.status_code = status_code
+        response.json.return_value = json_data or {}
+        session = MagicMock()
+        session.post.return_value = response
+        return session
+
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.get_session_with_retries")
+    def test_one_record_per_instructeur_and_groupe(self, mock_session_factory):
+        """Chaque instructeur de chaque groupe donne une ligne portant son groupe."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={
+                "data": {
+                    "demarche": {
+                        "groupeInstructeurs": [
+                            {
+                                "id": "G1",
+                                "number": 1,
+                                "label": "Groupe 1",
+                                "instructeurs": [
+                                    {"id": "I1", "email": "a@test.fr"},
+                                    {"id": "I2", "email": "b@test.fr"},
+                                ],
+                            },
+                            {
+                                "id": "G2",
+                                "number": 2,
+                                "label": "Groupe 2",
+                                "instructeurs": [{"id": "I1", "email": "a@test.fr"}],
+                            },
+                            {
+                                "id": "G3",
+                                "number": 3,
+                                "label": "Vide",
+                                "instructeurs": [],
+                            },
+                        ]
+                    }
+                }
+            }
+        )
+
+        result = get_demarche_instructeurs(42)
+
+        assert result == [
+            {
+                "groupe_instructeur_id": "G1",
+                "groupe_instructeur_number": 1,
+                "groupe_instructeur_label": "Groupe 1",
+                "instructeur_id": "I1",
+                "instructeur_email": "a@test.fr",
+            },
+            {
+                "groupe_instructeur_id": "G1",
+                "groupe_instructeur_number": 1,
+                "groupe_instructeur_label": "Groupe 1",
+                "instructeur_id": "I2",
+                "instructeur_email": "b@test.fr",
+            },
+            {
+                "groupe_instructeur_id": "G2",
+                "groupe_instructeur_number": 2,
+                "groupe_instructeur_label": "Groupe 2",
+                "instructeur_id": "I1",
+                "instructeur_email": "a@test.fr",
+            },
+        ]
+
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.get_session_with_retries")
+    def test_request_uses_token_and_demarche_number(self, mock_session_factory):
+        """La requête porte le token et le numéro de démarche."""
+        session = self._mock_session(json_data={"data": {"demarche": {}}})
+        mock_session_factory.return_value = session
+
+        get_demarche_instructeurs(42)
+
+        kwargs = session.post.call_args.kwargs
+        assert kwargs["json"]["variables"] == {"demarcheNumber": 42}
+        assert kwargs["headers"]["Authorization"] == "Bearer test-token"
+
+    @patch("dn.client.get_session_with_retries")
+    def test_http_error_returns_empty(self, mock_session_factory):
+        """Une réponse HTTP en erreur donne une liste vide, sans exception."""
+        mock_session_factory.return_value = self._mock_session(status_code=500)
+
+        assert get_demarche_instructeurs(42) == []
+
+    @patch("dn.client.get_session_with_retries")
+    def test_demarche_without_groupe_returns_empty(self, mock_session_factory):
+        """Une démarche sans groupe instructeur donne une liste vide."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={"data": {"demarche": {"groupeInstructeurs": []}}}
+        )
+
+        assert get_demarche_instructeurs(42) == []
 
 
 class TestGetPjOcrColumns:

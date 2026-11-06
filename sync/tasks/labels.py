@@ -11,92 +11,14 @@ Variables d'environnement requises :
     GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER
 """
 
-import json
 import os
 import sys
 import time
 
 from dn.client import get_demarche_dossiers_labels_only
+from dn.extract import build_label_fields
 
 BATCH_SIZE = 500
-
-
-def _build_label_fields(labels):
-    """Construit label_names / labels_json à partir des labels d'un dossier."""
-    if not labels:
-        return {"label_names": "", "labels_json": ""}
-
-    label_names = [label.get("name", "") for label in labels if label.get("name")]
-
-    labels_with_colors = [
-        {
-            "id": label.get("id", ""),
-            "name": label.get("name", ""),
-            "color": label.get("color", ""),
-        }
-        for label in labels
-        if label.get("name") and label.get("color")
-    ]
-
-    return {
-        "label_names": ", ".join(label_names) if label_names else "",
-        "labels_json": (
-            json.dumps(labels_with_colors, ensure_ascii=False)
-            if labels_with_colors
-            else ""
-        ),
-    }
-
-
-def _fetch_existing_labels(client, table_id):
-    """
-    Récupère l'état actuel des labels dans Grist.
-
-    Returns:
-        dict: {str(dossier_number): {"grist_id": int, "label_names": str, "labels_json": str}}
-    """
-    response = client.get_records(table_id)
-
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"Lecture de la table {table_id} impossible : "
-            f"{response.status_code} - {response.text}"
-        )
-
-    existing = {}
-    for record in response.json().get("records", []):
-        fields = record.get("fields", {})
-        dossier_num = fields.get("dossier_number") or fields.get("number")
-        if not dossier_num:
-            continue
-        existing[str(dossier_num)] = {
-            "grist_id": record.get("id"),
-            "label_names": fields.get("label_names") or "",
-            "labels_json": fields.get("labels_json") or "",
-        }
-
-    return existing
-
-
-def _patch_records(client, table_id, records, log, log_error):
-    """PATCH les enregistrements par lots. Retourne le nombre de lignes mises à jour."""
-    updated = 0
-
-    for i in range(0, len(records), BATCH_SIZE):
-        batch = records[i : i + BATCH_SIZE]
-        response = client.patch_records(table_id, batch)
-        if response.status_code in [200, 201]:
-            updated += len(batch)
-        else:
-            log_error(
-                f"  Erreur PATCH labels ({len(batch)} lignes): "
-                f"{response.status_code} - {response.text}"
-            )
-
-    if updated:
-        log(f"  {updated} dossier(s) mis à jour (labels)")
-
-    return updated
 
 
 def sync_labels_for_demarche(
@@ -138,7 +60,7 @@ def sync_labels_for_demarche(
             missing_in_grist += 1
             continue
 
-        fields = _build_label_fields(dossier.get("labels"))
+        fields = build_label_fields(dossier.get("labels"))
         if (
             fields["label_names"] == current["label_names"]
             and fields["labels_json"] == current["labels_json"]
@@ -192,6 +114,60 @@ def main():
     sync_labels_for_demarche(client, table_id, demarche_number)
 
     return 0
+
+
+# --- Helpers privés (module) ---
+
+
+def _fetch_existing_labels(client, table_id):
+    """
+    Récupère l'état actuel des labels dans Grist.
+
+    Returns:
+        dict: {str(dossier_number): {"grist_id": int, "label_names": str, "labels_json": str}}
+    """
+    response = client.get_records(table_id)
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Lecture de la table {table_id} impossible : "
+            f"{response.status_code} - {response.text}"
+        )
+
+    existing = {}
+    for record in response.json().get("records", []):
+        fields = record.get("fields", {})
+        dossier_num = fields.get("dossier_number") or fields.get("number")
+        if not dossier_num:
+            continue
+        existing[str(dossier_num)] = {
+            "grist_id": record.get("id"),
+            "label_names": fields.get("label_names") or "",
+            "labels_json": fields.get("labels_json") or "",
+        }
+
+    return existing
+
+
+def _patch_records(client, table_id, records, log, log_error):
+    """PATCH les enregistrements par lots. Retourne le nombre de lignes mises à jour."""
+    updated = 0
+
+    for i in range(0, len(records), BATCH_SIZE):
+        batch = records[i : i + BATCH_SIZE]
+        response = client.patch_records(table_id, batch)
+        if response.status_code in [200, 201]:
+            updated += len(batch)
+        else:
+            log_error(
+                f"  Erreur PATCH labels ({len(batch)} lignes): "
+                f"{response.status_code} - {response.text}"
+            )
+
+    if updated:
+        log(f"  {updated} dossier(s) mis à jour (labels)")
+
+    return updated
 
 
 if __name__ == "__main__":

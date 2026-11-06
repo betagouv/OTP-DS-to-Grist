@@ -274,7 +274,7 @@ class TestApplyRecordsDiff:
 class TestSyncInstructeurs:
     """Tests unitaires pour la fonction sync_instructeurs"""
 
-    @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
+    @patch("sync.tasks.instructeurs.get_demarche_instructeurs")
     def test_sync_instructeurs_no_instructeur(self, mock_extract):
         """Test qu'aucun instructeur côté DN retourne un résultat à zéro"""
         mock_extract.return_value = []
@@ -285,7 +285,7 @@ class TestSyncInstructeurs:
 
         assert result == {"total": 0, "created": 0, "updated": 0, "deleted": 0}
 
-    @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
+    @patch("sync.tasks.instructeurs.get_demarche_instructeurs")
     def test_sync_instructeurs_creates_new(self, mock_extract):
         """Test qu'un instructeur absent de Grist est créé"""
         mock_extract.return_value = [make_instructeur()]
@@ -303,7 +303,7 @@ class TestSyncInstructeurs:
         assert result["updated"] == 0
         assert result["deleted"] == 0
 
-    @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
+    @patch("sync.tasks.instructeurs.get_demarche_instructeurs")
     def test_sync_instructeurs_no_change(self, mock_extract):
         """Test qu'un état identique ne génère aucune opération"""
         mock_extract.return_value = [make_instructeur()]
@@ -319,7 +319,7 @@ class TestSyncInstructeurs:
         assert result["updated"] == 0
         assert result["deleted"] == 0
 
-    @patch("sync.tasks.instructeurs.extract_instructeurs_from_demarche")
+    @patch("sync.tasks.instructeurs.get_demarche_instructeurs")
     def test_sync_instructeurs_propagates_read_error(self, mock_extract):
         """Test qu'une erreur de lecture Grist remonte à l'appelant"""
         mock_extract.return_value = [make_instructeur()]
