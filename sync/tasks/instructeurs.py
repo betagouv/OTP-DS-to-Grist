@@ -17,7 +17,7 @@ import os
 import sys
 import time
 
-from dn.extract import extract_instructeurs_from_demarche
+from dn.client import get_demarche_instructeurs
 
 # Champs comparés pour décider si un enregistrement existant doit être mis à jour
 COMPARED_FIELDS = [
@@ -142,7 +142,7 @@ def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=pr
     result = {"total": 0, "created": 0, "updated": 0, "deleted": 0}
     log(f"  Récupération des instructeurs de la démarche {demarche_number}...")
 
-    instructeurs_records = extract_instructeurs_from_demarche(demarche_number)
+    instructeurs_records = get_demarche_instructeurs(demarche_number)
 
     if not instructeurs_records:
         log("  Aucun instructeur trouvé pour cette démarche")

@@ -973,6 +973,64 @@ def get_groups(
         return []
 
 
+def get_demarche_instructeurs(demarche_number: int) -> list[dict[str, Any]]:
+    """
+    Récupère tous les instructeurs de la démarche organisés par groupe
+
+    Returns:
+        Liste de dictionnaires, 1 par instructeur
+    """
+
+    query = """
+    query getDemarche($demarcheNumber: Int!) {
+      demarche(number: $demarcheNumber) {
+        groupeInstructeurs {
+          id
+          number
+          label
+          instructeurs {
+            id
+            email
+          }
+        }
+      }
+    }
+    """
+
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    response = get_session_with_retries().post(
+        DEMARCHES_API_URL,
+        json={"query": query, "variables": {"demarcheNumber": demarche_number}},
+        headers=headers,
+    )
+
+    if response.status_code != 200:
+        return []
+
+    result = response.json()
+    demarche = result.get("data", {}).get("demarche", {})
+    groupes = demarche.get("groupeInstructeurs", [])
+
+    instructeurs_list = []
+    for groupe in groupes:
+        for instructeur in groupe.get("instructeurs", []):
+            instructeurs_list.append(
+                {
+                    "groupe_instructeur_id": groupe.get("id"),
+                    "groupe_instructeur_number": groupe.get("number"),
+                    "groupe_instructeur_label": groupe.get("label"),
+                    "instructeur_id": instructeur.get("id"),
+                    "instructeur_email": instructeur.get("email"),
+                }
+            )
+
+    return instructeurs_list
+
+
 def get_pj_ocr_columns(demarche_number: int) -> dict[str, list[tuple[str, str]]]:
     """
     Sous-colonnes OCR de chaque pièce justificative de la démarche, blocs

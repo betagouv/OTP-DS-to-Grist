@@ -1,16 +1,11 @@
 import json
-import os
 from collections.abc import Iterator
 from typing import Any, Dict, List
 
-from dn.client import get_session_with_retries
 from dn.formatter import decode_base64_id
 from grist.utils import normalize_column_name
-from utils.constants import DEMARCHES_API_URL
 from utils.formatter import format_json_value, unwrap_json_list
 
-API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
-API_URL = DEMARCHES_API_URL
 
 # Clé portant la valeur de chaque type de sous-colonne OCR d'une pièce
 # justificative, telle que demandée par ChampFragment (alias pour les types
@@ -716,64 +711,6 @@ def extract_demandeur_info(dossier_data: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
     return demandeur_info
-
-
-def extract_instructeurs_from_demarche(demarche_number: int) -> List[Dict[str, Any]]:
-    """
-    Récupère tous les instructeurs de la démarche organisés par groupe
-
-    Returns:
-        Liste de dictionnaires, 1 par instructeur
-    """
-
-    query = """
-    query getDemarche($demarcheNumber: Int!) {
-      demarche(number: $demarcheNumber) {
-        groupeInstructeurs {
-          id
-          number
-          label
-          instructeurs {
-            id
-            email
-          }
-        }
-      }
-    }
-    """
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    response = get_session_with_retries().post(
-        API_URL,
-        json={"query": query, "variables": {"demarcheNumber": demarche_number}},
-        headers=headers,
-    )
-
-    if response.status_code != 200:
-        return []
-
-    result = response.json()
-    demarche = result.get("data", {}).get("demarche", {})
-    groupes = demarche.get("groupeInstructeurs", [])
-
-    instructeurs_list = []
-    for groupe in groupes:
-        for instructeur in groupe.get("instructeurs", []):
-            instructeurs_list.append(
-                {
-                    "groupe_instructeur_id": groupe.get("id"),
-                    "groupe_instructeur_number": groupe.get("number"),
-                    "groupe_instructeur_label": groupe.get("label"),
-                    "instructeur_id": instructeur.get("id"),
-                    "instructeur_email": instructeur.get("email"),
-                }
-            )
-
-    return instructeurs_list
 
 
 def build_label_fields(labels: list[dict] | None) -> dict[str, str]:
