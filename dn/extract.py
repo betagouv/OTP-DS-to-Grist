@@ -776,6 +776,36 @@ def extract_instructeurs_from_demarche(demarche_number: int) -> List[Dict[str, A
     return instructeurs_list
 
 
+def build_label_fields(labels: list[dict] | None) -> dict[str, str]:
+    """Construit les colonnes label_names / labels_json à partir des labels d'un dossier.
+
+    Un label sans couleur figure dans label_names mais pas dans labels_json.
+    """
+    if not labels:
+        return {"label_names": "", "labels_json": ""}
+
+    label_names = [label.get("name", "") for label in labels if label.get("name")]
+
+    labels_with_colors = [
+        {
+            "id": label.get("id", ""),
+            "name": label.get("name", ""),
+            "color": label.get("color", ""),
+        }
+        for label in labels
+        if label.get("name") and label.get("color")
+    ]
+
+    return {
+        "label_names": ", ".join(label_names) if label_names else "",
+        "labels_json": (
+            json.dumps(labels_with_colors, ensure_ascii=False)
+            if labels_with_colors
+            else ""
+        ),
+    }
+
+
 def dossier_to_flat_data(
     dossier_data: Dict[str, Any],
     exclude_repetition_champs=True,
@@ -827,37 +857,7 @@ def dossier_to_flat_data(
     flat_data["correction_instructeur"] = correction_instructeur
 
     # Ajouter les informations sur les labels (étiquettes)
-    if "labels" in dossier_data and dossier_data["labels"]:
-        # Création d'une liste des noms de labels
-        label_names = [
-            label.get("name", "")
-            for label in dossier_data["labels"]
-            if label.get("name")
-        ]
-        flat_data["label_names"] = ", ".join(label_names) if label_names else ""
-
-        # Création d'une représentation JSON des labels avec couleurs
-        labels_with_colors = []
-        for label in dossier_data["labels"]:
-            if label.get("name") and label.get("color"):
-                labels_with_colors.append(
-                    {
-                        "id": label.get("id", ""),
-                        "name": label.get("name", ""),
-                        "color": label.get("color", ""),
-                    }
-                )
-
-        if labels_with_colors:
-            flat_data["labels_json"] = json.dumps(
-                labels_with_colors, ensure_ascii=False
-            )
-        else:
-            flat_data["labels_json"] = ""
-    else:
-        # ← AJOUTE CES 2 LIGNES
-        flat_data["label_names"] = ""
-        flat_data["labels_json"] = ""
+    flat_data.update(build_label_fields(dossier_data.get("labels")))
 
     # Compteur pour gérer les doublons de labels
     label_counters = {}

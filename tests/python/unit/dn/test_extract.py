@@ -3,6 +3,7 @@ import json
 import pytest
 
 from dn.extract import (
+    build_label_fields,
     dossier_to_flat_data,
     extract_champ_values,
     iter_pj_ocr_columns,
@@ -365,6 +366,61 @@ class TestDossierToFlatDataDuplicateLabels:
         labels = {item["label"]: item["value"] for item in flat["annotations"]}
         assert labels.get("annotation_Avis") == "OK"
         assert labels.get("annotation_Avis_1") == "KO"
+
+
+class TestBuildLabelFields:
+    """Tests unitaires pour la fonction build_label_fields"""
+
+    def test_build_label_fields_empty(self):
+        """Test sans label"""
+        assert build_label_fields([]) == {"label_names": "", "labels_json": ""}
+        assert build_label_fields(None) == {"label_names": "", "labels_json": ""}
+
+    def test_build_label_fields_nominal(self):
+        """Test avec deux labels complets"""
+        labels = [
+            {"id": "l1", "name": "Urgent", "color": "red"},
+            {"id": "l2", "name": "À relancer", "color": "blue"},
+        ]
+
+        result = build_label_fields(labels)
+
+        assert result["label_names"] == "Urgent, À relancer"
+        assert len(json.loads(result["labels_json"])) == 2
+
+    def test_build_label_fields_label_without_color(self):
+        """Test qu'un label sans couleur est dans label_names mais pas dans labels_json.
+
+        Comportement hérité de dossier_to_flat_data, à préserver à l'identique.
+        """
+        labels = [
+            {"id": "l1", "name": "Urgent", "color": "red"},
+            {"id": "l2", "name": "Sans couleur"},
+        ]
+
+        result = build_label_fields(labels)
+
+        assert result["label_names"] == "Urgent, Sans couleur"
+        parsed = json.loads(result["labels_json"])
+        assert len(parsed) == 1
+        assert parsed[0]["name"] == "Urgent"
+
+    def test_build_label_fields_label_without_name(self):
+        """Test qu'un label sans nom est ignoré partout"""
+        labels = [{"id": "l1", "color": "red"}]
+
+        result = build_label_fields(labels)
+
+        assert result["label_names"] == ""
+        assert result["labels_json"] == ""
+
+    def test_build_label_fields_preserves_accents(self):
+        """Test que les accents ne sont pas échappés dans le JSON"""
+        labels = [{"id": "l1", "name": "Contrôlé", "color": "green"}]
+
+        result = build_label_fields(labels)
+
+        assert "Contrôlé" in result["labels_json"]
 
 
 class TestDossierToFlatDataLabels:
