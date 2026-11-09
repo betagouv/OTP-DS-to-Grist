@@ -174,11 +174,7 @@ def extract_repetable_blocks(
 
                 # Traiter chaque champ dans la rangée
                 for row_champ in row.get("champs", []):
-                    # ✅ FIX : Filtrer les champs problématiques dans les blocs répétables
-                    if row_champ["__typename"] in [
-                        "HeaderSectionChamp",
-                        "ExplicationChamp",
-                    ] or (
+                    if (
                         problematic_ids
                         and row_champ.get("champDescriptorId") in problematic_ids
                     ):
@@ -360,11 +356,8 @@ def dossier_to_flat_data(
         if exclude_repetition_champs and champ["__typename"] == "RepetitionChamp":
             continue
 
-        # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
-        # Ignorer les champs problématiques par type et par champDescriptorId
-        if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or (
-            problematic_ids and champ.get("champDescriptorId") in problematic_ids
-        ):
+        # Ignorer les champs problématiques par champDescriptorId
+        if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
             continue
 
         # Extraire les valeurs
@@ -404,11 +397,8 @@ def dossier_to_flat_data(
         if exclude_repetition_champs and annotation["__typename"] == "RepetitionChamp":
             continue
 
-        # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
-        # Ignorer explicitement les annotations de type HeaderSectionChamp et ExplicationChamp
-        if annotation["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or (
-            problematic_ids and annotation.get("champDescriptorId") in problematic_ids
-        ):
+        # Ignorer les annotations problématiques par champDescriptorId
+        if problematic_ids and annotation.get("champDescriptorId") in problematic_ids:
             continue
 
         # Extraire les valeurs
