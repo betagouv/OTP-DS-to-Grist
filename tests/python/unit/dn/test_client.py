@@ -166,6 +166,7 @@ class TestGetGroups:
         assert "401" in capsys.readouterr().out
 
 
+@patch("dn.client.API_TOKEN", "test-token")
 class TestGetDemarcheInstructeurs:
     """Tests pour get_demarche_instructeurs."""
 
@@ -253,11 +254,56 @@ class TestGetDemarcheInstructeurs:
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 
     @patch("dn.client.get_session_with_retries")
-    def test_http_error_returns_empty(self, mock_session_factory):
-        """Une réponse HTTP en erreur donne une liste vide, sans exception."""
-        mock_session_factory.return_value = self._mock_session(status_code=500)
+    def test_http_failure_is_not_mistaken_for_no_instructeur(
+        self, mock_session_factory
+    ):
+        """Une panne de l'API lève une exception au lieu de ressembler à une démarche sans instructeur."""
+        session = MagicMock()
+        session.post.return_value = _http_failure_response()
+        mock_session_factory.return_value = session
 
-        assert get_demarche_instructeurs(42) == []
+        with pytest.raises(requests.HTTPError):
+            get_demarche_instructeurs(42)
+
+    @pytest.mark.parametrize(
+        "error_message", ["Erreur interne", "Dossier masqué par les permissions"]
+    )
+    @patch("dn.client.get_session_with_retries")
+    def test_graphql_failure_with_partial_data_raises(
+        self, mock_session_factory, error_message
+    ):
+        """Une liste incomplète n'est pas transmise : elle ferait supprimer des instructeurs."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={
+                "data": {
+                    "demarche": {
+                        "groupeInstructeurs": [
+                            {
+                                "id": "g1",
+                                "number": 1,
+                                "label": "Groupe 1",
+                                "instructeurs": [{"id": "i1", "email": "a@b.fr"}],
+                            }
+                        ]
+                    }
+                },
+                "errors": [{"message": error_message}],
+            }
+        )
+
+        with pytest.raises(Exception, match=error_message):
+            get_demarche_instructeurs(42)
+
+    @patch("dn.client.get_session_with_retries")
+    def test_missing_token_raises_without_request(self, mock_session_factory):
+        """Sans token, aucune requête n'est envoyée."""
+        session = self._mock_session()
+        mock_session_factory.return_value = session
+
+        with patch("dn.client.API_TOKEN", ""), pytest.raises(ValueError):
+            get_demarche_instructeurs(42)
+
+        session.post.assert_not_called()
 
     @patch("dn.client.get_session_with_retries")
     def test_demarche_without_groupe_returns_empty(self, mock_session_factory):

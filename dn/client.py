@@ -892,21 +892,7 @@ def get_demarche_instructeurs(demarche_number: int) -> list[dict[str, Any]]:
     }
     """
 
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    response = get_session_with_retries().post(
-        DEMARCHES_API_URL,
-        json={"query": query, "variables": {"demarcheNumber": demarche_number}},
-        headers=headers,
-    )
-
-    if response.status_code != 200:
-        return []
-
-    result = response.json()
+    result = _post_graphql(query, {"demarcheNumber": demarche_number})
     demarche = result.get("data", {}).get("demarche", {})
     groupes = demarche.get("groupeInstructeurs", [])
 
