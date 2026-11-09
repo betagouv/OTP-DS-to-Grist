@@ -331,3 +331,17 @@ class TestSyncInstructeurs:
             sync_instructeurs(
                 client, "Table_1", 12345, MagicMock(), MagicMock()
             )
+
+    @patch("sync.tasks.instructeurs.get_demarche_instructeurs")
+    def test_dn_failure_leaves_grist_untouched(self, mock_extract):
+        """Si DN échoue, l'erreur remonte et Grist n'est ni lu ni modifié."""
+        mock_extract.side_effect = RuntimeError("DN indisponible")
+        client = MagicMock()
+
+        with pytest.raises(RuntimeError, match="DN indisponible"):
+            sync_instructeurs(client, "Table_1", 12345, MagicMock(), MagicMock())
+
+        client.get_records.assert_not_called()
+        client.delete_records.assert_not_called()
+        client.patch_records.assert_not_called()
+        client.post_records.assert_not_called()

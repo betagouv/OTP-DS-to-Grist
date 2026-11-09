@@ -1,4 +1,5 @@
 import pytest
+import requests
 from unittest.mock import MagicMock, patch
 
 from utils.timing import clear_timings, get_timings
@@ -24,6 +25,18 @@ def _mock_response(status_code=200, json_data=None, headers=None):
     response.json.return_value = json_data or {}
     response.headers = headers or {}
     return response
+
+
+def _http_failure_response():
+    response = _mock_response(status_code=503)
+    response.raise_for_status.side_effect = requests.HTTPError(
+        "503 Service Unavailable"
+    )
+    return response
+
+
+def _graphql_failure_response():
+    return _mock_response(json_data={"errors": [{"message": "Erreur interne"}]})
 
 
 class TestGetGroups:
@@ -120,6 +133,23 @@ class TestGetGroups:
         get_groups("token", "123")
 
         assert "Network error" in capsys.readouterr().out
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "global-token")
+    def test_request_uses_given_token_and_timeout(self, mock_session_factory):
+        """La requête porte le token de la configuration, pas le token global."""
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"data": {"demarche": {"groupeInstructeurs": []}}}
+        )
+        mock_session_factory.return_value = session
+
+        get_groups("token123", "456")
+
+        kwargs = session.post.call_args.kwargs
+        assert kwargs["headers"]["Authorization"] == "Bearer token123"
+        assert kwargs["json"]["variables"] == {"demarcheNumber": 456}
+        assert kwargs["timeout"] == 10
 
 
 class TestGetDemarcheInstructeurs:
@@ -223,6 +253,28 @@ class TestGetDemarcheInstructeurs:
         )
 
         assert get_demarche_instructeurs(42) == []
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_network_failure_raises(self, mock_session_factory):
+        """Une panne réseau remonte à l'appelant."""
+        session = self._mock_session()
+        session.post.side_effect = requests.ConnectionError("réseau coupé")
+        mock_session_factory.return_value = session
+
+        with pytest.raises(requests.ConnectionError):
+            get_demarche_instructeurs(42)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_failure_without_data_raises(self, mock_session_factory):
+        """Une erreur GraphQL sans données remonte à l'appelant."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={"data": None, "errors": [{"message": "Erreur interne"}]}
+        )
+
+        with pytest.raises(Exception):
+            get_demarche_instructeurs(42)
 
 
 class TestGetPjOcrColumns:
@@ -357,6 +409,14 @@ class TestGetPjOcrColumns:
         assert get_pj_ocr_columns(123) == {}
         assert "Network" in capsys.readouterr().out
 
+    @patch("dn.client.get_session_with_retries")
+    def test_requete_limitee_a_30_secondes(self, mock_session_factory):
+        session = self._session(mock_session_factory, self._response([]))
+
+        get_pj_ocr_columns(123)
+
+        assert session.post.call_args.kwargs["timeout"] == 30
+
 
 class TestGetSessionWithRetries:
     """Tests pour get_session_with_retries (singleton)"""
@@ -430,6 +490,28 @@ class TestGetDemarcheDossiersLabelsOnly:
         assert [d["number"] for d in result] == [1, 2]
         assert result[0]["labels"][0]["name"] == "À suivre"
         assert mock_session.post.call_count == 2
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_http_failure_raises(self, mock_session_factory):
+        """Une erreur HTTP remonte à l'appelant."""
+        session = MagicMock()
+        session.post.return_value = _http_failure_response()
+        mock_session_factory.return_value = session
+
+        with pytest.raises(requests.HTTPError):
+            get_demarche_dossiers_labels_only(7)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_errors_raise(self, mock_session_factory):
+        """Une erreur GraphQL remonte à l'appelant, avec son message."""
+        session = MagicMock()
+        session.post.return_value = _graphql_failure_response()
+        mock_session_factory.return_value = session
+
+        with pytest.raises(Exception, match="Erreur interne"):
+            get_demarche_dossiers_labels_only(7)
 
 
 class TestGetDeletedDossiers:
@@ -523,6 +605,81 @@ class TestGetDeletedDossiers:
 
         assert [d["number"] for d in result] == [1, 2, 3]
         assert mock_session.post.call_count == 3
+
+    @staticmethod
+    def _page(connection, numbers=(), has_next_page=False, end_cursor=None):
+        return _mock_response(
+            json_data={
+                "data": {
+                    "demarche": {
+                        connection: {
+                            "pageInfo": {
+                                "hasNextPage": has_next_page,
+                                "endCursor": end_cursor,
+                            },
+                            "nodes": [{"number": number} for number in numbers],
+                        }
+                    }
+                }
+            }
+        )
+
+    def _responses_failing_on(self, failing_connection, failure):
+        """Réponses successives, dont seule la connexion donnée échoue."""
+        if failing_connection == "deletedDossiers":
+            return [failure]
+        return [self._page("deletedDossiers"), failure]
+
+    @pytest.mark.parametrize(
+        "failing_connection", ["deletedDossiers", "pendingDeletedDossiers"]
+    )
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_http_failure_raises(self, mock_session_factory, failing_connection):
+        """Une erreur HTTP sur l'une des deux connexions remonte à l'appelant."""
+        session = MagicMock()
+        session.post.side_effect = self._responses_failing_on(
+            failing_connection, _http_failure_response()
+        )
+        mock_session_factory.return_value = session
+
+        with pytest.raises(requests.HTTPError):
+            get_deleted_dossiers(7)
+
+    @pytest.mark.parametrize(
+        "failing_connection", ["deletedDossiers", "pendingDeletedDossiers"]
+    )
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_errors_raise(self, mock_session_factory, failing_connection):
+        """Une erreur GraphQL sur l'une des deux connexions remonte à l'appelant."""
+        session = MagicMock()
+        session.post.side_effect = self._responses_failing_on(
+            failing_connection, _graphql_failure_response()
+        )
+        mock_session_factory.return_value = session
+
+        with pytest.raises(Exception, match="Erreur interne"):
+            get_deleted_dossiers(7)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_pending_pagination(self, mock_session_factory):
+        """Toutes les pages des suppressions en attente sont parcourues."""
+        session = MagicMock()
+        session.post.side_effect = [
+            self._page("deletedDossiers"),
+            self._page(
+                "pendingDeletedDossiers", [1], has_next_page=True, end_cursor="cur1"
+            ),
+            self._page("pendingDeletedDossiers", [2]),
+        ]
+        mock_session_factory.return_value = session
+
+        result = get_deleted_dossiers(7)
+
+        assert [dossier["number"] for dossier in result] == [1, 2]
+        assert session.post.call_args.kwargs["json"]["variables"]["after"] == "cur1"
 
 
 def _dossier(number, **champs):
