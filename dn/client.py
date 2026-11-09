@@ -1010,9 +1010,6 @@ def get_demarche_descriptors(demarche_number: int) -> dict[str, Any]:
     Les erreurs GraphQL de permissions sont ignorées ; les autres erreurs,
     l'absence de démarche ou de révision active lèvent une exception.
     """
-    if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré.")
-
     query = """
     query getDemarcheSchema($demarcheNumber: Int!) {
         demarche(number: $demarcheNumber) {
@@ -1069,28 +1066,11 @@ def get_demarche_descriptors(demarche_number: int) -> dict[str, Any]:
         }
     }
     """
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    session = get_session_with_retries()
-    response = session.post(
-        DEMARCHES_API_URL,
-        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
-        headers=headers,
+    result = _post_graphql(
+        query,
+        {"demarcheNumber": int(demarche_number)},
+        tolerate_permissions=True,
     )
-    response.raise_for_status()
-    result = response.json()
-
-    if "errors" in result:
-        filtered_errors = [
-            error.get("message", "")
-            for error in result["errors"]
-            if "permissions" not in error.get("message", "")
-        ]
-        if filtered_errors:
-            raise Exception(f"GraphQL errors: {', '.join(filtered_errors)}")
 
     if not result.get("data") or not result["data"].get("demarche"):
         raise Exception(
@@ -1114,10 +1094,12 @@ def _post_graphql(
     session: requests.Session | None = None,
     token: str | None = None,
     timeout: int | None = None,
+    tolerate_permissions: bool = False,
 ) -> dict[str, Any]:
     """Envoie une requête GraphQL à DN : tout échec lève une exception.
 
-    Sans `token`, utilise celui de l'environnement.
+    Sans `token`, utilise celui de l'environnement. Avec `tolerate_permissions`,
+    les erreurs de permissions n'empêchent pas de renvoyer la réponse.
     """
     api_token = token or API_TOKEN
     if not api_token:
@@ -1140,6 +1122,10 @@ def _post_graphql(
 
     if "errors" in result:
         messages = [e.get("message", "Unknown error") for e in result["errors"]]
+        if tolerate_permissions:
+            messages = [message for message in messages if "permissions" not in message]
+            if not messages:
+                return result
         raise Exception(f"GraphQL errors: {', '.join(messages)}")
 
     return result
