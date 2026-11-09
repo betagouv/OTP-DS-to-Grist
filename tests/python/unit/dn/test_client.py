@@ -24,6 +24,10 @@ def _mock_response(status_code=200, json_data=None, headers=None):
     response.status_code = status_code
     response.json.return_value = json_data or {}
     response.headers = headers or {}
+    if status_code >= 400:
+        response.raise_for_status.side_effect = requests.HTTPError(
+            f"{status_code} Error"
+        )
     return response
 
 
@@ -151,6 +155,16 @@ class TestGetGroups:
         assert kwargs["json"]["variables"] == {"demarcheNumber": 456}
         assert kwargs["timeout"] == 10
 
+    @patch("dn.client.get_session_with_retries")
+    def test_http_failure_is_logged(self, mock_session_factory, capsys):
+        """Une erreur HTTP est loggée avant de retourner []."""
+        session = MagicMock()
+        session.post.return_value = _mock_response(status_code=401)
+        mock_session_factory.return_value = session
+
+        assert get_groups("token", "123") == []
+        assert "401" in capsys.readouterr().out
+
 
 class TestGetDemarcheInstructeurs:
     """Tests pour get_demarche_instructeurs."""
@@ -277,6 +291,7 @@ class TestGetDemarcheInstructeurs:
             get_demarche_instructeurs(42)
 
 
+@patch("dn.client.API_TOKEN", "test-token")
 class TestGetPjOcrColumns:
     """Tests pour get_pj_ocr_columns"""
 
@@ -416,6 +431,15 @@ class TestGetPjOcrColumns:
         get_pj_ocr_columns(123)
 
         assert session.post.call_args.kwargs["timeout"] == 30
+
+    @patch("dn.client.get_session_with_retries")
+    def test_sans_token_retourne_vide_et_logue(self, mock_session_factory, capsys):
+        self._session(mock_session_factory, _mock_response(status_code=401))
+
+        with patch("dn.client.API_TOKEN", ""):
+            assert get_pj_ocr_columns(123) == {}
+
+        assert "ERREUR" in capsys.readouterr().out
 
 
 class TestGetSessionWithRetries:

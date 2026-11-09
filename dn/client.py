@@ -851,31 +851,12 @@ def get_groups(
         }
         """
 
-        variables = {"demarcheNumber": int(demarche_number)}
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json",
-        }
-
-        session = get_session_with_retries()
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={"query": query, "variables": variables},
-            headers=headers,
+        result = _post_graphql(
+            query,
+            {"demarcheNumber": int(demarche_number)},
+            token=api_token,
             timeout=10,
         )
-
-        if response.status_code != 200:
-            return []
-
-        result = response.json()
-        if "errors" in result:
-            messages = [e.get("message", "Unknown error") for e in result["errors"]]
-            log_error(
-                "Erreur GraphQL lors de la récupération des groupes instructeurs: "
-                + ", ".join(messages)
-            )
-            return []
 
         groupes = (
             result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
@@ -987,39 +968,13 @@ def get_pj_ocr_columns(demarche_number: int) -> dict[str, list[tuple[str, str]]]
         }
     }
     """
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
     variables = {
         "demarcheNumber": int(demarche_number),
         "first": PJ_OCR_SAMPLE_SIZE,
     }
 
     try:
-        session = get_session_with_retries()
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={"query": query, "variables": variables},
-            headers=headers,
-            timeout=30,
-        )
-
-        if response.status_code != 200:
-            log_error(
-                f"Sous-colonnes OCR des pièces justificatives non récupérées "
-                f"(HTTP {response.status_code})"
-            )
-            return {}
-
-        result = response.json()
-        if "errors" in result:
-            messages = [e.get("message", "Unknown error") for e in result["errors"]]
-            log_error(
-                "Erreur GraphQL lors de la récupération des sous-colonnes OCR des "
-                "pièces justificatives: " + ", ".join(messages)
-            )
-            return {}
+        result = _post_graphql(query, variables, timeout=30)
 
         dossiers = (
             ((result.get("data") or {}).get("demarche") or {}).get("dossiers") or {}
@@ -1157,9 +1112,15 @@ def _post_graphql(
     query: str,
     variables: dict[str, Any],
     session: requests.Session | None = None,
+    token: str | None = None,
+    timeout: int | None = None,
 ) -> dict[str, Any]:
-    """Envoie une requête GraphQL à DN : tout échec lève une exception."""
-    if not API_TOKEN:
+    """Envoie une requête GraphQL à DN : tout échec lève une exception.
+
+    Sans `token`, utilise celui de l'environnement.
+    """
+    api_token = token or API_TOKEN
+    if not api_token:
         raise ValueError("Le token d'API n'est pas configuré.")
 
     if session is None:
@@ -1169,9 +1130,10 @@ def _post_graphql(
         DEMARCHES_API_URL,
         json={"query": query, "variables": variables},
         headers={
-            "Authorization": f"Bearer {API_TOKEN}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
         },
+        timeout=timeout,
     )
     response.raise_for_status()
     result = response.json()
