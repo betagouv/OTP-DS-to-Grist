@@ -245,6 +245,7 @@ def extract_demandeur_info(dossier_data: Dict[str, Any]) -> Dict[str, Any]:
     demandeur_info["type"] = demandeur_type
 
     # Extraction selon le type
+    # Les personnes morales sont gérées dans grist_processor_working_all.py
     if demandeur_type == "PersonnePhysique":
         demandeur_info.update(
             {
@@ -254,11 +255,6 @@ def extract_demandeur_info(dossier_data: Dict[str, Any]) -> Dict[str, Any]:
                 "email": demandeur.get("email"),
             }
         )
-
-    elif demandeur_type in ["PersonneMorale", "PersonneMoraleIncomplete"]:
-        # Déjà géré dans grist_processor_working_all.py
-        # On retourne juste le type et les infos communes
-        pass
 
     return demandeur_info
 
