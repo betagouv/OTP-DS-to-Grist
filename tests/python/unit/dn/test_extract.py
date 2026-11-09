@@ -6,6 +6,7 @@ from dn.extract import (
     build_label_fields,
     dossier_to_flat_data,
     extract_champ_values,
+    extract_demandeur_info,
     iter_pj_ocr_columns,
 )
 from grist.utils import normalize_column_name
@@ -1243,3 +1244,123 @@ class TestExtractChampValuesPieceJustificativeOcrTypees:
             "avis_date_de_mise_en_recouvrement": "Date",
             "avis_departement": "Text",
         }
+
+
+PROBLEMATIC_DESCRIPTOR_ID = "desc_problematique"
+
+
+def make_kept_champ():
+    return make_typed_champ("TextChamp", label="Gardé", champDescriptorId="desc_garde")
+
+
+def labels_in_champs(champs, problematic_ids):
+    flat = dossier_to_flat_data(make_dossier(champs), problematic_ids=problematic_ids)
+    return [item["base_label"] for item in flat["champs"]]
+
+
+def labels_in_annotations(champs, problematic_ids):
+    flat = dossier_to_flat_data(
+        make_dossier([], annotations=champs), problematic_ids=problematic_ids
+    )
+    return [item["base_label"] for item in flat["annotations"]]
+
+
+def labels_in_repetable_row(champs, problematic_ids):
+    bloc = make_typed_champ(
+        "RepetitionChamp", label="Bloc", rows=[{"id": "row1", "champs": champs}]
+    )
+    flat = dossier_to_flat_data(make_dossier([bloc]), problematic_ids=problematic_ids)
+    assert len(flat["repetable_rows"]) == 1
+    return [
+        key
+        for key in flat["repetable_rows"][0]
+        if key != "dossier_number" and not key.startswith("block_")
+    ]
+
+
+@pytest.mark.parametrize(
+    "labels_at_level",
+    [labels_in_champs, labels_in_annotations, labels_in_repetable_row],
+)
+class TestDossierToFlatDataFiltering:
+    """Champs ignorés dans les champs, les annotations et les rangées de bloc."""
+
+    @pytest.mark.parametrize("typename", ["HeaderSectionChamp", "ExplicationChamp"])
+    def test_display_champ_is_ignored(self, labels_at_level, typename):
+        """Un champ d'affichage ne produit aucune colonne."""
+        champs = [make_typed_champ(typename, label="Titre"), make_kept_champ()]
+
+        assert labels_at_level(champs, None) == ["Gardé"]
+
+    def test_problematic_champ_is_ignored(self, labels_at_level):
+        """Un champ dont le descripteur est problématique est écarté."""
+        problematic = make_typed_champ(
+            "TextChamp", label="Écarté", champDescriptorId=PROBLEMATIC_DESCRIPTOR_ID
+        )
+
+        labels = labels_at_level(
+            [problematic, make_kept_champ()], {PROBLEMATIC_DESCRIPTOR_ID}
+        )
+
+        assert labels == ["Gardé"]
+
+    def test_champ_is_kept_without_problematic_ids(self, labels_at_level):
+        """Sans descripteur problématique déclaré, le champ est conservé."""
+        champ = make_typed_champ(
+            "TextChamp", label="Conservé", champDescriptorId=PROBLEMATIC_DESCRIPTOR_ID
+        )
+
+        assert labels_at_level([champ], None) == ["Conservé"]
+
+
+class TestExtractDemandeurInfo:
+    """Informations du demandeur, selon son type."""
+
+    COMMON_INFO = {
+        "dossier_number": 1,
+        "usager_email": "usager@example.org",
+        "prenom_mandataire": "Ana",
+        "nom_mandataire": "Martin",
+        "depose_par_un_tiers": True,
+    }
+
+    def _dossier(self, demandeur):
+        return {
+            "number": 1,
+            "usager": {"email": "usager@example.org"},
+            "prenomMandataire": "Ana",
+            "nomMandataire": "Martin",
+            "deposeParUnTiers": True,
+            "demandeur": demandeur,
+        }
+
+    def test_personne_physique(self):
+        """Une personne physique ajoute son identité aux informations communes."""
+        identity = {
+            "civilite": "Mme",
+            "nom": "Durand",
+            "prenom": "Léa",
+            "email": "lea@example.org",
+        }
+        demandeur = {"__typename": "PersonnePhysique", **identity}
+
+        assert extract_demandeur_info(self._dossier(demandeur)) == {
+            **self.COMMON_INFO,
+            "type": "PersonnePhysique",
+            **identity,
+        }
+
+    @pytest.mark.parametrize("typename", ["PersonneMorale", "PersonneMoraleIncomplete"])
+    def test_personne_morale(self, typename):
+        """Une personne morale n'ajoute que son type aux informations communes."""
+        demandeur = {"__typename": typename, "siret": "12345678900011"}
+
+        assert extract_demandeur_info(self._dossier(demandeur)) == {
+            **self.COMMON_INFO,
+            "type": typename,
+        }
+
+    @pytest.mark.parametrize("demandeur", [{}, None])
+    def test_without_demandeur(self, demandeur):
+        """Sans demandeur, seules les informations communes sont renvoyées."""
+        assert extract_demandeur_info(self._dossier(demandeur)) == self.COMMON_INFO
