@@ -17,9 +17,8 @@ abandonnerait les détails se verrait dans l'état final Grist.
 
 Sont mockés, pour isoler le périmètre : `get_optimized_schema` (schéma DS),
 `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
-`detect_demandeur_type`, `untie_column_ids` et `hide_columns_with_id`
-(dernières tâches de niveau démarche, dont on vérifie seulement qu'elles sont
-exécutées).
+`detect_demandeur_type` et `hide_columns_with_id` (dernière tâche de niveau
+démarche, dont on vérifie seulement qu'elle est exécutée).
 
 Aucun service externe (DN, Grist, DB) n'est requis.
 """
@@ -108,6 +107,9 @@ class FakeGristServer:
     `failing_writes` liste les tables dont l'écriture d'enregistrements (POST et
     PATCH) échoue en 500 ; modifiable entre deux runs pour simuler un retour à
     la normale.
+
+    `untied` garde, par table, les colonnes déliées de leur libellé
+    (`PATCH /columns` avec `untieColIdFromLabel`).
     """
 
     def __init__(self, initial_records=None, failing_reads=(), failing_writes=()):
@@ -117,6 +119,7 @@ class FakeGristServer:
         self.calls = []
         self.failing_reads = set(failing_reads)
         self.failing_writes = set(failing_writes)
+        self.untied = {}
         self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
@@ -290,6 +293,14 @@ class FakeGristServer:
         if method == "POST" and parts[4] == "columns":
             for col in payload["columns"]:
                 self.tables.setdefault(table_id, {})[col["id"]] = col.get("type", "Text")
+            return build_response(
+                {"columns": [{"id": col["id"]} for col in payload["columns"]]}
+            )
+
+        if method == "PATCH" and parts[4] == "columns":
+            for col in payload["columns"]:
+                if col["fields"].get("untieColIdFromLabel"):
+                    self.untied.setdefault(table_id, set()).add(col["id"])
             return build_response({})
 
         raise AssertionError(f"Requête non prévue : {method} {parts}")
@@ -660,7 +671,6 @@ def run_pipeline(
             )
         )
         hiding = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
-        untying = stack.enter_context(patch.object(gpa, "untie_column_ids"))
 
         result = gpa.process_demarche_for_grist_optimized(
             client,
@@ -668,7 +678,7 @@ def run_pipeline(
             **pipeline_kwargs,
         )
 
-    mocks = SimpleNamespace(hiding=hiding, untying=untying)
+    mocks = SimpleNamespace(hiding=hiding)
     return result, mocks
 
 
@@ -698,6 +708,13 @@ class TestSyncPipelineGrist:
         assert "objet_de_la_demande" in server.tables[CHAMPS_TABLE]
         assert "annotation_interne" in server.tables[ANNOTATIONS_TABLE]
         assert "annotation_interne_id" in server.tables[ANNOTATIONS_TABLE]
+
+        # Les colonnes créées par la sync sont déliées de leur libellé : celles
+        # des tables créées (create_table) comme celles ajoutées (add_columns)
+        for table_id in (ANNOTATIONS_TABLE, AVIS_TABLE, SYNC_METADATA_TABLE):
+            assert server.untied[table_id] == set(server.tables[table_id])
+        assert {"suivi_par"} <= server.untied[DOSSIERS_TABLE]
+        assert {"objet_de_la_demande"} <= server.untied[CHAMPS_TABLE]
 
         # Le dossier est écrit avec les valeurs de la source
         dossiers = server.rows(DOSSIERS_TABLE)
@@ -732,9 +749,6 @@ class TestSyncPipelineGrist:
 
         # Le masquage des colonnes `_id` est toujours exécuté en fin de sync
         mocks.hiding.assert_called_once()
-
-        # Le déliage des identifiants de colonnes est exécuté en fin de sync
-        mocks.untying.assert_called_once()
 
     def test_pipeline_emits_sync_metadata_line(self, capsys):
         """Le pipeline émet une ligne SYNC_METADATA unique portant durée, flag et

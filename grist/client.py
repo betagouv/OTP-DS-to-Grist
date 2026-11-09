@@ -324,6 +324,12 @@ class GristClient:
             response.raise_for_status()
 
         result = response.json()
+
+        # La réponse ne liste pas les colonnes : on relit celles réellement
+        # créées, Grist ayant pu corriger un id demandé.
+        created_table_id = result["tables"][0]["id"]
+        self._untie_columns(created_table_id, list(self.get_columns(created_table_id)))
+
         return result
 
     def get_columns(self, table_id: str) -> dict[str, str]:
@@ -371,8 +377,10 @@ class GristClient:
         self, table_id: str, columns: list[dict[str, Any]]
     ) -> requests.Response:
         """
-        Ajoute des colonnes à une table Grist existante.
-        Retourne la réponse HTTP brute : l'appelant gère lui-même le statut.
+        Ajoute des colonnes à une table Grist existante, puis les délie de
+        leur libellé (voir `_untie_columns`).
+        Retourne la réponse HTTP brute de la création : l'appelant gère
+        lui-même le statut.
         """
         if not self.doc_id:
             raise ValueError("Document ID is required")
@@ -382,7 +390,47 @@ class GristClient:
         payload = {"columns": columns}
         response = self._get_session().post(url, headers=self.headers, json=payload)
 
+        if response.status_code == 200:
+            self._untie_columns(table_id, _created_column_ids(response))
+
         return response
+
+    def _untie_columns(self, table_id: str, col_ids: list[str]) -> None:
+        """
+        Délie l'id des colonnes de leur libellé (`untieColIdFromLabel`) : un
+        libellé renommé dans Grist ne renomme plus l'id sur lequel la
+        synchronisation écrit.
+
+        Grist ignore ce réglage à la création, d'où ce second appel, sur les
+        ids réellement créés. Un échec est journalisé sans être levé : la
+        colonne reste liée, comme avant, et la création n'est pas remise en
+        cause.
+        """
+        if not col_ids:
+            return
+
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
+        log_verbose(f"PATCH {url} : déliage de {len(col_ids)} colonne(s)")
+        payload = {
+            "columns": [
+                {"id": col_id, "fields": {"untieColIdFromLabel": True}}
+                for col_id in col_ids
+            ]
+        }
+
+        try:
+            response = self._get_session().patch(
+                url, headers=self.headers, json=payload
+            )
+        except requests.RequestException as e:
+            log_error(f"Déliage des colonnes de {table_id} impossible : {e}")
+            return
+
+        if response.status_code != 200:
+            log_error(
+                f"Déliage des colonnes de {table_id} impossible "
+                f"({response.status_code}) : {response.text}"
+            )
 
     def post_records(
         self, table_id: str, records: list[dict[str, Any]]
@@ -920,6 +968,16 @@ def _error_detail(response: requests.Response) -> str:
         return str(body["error"])
 
     return str(response.text)[:200]
+
+
+def _created_column_ids(response: requests.Response) -> list[str]:
+    """Ids des colonnes réellement créées, lus dans la réponse de Grist."""
+    try:
+        columns = response.json().get("columns") or []
+    except ValueError:
+        return []
+
+    return [col["id"] for col in columns if col.get("id")]
 
 
 def _dossier_number(fields: dict[str, Any]) -> Any:
