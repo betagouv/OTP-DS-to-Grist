@@ -3,16 +3,8 @@
 Rafraîchissement des labels (étiquettes) des dossiers dans Grist.
 Ce script interroge tous les dossiers de la démarche avec une requête minimaliste
 (number + labels) et met à jour les seules lignes dont les labels ont changé.
-
-Utilisation autonome (depuis la racine du projet) :
-    python -m sync.tasks.labels
-
-Variables d'environnement requises :
-    GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER
 """
 
-import os
-import sys
 import time
 
 from dn.client import get_demarche_dossiers_labels_only
@@ -88,34 +80,6 @@ def sync_labels_for_demarche(
     return result
 
 
-def main():
-    from dotenv import load_dotenv
-
-    from grist.client import GristClient
-
-    load_dotenv(override=True)
-
-    grist_base_url = os.getenv("GRIST_BASE_URL")
-    grist_api_key = os.getenv("GRIST_API_KEY")
-    grist_doc_id = os.getenv("GRIST_DOC_ID")
-    demarche_number = os.getenv("DEMARCHE_NUMBER")
-
-    if not all([grist_base_url, grist_api_key, grist_doc_id, demarche_number]):
-        print(
-            "Configuration incomplète : GRIST_BASE_URL, GRIST_API_KEY, "
-            "GRIST_DOC_ID et DEMARCHE_NUMBER sont requis dans le fichier .env"
-        )
-        return 1
-
-    demarche_number = int(demarche_number)
-    table_id = os.getenv("TABLE_DOSSIERS", f"Demarche_{demarche_number}_dossiers")
-
-    client = GristClient(grist_base_url, grist_api_key, grist_doc_id)
-    sync_labels_for_demarche(client, table_id, demarche_number)
-
-    return 0
-
-
 # --- Helpers privés (module) ---
 
 
@@ -168,7 +132,3 @@ def _patch_records(client, table_id, records, log, log_error):
         log(f"  {updated} dossier(s) mis à jour (labels)")
 
     return updated
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -5,16 +5,8 @@ Synchronisation de la table Instructeurs (niveau démarche).
 Récupère les instructeurs de la démarche via l'API DN (groupeInstructeurs) et
 met la table Grist à jour par upsert sur la clé composite
 `instructeur_id` + `groupe_instructeur_id` : créations, mises à jour, suppressions.
-
-Utilisation autonome (depuis la racine du projet) :
-    python -m sync.tasks.instructeurs
-
-Variables d'environnement requises :
-    GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER
 """
 
-import os
-import sys
 import time
 
 from dn.client import get_demarche_instructeurs
@@ -179,37 +171,3 @@ def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=pr
     )
 
     return result
-
-
-def main():
-    from dotenv import load_dotenv
-
-    from grist.client import GristClient
-
-    load_dotenv(override=True)
-
-    grist_base_url = os.getenv("GRIST_BASE_URL")
-    grist_api_key = os.getenv("GRIST_API_KEY")
-    grist_doc_id = os.getenv("GRIST_DOC_ID")
-    demarche_number = os.getenv("DEMARCHE_NUMBER")
-
-    if not all([grist_base_url, grist_api_key, grist_doc_id, demarche_number]):
-        print(
-            "Configuration incomplète : GRIST_BASE_URL, GRIST_API_KEY, "
-            "GRIST_DOC_ID et DEMARCHE_NUMBER sont requis dans le fichier .env"
-        )
-        return 1
-
-    demarche_number = int(demarche_number)
-    table_id = os.getenv(
-        "TABLE_INSTRUCTEURS", f"Demarche_{demarche_number}_instructeurs"
-    )
-
-    client = GristClient(grist_base_url, grist_api_key, grist_doc_id)
-    sync_instructeurs(client, table_id, demarche_number)
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
