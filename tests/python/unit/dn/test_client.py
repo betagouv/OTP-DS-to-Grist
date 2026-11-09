@@ -513,6 +513,55 @@ class TestGetDemarcheDossiersLabelsOnly:
         with pytest.raises(Exception, match="Erreur interne"):
             get_demarche_dossiers_labels_only(7)
 
+    @staticmethod
+    def _two_pages_session():
+        def page(numbers, has_next_page, end_cursor):
+            return _mock_response(
+                json_data={
+                    "data": {
+                        "demarche": {
+                            "dossiers": {
+                                "pageInfo": {
+                                    "hasNextPage": has_next_page,
+                                    "endCursor": end_cursor,
+                                },
+                                "nodes": [{"number": n, "labels": []} for n in numbers],
+                            }
+                        }
+                    }
+                }
+            )
+
+        session = MagicMock()
+        session.post.side_effect = [page([1], True, "cur1"), page([2, 3], False, None)]
+        return session
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_cursor_is_sent_from_page_to_page(self, mock_session_factory):
+        """Chaque page est demandée à partir du curseur de la précédente."""
+        session = self._two_pages_session()
+        mock_session_factory.return_value = session
+
+        get_demarche_dossiers_labels_only(7)
+
+        assert [
+            appel.kwargs["json"]["variables"] for appel in session.post.call_args_list
+        ] == [
+            {"demarcheNumber": 7, "after": None},
+            {"demarcheNumber": 7, "after": "cur1"},
+        ]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_log_reports_dossiers_and_pages(self, mock_session_factory, capsys):
+        """Le log indique le nombre de dossiers et de pages récupérés."""
+        mock_session_factory.return_value = self._two_pages_session()
+
+        get_demarche_dossiers_labels_only(7)
+
+        assert "[LABELS] 3 dossiers récupérés en 2 page(s)" in capsys.readouterr().out
+
 
 class TestGetDeletedDossiers:
     """Tests pour get_deleted_dossiers"""
@@ -680,6 +729,52 @@ class TestGetDeletedDossiers:
 
         assert [dossier["number"] for dossier in result] == [1, 2]
         assert session.post.call_args.kwargs["json"]["variables"]["after"] == "cur1"
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_deleted_since_only_limits_confirmed_deletions(self, mock_session_factory):
+        """deleted_since ne s'applique qu'aux suppressions confirmées."""
+        session = MagicMock()
+        session.post.side_effect = [
+            self._page("deletedDossiers", [1], has_next_page=True, end_cursor="cur1"),
+            self._page("deletedDossiers", [2]),
+            self._page("pendingDeletedDossiers", [3]),
+        ]
+        mock_session_factory.return_value = session
+
+        get_deleted_dossiers(7, deleted_since="2024-01-01T00:00:00Z")
+
+        confirmed = {
+            "demarcheNumber": 7,
+            "first": 100,
+            "since": "2024-01-01T00:00:00Z",
+        }
+        assert [
+            appel.kwargs["json"]["variables"] for appel in session.post.call_args_list
+        ] == [
+            {**confirmed, "after": None},
+            {**confirmed, "after": "cur1"},
+            {"demarcheNumber": 7, "first": 100, "after": None},
+        ]
+
+    @pytest.mark.parametrize("deleted_since", [None, ""])
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_deleted_since_all_deletions_are_requested(
+        self, mock_session_factory, deleted_since
+    ):
+        """Sans repère (absent ou vide), aucune borne n'est envoyée à DN."""
+        session = MagicMock()
+        session.post.side_effect = [
+            self._page("deletedDossiers"),
+            self._page("pendingDeletedDossiers"),
+        ]
+        mock_session_factory.return_value = session
+
+        get_deleted_dossiers(7, deleted_since=deleted_since)
+
+        first_call = session.post.call_args_list[0]
+        assert first_call.kwargs["json"]["variables"]["since"] is None
 
 
 def _dossier(number, **champs):

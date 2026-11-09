@@ -766,23 +766,12 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     }
     """
 
-    dossiers = []
-    cursor = None
-    page_num = 0
-    has_next_page = True
+    pages = list(
+        _iter_connection_pages(query, {"demarcheNumber": demarche_number}, "dossiers")
+    )
+    dossiers = [dossier for page in pages for dossier in page]
 
-    while has_next_page:
-        page_num += 1
-        result = _post_graphql(
-            query, {"demarcheNumber": demarche_number, "after": cursor}
-        )
-
-        connection = result["data"]["demarche"]["dossiers"]
-        dossiers.extend(connection["nodes"])
-        has_next_page = connection["pageInfo"]["hasNextPage"]
-        cursor = connection["pageInfo"]["endCursor"]
-
-    print(f"[LABELS] {len(dossiers)} dossiers récupérés en {page_num} page(s)")
+    print(f"[LABELS] {len(dossiers)} dossiers récupérés en {len(pages)} page(s)")
 
     return dossiers
 
@@ -814,20 +803,13 @@ def get_deleted_dossiers(
         }
     }
     """
-    cursor = None
-    has_next_page = True
-    while has_next_page:
-        variables = {
-            "demarcheNumber": demarche_number,
-            "first": 100,
-            "after": cursor,
-            "since": deleted_since,
-        }
-        result = _post_graphql(query_deleted, variables)
-        connection = result["data"]["demarche"]["deletedDossiers"]
-        all_deleted.extend(connection["nodes"])
-        has_next_page = connection["pageInfo"]["hasNextPage"]
-        cursor = connection["pageInfo"]["endCursor"]
+    variables = {
+        "demarcheNumber": demarche_number,
+        "first": 100,
+        "since": deleted_since,
+    }
+    for page in _iter_connection_pages(query_deleted, variables, "deletedDossiers"):
+        all_deleted.extend(page)
 
     # --- pendingDeletedDossiers (en attente, mais déjà invisible pour les instructeurs) ---
     query_pending = """
@@ -840,15 +822,11 @@ def get_deleted_dossiers(
         }
     }
     """
-    cursor = None
-    has_next_page = True
-    while has_next_page:
-        variables = {"demarcheNumber": demarche_number, "first": 100, "after": cursor}
-        result = _post_graphql(query_pending, variables)
-        connection = result["data"]["demarche"]["pendingDeletedDossiers"]
-        all_deleted.extend(connection["nodes"])
-        has_next_page = connection["pageInfo"]["hasNextPage"]
-        cursor = connection["pageInfo"]["endCursor"]
+    variables = {"demarcheNumber": demarche_number, "first": 100}
+    for page in _iter_connection_pages(
+        query_pending, variables, "pendingDeletedDossiers"
+    ):
+        all_deleted.extend(page)
 
     return all_deleted
 
@@ -1203,6 +1181,20 @@ def _post_graphql(
         raise Exception(f"GraphQL errors: {', '.join(messages)}")
 
     return result
+
+
+def _iter_connection_pages(
+    query: str, variables: dict[str, Any], connection: str
+) -> Iterator[list[dict[str, Any]]]:
+    """Éléments de chaque page d'une connexion de la démarche (ex. `deletedDossiers`)."""
+    cursor = None
+    has_next_page = True
+    while has_next_page:
+        result = _post_graphql(query, {**variables, "after": cursor})
+        page = result["data"]["demarche"][connection]
+        yield page["nodes"]
+        has_next_page = page["pageInfo"]["hasNextPage"]
+        cursor = page["pageInfo"]["endCursor"]
 
 
 def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
