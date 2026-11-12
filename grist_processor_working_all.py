@@ -25,7 +25,8 @@ from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
     get_demarche_schema,
-    update_grist_tables_from_schema,
+    create_avis_table,
+    ensure_sync_table_structure,
 )
 from sync.filters import (
     build_filters_cache_key,
@@ -223,7 +224,7 @@ def run_demarche_level_tasks(
     if updated_since_cursor and not force_full_sync:
         try:
             sync_labels_for_demarche(
-                client, table_ids["dossier_table_id"], demarche_number, log, log_error
+                client, table_ids["dossiers"], demarche_number, log, log_error
             )
         except Exception as e:
             log_error(f"Erreur rafraîchissement des labels: {e}")
@@ -235,7 +236,7 @@ def run_demarche_level_tasks(
     try:
         deletion_result = check_deleted_dossiers(
             client=client,
-            table_id=table_ids["dossier_table_id"],
+            table_id=table_ids["dossiers"],
             demarche_number=demarche_number,
             log=log,
             log_error=log_error,
@@ -389,34 +390,7 @@ def process_demarche_for_grist_optimized(
         # Créer ou mettre à jour les tables en préservant les données existantes :
         # un échec fait échouer la synchro
         log("Mise à jour des tables Grist en préservant les données existantes...")
-        table_result = update_grist_tables_from_schema(
-            client,
-            demarche_number,
-            column_types,
-            problematic_descriptor_ids,
-        )
-
-        # Convertir le format de retour pour compatibilité
-        table_ids = {
-            "dossier_table_id": table_result.get("dossiers"),
-            "champ_table_id": table_result.get("champs"),
-            "annotations": table_result.get("annotations"),
-        }
-
-        if "repetable_blocks" in table_result:
-            table_ids["repetable_blocks"] = table_result["repetable_blocks"]
-
-        if "demandeurs" in table_result:
-            table_ids["demandeurs"] = table_result["demandeurs"]
-
-        if "demandeur_type" in table_result:
-            table_ids["demandeur_type"] = table_result["demandeur_type"]
-
-        if "instructeurs" in table_result:
-            table_ids["instructeurs"] = table_result["instructeurs"]
-
-        if "avis" in table_result:
-            table_ids["avis"] = table_result["avis"]  # None si pas encore créée
+        table_ids = ensure_sync_table_structure(client, demarche_number, column_types)
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
@@ -463,9 +437,9 @@ def process_demarche_for_grist_optimized(
 
         # Log des table IDs
         log("Tables utilisées pour l'importation:")
-        log(f"  Table dossiers: {table_ids['dossier_table_id']}")
-        log(f"  Table champs: {table_ids['champ_table_id']}")
-        log(f"  Table annotations: {table_ids['annotations']}")
+        log(f"  Table dossiers: {table_ids['dossiers']}")
+        log(f"  Table champs: {table_ids['champs']}")
+        log(f"  Table annotations: {table_ids.get('annotations')}")
 
         # Filtres de sélection des dossiers (appliqués page par page, plus bas)
         filters = read_filters_from_env()
@@ -624,9 +598,9 @@ def process_demarche_for_grist_optimized(
         log("Préchargement des enregistrements existants (global)...")
         start_cache = time.time()
         cache_dossiers = client.get_existing_dossier_numbers(
-            table_ids["dossier_table_id"]
+            table_ids["dossiers"]
         )
-        cache_champs = client.get_existing_dossier_numbers(table_ids["champ_table_id"])
+        cache_champs = client.get_existing_dossier_numbers(table_ids["champs"])
         cache_annotations = {}
         if table_ids.get("annotations"):
             cache_annotations = client.get_existing_dossier_numbers(
@@ -771,7 +745,7 @@ def process_demarche_for_grist_optimized(
             if dossier_records:
                 log(f"  Upsert par lot de {len(dossier_records)} dossiers...")
                 success = client.upsert_multiple_dossiers_in_grist(
-                    table_ids["dossier_table_id"],
+                    table_ids["dossiers"],
                     dossier_records,
                     existing_records=cache_dossiers,
                     column_cache=column_cache,
@@ -791,7 +765,7 @@ def process_demarche_for_grist_optimized(
                     f"  Upsert par lot de {len(champ_records)} enregistrements de champs..."
                 )
                 success = client.upsert_multiple_dossiers_in_grist(
-                    table_ids["champ_table_id"],
+                    table_ids["champs"],
                     champ_records,
                     existing_records=cache_champs,
                     column_cache=column_cache,
@@ -956,13 +930,7 @@ def process_demarche_for_grist_optimized(
                 # Créer la table à la volée si elle n'existe pas encore
                 if not table_ids.get("avis"):
                     log("  Création lazy de la table avis...")
-                    from schema_utils import create_avis_columns
-
-                    avis_table_id = f"Demarche_{demarche_number}_avis"
-                    result = client.create_demarche_table(
-                        demarche_number, avis_table_id, create_avis_columns()
-                    )
-                    table_ids["avis"] = result["tables"][0].get("id")
+                    table_ids["avis"] = create_avis_table(client, demarche_number)
                     log(f"  Table avis créée: {table_ids['avis']}")
 
                 upsert_avis_records(client, table_ids["avis"], all_avis_records)

@@ -110,7 +110,8 @@ class FakeGristServer:
     la normale.
 
     `untied` garde, par table, les colonnes déliées de leur libellé
-    (`PATCH /columns` avec `untieColIdFromLabel`).
+    (`PATCH /columns` avec `untieColIdFromLabel`) ; `created_tables`, les
+    tables créées par `POST /tables`, dans l'ordre.
 
     Comme Grist, chaque table créée reçoit une vue et une page, ajoutée en bas
     à la racine, dans les méta-tables `_grist_Views`, `_grist_Pages` et
@@ -134,6 +135,7 @@ class FakeGristServer:
         self.failing_reads = set(failing_reads)
         self.failing_writes = set(failing_writes)
         self.untied = {}
+        self.created_tables = []
         if with_demarche_tables:
             self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
@@ -265,6 +267,7 @@ class FakeGristServer:
                         for col in table["columns"]
                     }
                     self._add_table_meta(table["id"])
+                    self.created_tables.append(table["id"])
                 return build_response(
                     {"tables": [{"id": t["id"]} for t in payload["tables"]]}
                 )
@@ -431,6 +434,32 @@ def make_schema():
             ],
         },
     }
+
+
+def make_schema_with_repetable_block():
+    """Schéma minimal avec un bloc répétable « Membres » (un champ texte)."""
+    schema = make_schema()
+    schema["activeRevision"]["champDescriptors"].append(
+        {
+            "__typename": "RepetitionChampDescriptor",
+            "id": "desc_bloc",
+            "type": "repetition",
+            "label": "Membres",
+            "description": "",
+            "required": False,
+            "champDescriptors": [
+                {
+                    "__typename": "TextChampDescriptor",
+                    "id": "desc_nom",
+                    "type": "text",
+                    "label": "Nom",
+                    "description": "",
+                    "required": False,
+                }
+            ],
+        }
+    )
+    return schema
 
 
 def make_dossier(number, **overrides):
@@ -1527,7 +1556,7 @@ class TestTableSetupFailure:
 
         with patch.object(
             gpa,
-            "update_grist_tables_from_schema",
+            "ensure_sync_table_structure",
             side_effect=RuntimeError("création impossible"),
         ):
             result, _ = run_pipeline(server, dn_server, parallel=False)
@@ -1564,27 +1593,7 @@ class TestPageTree:
 
     def test_repetable_block_page_filed_under_parent(self):
         """la table d'un bloc répétable est rangée comme les autres"""
-        schema = make_schema()
-        schema["activeRevision"]["champDescriptors"].append(
-            {
-                "__typename": "RepetitionChampDescriptor",
-                "id": "desc_bloc",
-                "type": "repetition",
-                "label": "Membres",
-                "description": "",
-                "required": False,
-                "champDescriptors": [
-                    {
-                        "__typename": "TextChampDescriptor",
-                        "id": "desc_nom",
-                        "type": "text",
-                        "label": "Nom",
-                        "description": "",
-                        "required": False,
-                    }
-                ],
-            }
-        )
+        schema = make_schema_with_repetable_block()
         server = FakeGristServer(with_demarche_tables=False)
         dn_server = FakeDemarchesServer([make_dossier(1)])
 
@@ -1610,6 +1619,105 @@ class TestPageTree:
         assert "Demarche_12345" not in server.tables
         assert all(indentation == 0 for _, indentation, _ in server.page_tree())
         assert not any(name.startswith("N° ") for name, _, _ in server.page_tree())
+
+
+REPETABLE_TABLE = "Demarche_12345_repetable_membres"
+
+
+def first_sync_columns():
+    """Colonnes de chaque table après une première synchro, sur un document vide."""
+    server = FakeGristServer(with_demarche_tables=False)
+    run_pipeline(
+        server,
+        FakeDemarchesServer([make_dossier(1)]),
+        schema=make_schema_with_repetable_block(),
+        parallel=False,
+    )
+    return {table_id: set(columns) for table_id, columns in server.tables.items()}
+
+
+class TestSyncTableStructure:
+    """Création des tables manquantes et complétion des tables existantes."""
+
+    @pytest.mark.parametrize(
+        "table_id, kept_column",
+        [
+            (CHAMPS_TABLE, "dossier_number"),
+            (ANNOTATIONS_TABLE, "dossier_number"),
+            (REPETABLE_TABLE, "dossier_number"),
+            ("Demarche_12345_demandeurs", "dossier_number"),
+            ("Demarche_12345_instructeurs", "groupe_instructeur_id"),
+            (AVIS_TABLE, "dossier_number"),
+            (SYNC_METADATA_TABLE, "demarche_number"),
+        ],
+    )
+    def test_existing_table_gets_missing_columns(self, table_id, kept_column):
+        """une table existante incomplète est complétée, sans être recréée"""
+        expected = first_sync_columns()[table_id]
+        server = FakeGristServer()
+        server.tables[table_id] = {kept_column: "Int"}
+
+        result, _ = run_pipeline(
+            server,
+            FakeDemarchesServer([make_dossier(1)]),
+            schema=make_schema_with_repetable_block(),
+            parallel=False,
+        )
+
+        assert result is True
+        assert set(server.tables[table_id]) == expected
+        assert table_id not in server.created_tables
+
+    def test_existing_table_found_whatever_the_case(self):
+        """une table existante écrite dans une autre casse est réutilisée"""
+        server = FakeGristServer()
+        server.tables["demarche_12345_instructeurs"] = {
+            "groupe_instructeur_id": "Text"
+        }
+
+        result, _ = run_pipeline(server, FakeDemarchesServer([make_dossier(1)]))
+
+        assert result is True
+        assert "Demarche_12345_instructeurs" not in server.created_tables
+
+    def test_no_annotation_no_annotations_table(self):
+        """démarche sans annotation -> pas de table des annotations"""
+        schema = make_schema()
+        schema["activeRevision"]["annotationDescriptors"] = []
+        server = FakeGristServer(with_demarche_tables=False)
+
+        result, _ = run_pipeline(
+            server,
+            FakeDemarchesServer([make_dossier(1, annotations=[])]),
+            schema=schema,
+            parallel=False,
+        )
+
+        assert result is True
+        assert ANNOTATIONS_TABLE not in server.tables
+
+    def test_avis_table_created_at_first_avis_only(self):
+        """pas d'avis -> pas de table avis ; elle apparaît au premier avis"""
+        server = FakeGristServer(with_demarche_tables=False)
+
+        run_pipeline(
+            server,
+            FakeDemarchesServer([make_dossier(1, avis=[])]),
+            parallel=False,
+        )
+        assert AVIS_TABLE not in server.tables
+
+        # Dossier modifié après la première synchro : repris par le delta
+        recent = "2099-01-01T00:00:00Z"
+        run_pipeline(
+            server,
+            FakeDemarchesServer(
+                [make_dossier(2, dateDerniereModification=recent)]
+            ),
+            parallel=False,
+        )
+        assert AVIS_TABLE in server.tables
+        assert len(server.rows(AVIS_TABLE)) == 1
 
 
 class TestHiddenIdColumns:

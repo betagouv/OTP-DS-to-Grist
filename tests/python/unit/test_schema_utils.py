@@ -10,7 +10,7 @@ from schema_utils import (
     auto_clean_schema_descriptors,
     create_columns_from_schema,
     get_demarche_schema,
-    update_grist_tables_from_schema,
+    ensure_sync_table_structure,
 )
 
 
@@ -179,9 +179,9 @@ class TestSchemaUtils:
         assert cleaned == schema
 
 
-class TestUpdateGristTablesFromSchema:
+class TestEnsureSyncTableStructure:
     """Tests unitaires pour la fonction imbriquée add_missing_columns
-    via update_grist_tables_from_schema"""
+    via ensure_sync_table_structure"""
 
     def setup_method(self):
         self.client = MagicMock()
@@ -212,7 +212,7 @@ class TestUpdateGristTablesFromSchema:
             patch("schema_utils.API_TOKEN", "fake-token"),
             patch("schema_utils.requests.post") as mock_post,
         ):
-            result = update_grist_tables_from_schema(
+            result = ensure_sync_table_structure(
                 self.client, 123, self._column_types()
             )
         assert result["dossiers"] == "Demarche_123_dossiers"
@@ -231,7 +231,7 @@ class TestUpdateGristTablesFromSchema:
             patch("schema_utils.API_TOKEN", "fake-token"),
             patch("schema_utils.requests.post") as mock_post,
         ):
-            result = update_grist_tables_from_schema(
+            result = ensure_sync_table_structure(
                 self.client, 123, self._column_types()
             )
         assert result["dossiers"] == "Demarche_123_dossiers"
