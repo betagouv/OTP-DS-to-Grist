@@ -15,7 +15,7 @@ la vraie pagination DS est donc traversée. Ce faux serveur sert un dossier
 "résumé" ou "détaillé" selon la query reçue, si bien qu'une requête qui
 abandonnerait les détails se verrait dans l'état final Grist.
 
-Sont mockés, pour isoler le périmètre : `get_optimized_schema` (schéma DS),
+Sont mockés, pour isoler le périmètre : `get_demarche_schema_robust` (schéma DS),
 `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
 `detect_demandeur_type` et `hide_columns_with_id` (dernière tâche de niveau
 démarche, dont on vérifie seulement qu'elle est exécutée).
@@ -630,7 +630,12 @@ def grist_transport(server):
 
 
 def run_pipeline(
-    server, dn_server, filters=None, deletion_error=None, **pipeline_kwargs
+    server,
+    dn_server,
+    filters=None,
+    deletion_error=None,
+    schema_error=None,
+    **pipeline_kwargs,
 ):
     """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
 
@@ -639,10 +644,17 @@ def run_pipeline(
 
     `filters` surcharge les variables de filtre neutralisées par défaut, afin
     que les tests n dépendent pas du `.env` du poste.
+
+    `schema_error` fait échouer la récupération du schéma de la démarche.
     """
     with ExitStack() as stack, grist_transport(server) as client:
         stack.enter_context(
-            patch.object(gpa, "get_optimized_schema", return_value=make_schema())
+            patch.object(
+                gpa,
+                "get_demarche_schema_robust",
+                return_value=make_schema(),
+                side_effect=schema_error,
+            )
         )
         stack.enter_context(
             patch.object(dn_client_module, "API_TOKEN", "jeton-de-test")
@@ -1395,6 +1407,62 @@ class TestResumeMarkerOnFailedDossiers:
         assert metadata["last_sync_status"] == "partial"
         assert metadata["updated_since_cursor"] == self.CURSOR
         assert metadata["deleted_since_cursor"] == self.CURSOR
+
+    def test_all_dossiers_failed_still_returns_true(self):
+        """Tous les dossiers sélectionnés en échec : la synchro va à son terme
+        et se déclare réussie, le repère de reprise étant conservé.
+        """
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer(dossiers_de_test(3))
+
+        with patch.object(
+            gpa, "dossier_to_flat_data", side_effect=RuntimeError("extraction")
+        ):
+            result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert server.rows(DOSSIERS_TABLE) == []
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "partial"
+
+
+class TestTableSetupFailure:
+    """Schéma ou création des tables en échec : la synchro échoue, sans chemin
+    de secours qui créerait des tables par une autre voie.
+    """
+
+    def test_schema_unavailable_fails_sync(self):
+        """schéma DN indisponible -> échec, aucune table créée ni écrite"""
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+        initial_tables = set(server.tables)
+
+        result, _ = run_pipeline(
+            server,
+            dn_server,
+            schema_error=RuntimeError("schéma indisponible"),
+            parallel=False,
+        )
+
+        assert result is False
+        assert set(server.tables) == initial_tables
+        assert server.rows(DOSSIERS_TABLE) == []
+
+    def test_table_creation_error_fails_sync(self):
+        """création des tables en échec -> échec, aucune table créée ni écrite"""
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+        initial_tables = set(server.tables)
+
+        with patch.object(
+            gpa,
+            "update_grist_tables_from_schema",
+            side_effect=RuntimeError("création impossible"),
+        ):
+            result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is False
+        assert set(server.tables) == initial_tables
+        assert server.rows(DOSSIERS_TABLE) == []
 
 
 class TestHiddenIdColumns:

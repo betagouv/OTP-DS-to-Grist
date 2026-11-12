@@ -1,6 +1,5 @@
 import json
 import os
-import traceback
 from collections.abc import Callable
 from typing import Any
 
@@ -471,96 +470,6 @@ class GristClient:
         response = self._get_session().post(url, headers=self.headers, json=actions)
 
         return response
-
-    def create_or_clear_grist_tables(
-        self, demarche_number: int | str, column_types: dict[str, Any]
-    ) -> dict[str, str]:
-        """
-        Crée ou met à jour les tables Grist pour une démarche.
-        """
-        try:
-            # FILTRAGE EXPLICITE DES COLONNES PROBLÉMATIQUES
-            # Retirer toutes les colonnes qui pourraient correspondre à HeaderSectionChamp et ExplicationChamp
-            filtered_champ_columns = column_types.get("champs", [])
-            # Remplacer les colonnes originales par les colonnes filtrées
-            column_types["champs"] = filtered_champ_columns
-
-            # Filtrage similaire pour les colonnes d'annotations
-            filtered_annotation_columns = column_types.get("annotations", [])
-            # Remplacer les colonnes originales par les colonnes filtrées
-            column_types["annotations"] = filtered_annotation_columns
-
-            # Définir les IDs de tables
-            dossier_table_id = f"Demarche_{demarche_number}_dossiers"
-            champ_table_id = f"Demarche_{demarche_number}_champs"
-            annotation_table_id = f"Demarche_{demarche_number}_annotations"
-
-            # Récupérer les tables existantes
-            existing_tables_response = self.list_tables()
-            existing_tables = existing_tables_response.get("tables", [])
-
-            # Rechercher les tables existantes (dossiers, champs, annotations, répétables)
-            dossier_table = None
-            champ_table = None
-            annotation_table = None
-
-            for table in existing_tables:
-                if isinstance(table, dict):
-                    table_id = table.get("id", "").lower()
-                    if table_id == dossier_table_id.lower():
-                        dossier_table = table
-                        dossier_table_id = table.get("id")
-                        log(
-                            f"Table dossiers existante trouvée avec l'ID {dossier_table_id}"
-                        )
-                    elif table_id == champ_table_id.lower():
-                        champ_table = table
-                        champ_table_id = table.get("id")
-                        log(
-                            f"Table champs existante trouvée avec l'ID {champ_table_id}"
-                        )
-                    elif table_id == annotation_table_id.lower():
-                        annotation_table = table
-                        annotation_table_id = table.get("id")
-                        log(
-                            f"Table annotations existante trouvée avec l'ID {annotation_table_id}"
-                        )
-
-            # Créer la table des dossiers si elle n'existe pas
-            if not dossier_table:
-                dossier_table_result = self.create_table(
-                    dossier_table_id, column_types["dossier"]
-                )
-                dossier_table = dossier_table_result["tables"][0]
-                dossier_table_id = dossier_table.get("id")
-
-            # Créer la table des champs si elle n'existe pas
-            if not champ_table:
-                champ_table_result = self.create_table(
-                    champ_table_id, column_types["champs"]
-                )
-                champ_table = champ_table_result["tables"][0]
-                champ_table_id = champ_table.get("id")
-
-            # Créer la table des annotations si elle n'existe pas
-            if not annotation_table:
-                annotation_table_result = self.create_table(
-                    annotation_table_id, column_types["annotations"]
-                )
-                annotation_table = annotation_table_result["tables"][0]
-                annotation_table_id = annotation_table.get("id")
-
-            # Retourner les IDs des tables
-            return {
-                "dossier_table_id": dossier_table_id,
-                "champ_table_id": champ_table_id,
-                "annotation_table_id": annotation_table_id,
-            }
-
-        except Exception as e:
-            log_error(f"Erreur lors de la gestion des tables Grist: {e}")
-            traceback.print_exc()
-            raise
 
     def upsert_multiple_dossiers_in_grist(
         self,

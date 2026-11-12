@@ -1273,20 +1273,6 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned_demarche
 
 
-def get_demarche_schema_enhanced(demarche_number: int, prefer_robust: bool = True):
-    """
-    Point d'entrée principal pour obtenir le schéma avec choix de version.
-    """
-    if prefer_robust:
-        try:
-            return get_demarche_schema_robust(demarche_number)
-        except Exception as e:
-            print(f"Fallback vers version classique suite à: {e}")
-            return get_demarche_schema(demarche_number)
-    else:
-        return get_demarche_schema(demarche_number)
-
-
 # --- Helpers privés (module) ---
 
 

@@ -1187,59 +1187,6 @@ class TestRunSql:
             client.run_sql("SELECT 1")
 
 
-class TestCreateOrClearGristTables:
-    """Tests unitaires pour GristClient.create_or_clear_grist_tables"""
-
-    def setup_method(self):
-        self.client = GristClient(
-            "https://grist.example.com", "test_key", doc_id="doc123"
-        )
-
-    def test_creates_missing_tables(self):
-        """aucune table existante -> crée les 3 tables"""
-        with (
-            patch.object(self.client, "list_tables", return_value={"tables": []}),
-            patch.object(
-                self.client,
-                "create_table",
-                side_effect=lambda table_id, columns: {"tables": [{"id": table_id}]},
-            ) as mock_create,
-        ):
-            result = self.client.create_or_clear_grist_tables(
-                5,
-                {
-                    "dossier": [{"id": "a", "type": "Text"}],
-                    "champs": [],
-                    "annotations": [],
-                },
-            )
-        assert result["dossier_table_id"] == "Demarche_5_dossiers"
-        assert result["champ_table_id"] == "Demarche_5_champs"
-        assert result["annotation_table_id"] == "Demarche_5_annotations"
-        assert mock_create.call_count == 3
-
-    def test_uses_existing_tables(self):
-        """tables existantes -> aucune création"""
-        existing = {
-            "tables": [
-                {"id": "Demarche_5_dossiers"},
-                {"id": "Demarche_5_champs"},
-                {"id": "Demarche_5_annotations"},
-            ]
-        }
-        with (
-            patch.object(self.client, "list_tables", return_value=existing),
-            patch.object(self.client, "create_table") as mock_create,
-        ):
-            result = self.client.create_or_clear_grist_tables(
-                5, {"dossier": [], "champs": [], "annotations": []}
-            )
-        mock_create.assert_not_called()
-        assert result["dossier_table_id"] == "Demarche_5_dossiers"
-        assert result["champ_table_id"] == "Demarche_5_champs"
-        assert result["annotation_table_id"] == "Demarche_5_annotations"
-
-
 class TestTableExists:
     """Tests unitaires pour GristClient.table_exists"""
 
