@@ -441,10 +441,7 @@ def process_demarche_for_grist_optimized(
         table_ids = {
             "dossier_table_id": table_result.get("dossiers"),
             "champ_table_id": table_result.get("champs"),
-            "annotations": table_result.get("annotations"),  #  Nouvelle clé
-            "annotation_table_id": table_result.get(
-                "annotations"
-            ),  #  Rétro-compatibilité
+            "annotations": table_result.get("annotations"),
         }
 
         if "repetable_blocks" in table_result:
@@ -509,7 +506,7 @@ def process_demarche_for_grist_optimized(
         log("Tables utilisées pour l'importation:")
         log(f"  Table dossiers: {table_ids['dossier_table_id']}")
         log(f"  Table champs: {table_ids['champ_table_id']}")
-        log(f"  Table annotations: {table_ids['annotation_table_id']}")
+        log(f"  Table annotations: {table_ids['annotations']}")
 
         # Filtres de sélection des dossiers (appliqués page par page, plus bas)
         filters = read_filters_from_env()
