@@ -976,7 +976,9 @@ def process_demarche_for_grist_optimized(
                     from schema_utils import create_avis_columns
 
                     avis_table_id = f"Demarche_{demarche_number}_avis"
-                    result = client.create_table(avis_table_id, create_avis_columns())
+                    result = client.create_demarche_table(
+                        demarche_number, avis_table_id, create_avis_columns()
+                    )
                     table_ids["avis"] = result["tables"][0].get("id")
                     log(f"  Table avis créée: {table_ids['avis']}")
 

@@ -964,8 +964,8 @@ def update_grist_tables_from_schema(
 
         # Créer ou mettre à jour la table des dossiers
         if not dossier_table:
-            dossier_table_result = client.create_table(
-                dossier_table_id, column_types["dossier"]
+            dossier_table_result = client.create_demarche_table(
+                demarche_number, dossier_table_id, column_types["dossier"]
             )
             dossier_table = dossier_table_result["tables"][0]
             dossier_table_id = dossier_table.get("id")
@@ -978,7 +978,9 @@ def update_grist_tables_from_schema(
                 {"id": "dossier_number", "type": "Int"},
                 {"id": "champ_id", "type": "Text"},
             ]
-            champ_table_result = client.create_table(champ_table_id, base_columns)
+            champ_table_result = client.create_demarche_table(
+                demarche_number, champ_table_id, base_columns
+            )
             champ_table = champ_table_result["tables"][0]
             champ_table_id = champ_table.get("id")
 
@@ -994,8 +996,8 @@ def update_grist_tables_from_schema(
                 len(column_types["annotations"]) > 1
             ):  # > 1 car il y a toujours dossier_number
                 base_columns = [{"id": "dossier_number", "type": "Int"}]
-                annotation_table_result = client.create_table(
-                    annotation_table_id, base_columns
+                annotation_table_result = client.create_demarche_table(
+                    demarche_number, annotation_table_id, base_columns
                 )
                 annotation_table = annotation_table_result["tables"][0]
                 annotation_table_id = annotation_table.get("id")
@@ -1029,7 +1031,9 @@ def update_grist_tables_from_schema(
                     log(
                         f"Création de la table {table_id} pour le bloc '{block_info['original_label']}'"
                     )
-                    table_result = client.create_table(table_id, block_info["columns"])
+                    table_result = client.create_demarche_table(
+                        demarche_number, table_id, block_info["columns"]
+                    )
                     table_id = table_result["tables"][0].get("id")
                 else:
                     # Ajouter les colonnes manquantes
@@ -1056,8 +1060,8 @@ def update_grist_tables_from_schema(
 
         # Créer ou mettre à jour
         if not demandeurs_table:
-            demandeurs_table_result = client.create_table(
-                demandeurs_table_id, demandeurs_columns
+            demandeurs_table_result = client.create_demarche_table(
+                demarche_number, demandeurs_table_id, demandeurs_columns
             )
             demandeurs_table = demandeurs_table_result["tables"][0]
             demandeurs_table_id = demandeurs_table.get("id")
@@ -1074,8 +1078,8 @@ def update_grist_tables_from_schema(
 
         if not instructeurs_table:
             instructeurs_columns = create_instructeurs_columns()
-            instructeurs_table_result = client.create_table(
-                instructeurs_table_id, instructeurs_columns
+            instructeurs_table_result = client.create_demarche_table(
+                demarche_number, instructeurs_table_id, instructeurs_columns
             )
             instructeurs_table = instructeurs_table_result["tables"][0]
             instructeurs_table_id = instructeurs_table.get("id")
