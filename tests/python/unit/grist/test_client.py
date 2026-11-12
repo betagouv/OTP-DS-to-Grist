@@ -540,6 +540,83 @@ class TestCreateTable:
         payload = session.post.call_args.kwargs["json"]
         assert payload["tables"][0]["id"] == "t"
 
+    def _session(self, created_table_id="t", columns=("col1",), patch_status=200):
+        """Session factice : création OK, relecture des colonnes, puis PATCH."""
+        session = MagicMock()
+        session.post.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(return_value={"tables": [{"id": created_table_id}]}),
+        )
+        session.get.return_value = MagicMock(
+            status_code=200,
+            json=MagicMock(
+                return_value={"columns": [{"id": c, "type": "Text"} for c in columns]}
+            ),
+        )
+        session.patch.return_value = MagicMock(status_code=patch_status, text="boom")
+        return session
+
+    def test_unties_created_columns(self):
+        """après création, les colonnes relues sont déliées en un seul PATCH"""
+        session = self._session(columns=("col1", "col2"))
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.create_table(
+                "t", [{"id": "col1", "type": "Text"}, {"id": "col2", "type": "Int"}]
+            )
+        session.patch.assert_called_once()
+        assert (
+            session.patch.call_args.args[0]
+            == "https://grist.example.com/docs/doc123/tables/t/columns"
+        )
+        assert session.patch.call_args.kwargs["json"] == {
+            "columns": [
+                {"id": "col1", "fields": {"untieColIdFromLabel": True}},
+                {"id": "col2", "fields": {"untieColIdFromLabel": True}},
+            ]
+        }
+
+    def test_unties_ids_actually_created(self):
+        """id corrigé par Grist -> c'est l'id réel, relu après création, qui est délié"""
+        session = self._session(created_table_id="T_cree", columns=("col2",))
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.create_table("t_cree", [{"id": "col", "type": "Text"}])
+        assert session.get.call_args.args[0].endswith("/tables/T_cree/columns")
+        assert session.patch.call_args.args[0].endswith("/tables/T_cree/columns")
+        assert session.patch.call_args.kwargs["json"]["columns"][0]["id"] == "col2"
+
+    def test_untie_failure_keeps_table(self):
+        """déliage refusé -> journalisé, la création reste un succès"""
+        session = self._session(patch_status=500)
+        with patch.object(GristClient, "_get_session", return_value=session), patch(
+            "grist.client.log_error"
+        ) as mock_error:
+            result = self.client.create_table("t", [{"id": "col1", "type": "Text"}])
+        assert result["tables"][0]["id"] == "t"
+        assert "Déliage" in mock_error.call_args.args[0]
+
+    def test_untie_network_error_keeps_table(self):
+        """erreur réseau au déliage -> journalisée, sans exception"""
+        session = self._session()
+        session.patch.side_effect = requests.ConnectionError("coupure")
+        with patch.object(GristClient, "_get_session", return_value=session), patch(
+            "grist.client.log_error"
+        ) as mock_error:
+            result = self.client.create_table("t", [{"id": "col1", "type": "Text"}])
+        assert result["tables"][0]["id"] == "t"
+        assert "coupure" in mock_error.call_args.args[0]
+
+    def test_columns_read_network_error_keeps_table(self):
+        """erreur réseau à la relecture des colonnes -> journalisée, sans déliage ni exception"""
+        session = self._session()
+        session.get.side_effect = requests.ConnectionError("coupure relecture")
+        with patch.object(GristClient, "_get_session", return_value=session), patch(
+            "grist.client.log_error"
+        ) as mock_error:
+            result = self.client.create_table("t", [{"id": "col1", "type": "Text"}])
+        assert result["tables"][0]["id"] == "t"
+        assert "coupure relecture" in mock_error.call_args.args[0]
+        session.patch.assert_not_called()
+
 
 class TestGetColumns:
     """Tests unitaires pour GristClient.get_columns"""
@@ -706,6 +783,46 @@ class TestAddColumns:
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.add_columns("t", [{"id": "col1", "type": "Text"}])
+
+    def test_unties_ids_returned_by_grist(self):
+        """les ids renvoyés par la création (ici corrigé en col12) sont déliés"""
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = {"columns": [{"id": "col12"}]}
+        session = MagicMock()
+        session.post.return_value = mock_response
+        session.patch.return_value = MagicMock(status_code=200)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.add_columns("t", [{"id": "col1", "type": "Text"}])
+        assert result is mock_response
+        assert (
+            session.patch.call_args.args[0]
+            == "https://grist.example.com/docs/doc123/tables/t/columns"
+        )
+        assert session.patch.call_args.kwargs["json"] == {
+            "columns": [{"id": "col12", "fields": {"untieColIdFromLabel": True}}]
+        }
+
+    def test_failed_creation_unties_nothing(self):
+        """création refusée -> aucun déliage"""
+        session = MagicMock()
+        session.post.return_value = MagicMock(status_code=400, text="bad")
+        with patch.object(GristClient, "_get_session", return_value=session):
+            self.client.add_columns("t", [{"id": "col1", "type": "Text"}])
+        session.patch.assert_not_called()
+
+    def test_untie_failure_returns_creation_response(self):
+        """déliage refusé -> journalisé, l'appelant reçoit la réponse de création"""
+        mock_response = MagicMock(status_code=200)
+        mock_response.json.return_value = {"columns": [{"id": "col1"}]}
+        session = MagicMock()
+        session.post.return_value = mock_response
+        session.patch.return_value = MagicMock(status_code=403, text="No write")
+        with patch.object(GristClient, "_get_session", return_value=session), patch(
+            "grist.client.log_error"
+        ) as mock_error:
+            result = self.client.add_columns("t", [{"id": "col1", "type": "Text"}])
+        assert result is mock_response
+        assert "No write" in mock_error.call_args.args[0]
 
 
 class TestSplitRecordsBySize:

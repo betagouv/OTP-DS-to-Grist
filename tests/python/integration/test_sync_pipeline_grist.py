@@ -107,6 +107,9 @@ class FakeGristServer:
     `failing_writes` liste les tables dont l'écriture d'enregistrements (POST et
     PATCH) échoue en 500 ; modifiable entre deux runs pour simuler un retour à
     la normale.
+
+    `untied` garde, par table, les colonnes déliées de leur libellé
+    (`PATCH /columns` avec `untieColIdFromLabel`).
     """
 
     def __init__(self, initial_records=None, failing_reads=(), failing_writes=()):
@@ -116,6 +119,7 @@ class FakeGristServer:
         self.calls = []
         self.failing_reads = set(failing_reads)
         self.failing_writes = set(failing_writes)
+        self.untied = {}
         self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
@@ -289,6 +293,14 @@ class FakeGristServer:
         if method == "POST" and parts[4] == "columns":
             for col in payload["columns"]:
                 self.tables.setdefault(table_id, {})[col["id"]] = col.get("type", "Text")
+            return build_response(
+                {"columns": [{"id": col["id"]} for col in payload["columns"]]}
+            )
+
+        if method == "PATCH" and parts[4] == "columns":
+            for col in payload["columns"]:
+                if col["fields"].get("untieColIdFromLabel"):
+                    self.untied.setdefault(table_id, set()).add(col["id"])
             return build_response({})
 
         raise AssertionError(f"Requête non prévue : {method} {parts}")
@@ -696,6 +708,13 @@ class TestSyncPipelineGrist:
         assert "objet_de_la_demande" in server.tables[CHAMPS_TABLE]
         assert "annotation_interne" in server.tables[ANNOTATIONS_TABLE]
         assert "annotation_interne_id" in server.tables[ANNOTATIONS_TABLE]
+
+        # Les colonnes créées par la sync sont déliées de leur libellé : celles
+        # des tables créées (create_table) comme celles ajoutées (add_columns)
+        for table_id in (ANNOTATIONS_TABLE, AVIS_TABLE, SYNC_METADATA_TABLE):
+            assert server.untied[table_id] == set(server.tables[table_id])
+        assert {"suivi_par"} <= server.untied[DOSSIERS_TABLE]
+        assert {"objet_de_la_demande"} <= server.untied[CHAMPS_TABLE]
 
         # Le dossier est écrit avec les valeurs de la source
         dossiers = server.rows(DOSSIERS_TABLE)
