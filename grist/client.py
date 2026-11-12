@@ -107,40 +107,6 @@ class GristClient:
 
             return None
 
-    def table_exists(self, table_id: str) -> dict[str, Any] | None:
-        """
-        Vérifie si une table existe dans le document Grist.
-        """
-        try:
-            tables_data = self.list_tables()
-
-            # Vérification de la structure de tables_data
-            if isinstance(tables_data, dict) and "tables" in tables_data:
-                tables = tables_data["tables"]
-            elif isinstance(tables_data, list):
-                tables = tables_data
-            else:
-                log_verbose(
-                    f"Structure inattendue de données de tables: {type(tables_data)}"
-                )
-                return None
-
-            # Recherche case-insensitive
-            for table in tables:
-                if (
-                    isinstance(table, dict)
-                    and table.get("id", "").lower() == table_id.lower()
-                ):
-                    log_verbose(f"Table {table_id} trouvée avec l'ID {table.get('id')}")
-                    return table
-
-            log_verbose(f"Table {table_id} non trouvée")
-            return None
-
-        except Exception as e:
-            log_error(f"Erreur lors de la recherche de la table {table_id}: {e}")
-            return None
-
     def get_existing_dossier_numbers(self, table_id: str) -> dict[str, int]:
         if not self.doc_id:
             raise ValueError("Document ID is required")
@@ -323,9 +289,7 @@ class GristClient:
             if "id" not in col or not col["id"]:
                 raise ValueError(f"Column missing id: {col}")
             if "type" not in col or not col["type"]:
-                raise ValueError(
-                    f"Invalid column id '{col['id']}'. Must start with a letter and contain only letters, numbers, and underscores."
-                )
+                raise ValueError(f"Column missing type: {col}")
 
         response = self._get_session().post(url, headers=self.headers, json=data)
         if response.status_code != 200:
