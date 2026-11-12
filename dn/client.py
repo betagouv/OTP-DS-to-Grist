@@ -719,29 +719,11 @@ def get_demarche_groupe_numbers(
     Contrairement à `get_groups`, lève une exception quand la liste ne peut pas
     être lue : une liste vide ferait écarter à tort tous les groupes filtrés.
     """
-    if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré.")
-
-    if session is None:
-        session = get_session_with_retries()
-
-    response = session.post(
-        DEMARCHES_API_URL,
-        json={
-            "query": query_demarche_groupe_numbers,
-            "variables": {"demarcheNumber": demarche_number},
-        },
-        headers={
-            "Authorization": f"Bearer {API_TOKEN}",
-            "Content-Type": "application/json",
-        },
+    result = _post_graphql(
+        query_demarche_groupe_numbers,
+        {"demarcheNumber": demarche_number},
+        session=session,
     )
-    response.raise_for_status()
-    result = response.json()
-
-    if "errors" in result:
-        messages = [e.get("message", "") for e in result["errors"]]
-        raise Exception(f"GraphQL errors: {', '.join(messages)}")
 
     demarche = (result.get("data") or {}).get("demarche")
     if demarche is None:
@@ -763,15 +745,6 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     Returns:
         list[dict]: [{"number": int, "labels": [{"id", "name", "color"}, ...]}, ...]
     """
-    if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré.")
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    session = get_session_with_retries()
-
     query = """
     query getDemarcheLabels($demarcheNumber: Int!, $after: String) {
         demarche(number: $demarcheNumber) {
@@ -793,34 +766,12 @@ def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, An
     }
     """
 
-    dossiers = []
-    cursor = None
-    page_num = 0
-    has_next_page = True
+    pages = list(
+        _iter_connection_pages(query, {"demarcheNumber": demarche_number}, "dossiers")
+    )
+    dossiers = [dossier for page in pages for dossier in page]
 
-    while has_next_page:
-        page_num += 1
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={
-                "query": query,
-                "variables": {"demarcheNumber": demarche_number, "after": cursor},
-            },
-            headers=headers,
-        )
-        response.raise_for_status()
-        result = response.json()
-
-        if "errors" in result:
-            messages = [e.get("message", "Unknown error") for e in result["errors"]]
-            raise Exception(f"GraphQL errors: {', '.join(messages)}")
-
-        connection = result["data"]["demarche"]["dossiers"]
-        dossiers.extend(connection["nodes"])
-        has_next_page = connection["pageInfo"]["hasNextPage"]
-        cursor = connection["pageInfo"]["endCursor"]
-
-    print(f"[LABELS] {len(dossiers)} dossiers récupérés en {page_num} page(s)")
+    print(f"[LABELS] {len(dossiers)} dossiers récupérés en {len(pages)} page(s)")
 
     return dossiers
 
@@ -836,17 +787,9 @@ def get_deleted_dossiers(
     Pagination complète sur les deux connexions.
     deleted_since (ISO8601) limite deletedDossiers aux suppressions récentes.
     """
-    if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré.")
-
     if not deleted_since:
         deleted_since = None
 
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    session = get_session_with_retries()
     all_deleted = []
 
     # --- deletedDossiers (suppression confirmée) ---
@@ -860,29 +803,13 @@ def get_deleted_dossiers(
         }
     }
     """
-    cursor = None
-    has_next_page = True
-    while has_next_page:
-        variables = {
-            "demarcheNumber": demarche_number,
-            "first": 100,
-            "after": cursor,
-            "since": deleted_since,
-        }
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={"query": query_deleted, "variables": variables},
-            headers=headers,
-        )
-        response.raise_for_status()
-        result = response.json()
-        if "errors" in result:
-            messages = [e.get("message", "Unknown error") for e in result["errors"]]
-            raise Exception(f"GraphQL errors: {', '.join(messages)}")
-        connection = result["data"]["demarche"]["deletedDossiers"]
-        all_deleted.extend(connection["nodes"])
-        has_next_page = connection["pageInfo"]["hasNextPage"]
-        cursor = connection["pageInfo"]["endCursor"]
+    variables = {
+        "demarcheNumber": demarche_number,
+        "first": 100,
+        "since": deleted_since,
+    }
+    for page in _iter_connection_pages(query_deleted, variables, "deletedDossiers"):
+        all_deleted.extend(page)
 
     # --- pendingDeletedDossiers (en attente, mais déjà invisible pour les instructeurs) ---
     query_pending = """
@@ -895,24 +822,11 @@ def get_deleted_dossiers(
         }
     }
     """
-    cursor = None
-    has_next_page = True
-    while has_next_page:
-        variables = {"demarcheNumber": demarche_number, "first": 100, "after": cursor}
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={"query": query_pending, "variables": variables},
-            headers=headers,
-        )
-        response.raise_for_status()
-        result = response.json()
-        if "errors" in result:
-            messages = [e.get("message", "Unknown error") for e in result["errors"]]
-            raise Exception(f"GraphQL errors: {', '.join(messages)}")
-        connection = result["data"]["demarche"]["pendingDeletedDossiers"]
-        all_deleted.extend(connection["nodes"])
-        has_next_page = connection["pageInfo"]["hasNextPage"]
-        cursor = connection["pageInfo"]["endCursor"]
+    variables = {"demarcheNumber": demarche_number, "first": 100}
+    for page in _iter_connection_pages(
+        query_pending, variables, "pendingDeletedDossiers"
+    ):
+        all_deleted.extend(page)
 
     return all_deleted
 
@@ -937,31 +851,12 @@ def get_groups(
         }
         """
 
-        variables = {"demarcheNumber": int(demarche_number)}
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Content-Type": "application/json",
-        }
-
-        session = get_session_with_retries()
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={"query": query, "variables": variables},
-            headers=headers,
+        result = _post_graphql(
+            query,
+            {"demarcheNumber": int(demarche_number)},
+            token=api_token,
             timeout=10,
         )
-
-        if response.status_code != 200:
-            return []
-
-        result = response.json()
-        if "errors" in result:
-            messages = [e.get("message", "Unknown error") for e in result["errors"]]
-            log_error(
-                "Erreur GraphQL lors de la récupération des groupes instructeurs: "
-                + ", ".join(messages)
-            )
-            return []
 
         groupes = (
             result.get("data", {}).get("demarche", {}).get("groupeInstructeurs", [])
@@ -971,6 +866,50 @@ def get_groups(
     except Exception as e:
         log_error(f"Erreur lors de la récupération des groupes instructeurs: {e}")
         return []
+
+
+def get_demarche_instructeurs(demarche_number: int) -> list[dict[str, Any]]:
+    """
+    Récupère tous les instructeurs de la démarche organisés par groupe
+
+    Returns:
+        Liste de dictionnaires, 1 par instructeur
+    """
+
+    query = """
+    query getDemarche($demarcheNumber: Int!) {
+      demarche(number: $demarcheNumber) {
+        groupeInstructeurs {
+          id
+          number
+          label
+          instructeurs {
+            id
+            email
+          }
+        }
+      }
+    }
+    """
+
+    result = _post_graphql(query, {"demarcheNumber": demarche_number})
+    demarche = result.get("data", {}).get("demarche", {})
+    groupes = demarche.get("groupeInstructeurs", [])
+
+    instructeurs_list = []
+    for groupe in groupes:
+        for instructeur in groupe.get("instructeurs", []):
+            instructeurs_list.append(
+                {
+                    "groupe_instructeur_id": groupe.get("id"),
+                    "groupe_instructeur_number": groupe.get("number"),
+                    "groupe_instructeur_label": groupe.get("label"),
+                    "instructeur_id": instructeur.get("id"),
+                    "instructeur_email": instructeur.get("email"),
+                }
+            )
+
+    return instructeurs_list
 
 
 def get_pj_ocr_columns(demarche_number: int) -> dict[str, list[tuple[str, str]]]:
@@ -1015,39 +954,13 @@ def get_pj_ocr_columns(demarche_number: int) -> dict[str, list[tuple[str, str]]]
         }
     }
     """
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
     variables = {
         "demarcheNumber": int(demarche_number),
         "first": PJ_OCR_SAMPLE_SIZE,
     }
 
     try:
-        session = get_session_with_retries()
-        response = session.post(
-            DEMARCHES_API_URL,
-            json={"query": query, "variables": variables},
-            headers=headers,
-            timeout=30,
-        )
-
-        if response.status_code != 200:
-            log_error(
-                f"Sous-colonnes OCR des pièces justificatives non récupérées "
-                f"(HTTP {response.status_code})"
-            )
-            return {}
-
-        result = response.json()
-        if "errors" in result:
-            messages = [e.get("message", "Unknown error") for e in result["errors"]]
-            log_error(
-                "Erreur GraphQL lors de la récupération des sous-colonnes OCR des "
-                "pièces justificatives: " + ", ".join(messages)
-            )
-            return {}
+        result = _post_graphql(query, variables, timeout=30)
 
         dossiers = (
             ((result.get("data") or {}).get("demarche") or {}).get("dossiers") or {}
@@ -1083,9 +996,6 @@ def get_demarche_descriptors(demarche_number: int) -> dict[str, Any]:
     Les erreurs GraphQL de permissions sont ignorées ; les autres erreurs,
     l'absence de démarche ou de révision active lèvent une exception.
     """
-    if not API_TOKEN:
-        raise ValueError("Le token d'API n'est pas configuré.")
-
     query = """
     query getDemarcheSchema($demarcheNumber: Int!) {
         demarche(number: $demarcheNumber) {
@@ -1142,28 +1052,11 @@ def get_demarche_descriptors(demarche_number: int) -> dict[str, Any]:
         }
     }
     """
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    session = get_session_with_retries()
-    response = session.post(
-        DEMARCHES_API_URL,
-        json={"query": query, "variables": {"demarcheNumber": int(demarche_number)}},
-        headers=headers,
+    result = _post_graphql(
+        query,
+        {"demarcheNumber": int(demarche_number)},
+        tolerate_permissions=True,
     )
-    response.raise_for_status()
-    result = response.json()
-
-    if "errors" in result:
-        filtered_errors = [
-            error.get("message", "")
-            for error in result["errors"]
-            if "permissions" not in error.get("message", "")
-        ]
-        if filtered_errors:
-            raise Exception(f"GraphQL errors: {', '.join(filtered_errors)}")
 
     if not result.get("data") or not result["data"].get("demarche"):
         raise Exception(
@@ -1181,6 +1074,63 @@ def get_demarche_descriptors(demarche_number: int) -> dict[str, Any]:
 
 
 # --- Helpers privés (module) ---
+def _post_graphql(
+    query: str,
+    variables: dict[str, Any],
+    session: requests.Session | None = None,
+    token: str | None = None,
+    timeout: int | None = None,
+    tolerate_permissions: bool = False,
+) -> dict[str, Any]:
+    """Envoie une requête GraphQL à DN : tout échec lève une exception.
+
+    Sans `token`, utilise celui de l'environnement. Avec `tolerate_permissions`,
+    les erreurs de permissions n'empêchent pas de renvoyer la réponse.
+    """
+    api_token = token or API_TOKEN
+    if not api_token:
+        raise ValueError("Le token d'API n'est pas configuré.")
+
+    if session is None:
+        session = get_session_with_retries()
+
+    response = session.post(
+        DEMARCHES_API_URL,
+        json={"query": query, "variables": variables},
+        headers={
+            "Authorization": f"Bearer {api_token}",
+            "Content-Type": "application/json",
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    result = response.json()
+
+    if "errors" in result:
+        messages = [e.get("message", "Unknown error") for e in result["errors"]]
+        if tolerate_permissions:
+            messages = [message for message in messages if "permissions" not in message]
+            if not messages:
+                return result
+        raise Exception(f"GraphQL errors: {', '.join(messages)}")
+
+    return result
+
+
+def _iter_connection_pages(
+    query: str, variables: dict[str, Any], connection: str
+) -> Iterator[list[dict[str, Any]]]:
+    """Éléments de chaque page d'une connexion de la démarche (ex. `deletedDossiers`)."""
+    cursor = None
+    has_next_page = True
+    while has_next_page:
+        result = _post_graphql(query, {**variables, "after": cursor})
+        page = result["data"]["demarche"][connection]
+        yield page["nodes"]
+        has_next_page = page["pageInfo"]["hasNextPage"]
+        cursor = page["pageInfo"]["endCursor"]
+
+
 def _strip_display_champs(dossier: dict[str, Any]) -> dict[str, Any]:
     """Retire des `champs` et des `annotations` les éléments purement d'affichage."""
     filtered = dossier.copy()

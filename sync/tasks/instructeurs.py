@@ -5,19 +5,11 @@ Synchronisation de la table Instructeurs (niveau démarche).
 Récupère les instructeurs de la démarche via l'API DN (groupeInstructeurs) et
 met la table Grist à jour par upsert sur la clé composite
 `instructeur_id` + `groupe_instructeur_id` : créations, mises à jour, suppressions.
-
-Utilisation autonome (depuis la racine du projet) :
-    python -m sync.tasks.instructeurs
-
-Variables d'environnement requises :
-    GRIST_BASE_URL, GRIST_API_KEY, GRIST_DOC_ID, DEMARCHE_NUMBER
 """
 
-import os
-import sys
 import time
 
-from dn.extract import extract_instructeurs_from_demarche
+from dn.client import get_demarche_instructeurs
 
 # Champs comparés pour décider si un enregistrement existant doit être mis à jour
 COMPARED_FIELDS = [
@@ -26,6 +18,66 @@ COMPARED_FIELDS = [
     "groupe_instructeur_label",
     "instructeur_email",
 ]
+
+
+def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=print):
+    """
+    Synchronise la table Instructeurs d'une démarche dans Grist.
+
+    Args:
+        client:          Instance GristClient
+        table_id:        ID de la table instructeurs
+        demarche_number: Numéro de la démarche
+        log:             Fonction de log du processeur principal
+        log_error:       Fonction de log d'erreur
+
+    Returns:
+        dict: {"total": int, "created": int, "updated": int, "deleted": int}
+    """
+    start_time = time.time()
+    result = {"total": 0, "created": 0, "updated": 0, "deleted": 0}
+    log(f"  Récupération des instructeurs de la démarche {demarche_number}...")
+
+    instructeurs_records = get_demarche_instructeurs(demarche_number)
+
+    if not instructeurs_records:
+        log("  Aucun instructeur trouvé pour cette démarche")
+        return result
+
+    log(f"  {len(instructeurs_records)} instructeur(s) trouvé(s)")
+
+    existing_map = _build_existing_map(_fetch_existing_records(client, table_id))
+    new_map = {
+        _composite_key(r["instructeur_id"], r["groupe_instructeur_id"]): r
+        for r in instructeurs_records
+    }
+
+    to_delete, to_update, to_create = _diff_records(existing_map, new_map)
+
+    operations_count = _apply_records_diff(
+        client, table_id, to_delete, to_update, to_create, log, log_error
+    )
+
+    if operations_count == 0:
+        log("  Table instructeurs à jour (aucun changement)")
+    else:
+        log(f"  Table instructeurs synchronisée ({operations_count} opération(s))")
+
+    log(f"[TIMING] Instructeurs synchronisés en {time.time() - start_time:.1f}s")
+
+    result.update(
+        {
+            "total": len(instructeurs_records),
+            "created": len(to_create),
+            "updated": len(to_update),
+            "deleted": len(to_delete),
+        }
+    )
+
+    return result
+
+
+# --- Helpers privés (module) ---
 
 
 def _composite_key(instructeur_id, groupe_instructeur_id):
@@ -122,94 +174,3 @@ def _apply_records_diff(
             log_error(f"  Erreur création instructeurs: {response.text}")
 
     return operations_count
-
-
-def sync_instructeurs(client, table_id, demarche_number, log=print, log_error=print):
-    """
-    Synchronise la table Instructeurs d'une démarche dans Grist.
-
-    Args:
-        client:          Instance GristClient
-        table_id:        ID de la table instructeurs
-        demarche_number: Numéro de la démarche
-        log:             Fonction de log du processeur principal
-        log_error:       Fonction de log d'erreur
-
-    Returns:
-        dict: {"total": int, "created": int, "updated": int, "deleted": int}
-    """
-    start_time = time.time()
-    result = {"total": 0, "created": 0, "updated": 0, "deleted": 0}
-    log(f"  Récupération des instructeurs de la démarche {demarche_number}...")
-
-    instructeurs_records = extract_instructeurs_from_demarche(demarche_number)
-
-    if not instructeurs_records:
-        log("  Aucun instructeur trouvé pour cette démarche")
-        return result
-
-    log(f"  {len(instructeurs_records)} instructeur(s) trouvé(s)")
-
-    existing_map = _build_existing_map(_fetch_existing_records(client, table_id))
-    new_map = {
-        _composite_key(r["instructeur_id"], r["groupe_instructeur_id"]): r
-        for r in instructeurs_records
-    }
-
-    to_delete, to_update, to_create = _diff_records(existing_map, new_map)
-
-    operations_count = _apply_records_diff(
-        client, table_id, to_delete, to_update, to_create, log, log_error
-    )
-
-    if operations_count == 0:
-        log("  Table instructeurs à jour (aucun changement)")
-    else:
-        log(f"  Table instructeurs synchronisée ({operations_count} opération(s))")
-
-    log(f"[TIMING] Instructeurs synchronisés en {time.time() - start_time:.1f}s")
-
-    result.update(
-        {
-            "total": len(instructeurs_records),
-            "created": len(to_create),
-            "updated": len(to_update),
-            "deleted": len(to_delete),
-        }
-    )
-
-    return result
-
-
-def main():
-    from dotenv import load_dotenv
-
-    from grist.client import GristClient
-
-    load_dotenv(override=True)
-
-    grist_base_url = os.getenv("GRIST_BASE_URL")
-    grist_api_key = os.getenv("GRIST_API_KEY")
-    grist_doc_id = os.getenv("GRIST_DOC_ID")
-    demarche_number = os.getenv("DEMARCHE_NUMBER")
-
-    if not all([grist_base_url, grist_api_key, grist_doc_id, demarche_number]):
-        print(
-            "Configuration incomplète : GRIST_BASE_URL, GRIST_API_KEY, "
-            "GRIST_DOC_ID et DEMARCHE_NUMBER sont requis dans le fichier .env"
-        )
-        return 1
-
-    demarche_number = int(demarche_number)
-    table_id = os.getenv(
-        "TABLE_INSTRUCTEURS", f"Demarche_{demarche_number}_instructeurs"
-    )
-
-    client = GristClient(grist_base_url, grist_api_key, grist_doc_id)
-    sync_instructeurs(client, table_id, demarche_number)
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

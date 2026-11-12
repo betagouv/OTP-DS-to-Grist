@@ -583,6 +583,34 @@ class TestGetDemarcheSchema:
         with pytest.raises(Exception, match="Demarche introuvable"):
             get_demarche_schema(123)
 
+    def test_seules_les_autres_erreurs_sont_signalees(self, mock_request):
+        """Les erreurs de permissions sont retirées du message d'erreur"""
+        mock_request.return_value = _mock_graphql_response(
+            {
+                "data": None,
+                "errors": [
+                    {"message": "hidden due to permissions"},
+                    {"message": "Demarche introuvable"},
+                ],
+            }
+        )
+
+        with pytest.raises(Exception) as error:
+            get_demarche_schema(123)
+
+        assert str(error.value) == "GraphQL errors: Demarche introuvable"
+
+    def test_requete_porte_le_token_et_le_numero_de_demarche(self, mock_request):
+        mock_request.return_value = _mock_graphql_response(
+            {"data": {"demarche": _text_demarche()}}
+        )
+
+        get_demarche_schema("123")
+
+        kwargs = mock_request.call_args.kwargs
+        assert kwargs["json"]["variables"] == {"demarcheNumber": 123}
+        assert kwargs["headers"]["Authorization"] == "Bearer token"
+
     def test_demarche_absente_leve_une_exception(self, mock_request):
         mock_request.return_value = _mock_graphql_response({"data": {"demarche": None}})
 

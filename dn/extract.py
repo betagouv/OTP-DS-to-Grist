@@ -1,16 +1,13 @@
 import json
-import os
-from collections.abc import Iterator
-from typing import Any, Dict, List
+from collections.abc import Callable, Iterator
+from functools import partial
+from typing import Any, Dict, List, NamedTuple
 
-from dn.client import get_session_with_retries
+from dn.client import DISPLAY_CHAMP_TYPES
 from dn.formatter import decode_base64_id
 from grist.utils import normalize_column_name
-from utils.constants import DEMARCHES_API_URL
 from utils.formatter import format_json_value, unwrap_json_list
 
-API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
-API_URL = DEMARCHES_API_URL
 
 # Clé portant la valeur de chaque type de sous-colonne OCR d'une pièce
 # justificative, telle que demandée par ChampFragment (alias pour les types
@@ -22,6 +19,26 @@ PJ_OCR_VALUE_KEYS = {
     "DateColumn": "dateValue",
     "IntegerColumn": "integerValue",
     "DecimalColumn": "decimalValue",
+}
+
+
+# Clé portant la valeur des types de champ à valeur simple, telle que demandée
+# par ChampFragment (alias pour la plupart d'entre eux)
+SCALAR_VALUE_KEYS = {
+    "DateChamp": "date",
+    "DatetimeChamp": "datetime",
+    "CheckboxChamp": "checked",
+    "YesNoChamp": "selected",
+    "DecimalNumberChamp": "decimalNumber",
+    "IntegerNumberChamp": "integerNumber",
+    "CiviliteChamp": "civilite",
+}
+
+# Clé portant l'objet des champs territoriaux à nom et code (ex. `pays`)
+TERRITORY_KEYS = {
+    "PaysChamp": "pays",
+    "RegionChamp": "region",
+    "DepartementChamp": "departement",
 }
 
 
@@ -41,516 +58,48 @@ def extract_champ_values(
         Liste de dictionnaires contenant les valeurs extraites
     """
     # Ignorer immédiatement les types HeaderSectionChamp et ExplicationChamp
-    if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
+    if champ["__typename"] in DISPLAY_CHAMP_TYPES:
         return []
-
-    result = []
 
     # Si l'ID original n'est pas fourni, utiliser l'ID du champ
     if original_id is None:
         original_id = champ["id"]
 
-    # Décodage de l'ID du descripteur pour correspondance
-    decoded_descriptor_id = (
-        decode_base64_id(champ.get("champDescriptorId", ""))
-        if "champDescriptorId" in champ
-        else None
-    )
-
     # Traitement spécial pour les champs répétables
     if champ["__typename"] == "RepetitionChamp":
+        result = []
         for i, row in enumerate(champ.get("rows", [])):
             row_prefix = f"{prefix}{champ['label']}_{i + 1}_"
 
-            # Pour chaque champ dans la rangée
+            # Passage de l'ID du champ répétable comme contexte
             for row_champ in row.get("champs", []):
-                # Ignorer les types HeaderSectionChamp et ExplicationChamp dans les rangées
-                if row_champ["__typename"] in [
-                    "HeaderSectionChamp",
-                    "ExplicationChamp",
-                ]:
-                    continue
-
-                # Passage de l'ID du champ répétable comme contexte
-                row_results = extract_champ_values(
-                    row_champ, row_prefix, row.get("id", original_id)
+                result.extend(
+                    extract_champ_values(
+                        row_champ, row_prefix, row.get("id", original_id)
+                    )
                 )
-                result.extend(row_results)
-    else:
-        # Préparation de la valeur selon le type de champ
-        value = None
-        json_value = None
+        return result
 
-        # Traitement pour différents types de champs
-        if champ["__typename"] == "DateChamp":
-            value = champ.get("date")
-        elif champ["__typename"] == "DatetimeChamp":
-            value = champ.get("datetime")
-        elif champ["__typename"] == "CheckboxChamp":
-            value = champ.get("checked")
-        elif champ["__typename"] == "YesNoChamp":
-            value = champ.get("selected")
-        elif champ["__typename"] == "DecimalNumberChamp":
-            value = champ.get("decimalNumber")
-        elif champ["__typename"] == "IntegerNumberChamp":
-            value = champ.get("integerNumber")
-        elif champ["__typename"] == "CiviliteChamp":
-            value = champ.get("civilite")
-        elif champ["__typename"] == "LinkedDropDownListChamp":
-            primary = champ.get("primaryValue", "")
-            secondary = champ.get("secondaryValue", "")
-            value = (
-                f"{primary} - {secondary}"
-                if primary and secondary
-                else primary or secondary
-            )
-            json_value = {"primaryValue": primary, "secondaryValue": secondary}
-        elif champ["__typename"] == "MultipleDropDownListChamp":
-            values_list = champ.get("values", [])
-            if values_list:
-                value = ", ".join(values_list)
-            else:
-                value = unwrap_json_list(champ.get("stringValue") or champ.get("value"))
-            json_value = values_list
-        elif champ["__typename"] == "DropDownListChamp":
-            raw = champ.get("stringValue") or champ.get("value")
-            value = unwrap_json_list(raw)
-        elif champ["__typename"] == "PieceJustificativeChamp":
-            files = champ.get("files", [])
-            value = ", ".join([f["filename"] for f in files]) if files else None
-            json_value = None
+    extracted = _extract_by_type(champ)
 
-            for col, full_label, col_value in iter_pj_ocr_columns(champ):
-                result.append(
-                    {
-                        "id": col.get("id"),
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{full_label}",
-                        "base_label": full_label,
-                        "type": col["__typename"],
-                        "value": col_value,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-        elif champ["__typename"] == "AddressChamp" and champ.get("address"):
-            address = champ.get("address", {})
-            value = f"{address.get('streetAddress', '')}, {address.get('postalCode', '')} {address.get('cityName', '')}"
-            json_value = address
-
-            # Ajouter les informations de commune et département si disponibles
-            commune = champ.get("commune")
-            departement = champ.get("departement")
-            if commune or departement:
-                address_extra = {}
-                if commune:
-                    address_extra["commune"] = commune
-                if departement:
-                    address_extra["departement"] = departement
-                json_value = {"address": address, **address_extra}
-        elif champ["__typename"] == "SiretChamp" and champ.get("etablissement"):
-            etablissement = champ.get("etablissement", {})
-            raison_sociale = etablissement.get("entreprise", {}).get(
-                "raisonSociale", ""
-            )
-            siret = etablissement.get("siret", "")
-            value = (
-                f"{siret} - {raison_sociale}"
-                if siret and raison_sociale
-                else siret or raison_sociale
-            )
-            json_value = etablissement
-        elif champ["__typename"] == "CarteChamp":
-            # Traitement détaillé pour les champs Carte
-            geo_areas = champ.get("geoAreas", [])
-            if not geo_areas:
-                value = "Aucune zone géographique définie"
-                json_value = None
-            else:
-                # Une seule entrée pour TOUTES les zones : évite l'écrasement
-                # (les entrées multiples partageaient le même label de colonne).
-                # json_value porte la liste complète, pas une zone isolée.
-                value = "; ".join(
-                    f"Zone {j + 1}: {geo_area.get('source', '')} - {geo_area.get('description', 'Sans description')}"
-                    for j, geo_area in enumerate(geo_areas)
-                )
-                json_value = geo_areas
-        elif champ["__typename"] == "DossierLinkChamp" and champ.get("dossier"):
-            # Traitement pour les liens vers d'autres dossiers
-            linked_dossier = champ.get("dossier", {})
-            dossier_number = linked_dossier.get("number", "")
-            dossier_state = linked_dossier.get("state", "")
-            value = (
-                f"Dossier #{dossier_number} ({dossier_state})"
-                if dossier_number
-                else "Aucun dossier lié"
-            )
-            json_value = linked_dossier
-        elif champ["__typename"] == "PaysChamp" and champ.get("pays"):
-            # Traitement pour les pays
-            pays = champ.get("pays", {})
-            name = pays.get("name", "")
-            code = pays.get("code", "")
-            value = f"{name} ({code})" if name and code else name or code
-            json_value = pays
-
-            # Ajouter le nom du pays comme champ séparé
-            if name:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_nom",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_nom",
-                        "base_label": f"{champ['label']}_nom",
-                        "type": "TextColumn",
-                        "value": name,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-            # Ajouter le code pays comme champ séparé
-            if code:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_code",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_code",
-                        "base_label": f"{champ['label']}_code",
-                        "type": "TextColumn",
-                        "value": code,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-        elif champ["__typename"] == "RegionChamp" and champ.get("region"):
-            # Traitement pour les régions
-            region = champ.get("region", {})
-            name = region.get("name", "")
-            code = region.get("code", "")
-            value = f"{name} ({code})" if name and code else name or code
-            json_value = region
-
-            # Ajouter le nom de la région comme champ séparé
-            if name:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_nom",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_nom",
-                        "base_label": f"{champ['label']}_nom",
-                        "type": "TextColumn",
-                        "value": name,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-            # Ajouter le code région comme champ séparé
-            if code:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_code",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_code",
-                        "base_label": f"{champ['label']}_code",
-                        "type": "TextColumn",
-                        "value": code,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-        elif champ["__typename"] == "DepartementChamp" and champ.get("departement"):
-            # Traitement pour les départements
-            departement = champ.get("departement", {})
-            name = departement.get("name", "")
-            code = departement.get("code", "")
-            value = f"{name} ({code})" if name and code else name or code
-            json_value = departement
-
-            # Ajouter le nom du département comme champ séparé
-            if name:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_nom",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_nom",
-                        "base_label": f"{champ['label']}_nom",
-                        "type": "TextColumn",
-                        "value": name,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-            # Ajouter le code département comme champ séparé
-            if code:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_code",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_code",
-                        "base_label": f"{champ['label']}_code",
-                        "type": "TextColumn",
-                        "value": code,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-        elif champ["__typename"] == "CommuneChamp" and champ.get("commune"):
-            commune = champ.get("commune", {})
-            name = commune.get("name", "")
-            code_insee = commune.get("code", "")
-            postal_code = commune.get("postalCode", "")
-            value = f"{name} ({postal_code})" if name and postal_code else name
-
-            departement = champ.get("departement")
-            dept_name = None
-            dept_code = None
-            if departement:
-                dept_name = departement.get("name", "")
-                dept_code = departement.get("code", "")
-                value = (
-                    f"{value}, {dept_name}"
-                    if value and dept_name
-                    else value or dept_name
-                )
-
-            json_value = {"commune": commune}
-            if departement:
-                json_value["departement"] = departement
-
-            # Ajouter le nom de la commune
-            if name:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_nom",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_nom",
-                        "base_label": f"{champ['label']}_nom",
-                        "type": "TextColumn",
-                        "value": name,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-            # code_postal
-            if postal_code:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_code_postal",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_code_postal",
-                        "base_label": f"{champ['label']}_code_postal",
-                        "type": "TextColumn",
-                        "value": postal_code,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-            # departement (nom)
-            if dept_name:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_departement",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_departement",
-                        "base_label": f"{champ['label']}_departement",
-                        "type": "TextColumn",
-                        "value": dept_name,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-            # code_insee
-            if code_insee:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_code_insee",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_code_insee",
-                        "base_label": f"{champ['label']}_code_insee",
-                        "type": "TextColumn",
-                        "value": code_insee,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-            # ✅ CODE DÉPARTEMENT - UNE SEULE FOIS
-            if dept_code:
-                result.append(
-                    {
-                        "id": champ.get("id") + "_code_departement",
-                        "numeric_id": None,
-                        "descriptor_id": champ.get("champDescriptorId"),
-                        "decoded_descriptor_id": decoded_descriptor_id,
-                        "label": f"{prefix}{champ['label']}_code_departement",
-                        "base_label": f"{champ['label']}_code_departement",
-                        "type": "TextColumn",
-                        "value": dept_code,
-                        "json_value": None,
-                        "updated_at": champ.get("updatedAt"),
-                        "prefilled": champ.get("prefilled", False),
-                        "row_id": original_id if original_id != champ["id"] else None,
-                    }
-                )
-
-        elif champ["__typename"] == "EpciChamp" and champ.get("epci"):
-            # Traitement pour les EPCI
-            epci = champ.get("epci", {})
-            name = epci.get("name", "")
-            code = epci.get("code", "")
-            value = f"{name} ({code})" if name and code else name or code
-
-            # Ajouter le département si disponible
-            departement = champ.get("departement")
-            if departement:
-                dept_name = departement.get("name", "")
-                value = (
-                    f"{value}, {dept_name}"
-                    if value and dept_name
-                    else value or dept_name
-                )
-
-            json_value = {"epci": epci}
-            if departement:
-                json_value["departement"] = departement
-        elif champ["__typename"] == "RNFChamp" and champ.get("rnf"):
-            # Traitement pour les RNF
-            rnf = champ.get("rnf", {})
-            title = rnf.get("title", "")
-            rnf_address = rnf.get("address", {})
-            city_name = rnf_address.get("cityName", "")
-            postal_code = rnf_address.get("postalCode", "")
-
-            if title:
-                if city_name and postal_code:
-                    value = f"{title} - {city_name} ({postal_code})"
-                else:
-                    value = title
-            else:
-                value = ""
-
-            # Ajouter commune et département si disponibles
-            commune = champ.get("commune")
-            departement = champ.get("departement")
-
-            json_value = {"rnf": rnf}
-            if commune:
-                json_value["commune"] = commune
-            if departement:
-                json_value["departement"] = departement
-        elif champ["__typename"] == "EngagementJuridiqueChamp" and champ.get(
-            "engagementJuridique"
-        ):
-            # Traitement pour les engagements juridiques
-            engagement = champ.get("engagementJuridique", {})
-            montant_engage = engagement.get("montantEngage")
-            montant_paye = engagement.get("montantPaye")
-
-            value = ""
-            if montant_engage is not None:
-                value = f"Montant engagé: {montant_engage}"
-            if montant_paye is not None:
-                value = (
-                    f"{value}, Montant payé: {montant_paye}"
-                    if value
-                    else f"Montant payé: {montant_paye}"
-                )
-
-            json_value = engagement
-        else:
-            # Pour les autres types, utiliser la valeur textuelle
-            value = champ.get("stringValue")
-
-        # Ne pas ajouter de résultat pour les types HeaderSectionChamp et ExplicationChamp
-        # (redondant car déjà filtré au début, mais mieux vaut être prudent)
-        if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
-            return result
-
-        # Extraction des identifiants pour correspondance
-        raw_id = champ["id"]
-        numeric_id = None
-
-        # Tentative d'extraction d'un ID numérique
-        if "/" in raw_id:
-            parts = raw_id.split("/")
-            if len(parts) >= 4 and parts[-2] == "Champ":
-                numeric_id = parts[-1]
-        else:
-            numeric_id = decode_base64_id(raw_id)
-
-        # Ajout du résultat
-        result.append(
-            {
-                "id": raw_id,
-                "numeric_id": numeric_id,
-                "descriptor_id": champ.get("champDescriptorId"),
-                "decoded_descriptor_id": decoded_descriptor_id,
-                "label": f"{prefix}{champ['label']}",
-                "base_label": champ["label"],  # Label sans préfixe de bloc répétable
-                "type": champ["__typename"],
-                "value": value,
-                "json_value": json_value,
-                "updated_at": champ.get("updatedAt"),
-                "prefilled": champ.get("prefilled", False),
-                "row_id": original_id
-                if original_id != champ["id"]
-                else None,  # ID de la rangée pour les blocs répétables
-            }
+    # Sous-colonnes d'abord, puis l'entrée principale
+    result = [
+        _sub_column_entry(champ, prefix, original_id, sub_column)
+        for sub_column in extracted.sub_columns
+    ]
+    result.append(
+        _champ_entry(
+            champ,
+            prefix,
+            original_id,
+            entry_id=champ["id"],
+            base_label=champ["label"],
+            entry_type=champ["__typename"],
+            value=extracted.value,
+            json_value=extracted.json_value,
+            numeric_id=_numeric_id(champ["id"]),
         )
+    )
 
     return result
 
@@ -625,11 +174,7 @@ def extract_repetable_blocks(
 
                 # Traiter chaque champ dans la rangée
                 for row_champ in row.get("champs", []):
-                    # ✅ FIX : Filtrer les champs problématiques dans les blocs répétables
-                    if row_champ["__typename"] in [
-                        "HeaderSectionChamp",
-                        "ExplicationChamp",
-                    ] or (
+                    if (
                         problematic_ids
                         and row_champ.get("champDescriptorId") in problematic_ids
                     ):
@@ -700,6 +245,7 @@ def extract_demandeur_info(dossier_data: Dict[str, Any]) -> Dict[str, Any]:
     demandeur_info["type"] = demandeur_type
 
     # Extraction selon le type
+    # Les personnes morales sont gérées dans grist_processor_working_all.py
     if demandeur_type == "PersonnePhysique":
         demandeur_info.update(
             {
@@ -710,70 +256,37 @@ def extract_demandeur_info(dossier_data: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
-    elif demandeur_type in ["PersonneMorale", "PersonneMoraleIncomplete"]:
-        # Déjà géré dans grist_processor_working_all.py
-        # On retourne juste le type et les infos communes
-        pass
-
     return demandeur_info
 
 
-def extract_instructeurs_from_demarche(demarche_number: int) -> List[Dict[str, Any]]:
-    """
-    Récupère tous les instructeurs de la démarche organisés par groupe
+def build_label_fields(labels: list[dict] | None) -> dict[str, str]:
+    """Construit les colonnes label_names / labels_json à partir des labels d'un dossier.
 
-    Returns:
-        Liste de dictionnaires, 1 par instructeur
+    Un label sans couleur figure dans label_names mais pas dans labels_json.
     """
+    if not labels:
+        return {"label_names": "", "labels_json": ""}
 
-    query = """
-    query getDemarche($demarcheNumber: Int!) {
-      demarche(number: $demarcheNumber) {
-        groupeInstructeurs {
-          id
-          number
-          label
-          instructeurs {
-            id
-            email
-          }
+    label_names = [label.get("name", "") for label in labels if label.get("name")]
+
+    labels_with_colors = [
+        {
+            "id": label.get("id", ""),
+            "name": label.get("name", ""),
+            "color": label.get("color", ""),
         }
-      }
+        for label in labels
+        if label.get("name") and label.get("color")
+    ]
+
+    return {
+        "label_names": ", ".join(label_names) if label_names else "",
+        "labels_json": (
+            json.dumps(labels_with_colors, ensure_ascii=False)
+            if labels_with_colors
+            else ""
+        ),
     }
-    """
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    response = get_session_with_retries().post(
-        API_URL,
-        json={"query": query, "variables": {"demarcheNumber": demarche_number}},
-        headers=headers,
-    )
-
-    if response.status_code != 200:
-        return []
-
-    result = response.json()
-    demarche = result.get("data", {}).get("demarche", {})
-    groupes = demarche.get("groupeInstructeurs", [])
-
-    instructeurs_list = []
-    for groupe in groupes:
-        for instructeur in groupe.get("instructeurs", []):
-            instructeurs_list.append(
-                {
-                    "groupe_instructeur_id": groupe.get("id"),
-                    "groupe_instructeur_number": groupe.get("number"),
-                    "groupe_instructeur_label": groupe.get("label"),
-                    "instructeur_id": instructeur.get("id"),
-                    "instructeur_email": instructeur.get("email"),
-                }
-            )
-
-    return instructeurs_list
 
 
 def dossier_to_flat_data(
@@ -827,37 +340,7 @@ def dossier_to_flat_data(
     flat_data["correction_instructeur"] = correction_instructeur
 
     # Ajouter les informations sur les labels (étiquettes)
-    if "labels" in dossier_data and dossier_data["labels"]:
-        # Création d'une liste des noms de labels
-        label_names = [
-            label.get("name", "")
-            for label in dossier_data["labels"]
-            if label.get("name")
-        ]
-        flat_data["label_names"] = ", ".join(label_names) if label_names else ""
-
-        # Création d'une représentation JSON des labels avec couleurs
-        labels_with_colors = []
-        for label in dossier_data["labels"]:
-            if label.get("name") and label.get("color"):
-                labels_with_colors.append(
-                    {
-                        "id": label.get("id", ""),
-                        "name": label.get("name", ""),
-                        "color": label.get("color", ""),
-                    }
-                )
-
-        if labels_with_colors:
-            flat_data["labels_json"] = json.dumps(
-                labels_with_colors, ensure_ascii=False
-            )
-        else:
-            flat_data["labels_json"] = ""
-    else:
-        # ← AJOUTE CES 2 LIGNES
-        flat_data["label_names"] = ""
-        flat_data["labels_json"] = ""
+    flat_data.update(build_label_fields(dossier_data.get("labels")))
 
     # Compteur pour gérer les doublons de labels
     label_counters = {}
@@ -869,11 +352,8 @@ def dossier_to_flat_data(
         if exclude_repetition_champs and champ["__typename"] == "RepetitionChamp":
             continue
 
-        # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
-        # Ignorer les champs problématiques par type et par champDescriptorId
-        if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or (
-            problematic_ids and champ.get("champDescriptorId") in problematic_ids
-        ):
+        # Ignorer les champs problématiques par champDescriptorId
+        if problematic_ids and champ.get("champDescriptorId") in problematic_ids:
             continue
 
         # Extraire les valeurs
@@ -913,11 +393,8 @@ def dossier_to_flat_data(
         if exclude_repetition_champs and annotation["__typename"] == "RepetitionChamp":
             continue
 
-        # ✅ FIX PRINCIPAL : Vérifier champDescriptorId au lieu de id
-        # Ignorer explicitement les annotations de type HeaderSectionChamp et ExplicationChamp
-        if annotation["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"] or (
-            problematic_ids and annotation.get("champDescriptorId") in problematic_ids
-        ):
+        # Ignorer les annotations problématiques par champDescriptorId
+        if problematic_ids and annotation.get("champDescriptorId") in problematic_ids:
             continue
 
         # Extraire les valeurs
@@ -994,3 +471,359 @@ def extract_avis_from_dossier(dossier_data: Dict[str, Any]) -> List[Dict[str, An
         )
 
     return records
+
+
+# --- Helpers privés (module) ---
+
+
+def _champ_entry(
+    champ: dict[str, Any],
+    prefix: str,
+    original_id: str,
+    *,
+    entry_id: str,
+    base_label: str,
+    entry_type: str,
+    value: Any,
+    json_value: Any = None,
+    numeric_id: str | None = None,
+) -> dict[str, Any]:
+    """Entrée extraite d'un champ : sa valeur principale ou l'une de ses sous-colonnes."""
+    return {
+        "id": entry_id,
+        "numeric_id": numeric_id,
+        "descriptor_id": champ.get("champDescriptorId"),
+        "decoded_descriptor_id": (
+            decode_base64_id(champ.get("champDescriptorId", ""))
+            if "champDescriptorId" in champ
+            else None
+        ),
+        "label": f"{prefix}{base_label}",
+        "base_label": base_label,  # Label sans préfixe de bloc répétable
+        "type": entry_type,
+        "value": value,
+        "json_value": json_value,
+        "updated_at": champ.get("updatedAt"),
+        "prefilled": champ.get("prefilled", False),
+        # ID de la rangée pour les blocs répétables
+        "row_id": original_id if original_id != champ["id"] else None,
+    }
+
+
+def _numeric_id(raw_id: str) -> str | None:
+    """ID numérique d'un champ, extrait d'un ID au format chemin ou base64."""
+    if "/" in raw_id:
+        parts = raw_id.split("/")
+        if len(parts) >= 4 and parts[-2] == "Champ":
+            return parts[-1]
+        return None
+    return decode_base64_id(raw_id)
+
+
+class _SubColumn(NamedTuple):
+    """Sous-colonne d'un champ, produite à côté de sa valeur principale."""
+
+    entry_id: str
+    base_label: str
+    entry_type: str
+    value: Any
+
+
+class _Extracted(NamedTuple):
+    """Ce qu'un type de champ extrait : valeur, valeur JSON et sous-colonnes."""
+
+    value: Any
+    json_value: Any = None
+    sub_columns: tuple[_SubColumn, ...] = ()
+
+
+def _extract_by_type(champ: dict[str, Any]) -> _Extracted:
+    """Extraction propre au type du champ, ou sa valeur textuelle à défaut."""
+    extractor = _EXTRACTORS.get(champ["__typename"])
+    extracted = extractor(champ) if extractor else None
+    if extracted is None:
+        # Pour les autres types, ou sans l'objet attendu, utiliser la valeur textuelle
+        return _Extracted(champ.get("stringValue"))
+    return extracted
+
+
+def _sub_column_entry(
+    champ: dict[str, Any], prefix: str, original_id: str, sub_column: _SubColumn
+) -> dict[str, Any]:
+    """Entrée d'une sous-colonne d'un champ."""
+    return _champ_entry(
+        champ,
+        prefix,
+        original_id,
+        entry_id=sub_column.entry_id,
+        base_label=sub_column.base_label,
+        entry_type=sub_column.entry_type,
+        value=sub_column.value,
+    )
+
+
+def _text_sub_columns(
+    champ: dict[str, Any], values: tuple[tuple[str, Any], ...]
+) -> tuple[_SubColumn, ...]:
+    """Sous-colonnes texte suffixées au libellé du champ (ex. `Commune_nom`), hors valeurs vides."""
+    return tuple(
+        _SubColumn(
+            f"{champ['id']}_{suffix}", f"{champ['label']}_{suffix}", "TextColumn", value
+        )
+        for suffix, value in values
+        if value
+    )
+
+
+# Extraction par type de champ : chaque fonction renvoie None quand l'objet
+# attendu est absent, le champ retombant alors sur sa valeur textuelle.
+
+
+def _extract_scalar(champ: dict[str, Any], value_key: str) -> _Extracted:
+    return _Extracted(champ.get(value_key))
+
+
+def _extract_linked_drop_down(champ: dict[str, Any]) -> _Extracted:
+    primary = champ.get("primaryValue", "")
+    secondary = champ.get("secondaryValue", "")
+    value = (
+        f"{primary} - {secondary}" if primary and secondary else primary or secondary
+    )
+    return _Extracted(value, {"primaryValue": primary, "secondaryValue": secondary})
+
+
+def _extract_multiple_drop_down(champ: dict[str, Any]) -> _Extracted:
+    values_list = champ.get("values", [])
+    if values_list:
+        value = ", ".join(values_list)
+    else:
+        value = unwrap_json_list(champ.get("stringValue") or champ.get("value"))
+    return _Extracted(value, values_list)
+
+
+def _extract_drop_down(champ: dict[str, Any]) -> _Extracted:
+    raw = champ.get("stringValue") or champ.get("value")
+    return _Extracted(unwrap_json_list(raw))
+
+
+def _extract_piece_justificative(champ: dict[str, Any]) -> _Extracted:
+    files = champ.get("files", [])
+    value = ", ".join([f["filename"] for f in files]) if files else None
+    ocr_columns = tuple(
+        _SubColumn(col.get("id"), full_label, col["__typename"], col_value)
+        for col, full_label, col_value in iter_pj_ocr_columns(champ)
+    )
+    return _Extracted(value, sub_columns=ocr_columns)
+
+
+def _extract_address(champ: dict[str, Any]) -> _Extracted | None:
+    if not champ.get("address"):
+        return None
+
+    address = champ.get("address", {})
+    value = f"{address.get('streetAddress', '')}, {address.get('postalCode', '')} {address.get('cityName', '')}"
+    json_value = address
+
+    # Ajouter les informations de commune et département si disponibles
+    commune = champ.get("commune")
+    departement = champ.get("departement")
+    if commune or departement:
+        address_extra = {}
+        if commune:
+            address_extra["commune"] = commune
+        if departement:
+            address_extra["departement"] = departement
+        json_value = {"address": address, **address_extra}
+
+    return _Extracted(value, json_value)
+
+
+def _extract_siret(champ: dict[str, Any]) -> _Extracted | None:
+    if not champ.get("etablissement"):
+        return None
+
+    etablissement = champ.get("etablissement", {})
+    raison_sociale = etablissement.get("entreprise", {}).get("raisonSociale", "")
+    siret = etablissement.get("siret", "")
+    value = (
+        f"{siret} - {raison_sociale}"
+        if siret and raison_sociale
+        else siret or raison_sociale
+    )
+    return _Extracted(value, etablissement)
+
+
+def _extract_carte(champ: dict[str, Any]) -> _Extracted:
+    geo_areas = champ.get("geoAreas", [])
+    if not geo_areas:
+        return _Extracted("Aucune zone géographique définie")
+
+    # Une seule entrée pour TOUTES les zones : évite l'écrasement
+    # (les entrées multiples partageaient le même label de colonne).
+    # json_value porte la liste complète, pas une zone isolée.
+    value = "; ".join(
+        f"Zone {j + 1}: {geo_area.get('source', '')} - {geo_area.get('description', 'Sans description')}"
+        for j, geo_area in enumerate(geo_areas)
+    )
+    return _Extracted(value, geo_areas)
+
+
+def _extract_dossier_link(champ: dict[str, Any]) -> _Extracted | None:
+    if not champ.get("dossier"):
+        return None
+
+    linked_dossier = champ.get("dossier", {})
+    dossier_number = linked_dossier.get("number", "")
+    dossier_state = linked_dossier.get("state", "")
+    value = (
+        f"Dossier #{dossier_number} ({dossier_state})"
+        if dossier_number
+        else "Aucun dossier lié"
+    )
+    return _Extracted(value, linked_dossier)
+
+
+def _extract_territory(champ: dict[str, Any], object_key: str) -> _Extracted | None:
+    """Pays, régions et départements : nom et code, aussi en sous-colonnes."""
+    territory = champ.get(object_key)
+    if not territory:
+        return None
+
+    name = territory.get("name", "")
+    code = territory.get("code", "")
+    value = f"{name} ({code})" if name and code else name or code
+    sub_columns = _text_sub_columns(champ, (("nom", name), ("code", code)))
+    return _Extracted(value, territory, sub_columns)
+
+
+def _extract_commune(champ: dict[str, Any]) -> _Extracted | None:
+    if not champ.get("commune"):
+        return None
+
+    commune = champ.get("commune", {})
+    name = commune.get("name", "")
+    code_insee = commune.get("code", "")
+    postal_code = commune.get("postalCode", "")
+    value = f"{name} ({postal_code})" if name and postal_code else name
+
+    departement = champ.get("departement")
+    dept_name = None
+    dept_code = None
+    if departement:
+        dept_name = departement.get("name", "")
+        dept_code = departement.get("code", "")
+        value = f"{value}, {dept_name}" if value and dept_name else value or dept_name
+
+    json_value = {"commune": commune}
+    if departement:
+        json_value["departement"] = departement
+
+    # Sous-colonnes, dans l'ordre des colonnes déclarées par schema_utils
+    sub_columns = _text_sub_columns(
+        champ,
+        (
+            ("nom", name),
+            ("code_postal", postal_code),
+            ("departement", dept_name),
+            ("code_insee", code_insee),
+            ("code_departement", dept_code),
+        ),
+    )
+    return _Extracted(value, json_value, sub_columns)
+
+
+def _extract_epci(champ: dict[str, Any]) -> _Extracted | None:
+    if not champ.get("epci"):
+        return None
+
+    epci = champ.get("epci", {})
+    name = epci.get("name", "")
+    code = epci.get("code", "")
+    value = f"{name} ({code})" if name and code else name or code
+
+    # Ajouter le département si disponible
+    departement = champ.get("departement")
+    if departement:
+        dept_name = departement.get("name", "")
+        value = f"{value}, {dept_name}" if value and dept_name else value or dept_name
+
+    json_value = {"epci": epci}
+    if departement:
+        json_value["departement"] = departement
+    return _Extracted(value, json_value)
+
+
+def _extract_rnf(champ: dict[str, Any]) -> _Extracted | None:
+    if not champ.get("rnf"):
+        return None
+
+    rnf = champ.get("rnf", {})
+    title = rnf.get("title", "")
+    rnf_address = rnf.get("address", {})
+    city_name = rnf_address.get("cityName", "")
+    postal_code = rnf_address.get("postalCode", "")
+
+    if title:
+        if city_name and postal_code:
+            value = f"{title} - {city_name} ({postal_code})"
+        else:
+            value = title
+    else:
+        value = ""
+
+    # Ajouter commune et département si disponibles
+    commune = champ.get("commune")
+    departement = champ.get("departement")
+
+    json_value = {"rnf": rnf}
+    if commune:
+        json_value["commune"] = commune
+    if departement:
+        json_value["departement"] = departement
+    return _Extracted(value, json_value)
+
+
+def _extract_engagement_juridique(champ: dict[str, Any]) -> _Extracted | None:
+    if not champ.get("engagementJuridique"):
+        return None
+
+    engagement = champ.get("engagementJuridique", {})
+    montant_engage = engagement.get("montantEngage")
+    montant_paye = engagement.get("montantPaye")
+
+    value = ""
+    if montant_engage is not None:
+        value = f"Montant engagé: {montant_engage}"
+    if montant_paye is not None:
+        value = (
+            f"{value}, Montant payé: {montant_paye}"
+            if value
+            else f"Montant payé: {montant_paye}"
+        )
+    return _Extracted(value, engagement)
+
+
+# Aiguillage des types de champ vers leur extraction ; les types absents
+# (TextChamp, etc.) prennent leur valeur textuelle
+_EXTRACTORS: dict[str, Callable[[dict[str, Any]], _Extracted | None]] = {
+    **{
+        typename: partial(_extract_scalar, value_key=value_key)
+        for typename, value_key in SCALAR_VALUE_KEYS.items()
+    },
+    **{
+        typename: partial(_extract_territory, object_key=object_key)
+        for typename, object_key in TERRITORY_KEYS.items()
+    },
+    "LinkedDropDownListChamp": _extract_linked_drop_down,
+    "MultipleDropDownListChamp": _extract_multiple_drop_down,
+    "DropDownListChamp": _extract_drop_down,
+    "PieceJustificativeChamp": _extract_piece_justificative,
+    "AddressChamp": _extract_address,
+    "SiretChamp": _extract_siret,
+    "CarteChamp": _extract_carte,
+    "DossierLinkChamp": _extract_dossier_link,
+    "CommuneChamp": _extract_commune,
+    "EpciChamp": _extract_epci,
+    "RNFChamp": _extract_rnf,
+    "EngagementJuridiqueChamp": _extract_engagement_juridique,
+}

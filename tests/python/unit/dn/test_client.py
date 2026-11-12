@@ -1,4 +1,5 @@
 import pytest
+import requests
 from unittest.mock import MagicMock, patch
 
 from utils.timing import clear_timings, get_timings
@@ -9,6 +10,7 @@ from dn.client import (
     get_deleted_dossiers,
     get_demarche_dossiers_labels_only,
     get_demarche_groupe_numbers,
+    get_demarche_instructeurs,
     get_groups,
     get_pj_ocr_columns,
     get_session_with_retries,
@@ -22,7 +24,23 @@ def _mock_response(status_code=200, json_data=None, headers=None):
     response.status_code = status_code
     response.json.return_value = json_data or {}
     response.headers = headers or {}
+    if status_code >= 400:
+        response.raise_for_status.side_effect = requests.HTTPError(
+            f"{status_code} Error"
+        )
     return response
+
+
+def _http_failure_response():
+    response = _mock_response(status_code=503)
+    response.raise_for_status.side_effect = requests.HTTPError(
+        "503 Service Unavailable"
+    )
+    return response
+
+
+def _graphql_failure_response():
+    return _mock_response(json_data={"errors": [{"message": "Erreur interne"}]})
 
 
 class TestGetGroups:
@@ -120,7 +138,206 @@ class TestGetGroups:
 
         assert "Network error" in capsys.readouterr().out
 
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "global-token")
+    def test_request_uses_given_token_and_timeout(self, mock_session_factory):
+        """La requête porte le token de la configuration, pas le token global."""
+        session = MagicMock()
+        session.post.return_value = _mock_response(
+            json_data={"data": {"demarche": {"groupeInstructeurs": []}}}
+        )
+        mock_session_factory.return_value = session
 
+        get_groups("token123", "456")
+
+        kwargs = session.post.call_args.kwargs
+        assert kwargs["headers"]["Authorization"] == "Bearer token123"
+        assert kwargs["json"]["variables"] == {"demarcheNumber": 456}
+        assert kwargs["timeout"] == 10
+
+    @patch("dn.client.get_session_with_retries")
+    def test_http_failure_is_logged(self, mock_session_factory, capsys):
+        """Une erreur HTTP est loggée avant de retourner []."""
+        session = MagicMock()
+        session.post.return_value = _mock_response(status_code=401)
+        mock_session_factory.return_value = session
+
+        assert get_groups("token", "123") == []
+        assert "401" in capsys.readouterr().out
+
+
+@patch("dn.client.API_TOKEN", "test-token")
+class TestGetDemarcheInstructeurs:
+    """Tests pour get_demarche_instructeurs."""
+
+    def _mock_session(self, status_code=200, json_data=None):
+        response = MagicMock()
+        response.status_code = status_code
+        response.json.return_value = json_data or {}
+        session = MagicMock()
+        session.post.return_value = response
+        return session
+
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.get_session_with_retries")
+    def test_one_record_per_instructeur_and_groupe(self, mock_session_factory):
+        """Chaque instructeur de chaque groupe donne une ligne portant son groupe."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={
+                "data": {
+                    "demarche": {
+                        "groupeInstructeurs": [
+                            {
+                                "id": "G1",
+                                "number": 1,
+                                "label": "Groupe 1",
+                                "instructeurs": [
+                                    {"id": "I1", "email": "a@test.fr"},
+                                    {"id": "I2", "email": "b@test.fr"},
+                                ],
+                            },
+                            {
+                                "id": "G2",
+                                "number": 2,
+                                "label": "Groupe 2",
+                                "instructeurs": [{"id": "I1", "email": "a@test.fr"}],
+                            },
+                            {
+                                "id": "G3",
+                                "number": 3,
+                                "label": "Vide",
+                                "instructeurs": [],
+                            },
+                        ]
+                    }
+                }
+            }
+        )
+
+        result = get_demarche_instructeurs(42)
+
+        assert result == [
+            {
+                "groupe_instructeur_id": "G1",
+                "groupe_instructeur_number": 1,
+                "groupe_instructeur_label": "Groupe 1",
+                "instructeur_id": "I1",
+                "instructeur_email": "a@test.fr",
+            },
+            {
+                "groupe_instructeur_id": "G1",
+                "groupe_instructeur_number": 1,
+                "groupe_instructeur_label": "Groupe 1",
+                "instructeur_id": "I2",
+                "instructeur_email": "b@test.fr",
+            },
+            {
+                "groupe_instructeur_id": "G2",
+                "groupe_instructeur_number": 2,
+                "groupe_instructeur_label": "Groupe 2",
+                "instructeur_id": "I1",
+                "instructeur_email": "a@test.fr",
+            },
+        ]
+
+    @patch("dn.client.API_TOKEN", "test-token")
+    @patch("dn.client.get_session_with_retries")
+    def test_request_uses_token_and_demarche_number(self, mock_session_factory):
+        """La requête porte le token et le numéro de démarche."""
+        session = self._mock_session(json_data={"data": {"demarche": {}}})
+        mock_session_factory.return_value = session
+
+        get_demarche_instructeurs(42)
+
+        kwargs = session.post.call_args.kwargs
+        assert kwargs["json"]["variables"] == {"demarcheNumber": 42}
+        assert kwargs["headers"]["Authorization"] == "Bearer test-token"
+
+    @patch("dn.client.get_session_with_retries")
+    def test_http_failure_is_not_mistaken_for_no_instructeur(
+        self, mock_session_factory
+    ):
+        """Une panne de l'API lève une exception au lieu de ressembler à une démarche sans instructeur."""
+        session = MagicMock()
+        session.post.return_value = _http_failure_response()
+        mock_session_factory.return_value = session
+
+        with pytest.raises(requests.HTTPError):
+            get_demarche_instructeurs(42)
+
+    @pytest.mark.parametrize(
+        "error_message", ["Erreur interne", "Dossier masqué par les permissions"]
+    )
+    @patch("dn.client.get_session_with_retries")
+    def test_graphql_failure_with_partial_data_raises(
+        self, mock_session_factory, error_message
+    ):
+        """Une liste incomplète n'est pas transmise : elle ferait supprimer des instructeurs."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={
+                "data": {
+                    "demarche": {
+                        "groupeInstructeurs": [
+                            {
+                                "id": "g1",
+                                "number": 1,
+                                "label": "Groupe 1",
+                                "instructeurs": [{"id": "i1", "email": "a@b.fr"}],
+                            }
+                        ]
+                    }
+                },
+                "errors": [{"message": error_message}],
+            }
+        )
+
+        with pytest.raises(Exception, match=error_message):
+            get_demarche_instructeurs(42)
+
+    @patch("dn.client.get_session_with_retries")
+    def test_missing_token_raises_without_request(self, mock_session_factory):
+        """Sans token, aucune requête n'est envoyée."""
+        session = self._mock_session()
+        mock_session_factory.return_value = session
+
+        with patch("dn.client.API_TOKEN", ""), pytest.raises(ValueError):
+            get_demarche_instructeurs(42)
+
+        session.post.assert_not_called()
+
+    @patch("dn.client.get_session_with_retries")
+    def test_demarche_without_groupe_returns_empty(self, mock_session_factory):
+        """Une démarche sans groupe instructeur donne une liste vide."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={"data": {"demarche": {"groupeInstructeurs": []}}}
+        )
+
+        assert get_demarche_instructeurs(42) == []
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_network_failure_raises(self, mock_session_factory):
+        """Une panne réseau remonte à l'appelant."""
+        session = self._mock_session()
+        session.post.side_effect = requests.ConnectionError("réseau coupé")
+        mock_session_factory.return_value = session
+
+        with pytest.raises(requests.ConnectionError):
+            get_demarche_instructeurs(42)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_failure_without_data_raises(self, mock_session_factory):
+        """Une erreur GraphQL sans données remonte à l'appelant."""
+        mock_session_factory.return_value = self._mock_session(
+            json_data={"data": None, "errors": [{"message": "Erreur interne"}]}
+        )
+
+        with pytest.raises(Exception):
+            get_demarche_instructeurs(42)
+
+
+@patch("dn.client.API_TOKEN", "test-token")
 class TestGetPjOcrColumns:
     """Tests pour get_pj_ocr_columns"""
 
@@ -253,6 +470,23 @@ class TestGetPjOcrColumns:
         assert get_pj_ocr_columns(123) == {}
         assert "Network" in capsys.readouterr().out
 
+    @patch("dn.client.get_session_with_retries")
+    def test_requete_limitee_a_30_secondes(self, mock_session_factory):
+        session = self._session(mock_session_factory, self._response([]))
+
+        get_pj_ocr_columns(123)
+
+        assert session.post.call_args.kwargs["timeout"] == 30
+
+    @patch("dn.client.get_session_with_retries")
+    def test_sans_token_retourne_vide_et_logue(self, mock_session_factory, capsys):
+        self._session(mock_session_factory, _mock_response(status_code=401))
+
+        with patch("dn.client.API_TOKEN", ""):
+            assert get_pj_ocr_columns(123) == {}
+
+        assert "ERREUR" in capsys.readouterr().out
+
 
 class TestGetSessionWithRetries:
     """Tests pour get_session_with_retries (singleton)"""
@@ -326,6 +560,77 @@ class TestGetDemarcheDossiersLabelsOnly:
         assert [d["number"] for d in result] == [1, 2]
         assert result[0]["labels"][0]["name"] == "À suivre"
         assert mock_session.post.call_count == 2
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_http_failure_raises(self, mock_session_factory):
+        """Une erreur HTTP remonte à l'appelant."""
+        session = MagicMock()
+        session.post.return_value = _http_failure_response()
+        mock_session_factory.return_value = session
+
+        with pytest.raises(requests.HTTPError):
+            get_demarche_dossiers_labels_only(7)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_errors_raise(self, mock_session_factory):
+        """Une erreur GraphQL remonte à l'appelant, avec son message."""
+        session = MagicMock()
+        session.post.return_value = _graphql_failure_response()
+        mock_session_factory.return_value = session
+
+        with pytest.raises(Exception, match="Erreur interne"):
+            get_demarche_dossiers_labels_only(7)
+
+    @staticmethod
+    def _two_pages_session():
+        def page(numbers, has_next_page, end_cursor):
+            return _mock_response(
+                json_data={
+                    "data": {
+                        "demarche": {
+                            "dossiers": {
+                                "pageInfo": {
+                                    "hasNextPage": has_next_page,
+                                    "endCursor": end_cursor,
+                                },
+                                "nodes": [{"number": n, "labels": []} for n in numbers],
+                            }
+                        }
+                    }
+                }
+            )
+
+        session = MagicMock()
+        session.post.side_effect = [page([1], True, "cur1"), page([2, 3], False, None)]
+        return session
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_cursor_is_sent_from_page_to_page(self, mock_session_factory):
+        """Chaque page est demandée à partir du curseur de la précédente."""
+        session = self._two_pages_session()
+        mock_session_factory.return_value = session
+
+        get_demarche_dossiers_labels_only(7)
+
+        assert [
+            appel.kwargs["json"]["variables"] for appel in session.post.call_args_list
+        ] == [
+            {"demarcheNumber": 7, "after": None},
+            {"demarcheNumber": 7, "after": "cur1"},
+        ]
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_log_reports_dossiers_and_pages(self, mock_session_factory, capsys):
+        """Le log indique le nombre de dossiers et de pages récupérés."""
+        mock_session_factory.return_value = self._two_pages_session()
+
+        get_demarche_dossiers_labels_only(7)
+
+        assert "[LABELS] 3 dossiers récupérés en 2 page(s)" in capsys.readouterr().out
 
 
 class TestGetDeletedDossiers:
@@ -419,6 +724,127 @@ class TestGetDeletedDossiers:
 
         assert [d["number"] for d in result] == [1, 2, 3]
         assert mock_session.post.call_count == 3
+
+    @staticmethod
+    def _page(connection, numbers=(), has_next_page=False, end_cursor=None):
+        return _mock_response(
+            json_data={
+                "data": {
+                    "demarche": {
+                        connection: {
+                            "pageInfo": {
+                                "hasNextPage": has_next_page,
+                                "endCursor": end_cursor,
+                            },
+                            "nodes": [{"number": number} for number in numbers],
+                        }
+                    }
+                }
+            }
+        )
+
+    def _responses_failing_on(self, failing_connection, failure):
+        """Réponses successives, dont seule la connexion donnée échoue."""
+        if failing_connection == "deletedDossiers":
+            return [failure]
+        return [self._page("deletedDossiers"), failure]
+
+    @pytest.mark.parametrize(
+        "failing_connection", ["deletedDossiers", "pendingDeletedDossiers"]
+    )
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_http_failure_raises(self, mock_session_factory, failing_connection):
+        """Une erreur HTTP sur l'une des deux connexions remonte à l'appelant."""
+        session = MagicMock()
+        session.post.side_effect = self._responses_failing_on(
+            failing_connection, _http_failure_response()
+        )
+        mock_session_factory.return_value = session
+
+        with pytest.raises(requests.HTTPError):
+            get_deleted_dossiers(7)
+
+    @pytest.mark.parametrize(
+        "failing_connection", ["deletedDossiers", "pendingDeletedDossiers"]
+    )
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_graphql_errors_raise(self, mock_session_factory, failing_connection):
+        """Une erreur GraphQL sur l'une des deux connexions remonte à l'appelant."""
+        session = MagicMock()
+        session.post.side_effect = self._responses_failing_on(
+            failing_connection, _graphql_failure_response()
+        )
+        mock_session_factory.return_value = session
+
+        with pytest.raises(Exception, match="Erreur interne"):
+            get_deleted_dossiers(7)
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_pending_pagination(self, mock_session_factory):
+        """Toutes les pages des suppressions en attente sont parcourues."""
+        session = MagicMock()
+        session.post.side_effect = [
+            self._page("deletedDossiers"),
+            self._page(
+                "pendingDeletedDossiers", [1], has_next_page=True, end_cursor="cur1"
+            ),
+            self._page("pendingDeletedDossiers", [2]),
+        ]
+        mock_session_factory.return_value = session
+
+        result = get_deleted_dossiers(7)
+
+        assert [dossier["number"] for dossier in result] == [1, 2]
+        assert session.post.call_args.kwargs["json"]["variables"]["after"] == "cur1"
+
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_deleted_since_only_limits_confirmed_deletions(self, mock_session_factory):
+        """deleted_since ne s'applique qu'aux suppressions confirmées."""
+        session = MagicMock()
+        session.post.side_effect = [
+            self._page("deletedDossiers", [1], has_next_page=True, end_cursor="cur1"),
+            self._page("deletedDossiers", [2]),
+            self._page("pendingDeletedDossiers", [3]),
+        ]
+        mock_session_factory.return_value = session
+
+        get_deleted_dossiers(7, deleted_since="2024-01-01T00:00:00Z")
+
+        confirmed = {
+            "demarcheNumber": 7,
+            "first": 100,
+            "since": "2024-01-01T00:00:00Z",
+        }
+        assert [
+            appel.kwargs["json"]["variables"] for appel in session.post.call_args_list
+        ] == [
+            {**confirmed, "after": None},
+            {**confirmed, "after": "cur1"},
+            {"demarcheNumber": 7, "first": 100, "after": None},
+        ]
+
+    @pytest.mark.parametrize("deleted_since", [None, ""])
+    @patch("dn.client.get_session_with_retries")
+    @patch("dn.client.API_TOKEN", "test-token")
+    def test_without_deleted_since_all_deletions_are_requested(
+        self, mock_session_factory, deleted_since
+    ):
+        """Sans repère (absent ou vide), aucune borne n'est envoyée à DN."""
+        session = MagicMock()
+        session.post.side_effect = [
+            self._page("deletedDossiers"),
+            self._page("pendingDeletedDossiers"),
+        ]
+        mock_session_factory.return_value = session
+
+        get_deleted_dossiers(7, deleted_since=deleted_since)
+
+        first_call = session.post.call_args_list[0]
+        assert first_call.kwargs["json"]["variables"]["since"] is None
 
 
 def _dossier(number, **champs):

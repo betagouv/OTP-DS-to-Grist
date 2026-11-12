@@ -1,8 +1,12 @@
+import json
+
 import pytest
 
 from dn.extract import (
+    build_label_fields,
     dossier_to_flat_data,
     extract_champ_values,
+    extract_demandeur_info,
     iter_pj_ocr_columns,
 )
 from grist.utils import normalize_column_name
@@ -365,6 +369,552 @@ class TestDossierToFlatDataDuplicateLabels:
         assert labels.get("annotation_Avis_1") == "KO"
 
 
+class TestBuildLabelFields:
+    """Tests unitaires pour la fonction build_label_fields"""
+
+    def test_build_label_fields_empty(self):
+        """Test sans label"""
+        assert build_label_fields([]) == {"label_names": "", "labels_json": ""}
+        assert build_label_fields(None) == {"label_names": "", "labels_json": ""}
+
+    def test_build_label_fields_nominal(self):
+        """Test avec deux labels complets"""
+        labels = [
+            {"id": "l1", "name": "Urgent", "color": "red"},
+            {"id": "l2", "name": "À relancer", "color": "blue"},
+        ]
+
+        result = build_label_fields(labels)
+
+        assert result["label_names"] == "Urgent, À relancer"
+        assert len(json.loads(result["labels_json"])) == 2
+
+    def test_build_label_fields_label_without_color(self):
+        """Test qu'un label sans couleur est dans label_names mais pas dans labels_json.
+
+        Comportement hérité de dossier_to_flat_data, à préserver à l'identique.
+        """
+        labels = [
+            {"id": "l1", "name": "Urgent", "color": "red"},
+            {"id": "l2", "name": "Sans couleur"},
+        ]
+
+        result = build_label_fields(labels)
+
+        assert result["label_names"] == "Urgent, Sans couleur"
+        parsed = json.loads(result["labels_json"])
+        assert len(parsed) == 1
+        assert parsed[0]["name"] == "Urgent"
+
+    def test_build_label_fields_label_without_name(self):
+        """Test qu'un label sans nom est ignoré partout"""
+        labels = [{"id": "l1", "color": "red"}]
+
+        result = build_label_fields(labels)
+
+        assert result["label_names"] == ""
+        assert result["labels_json"] == ""
+
+    def test_build_label_fields_preserves_accents(self):
+        """Test que les accents ne sont pas échappés dans le JSON"""
+        labels = [{"id": "l1", "name": "Contrôlé", "color": "green"}]
+
+        result = build_label_fields(labels)
+
+        assert "Contrôlé" in result["labels_json"]
+
+
+class TestDossierToFlatDataLabels:
+    """Tests sur les colonnes label_names / labels_json de dossier_to_flat_data."""
+
+    def _flatten_with_labels(self, labels):
+        dossier = make_dossier([])
+        dossier["labels"] = labels
+        return dossier_to_flat_data(dossier)["dossier"]
+
+    def test_empty_or_missing_labels(self):
+        """Sans labels, les deux colonnes sont vides."""
+        for labels in ([], None):
+            flat = self._flatten_with_labels(labels)
+            assert flat["label_names"] == ""
+            assert flat["labels_json"] == ""
+
+        dossier = make_dossier([])
+        del dossier["labels"]
+        flat = dossier_to_flat_data(dossier)["dossier"]
+        assert flat["label_names"] == ""
+        assert flat["labels_json"] == ""
+
+    def test_nominal(self):
+        """Les noms sont joints par des virgules, les labels sérialisés en JSON."""
+        labels = [
+            {"id": "l1", "name": "Urgent", "color": "red"},
+            {"id": "l2", "name": "À relancer", "color": "blue"},
+        ]
+        flat = self._flatten_with_labels(labels)
+
+        assert flat["label_names"] == "Urgent, À relancer"
+        assert json.loads(flat["labels_json"]) == labels
+
+    def test_label_without_color(self):
+        """Un label sans couleur est dans label_names mais pas dans labels_json."""
+        flat = self._flatten_with_labels(
+            [
+                {"id": "l1", "name": "Urgent", "color": "red"},
+                {"id": "l2", "name": "Sans couleur"},
+            ]
+        )
+
+        assert flat["label_names"] == "Urgent, Sans couleur"
+        assert json.loads(flat["labels_json"]) == [
+            {"id": "l1", "name": "Urgent", "color": "red"}
+        ]
+
+    def test_only_labels_without_color(self):
+        """Si aucun label n'a de couleur, labels_json est vide."""
+        flat = self._flatten_with_labels([{"id": "l1", "name": "Sans couleur"}])
+
+        assert flat["label_names"] == "Sans couleur"
+        assert flat["labels_json"] == ""
+
+    def test_label_without_name(self):
+        """Un label sans nom est absent des deux colonnes."""
+        flat = self._flatten_with_labels([{"id": "l1", "color": "red"}])
+
+        assert flat["label_names"] == ""
+        assert flat["labels_json"] == ""
+
+    def test_preserves_accents(self):
+        """Les accents sont conservés tels quels dans labels_json."""
+        flat = self._flatten_with_labels(
+            [{"id": "l1", "name": "Contrôlé", "color": "green"}]
+        )
+
+        assert "Contrôlé" in flat["labels_json"]
+
+
+# ---------------------------------------------------------------------------
+# Tests de caractérisation de extract_champ_values, type par type
+#
+# Figent le comportement actuel avant remaniement, bizarreries comprises.
+# ---------------------------------------------------------------------------
+
+CHAMP_ID = "Q2hhbXAtMQ=="  # base64 de "Champ-1"
+DESCRIPTOR_ID = "Q2hhbXAtMTA="  # base64 de "Champ-10"
+
+
+def make_typed_champ(typename, label="Champ", **fields):
+    """Fabrique un champ DN minimal du type donné, complété par fields."""
+    return {
+        "__typename": typename,
+        "id": CHAMP_ID,
+        "champDescriptorId": DESCRIPTOR_ID,
+        "label": label,
+        "stringValue": "valeur texte",
+        "updatedAt": "2024-01-01T00:00:00Z",
+        "prefilled": False,
+        **fields,
+    }
+
+
+def expected_entry(champ, value, json_value, prefix=""):
+    """Entrée principale attendue pour un champ de premier niveau."""
+    return {
+        "id": champ["id"],
+        "numeric_id": "1",
+        "descriptor_id": DESCRIPTOR_ID,
+        "decoded_descriptor_id": "10",
+        "label": f"{prefix}{champ['label']}",
+        "base_label": champ["label"],
+        "type": champ["__typename"],
+        "value": value,
+        "json_value": json_value,
+        "updated_at": champ["updatedAt"],
+        "prefilled": False,
+        "row_id": None,
+    }
+
+
+def expected_sub_column(champ, suffix, value):
+    """Sous-colonne texte attendue (ex. `_nom`, `_code`) d'un champ."""
+    return {
+        "id": f"{champ['id']}_{suffix}",
+        "numeric_id": None,
+        "descriptor_id": DESCRIPTOR_ID,
+        "decoded_descriptor_id": "10",
+        "label": f"{champ['label']}_{suffix}",
+        "base_label": f"{champ['label']}_{suffix}",
+        "type": "TextColumn",
+        "value": value,
+        "json_value": None,
+        "updated_at": champ["updatedAt"],
+        "prefilled": False,
+        "row_id": None,
+    }
+
+
+ADDRESS = {"streetAddress": "1 rue Haute", "postalCode": "30000", "cityName": "Nîmes"}
+COMMUNE = {"name": "Nîmes", "code": "30189", "postalCode": "30000"}
+DEPARTEMENT = {"name": "Gard", "code": "30"}
+ETABLISSEMENT = {"siret": "12345678900011", "entreprise": {"raisonSociale": "ACME"}}
+EPCI = {"name": "Nîmes Métropole", "code": "243000643"}
+RNF = {
+    "title": "Fondation X",
+    "address": {"cityName": "Lyon", "postalCode": "69001"},
+}
+
+
+class TestExtractChampValuesSimpleTypes:
+    """Types de champ produisant une seule entrée : valeur et valeur JSON."""
+
+    @pytest.mark.parametrize(
+        "typename, fields, expected_value, expected_json",
+        [
+            ("TextChamp", {}, "valeur texte", None),
+            ("DateChamp", {"date": "2024-05-01"}, "2024-05-01", None),
+            (
+                "DatetimeChamp",
+                {"datetime": "2024-05-01T10:00:00+02:00"},
+                "2024-05-01T10:00:00+02:00",
+                None,
+            ),
+            ("CheckboxChamp", {"checked": True}, True, None),
+            ("YesNoChamp", {"selected": False}, False, None),
+            ("DecimalNumberChamp", {"decimalNumber": 3.5}, 3.5, None),
+            ("IntegerNumberChamp", {"integerNumber": 42}, 42, None),
+            ("CiviliteChamp", {"civilite": "Mme"}, "Mme", None),
+            # Listes déroulantes
+            ("DropDownListChamp", {"stringValue": "Option A"}, "Option A", None),
+            ("DropDownListChamp", {"stringValue": '["A", "B"]'}, "A, B", None),
+            (
+                "DropDownListChamp",
+                {"stringValue": None, "value": "Option B"},
+                "Option B",
+                None,
+            ),
+            (
+                "MultipleDropDownListChamp",
+                {"values": ["A", "B"]},
+                "A, B",
+                ["A", "B"],
+            ),
+            (
+                "MultipleDropDownListChamp",
+                {"values": [], "stringValue": '["A", "B"]'},
+                "A, B",
+                [],
+            ),
+            (
+                "LinkedDropDownListChamp",
+                {"primaryValue": "P", "secondaryValue": "S"},
+                "P - S",
+                {"primaryValue": "P", "secondaryValue": "S"},
+            ),
+            (
+                "LinkedDropDownListChamp",
+                {"primaryValue": "P"},
+                "P",
+                {"primaryValue": "P", "secondaryValue": ""},
+            ),
+            # Adresse
+            (
+                "AddressChamp",
+                {"address": ADDRESS},
+                "1 rue Haute, 30000 Nîmes",
+                ADDRESS,
+            ),
+            (
+                "AddressChamp",
+                {"address": ADDRESS, "commune": COMMUNE, "departement": DEPARTEMENT},
+                "1 rue Haute, 30000 Nîmes",
+                {"address": ADDRESS, "commune": COMMUNE, "departement": DEPARTEMENT},
+            ),
+            # Bizarrerie : séparateurs conservés quand la voie est absente
+            (
+                "AddressChamp",
+                {"address": {"cityName": "Nîmes"}},
+                ",  Nîmes",
+                {"cityName": "Nîmes"},
+            ),
+            # SIRET
+            (
+                "SiretChamp",
+                {"etablissement": ETABLISSEMENT},
+                "12345678900011 - ACME",
+                ETABLISSEMENT,
+            ),
+            (
+                "SiretChamp",
+                {"etablissement": {"siret": "12345678900011"}},
+                "12345678900011",
+                {"siret": "12345678900011"},
+            ),
+            # Lien vers un dossier
+            (
+                "DossierLinkChamp",
+                {"dossier": {"number": 12, "state": "en_construction"}},
+                "Dossier #12 (en_construction)",
+                {"number": 12, "state": "en_construction"},
+            ),
+            (
+                "DossierLinkChamp",
+                {"dossier": {"id": "D1"}},
+                "Aucun dossier lié",
+                {"id": "D1"},
+            ),
+            # EPCI
+            (
+                "EpciChamp",
+                {"epci": EPCI},
+                "Nîmes Métropole (243000643)",
+                {"epci": EPCI},
+            ),
+            (
+                "EpciChamp",
+                {"epci": EPCI, "departement": DEPARTEMENT},
+                "Nîmes Métropole (243000643), Gard",
+                {"epci": EPCI, "departement": DEPARTEMENT},
+            ),
+            # RNF
+            ("RNFChamp", {"rnf": RNF}, "Fondation X - Lyon (69001)", {"rnf": RNF}),
+            (
+                "RNFChamp",
+                {"rnf": RNF, "commune": COMMUNE, "departement": DEPARTEMENT},
+                "Fondation X - Lyon (69001)",
+                {"rnf": RNF, "commune": COMMUNE, "departement": DEPARTEMENT},
+            ),
+            (
+                "RNFChamp",
+                {"rnf": {"title": "Fondation X"}},
+                "Fondation X",
+                {"rnf": {"title": "Fondation X"}},
+            ),
+            (
+                "RNFChamp",
+                {"rnf": {"id": "R1"}},
+                "",
+                {"rnf": {"id": "R1"}},
+            ),
+            # Engagement juridique
+            (
+                "EngagementJuridiqueChamp",
+                {"engagementJuridique": {"montantEngage": 100, "montantPaye": 50}},
+                "Montant engagé: 100, Montant payé: 50",
+                {"montantEngage": 100, "montantPaye": 50},
+            ),
+            (
+                "EngagementJuridiqueChamp",
+                {"engagementJuridique": {"montantEngage": None, "montantPaye": 50}},
+                "Montant payé: 50",
+                {"montantEngage": None, "montantPaye": 50},
+            ),
+            (
+                "EngagementJuridiqueChamp",
+                {"engagementJuridique": {"montantEngage": None, "montantPaye": None}},
+                "",
+                {"montantEngage": None, "montantPaye": None},
+            ),
+        ],
+    )
+    def test_value_and_json_value(
+        self, typename, fields, expected_value, expected_json
+    ):
+        champ = make_typed_champ(typename, **fields)
+
+        result = extract_champ_values(champ)
+
+        assert len(result) == 1
+        assert result[0]["value"] == expected_value
+        assert result[0]["json_value"] == expected_json
+
+    def test_full_entry(self):
+        """Une entrée porte les identifiants, libellés et métadonnées du champ."""
+        champ = make_typed_champ("DateChamp", label="Date", date="2024-05-01")
+
+        assert extract_champ_values(champ) == [
+            expected_entry(champ, "2024-05-01", None)
+        ]
+
+
+class TestExtractChampValuesFallback:
+    """Sans son objet, un champ composé retombe sur stringValue."""
+
+    @pytest.mark.parametrize(
+        "typename, object_key",
+        [
+            ("AddressChamp", "address"),
+            ("SiretChamp", "etablissement"),
+            ("DossierLinkChamp", "dossier"),
+            ("PaysChamp", "pays"),
+            ("RegionChamp", "region"),
+            ("DepartementChamp", "departement"),
+            ("CommuneChamp", "commune"),
+            ("EpciChamp", "epci"),
+            ("RNFChamp", "rnf"),
+            ("EngagementJuridiqueChamp", "engagementJuridique"),
+        ],
+    )
+    def test_missing_object_falls_back_to_string_value(self, typename, object_key):
+        champ = make_typed_champ(typename, **{object_key: None})
+
+        assert extract_champ_values(champ) == [
+            expected_entry(champ, "valeur texte", None)
+        ]
+
+
+class TestExtractChampValuesSubColumns:
+    """Champs territoriaux : sous-colonnes texte produites avant l'entrée principale."""
+
+    @pytest.mark.parametrize(
+        "typename, object_key",
+        [
+            ("PaysChamp", "pays"),
+            ("RegionChamp", "region"),
+            ("DepartementChamp", "departement"),
+        ],
+    )
+    def test_name_and_code(self, typename, object_key):
+        territoire = {"name": "Gard", "code": "30"}
+        champ = make_typed_champ(typename, label="Lieu", **{object_key: territoire})
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Gard"),
+            expected_sub_column(champ, "code", "30"),
+            expected_entry(champ, "Gard (30)", territoire),
+        ]
+
+    @pytest.mark.parametrize(
+        "typename, object_key",
+        [
+            ("PaysChamp", "pays"),
+            ("RegionChamp", "region"),
+            ("DepartementChamp", "departement"),
+        ],
+    )
+    def test_name_only(self, typename, object_key):
+        """Sans code, la sous-colonne `_code` n'est pas produite."""
+        territoire = {"name": "Gard"}
+        champ = make_typed_champ(typename, label="Lieu", **{object_key: territoire})
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Gard"),
+            expected_entry(champ, "Gard", territoire),
+        ]
+
+    def test_commune_complete(self):
+        """Commune avec département : 5 sous-colonnes, dans l'ordre déclaré par le schéma."""
+        champ = make_typed_champ(
+            "CommuneChamp", label="Commune", commune=COMMUNE, departement=DEPARTEMENT
+        )
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Nîmes"),
+            expected_sub_column(champ, "code_postal", "30000"),
+            expected_sub_column(champ, "departement", "Gard"),
+            expected_sub_column(champ, "code_insee", "30189"),
+            expected_sub_column(champ, "code_departement", "30"),
+            expected_entry(
+                champ,
+                "Nîmes (30000), Gard",
+                {"commune": COMMUNE, "departement": DEPARTEMENT},
+            ),
+        ]
+
+    def test_commune_without_departement_nor_postal_code(self):
+        """Sans département ni code postal, seules `_nom` et `_code_insee` restent."""
+        commune = {"name": "Nîmes", "code": "30189"}
+        champ = make_typed_champ("CommuneChamp", label="Commune", commune=commune)
+
+        assert extract_champ_values(champ) == [
+            expected_sub_column(champ, "nom", "Nîmes"),
+            expected_sub_column(champ, "code_insee", "30189"),
+            expected_entry(champ, "Nîmes", {"commune": commune}),
+        ]
+
+
+class TestExtractChampValuesRepetition:
+    """Blocs répétables : une entrée par champ de chaque rangée."""
+
+    def _bloc(self):
+        def row_champ(value, champ_id):
+            return {
+                **make_typed_champ("TextChamp", label="Nom", stringValue=value),
+                "id": champ_id,
+            }
+
+        header = make_typed_champ("HeaderSectionChamp", label="Titre")
+        return make_typed_champ(
+            "RepetitionChamp",
+            label="Bloc",
+            rows=[
+                {"id": "row1", "champs": [header, row_champ("A", "Q2hhbXAtMg==")]},
+                {"id": "row2", "champs": [row_champ("B", "Q2hhbXAtMw==")]},
+            ],
+        )
+
+    def test_rows_are_prefixed_and_linked(self):
+        """Libellé préfixé par bloc et rang, row_id portant l'id de la rangée."""
+        result = extract_champ_values(self._bloc())
+
+        assert [
+            (item["label"], item["base_label"], item["value"], item["row_id"])
+            for item in result
+        ] == [
+            ("Bloc_1_Nom", "Nom", "A", "row1"),
+            ("Bloc_2_Nom", "Nom", "B", "row2"),
+        ]
+        assert [item["numeric_id"] for item in result] == ["2", "3"]
+
+    def test_prefix_is_kept_before_bloc_label(self):
+        result = extract_champ_values(self._bloc(), prefix="annotation_")
+
+        assert [item["label"] for item in result] == [
+            "annotation_Bloc_1_Nom",
+            "annotation_Bloc_2_Nom",
+        ]
+
+    def test_empty_bloc_produces_nothing(self):
+        assert extract_champ_values(make_typed_champ("RepetitionChamp", rows=[])) == []
+
+
+class TestExtractChampValuesCommon:
+    """Règles communes à tous les types : identifiants, préfixe, champs ignorés."""
+
+    @pytest.mark.parametrize("typename", ["HeaderSectionChamp", "ExplicationChamp"])
+    def test_display_champs_are_ignored(self, typename):
+        assert extract_champ_values(make_typed_champ(typename)) == []
+
+    @pytest.mark.parametrize(
+        "champ_id, expected_numeric_id",
+        [
+            (CHAMP_ID, "1"),
+            ("gid://app/Champ/123", "123"),
+            ("gid://app/Autre/123", None),
+            ("a/b", None),
+        ],
+    )
+    def test_numeric_id(self, champ_id, expected_numeric_id):
+        champ = {**make_typed_champ("TextChamp"), "id": champ_id}
+
+        assert extract_champ_values(champ)[0]["numeric_id"] == expected_numeric_id
+
+    def test_prefix_applies_to_label_only(self):
+        champ = make_typed_champ("TextChamp", label="Avis")
+
+        assert extract_champ_values(champ, prefix="annotation_") == [
+            expected_entry(champ, "valeur texte", None, prefix="annotation_")
+        ]
+
+    def test_without_descriptor_id(self):
+        champ = make_typed_champ("TextChamp")
+        del champ["champDescriptorId"]
+
+        result = extract_champ_values(champ)
+
+        assert result[0]["descriptor_id"] is None
+        assert result[0]["decoded_descriptor_id"] is None
+
+
 # ---------------------------------------------------------------------------
 # Tests CarteChamp (champs carto top-level)
 #
@@ -694,3 +1244,123 @@ class TestExtractChampValuesPieceJustificativeOcrTypees:
             "avis_date_de_mise_en_recouvrement": "Date",
             "avis_departement": "Text",
         }
+
+
+PROBLEMATIC_DESCRIPTOR_ID = "desc_problematique"
+
+
+def make_kept_champ():
+    return make_typed_champ("TextChamp", label="Gardé", champDescriptorId="desc_garde")
+
+
+def labels_in_champs(champs, problematic_ids):
+    flat = dossier_to_flat_data(make_dossier(champs), problematic_ids=problematic_ids)
+    return [item["base_label"] for item in flat["champs"]]
+
+
+def labels_in_annotations(champs, problematic_ids):
+    flat = dossier_to_flat_data(
+        make_dossier([], annotations=champs), problematic_ids=problematic_ids
+    )
+    return [item["base_label"] for item in flat["annotations"]]
+
+
+def labels_in_repetable_row(champs, problematic_ids):
+    bloc = make_typed_champ(
+        "RepetitionChamp", label="Bloc", rows=[{"id": "row1", "champs": champs}]
+    )
+    flat = dossier_to_flat_data(make_dossier([bloc]), problematic_ids=problematic_ids)
+    assert len(flat["repetable_rows"]) == 1
+    return [
+        key
+        for key in flat["repetable_rows"][0]
+        if key != "dossier_number" and not key.startswith("block_")
+    ]
+
+
+@pytest.mark.parametrize(
+    "labels_at_level",
+    [labels_in_champs, labels_in_annotations, labels_in_repetable_row],
+)
+class TestDossierToFlatDataFiltering:
+    """Champs ignorés dans les champs, les annotations et les rangées de bloc."""
+
+    @pytest.mark.parametrize("typename", ["HeaderSectionChamp", "ExplicationChamp"])
+    def test_display_champ_is_ignored(self, labels_at_level, typename):
+        """Un champ d'affichage ne produit aucune colonne."""
+        champs = [make_typed_champ(typename, label="Titre"), make_kept_champ()]
+
+        assert labels_at_level(champs, None) == ["Gardé"]
+
+    def test_problematic_champ_is_ignored(self, labels_at_level):
+        """Un champ dont le descripteur est problématique est écarté."""
+        problematic = make_typed_champ(
+            "TextChamp", label="Écarté", champDescriptorId=PROBLEMATIC_DESCRIPTOR_ID
+        )
+
+        labels = labels_at_level(
+            [problematic, make_kept_champ()], {PROBLEMATIC_DESCRIPTOR_ID}
+        )
+
+        assert labels == ["Gardé"]
+
+    def test_champ_is_kept_without_problematic_ids(self, labels_at_level):
+        """Sans descripteur problématique déclaré, le champ est conservé."""
+        champ = make_typed_champ(
+            "TextChamp", label="Conservé", champDescriptorId=PROBLEMATIC_DESCRIPTOR_ID
+        )
+
+        assert labels_at_level([champ], None) == ["Conservé"]
+
+
+class TestExtractDemandeurInfo:
+    """Informations du demandeur, selon son type."""
+
+    COMMON_INFO = {
+        "dossier_number": 1,
+        "usager_email": "usager@example.org",
+        "prenom_mandataire": "Ana",
+        "nom_mandataire": "Martin",
+        "depose_par_un_tiers": True,
+    }
+
+    def _dossier(self, demandeur):
+        return {
+            "number": 1,
+            "usager": {"email": "usager@example.org"},
+            "prenomMandataire": "Ana",
+            "nomMandataire": "Martin",
+            "deposeParUnTiers": True,
+            "demandeur": demandeur,
+        }
+
+    def test_personne_physique(self):
+        """Une personne physique ajoute son identité aux informations communes."""
+        identity = {
+            "civilite": "Mme",
+            "nom": "Durand",
+            "prenom": "Léa",
+            "email": "lea@example.org",
+        }
+        demandeur = {"__typename": "PersonnePhysique", **identity}
+
+        assert extract_demandeur_info(self._dossier(demandeur)) == {
+            **self.COMMON_INFO,
+            "type": "PersonnePhysique",
+            **identity,
+        }
+
+    @pytest.mark.parametrize("typename", ["PersonneMorale", "PersonneMoraleIncomplete"])
+    def test_personne_morale(self, typename):
+        """Une personne morale n'ajoute que son type aux informations communes."""
+        demandeur = {"__typename": typename, "siret": "12345678900011"}
+
+        assert extract_demandeur_info(self._dossier(demandeur)) == {
+            **self.COMMON_INFO,
+            "type": typename,
+        }
+
+    @pytest.mark.parametrize("demandeur", [{}, None])
+    def test_without_demandeur(self, demandeur):
+        """Sans demandeur, seules les informations communes sont renvoyées."""
+        assert extract_demandeur_info(self._dossier(demandeur)) == self.COMMON_INFO

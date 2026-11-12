@@ -2,20 +2,17 @@
 Tests unitaires pour la tâche de rafraîchissement des labels
 
 Ces tests couvrent :
-- La construction des colonnes label_names et labels_json
 - La lecture de l'état actuel dans Grist et son comportement en erreur
 - L'envoi des mises à jour par lots
 - L'orchestration complète de sync_labels_for_demarche
 """
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sync.tasks.labels import (
     BATCH_SIZE,
-    _build_label_fields,
     _fetch_existing_labels,
     _patch_records,
     sync_labels_for_demarche,
@@ -45,61 +42,6 @@ def create_mock_client_with_records(response):
     client = create_mock_client()
     client.get_records.return_value = response
     return client
-
-
-class TestBuildLabelFields:
-    """Tests unitaires pour la fonction _build_label_fields"""
-
-    def test_build_label_fields_empty(self):
-        """Test sans label"""
-        assert _build_label_fields([]) == {"label_names": "", "labels_json": ""}
-        assert _build_label_fields(None) == {"label_names": "", "labels_json": ""}
-
-    def test_build_label_fields_nominal(self):
-        """Test avec deux labels complets"""
-        labels = [
-            {"id": "l1", "name": "Urgent", "color": "red"},
-            {"id": "l2", "name": "À relancer", "color": "blue"},
-        ]
-
-        result = _build_label_fields(labels)
-
-        assert result["label_names"] == "Urgent, À relancer"
-        assert len(json.loads(result["labels_json"])) == 2
-
-    def test_build_label_fields_label_without_color(self):
-        """Test qu'un label sans couleur est dans label_names mais pas dans labels_json.
-
-        Comportement hérité de dossier_to_flat_data, à préserver à l'identique.
-        """
-        labels = [
-            {"id": "l1", "name": "Urgent", "color": "red"},
-            {"id": "l2", "name": "Sans couleur"},
-        ]
-
-        result = _build_label_fields(labels)
-
-        assert result["label_names"] == "Urgent, Sans couleur"
-        parsed = json.loads(result["labels_json"])
-        assert len(parsed) == 1
-        assert parsed[0]["name"] == "Urgent"
-
-    def test_build_label_fields_label_without_name(self):
-        """Test qu'un label sans nom est ignoré partout"""
-        labels = [{"id": "l1", "color": "red"}]
-
-        result = _build_label_fields(labels)
-
-        assert result["label_names"] == ""
-        assert result["labels_json"] == ""
-
-    def test_build_label_fields_preserves_accents(self):
-        """Test que les accents ne sont pas échappés dans le JSON"""
-        labels = [{"id": "l1", "name": "Contrôlé", "color": "green"}]
-
-        result = _build_label_fields(labels)
-
-        assert "Contrôlé" in result["labels_json"]
 
 
 class TestFetchExistingLabels:
