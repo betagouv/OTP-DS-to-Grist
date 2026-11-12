@@ -6,6 +6,16 @@ from typing import Any
 import requests
 
 from grist.base_url import assert_base_url_allowed
+from grist.pages import (
+    PAGES_TABLE,
+    PARENT_TABLE_COLUMNS,
+    TABLES_TABLE,
+    get_folded_page_actions,
+    is_demarche_table,
+    get_page_attachment_actions,
+    get_parent_page_name,
+    get_parent_table_id,
+)
 from utils.log import log, log_error, log_progress, log_verbose
 from utils.rate_limited_session import RateLimitedSession, build_rate_limited_session
 
@@ -334,6 +344,35 @@ class GristClient:
             return result
 
         self._untie_columns(created_table_id, col_ids)
+
+        return result
+
+    def create_demarche_table(
+        self,
+        demarche_number: int | str,
+        table_id: str,
+        columns: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """
+        Crée une table de la démarche et range sa page sous la page parente
+        « N° <numéro> ».
+
+        La page parente est créée, pliée, avec la première table d'une démarche.
+        Une démarche synchronisée avant l'arborescence n'en a pas : ses pages
+        restent à la racine. Un rangement en échec est journalisé sans être
+        levé : la page reste à la racine et la synchronisation continue.
+        """
+        result = self.create_table(table_id, columns)
+        created_table_id = result["tables"][0]["id"]
+
+        try:
+            self._attach_page_to_parent(demarche_number, created_table_id)
+        except Exception as e:
+            log_error(
+                f"Rangement de la page de {created_table_id} sous "
+                f"« {get_parent_page_name(demarche_number)} » impossible : {e}. "
+                "La page reste à la racine, la synchro continue."
+            )
 
         return result
 
@@ -686,6 +725,76 @@ class GristClient:
             raise GristReadError(SYNC_METADATA_TABLE_ID, response)
 
         return response.json().get("records", [])
+
+    def _attach_page_to_parent(self, demarche_number: int | str, table_id: str) -> None:
+        """
+        Range la page de `table_id` sous la page parente de la démarche, en
+        créant celle-ci pour la première table de la démarche.
+        """
+        parent_table = get_parent_table_id(demarche_number)
+        existing_ids = [table["id"] for table in self.list_tables().get("tables", [])]
+
+        if parent_table.lower() not in {table.lower() for table in existing_ids}:
+            if any(
+                is_demarche_table(existing_id, demarche_number)
+                for existing_id in existing_ids
+                if existing_id != table_id
+            ):
+                log_verbose(
+                    f"Démarche {demarche_number} sans page parente : "
+                    f"page de {table_id} laissée à la racine"
+                )
+                return
+            self._create_parent_page(demarche_number)
+
+        pages, tables = self._get_page_tree()
+        actions = get_page_attachment_actions(pages, tables, parent_table, table_id)
+        if not actions:
+            log_verbose(
+                f"Page parente ou page de {table_id} introuvable : "
+                "page laissée à la racine"
+            )
+            return
+
+        self._apply_or_raise(actions)
+        log_verbose(
+            f"Page de {table_id} rangée sous « {get_parent_page_name(demarche_number)} »"
+        )
+
+    def _create_parent_page(self, demarche_number: int | str) -> None:
+        """Crée la table vide de la page parente, puis plie et renomme sa page."""
+        result = self.create_table(
+            get_parent_table_id(demarche_number), PARENT_TABLE_COLUMNS
+        )
+        created_table_id = result["tables"][0]["id"]
+
+        pages, tables = self._get_page_tree()
+        actions = get_folded_page_actions(
+            pages, tables, created_table_id, get_parent_page_name(demarche_number)
+        )
+        if not actions:
+            raise RuntimeError(f"page de la table {created_table_id} introuvable")
+
+        self._apply_or_raise(actions)
+        log(f"Page parente « {get_parent_page_name(demarche_number)} » créée")
+
+    def _get_page_tree(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Pages et tables du document, lues dans les méta-tables Grist."""
+        return self._get_meta_records(PAGES_TABLE), self._get_meta_records(TABLES_TABLE)
+
+    def _get_meta_records(self, table_id: str) -> list[dict[str, Any]]:
+        response = self.get_records(table_id)
+        if response.status_code != 200:
+            raise GristReadError(table_id, response)
+
+        return response.json().get("records", [])
+
+    def _apply_or_raise(self, actions: list[Any]) -> None:
+        response = self.apply_user_actions(actions)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"/apply refusé ({response.status_code} : {_error_detail(response)})"
+            )
 
     def _untie_columns(self, table_id: str, col_ids: list[str]) -> None:
         """

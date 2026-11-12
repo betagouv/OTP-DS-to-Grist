@@ -39,6 +39,7 @@ import grist_processor_working_all as gpa
 import schema_utils
 from grist.client import GristClient, GristReadError
 from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
+from grist.pages import PAGES_TABLE, TABLES_TABLE, VIEWS_TABLE
 from sync.filters import build_filters_cache_key
 
 BASE_URL = "https://grist.test"
@@ -110,9 +111,22 @@ class FakeGristServer:
 
     `untied` garde, par table, les colonnes déliées de leur libellé
     (`PATCH /columns` avec `untieColIdFromLabel`).
+
+    Comme Grist, chaque table créée reçoit une vue et une page, ajoutée en bas
+    à la racine, dans les méta-tables `_grist_Views`, `_grist_Pages` et
+    `_grist_Tables`. `with_demarche_tables=False` part d'un document sans
+    table de la démarche (première synchro) ; sinon ses tables dossiers et
+    champs existent déjà, sans page (démarche synchronisée avant
+    l'arborescence).
     """
 
-    def __init__(self, initial_records=None, failing_reads=(), failing_writes=()):
+    def __init__(
+        self,
+        initial_records=None,
+        failing_reads=(),
+        failing_writes=(),
+        with_demarche_tables=True,
+    ):
         self.tables = {}
         self.store = {}
         self._next_id = {}
@@ -120,7 +134,8 @@ class FakeGristServer:
         self.failing_reads = set(failing_reads)
         self.failing_writes = set(failing_writes)
         self.untied = {}
-        self._add_initial_tables()
+        if with_demarche_tables:
+            self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
                 self._insert(table_id, fields)
@@ -178,6 +193,34 @@ class FakeGristServer:
             for _, fields in sorted(self.store.get(VIEW_FIELDS_TABLE, {}).items())
         ]
 
+    def page_tree(self):
+        """Arbre des pages : (nom de la vue, indentation, pliée), par pagePos."""
+        views = self.store.get(VIEWS_TABLE, {})
+        pages = sorted(
+            self.store.get(PAGES_TABLE, {}).values(), key=lambda p: p["pagePos"]
+        )
+        return [
+            (
+                views[page["viewRef"]]["name"],
+                page["indentation"],
+                json.loads(page.get("options") or "{}").get("collapsed", False),
+            )
+            for page in pages
+        ]
+
+    def _add_table_meta(self, table_id):
+        """Vue, page en bas à la racine et lien table → vue, comme `AddTable`."""
+        view_id = self._insert(VIEWS_TABLE, {"name": table_id})
+        self._insert(
+            PAGES_TABLE,
+            {"viewRef": view_id, "indentation": 0, "pagePos": self._next_page_pos()},
+        )
+        self._insert(TABLES_TABLE, {"tableId": table_id, "primaryViewId": view_id})
+
+    def _next_page_pos(self):
+        positions = [p["pagePos"] for p in self.store.get(PAGES_TABLE, {}).values()]
+        return max(positions, default=0) + 1
+
     def call_count(self, method, route):
         """Nombre d'appels `(méthode, route)` reçus, route normalisée."""
         return self.calls.count((method, route))
@@ -210,11 +253,18 @@ class FakeGristServer:
             if method == "GET":
                 return build_response({"tables": [{"id": tid} for tid in self.tables]})
             if method == "POST":
+                # Comme Grist : une table sans colonne est refusée à la validation
+                if any(not table["columns"] for table in payload["tables"]):
+                    return build_response(
+                        {"error": "Invalid payload: columns[0] is not an object"},
+                        status=400,
+                    )
                 for table in payload["tables"]:
                     self.tables[table["id"]] = {
                         col["id"]: col.get("type", "Text")
                         for col in table["columns"]
                     }
+                    self._add_table_meta(table["id"])
                 return build_response(
                     {"tables": [{"id": t["id"]} for t in payload["tables"]]}
                 )
@@ -324,13 +374,33 @@ class FakeGristServer:
         )
 
     def _apply(self, payload):
-        """`POST /apply` : seule l'action `BulkRemoveRecord` est servie."""
+        """`POST /apply` : actions utilisateur sur les enregistrements.
+
+        `pagePos` à None place la page en bas, comme Grist.
+        """
         for action in payload or []:
-            name, table_id, record_ids = action
-            if name != "BulkRemoveRecord":
+            name, table_id, *args = action
+            records = self.store.setdefault(table_id, {})
+            if name == "BulkRemoveRecord":
+                for record_id in args[0]:
+                    records.pop(record_id, None)
+            elif name == "RemoveRecord":
+                records.pop(args[0], None)
+            elif name == "AddRecord":
+                fields = dict(args[1])
+                if table_id == PAGES_TABLE and fields.get("pagePos") is None:
+                    fields["pagePos"] = self._next_page_pos()
+                self._insert(table_id, fields)
+            elif name == "UpdateRecord":
+                records[args[0]].update(args[1])
+            elif name == "BulkUpdateRecord":
+                record_ids, columns = args
+                for index, record_id in enumerate(record_ids):
+                    records[record_id].update(
+                        {col: values[index] for col, values in columns.items()}
+                    )
+            else:
                 raise AssertionError(f"Action non servie : {name}")
-            for record_id in record_ids:
-                self.store.get(table_id, {}).pop(record_id, None)
         return build_response({})
 
 
@@ -635,6 +705,7 @@ def run_pipeline(
     filters=None,
     deletion_error=None,
     schema_error=None,
+    schema=None,
     **pipeline_kwargs,
 ):
     """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
@@ -645,14 +716,15 @@ def run_pipeline(
     `filters` surcharge les variables de filtre neutralisées par défaut, afin
     que les tests n dépendent pas du `.env` du poste.
 
-    `schema_error` fait échouer la récupération du schéma de la démarche.
+    `schema_error` fait échouer la récupération du schéma de la démarche ;
+    `schema` remplace le schéma minimal de `make_schema`.
     """
     with ExitStack() as stack, grist_transport(server) as client:
         stack.enter_context(
             patch.object(
                 gpa,
                 "get_demarche_schema_robust",
-                return_value=make_schema(),
+                return_value=schema or make_schema(),
                 side_effect=schema_error,
             )
         )
@@ -1463,6 +1535,81 @@ class TestTableSetupFailure:
         assert result is False
         assert set(server.tables) == initial_tables
         assert server.rows(DOSSIERS_TABLE) == []
+
+
+class TestPageTree:
+    """Pages de la démarche rangées sous la page parente « N° <numéro> »."""
+
+    def test_first_sync_files_every_demarche_page(self):
+        """première synchro : page parente pliée, toutes les pages de la
+        démarche dessous, y compris la table avis créée en cours de route
+        après Sync_metadata ; Sync_metadata reste à la racine"""
+        server = FakeGristServer(with_demarche_tables=False)
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert server.page_tree() == [
+            ("N° 12345", 0, True),
+            (DOSSIERS_TABLE, 1, False),
+            (CHAMPS_TABLE, 1, False),
+            (ANNOTATIONS_TABLE, 1, False),
+            ("Demarche_12345_demandeurs", 1, False),
+            ("Demarche_12345_instructeurs", 1, False),
+            (AVIS_TABLE, 1, False),
+            (SYNC_METADATA_TABLE, 0, False),
+        ]
+        assert "Demarche_12345" in server.tables
+
+    def test_repetable_block_page_filed_under_parent(self):
+        """la table d'un bloc répétable est rangée comme les autres"""
+        schema = make_schema()
+        schema["activeRevision"]["champDescriptors"].append(
+            {
+                "__typename": "RepetitionChampDescriptor",
+                "id": "desc_bloc",
+                "type": "repetition",
+                "label": "Membres",
+                "description": "",
+                "required": False,
+                "champDescriptors": [
+                    {
+                        "__typename": "TextChampDescriptor",
+                        "id": "desc_nom",
+                        "type": "text",
+                        "label": "Nom",
+                        "description": "",
+                        "required": False,
+                    }
+                ],
+            }
+        )
+        server = FakeGristServer(with_demarche_tables=False)
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, schema=schema, parallel=False)
+
+        assert result is True
+        repetable_pages = [
+            (name, indentation)
+            for name, indentation, _ in server.page_tree()
+            if name.startswith("Demarche_12345_repetable_")
+        ]
+        assert repetable_pages == [("Demarche_12345_repetable_membres", 1)]
+
+    def test_demarche_synced_before_tree_keeps_root_pages(self):
+        """démarche déjà synchronisée sans page parente : aucune page parente,
+        les nouvelles pages restent à la racine"""
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert "Demarche_12345" not in server.tables
+        assert all(indentation == 0 for _, indentation, _ in server.page_tree())
+        assert not any(name.startswith("N° ") for name, _, _ in server.page_tree())
 
 
 class TestHiddenIdColumns:
