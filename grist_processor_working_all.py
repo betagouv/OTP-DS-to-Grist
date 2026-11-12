@@ -18,17 +18,13 @@ from grist.formatter import format_value
 from grist.utils import normalize_column_name
 from dn.client import (
     PAGE_SIZE_DOSSIERS_MAX,
-    get_demarche_descriptors,
-    iter_demarche_dossier_pages,
     iter_filtered_dossier_pages,
 )
 from dn.extract import dossier_to_flat_data
 from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
-    get_demarche_schema,
-    get_problematic_descriptor_ids_from_schema,
-    get_demarche_schema_enhanced,
+    get_demarche_schema_robust,
     update_grist_tables_from_schema,
 )
 from sync.filters import (
@@ -65,19 +61,6 @@ def print_api_timings():
     print("=" * 50 + "\n")
 
 
-def get_optimized_schema(demarche_number):
-    """
-    Récupération optimisée du schéma avec fallback automatique.
-    """
-    try:
-        log("Récupération optimisée du schéma")
-        return get_demarche_schema_enhanced(demarche_number, prefer_robust=True)
-    except Exception as e:
-        log_error(f"Erreur version optimisée: {e}")
-        log("Fallback vers version classique")
-        return get_demarche_schema(demarche_number)
-
-
 def log_schema_improvements(schema, demarche_number):
     """Affiche les améliorations apportées par la nouvelle version"""
     if schema.get("metadata", {}).get("optimized"):
@@ -89,204 +72,6 @@ def log_schema_improvements(schema, demarche_number):
         log("Filtrage automatique des champs problématiques activé")
         log("Gestion robuste des erreurs activée")
         log("Métadonnées enrichies disponibles")
-
-
-def detect_column_types_from_multiple_dossiers(dossiers_data, problematic_ids=None):
-    """
-    Détecte les types de colonnes pour les tables Grist à partir des données de plusieurs dossiers.
-    """
-    # Colonnes fixes pour la table des dossiers
-    dossier_columns = [
-        {"id": "dossier_id", "type": "Text"},
-        {"id": "dossier_number", "type": "Int"},
-        {"id": "state", "type": "Text"},
-        {"id": "date_depot", "type": "DateTime"},
-        {"id": "date_derniere_modification", "type": "DateTime"},
-        {"id": "date_traitement", "type": "DateTime"},
-        {"id": "date_expiration", "type": "DateTime"},
-        {"id": "demandeur_type", "type": "Text"},
-        {"id": "groupe_instructeur_id", "type": "Text"},
-        {"id": "groupe_instructeur_number", "type": "Int"},
-        {"id": "groupe_instructeur_label", "type": "Text"},
-        {"id": "date_suppression", "type": "DateTime"},
-        {"id": "label_names", "type": "Text"},
-        {"id": "labels_json", "type": "Text"},
-        {"id": "suivi_par", "type": "Text"},
-        {"id": "date_accuse_lecture", "type": "DateTime"},
-        {"id": "correction_instructeur", "type": "Text"},
-        {"id": "date_derniere_correction_en_attente", "type": "DateTime"},
-    ]
-
-    # Colonnes de base pour la table des champs
-    champ_columns = [
-        {"id": "dossier_number", "type": "Int"},
-    ]
-
-    # Colonnes de base pour la table des annotations
-    annotation_columns = [
-        {"id": "dossier_number", "type": "Int"},
-    ]
-
-    # Dictionnaires pour suivre les types uniques
-    unique_champ_columns = {}
-    unique_annotation_columns = {}
-
-    # Indicateurs de présence
-    has_repetable_blocks = False
-    has_carto_fields = False
-
-    # Fonction pour déterminer le type de colonne
-    def determine_column_type(value):
-        if value is None:
-            return "Text"
-        elif isinstance(value, bool):
-            return "Bool"
-        elif isinstance(value, int):
-            return "Int"
-        elif isinstance(value, float):
-            return "Numeric"
-        elif isinstance(value, (datetime, str)) and (
-            isinstance(value, datetime) or any(fmt in value for fmt in ["-", "T", ":"])
-        ):
-            return "DateTime"
-        else:
-            return "Text"
-
-    # Fonction récursive pour vérifier les champs
-    def check_for_repetable_and_carto(champs):
-        nonlocal has_repetable_blocks, has_carto_fields
-
-        for champ in champs:
-            # Ignorer les types HeaderSectionChamp et ExplicationChamp
-            if champ["__typename"] in ["HeaderSectionChamp", "ExplicationChamp"]:
-                continue
-
-            if champ["__typename"] == "RepetitionChamp":
-                has_repetable_blocks = True
-                # Vérifier les champs à l'intérieur des blocs répétables
-                for row in champ.get("rows", []):
-                    if "champs" in row:
-                        for field in row["champs"]:
-                            # Ignorer les types HeaderSectionChamp et ExplicationChamp dans les blocs répétables
-                            if field["__typename"] in [
-                                "HeaderSectionChamp",
-                                "ExplicationChamp",
-                            ]:
-                                continue
-
-                            if field["__typename"] == "CarteChamp":
-                                has_carto_fields = True
-                                return  # Sortir dès qu'on a trouvé les deux types
-
-            elif champ["__typename"] == "CarteChamp":
-                has_carto_fields = True
-
-    # Analyser tous les dossiers pour détecter les colonnes et les types de champs
-    for dossier_data in dossiers_data:
-        # Utiliser dossier_to_flat_data avec exclude_repetition_champs=True
-        # pour exclure les blocs répétables de la table des champs
-        flat_data = dossier_to_flat_data(
-            dossier_data,
-            exclude_repetition_champs=True,
-            problematic_ids=problematic_ids,
-        )
-
-        # Collecter les champs
-        for champ in flat_data["champs"]:
-            # Ignorer les champs de type HeaderSectionChamp et ExplicationChamp
-            if champ["type"] in ["HeaderSectionChamp", "ExplicationChamp"]:
-                continue
-
-            # Ignorer les champs dont l'ID est dans la liste des problématiques
-            if problematic_ids and champ.get("id") in problematic_ids:
-                continue
-
-            champ_label = normalize_column_name(champ["label"])
-
-            if champ_label not in unique_champ_columns:
-                column_type = determine_column_type(champ.get("value"))
-
-            if champ.get("type") == "YesNoChamp":
-                print(f"DEBUG detect_column: {champ['label']}")
-                print(
-                    f"  Value: {champ.get('value')} (type: {type(champ.get('value'))})"
-                )
-                print(f"  Type déterminé: {column_type}")
-
-                unique_champ_columns[champ_label] = column_type
-
-        # Collecter les annotations
-        for annotation in flat_data["annotations"]:
-            # Ignorer les annotations de type HeaderSectionChamp et ExplicationChamp
-            if annotation["type"] in ["HeaderSectionChamp", "ExplicationChamp"]:
-                continue
-
-            # Enlever le préfixe "annotation_" pour le nom de colonne dans la table des annotations
-            original_label = annotation["label"]
-            if original_label.startswith("annotation_"):
-                annotation_label = normalize_column_name(
-                    original_label[11:]
-                )  # enlever "annotation_"
-            else:
-                annotation_label = normalize_column_name(original_label)
-
-            if annotation_label not in unique_annotation_columns:
-                column_type = determine_column_type(annotation.get("value"))
-                unique_annotation_columns[annotation_label] = column_type
-
-        # Vérifier la présence de blocs répétables et de champs cartographiques
-        check_for_repetable_and_carto(dossier_data.get("champs", []))
-        if not (
-            has_repetable_blocks and has_carto_fields
-        ):  # Continuer seulement si on n'a pas encore trouvé les deux
-            check_for_repetable_and_carto(dossier_data.get("annotations", []))
-
-        if has_repetable_blocks and has_carto_fields:
-            break  # Sortir de la boucle si on a déjà trouvé les deux types
-
-    # Ajouter les colonnes uniques détectées
-    for col_name, col_type in unique_champ_columns.items():
-        champ_columns.append({"id": col_name, "type": col_type})
-
-    # Ajouter les colonnes uniques d'annotations détectées
-    for col_name, col_type in unique_annotation_columns.items():
-        annotation_columns.append({"id": col_name, "type": col_type})
-
-    # Préparer le résultat
-    result = {
-        "dossier": dossier_columns,
-        "champs": champ_columns,
-        "annotations": annotation_columns,
-        "has_repetable_blocks": has_repetable_blocks,
-        "has_carto_fields": has_carto_fields,
-    }
-
-    # Ne détecter les colonnes des blocs répétables que si nécessaire
-    if has_repetable_blocks:
-        try:
-            repetable_columns = rp.detect_repetable_columns_from_multiple_dossiers(
-                dossiers_data
-            )
-            result["repetable_rows"] = repetable_columns
-        except Exception as e:
-            log_error(
-                f"Erreur lors de la détection des colonnes des blocs répétables: {str(e)}"
-            )
-            traceback.print_exc()
-            # Fournir au moins une structure de base en cas d'erreur
-            result["repetable_rows"] = [
-                {"id": "dossier_number", "type": "Int"},
-                {"id": "block_label", "type": "Text"},
-                {"id": "block_row_index", "type": "Int"},
-                {"id": "block_row_id", "type": "Text"},
-            ]
-
-    return result
-
-
-# ========================================
-# EXTRACTION DES DONNÉES DEMANDEUR
-# ========================================
 
 
 def extract_demandeur_data(dossier, demandeur_type):
@@ -420,7 +205,6 @@ def run_demarche_level_tasks(
     updated_since_cursor: str | None = None,
     force_full_sync: bool = False,
     deleted_since_cursor: str | None = None,
-    schema_method_successful: bool = False,
 ) -> bool:
     """
     Opérations de niveau démarche, indépendantes des dossiers effectivement traités.
@@ -477,11 +261,10 @@ def run_demarche_level_tasks(
         log_error(f"Erreur vérification dossiers supprimés : {e}")
 
     # 4. Masquage des colonnes _id (toujours en dernier)
-    if schema_method_successful:
-        try:
-            hide_columns_with_id(client)
-        except Exception as e:
-            log_error(f"Erreur lors du masquage des colonnes _id: {e}")
+    try:
+        hide_columns_with_id(client)
+    except Exception as e:
+        log_error(f"Erreur lors du masquage des colonnes _id: {e}")
 
     return deletions_checked
 
@@ -579,164 +362,78 @@ def process_demarche_for_grist_optimized(
             log_error(f"Erreur lors de la vérification du document Grist: {e}")
             return False
 
-        # Méthode avancée: Récupérer le schéma complet de la démarche
-        problematic_descriptor_ids = set()
-        column_types = None
-        schema_method_successful = False
+        # Schéma complet de la démarche : un échec fait échouer la synchro
         log_progress.log(
             f"Récupération du schéma complet de la démarche {demarche_number}",
             reset=True,
         )
-
-        # Essayer d'abord la méthode basée sur le schéma
         log(f"Récupération du schéma complet de la démarche {demarche_number}...")
-        try:
-            if (
-                "get_demarche_schema" in globals()
-                and "create_columns_from_schema" in globals()
-            ):
-                demarche_schema = get_optimized_schema(demarche_number)
-                log_schema_improvements(demarche_schema, demarche_number)
-                log(
-                    f"Schéma récupéré avec succès pour la démarche: {demarche_schema['title']}"
-                )
+        demarche_schema = get_demarche_schema_robust(demarche_number)
+        log_schema_improvements(demarche_schema, demarche_number)
+        log(f"Schéma récupéré avec succès pour la démarche: {demarche_schema['title']}")
 
-                # Générer les définitions de colonnes à partir du schéma complet
-                column_types, problematic_descriptor_ids = create_columns_from_schema(
-                    demarche_schema, demarche_number
-                )
+        # Générer les définitions de colonnes à partir du schéma complet
+        column_types, problematic_descriptor_ids = create_columns_from_schema(
+            demarche_schema, demarche_number
+        )
 
-                # Récupérer les indicateurs de présence
-                has_repetable_blocks = column_types.get("has_repetable_blocks", False)
-                has_carto_fields = column_types.get("has_carto_fields", False)
+        # Récupérer les indicateurs de présence
+        has_repetable_blocks = column_types.get("has_repetable_blocks", False)
+        has_carto_fields = column_types.get("has_carto_fields", False)
 
-                log(
-                    f"Identificateurs de {len(problematic_descriptor_ids)} descripteurs problématiques à filtrer"
-                )
-                log("Types de colonnes détectés à partir du schéma:")
-                log(f"  - Colonnes dossiers: {len(column_types['dossier'])}")
-                log(f"  - Colonnes champs: {len(column_types['champs'])}")
-                log(f"  - Colonnes annotations: {len(column_types['annotations'])}")
-                log(
-                    f"  - Blocs répétables détectés: {'Oui' if has_repetable_blocks else 'Non'}"
-                )
-                log(
-                    f"  - Champs cartographiques détectés: {'Oui' if has_carto_fields else 'Non'}"
-                )
+        log(
+            f"Identificateurs de {len(problematic_descriptor_ids)} descripteurs problématiques à filtrer"
+        )
+        log("Types de colonnes détectés à partir du schéma:")
+        log(f"  - Colonnes dossiers: {len(column_types['dossier'])}")
+        log(f"  - Colonnes champs: {len(column_types['champs'])}")
+        log(f"  - Colonnes annotations: {len(column_types['annotations'])}")
+        log(
+            f"  - Blocs répétables détectés: {'Oui' if has_repetable_blocks else 'Non'}"
+        )
+        log(
+            f"  - Champs cartographiques détectés: {'Oui' if has_carto_fields else 'Non'}"
+        )
 
-                if has_repetable_blocks and "repetable_rows" in column_types:
-                    log_verbose(
-                        f"  - Colonnes blocs répétables: {len(column_types['repetable_rows'])}"
-                    )
-
-                # Marquer la méthode comme réussie
-                schema_method_successful = True
-            else:
-                log(
-                    "Méthode basée sur le schéma non disponible, utilisation de la méthode alternative..."
-                )
-        except Exception as e:
-            log_error(f"Erreur lors de la récupération du schéma: {str(e)}")
-            traceback.print_exc()
-            log(
-                "Utilisation de la méthode alternative avec échantillons de dossiers..."
+        if has_repetable_blocks and "repetable_rows" in column_types:
+            log_verbose(
+                f"  - Colonnes blocs répétables: {len(column_types['repetable_rows'])}"
             )
 
-        # Essayer d'utiliser la méthode de mise à jour qui préserve les données existantes
-        try:
-            if "update_grist_tables_from_schema" in globals():
-                log(
-                    "Mise à jour des tables Grist en préservant les données existantes..."
-                )
-                table_result = update_grist_tables_from_schema(
-                    client,
-                    demarche_number,
-                    column_types if schema_method_successful else None,
-                    problematic_descriptor_ids,
-                )
+        # Créer ou mettre à jour les tables en préservant les données existantes :
+        # un échec fait échouer la synchro
+        log("Mise à jour des tables Grist en préservant les données existantes...")
+        table_result = update_grist_tables_from_schema(
+            client,
+            demarche_number,
+            column_types,
+            problematic_descriptor_ids,
+        )
 
-                # Convertir le format de retour pour compatibilité
-                table_ids = {
-                    "dossier_table_id": table_result.get("dossiers"),
-                    "champ_table_id": table_result.get("champs"),
-                    "annotations": table_result.get("annotations"),  #  Nouvelle clé
-                    "annotation_table_id": table_result.get(
-                        "annotations"
-                    ),  #  Rétro-compatibilité
-                }
+        # Convertir le format de retour pour compatibilité
+        table_ids = {
+            "dossier_table_id": table_result.get("dossiers"),
+            "champ_table_id": table_result.get("champs"),
+            "annotations": table_result.get("annotations"),  #  Nouvelle clé
+            "annotation_table_id": table_result.get(
+                "annotations"
+            ),  #  Rétro-compatibilité
+        }
 
-                if "repetable_blocks" in table_result:
-                    table_ids["repetable_blocks"] = table_result["repetable_blocks"]
+        if "repetable_blocks" in table_result:
+            table_ids["repetable_blocks"] = table_result["repetable_blocks"]
 
-                if "demandeurs" in table_result:
-                    table_ids["demandeurs"] = table_result["demandeurs"]
+        if "demandeurs" in table_result:
+            table_ids["demandeurs"] = table_result["demandeurs"]
 
-                if "demandeur_type" in table_result:
-                    table_ids["demandeur_type"] = table_result["demandeur_type"]
+        if "demandeur_type" in table_result:
+            table_ids["demandeur_type"] = table_result["demandeur_type"]
 
-                if "instructeurs" in table_result:
-                    table_ids["instructeurs"] = table_result["instructeurs"]
+        if "instructeurs" in table_result:
+            table_ids["instructeurs"] = table_result["instructeurs"]
 
-                if "avis" in table_result:
-                    table_ids["avis"] = table_result["avis"]  # None si pas encore créée
-
-            else:
-                # Méthode classique qui peut effacer des données
-                log(
-                    "Utilisation de la méthode classique de création/modification de tables"
-                )
-                table_ids = client.create_or_clear_grist_tables(
-                    demarche_number, column_types if schema_method_successful else None
-                )
-        except Exception as e:
-            log_error(f"Erreur lors de la mise à jour des tables Grist: {str(e)}")
-            # Fallback sur la méthode classique si pas de column_types
-            if not schema_method_successful:
-                # Récupérer les IDs des champs problématiques à filtrer : un
-                # échec laisse la synchronisation continuer sans filtrage
-                try:
-                    problematic_descriptor_ids = (
-                        get_problematic_descriptor_ids_from_schema(
-                            get_demarche_descriptors(demarche_number)
-                        )
-                    )
-                except Exception as e:
-                    log_error(f"Descripteurs problématiques non récupérés: {e}")
-                    problematic_descriptor_ids = set()
-                log(
-                    f"Filtrage de {len(problematic_descriptor_ids)} descripteurs problématiques"
-                )
-
-                # Récupérer quelques dossiers pour analyse du schéma
-                sample_dossiers = []
-
-                # La première page de l'itérateur est déjà détaillée : un seul
-                # appel, au lieu d'un résumé puis d'un appel par dossier
-                try:
-                    for page in iter_demarche_dossier_pages(demarche_number):
-                        sample_dossiers = page[:3]
-                        break
-                except Exception as e:
-                    log_error(f"Erreur lors de la récupération des échantillons: {e}")
-                    return False
-
-                if not sample_dossiers:
-                    log_error(
-                        "Aucun dossier n'a pu être récupéré pour l'analyse du schéma"
-                    )
-                    return False
-
-                # Détecter les types de colonnes
-                log("Détection des types de colonnes...")
-                column_types = detect_column_types_from_multiple_dossiers(
-                    sample_dossiers, problematic_ids=problematic_descriptor_ids
-                )
-
-            # Fallback sur la méthode classique
-            log("Fallback sur la méthode classique de création/modification de tables")
-            table_ids = client.create_or_clear_grist_tables(
-                demarche_number, column_types
-            )
+        if "avis" in table_result:
+            table_ids["avis"] = table_result["avis"]  # None si pas encore créée
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
@@ -1364,7 +1061,6 @@ def process_demarche_for_grist_optimized(
             updated_since_cursor=updated_since_cursor,
             force_full_sync=force_full_sync,
             deleted_since_cursor=deleted_since_cursor,
-            schema_method_successful=schema_method_successful,
         )
         if not deletions_checked:
             log_error(
@@ -1404,7 +1100,9 @@ def process_demarche_for_grist_optimized(
         except Exception as e:
             log_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
-        return total_success > 0 or schema_method_successful or selected_count == 0
+        # Arrivée ici, la synchro a abouti : les dossiers en échec sont repris
+        # au prochain run grâce au repère conservé
+        return True
 
     except GristReadError:
         # Remontée telle quelle à main() : code de sortie dédié, sans trace
