@@ -19,6 +19,7 @@ from dn.client import get_demarche_descriptors, get_pj_ocr_columns
 from dn.extract import pj_ocr_sub_label
 from grist.utils import normalize_column_name
 from utils.constants import DEMARCHES_API_URL
+from utils.log import log, log_verbose
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -274,19 +275,12 @@ def create_avis_columns():
 # ========================================
 
 
-def get_demarche_schema(demarche_number):
+def get_demarche_schema(demarche_number: int | str) -> dict[str, Any]:
     """
-    Récupère le schéma complet d'une démarche,
-    avec tous ses descripteurs de champs,
-    sans dépendre des dossiers existants.
-
-    FONCTION EXISTANTE - GARDÉE POUR COMPATIBILITÉ
-
-    Args:
-        demarche_number: Numéro de la démarche
-
-    Returns:
-        dict: Structure complète des descripteurs de champs et d'annotations
+    Schéma d'une démarche, sans dépendre des dossiers existants : ses
+    descripteurs de champs et d'annotations, sans les champs qui ne portent
+    pas de données (titres de section, explications). Les ids de ces champs
+    retirés sont fournis dans `metadata["problematic_ids"]`.
     """
     demarche = get_demarche_descriptors(demarche_number)
 
@@ -295,7 +289,20 @@ def get_demarche_schema(demarche_number):
     if _has_piece_justificative(demarche["activeRevision"]):
         demarche["pj_ocr_columns"] = get_pj_ocr_columns(demarche_number)
 
-    return demarche
+    # Ids relevés avant le nettoyage, qui retire ces champs du schéma
+    problematic_ids = get_problematic_descriptor_ids_from_schema(demarche)
+    schema = auto_clean_schema_descriptors(demarche)
+    schema["metadata"] = {"problematic_ids": problematic_ids}
+
+    active_revision = schema["activeRevision"]
+    log(
+        f"Schéma récupéré (révision {active_revision.get('id')}) : "
+        f"{len(active_revision.get('champDescriptors', []))} champs, "
+        f"{len(active_revision.get('annotationDescriptors', []))} annotations, "
+        f"{len(problematic_ids)} champs sans données retirés"
+    )
+
+    return schema
 
 
 def get_problematic_descriptor_ids_from_schema(demarche_schema):
@@ -1157,69 +1164,6 @@ def update_grist_tables_from_schema(
         raise
 
 
-# ========================================
-# FONCTIONS OPTIMISÉES (Version robuste)
-# ========================================
-
-
-def get_demarche_schema_robust(demarche_number: int) -> Dict[str, Any]:
-    """
-    Version robuste et optimisée de get_demarche_schema.
-
-    Améliorations:
-    - Gestion d'erreur plus robuste
-    - Filtrage automatique des champs problématiques
-    - Métadonnées pour le suivi des changements
-    - Performance optimisée
-
-    Args:
-        demarche_number: Numéro de la démarche
-
-    Returns:
-        dict: Schéma robuste avec métadonnées
-    """
-    try:
-        # Utiliser la fonction de base
-        demarche = get_demarche_schema(demarche_number)
-
-        active_revision = demarche.get("activeRevision")
-        if not active_revision:
-            raise Exception(
-                f"Aucune révision active pour la démarche {demarche_number}"
-            )
-
-        #  EXTRAIRE LES IDs PROBLÉMATIQUES AVANT LE NETTOYAGE
-        problematic_ids = get_problematic_descriptor_ids_from_schema(demarche)
-
-        # Nettoyage automatique des champs problématiques
-        cleaned_schema = auto_clean_schema_descriptors(demarche)
-
-        # Ajout de métadonnées
-        from datetime import datetime
-
-        cleaned_schema["metadata"] = {
-            "revision_id": active_revision.get("id"),
-            "date_publication": active_revision.get("datePublication"),
-            "retrieved_at": datetime.now().isoformat(),
-            "optimized": True,
-            "problematic_ids": problematic_ids,  # STOCKER LES IDs DANS LE SCHÉMA
-        }
-
-        print("Schéma récupéré:")
-        print(
-            f"Champs utiles: {len(cleaned_schema['activeRevision']['champDescriptors'])}"
-        )
-        print(
-            f"Annotations: {len(cleaned_schema['activeRevision']['annotationDescriptors'])}"
-        )
-        print(f"Champs problématiques détectés: {len(problematic_ids)}")  #  LOG
-
-        return cleaned_schema
-
-    except Exception as e:
-        raise Exception(f"Erreur lors de la récupération du schéma: {e}")
-
-
 def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
     """
     Nettoie automatiquement les descripteurs en filtrant les champs problématiques.
@@ -1254,7 +1198,7 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
             filtered.append(descriptor)
 
         if problematic_count > 0:
-            print(f"{problematic_count} champs problématiques filtrés ({context})")
+            log_verbose(f"{problematic_count} champs sans données filtrés ({context})")
 
         return filtered
 

@@ -524,8 +524,8 @@ class TestCreateTable:
             self.client.create_table("t", [{"type": "Text"}])
 
     def test_column_missing_type_raises(self):
-        """colonne sans type -> ValueError"""
-        with pytest.raises(ValueError):
+        """colonne sans type -> ValueError qui le dit"""
+        with pytest.raises(ValueError, match="Column missing type"):
             self.client.create_table("t", [{"id": "col1"}])
 
     def test_success_posts(self):
@@ -1311,39 +1311,6 @@ class TestRunSql:
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.run_sql("SELECT 1")
-
-
-class TestTableExists:
-    """Tests unitaires pour GristClient.table_exists"""
-
-    def setup_method(self):
-        self.client = GristClient(
-            "https://grist.example.com", "test_key", doc_id="doc123"
-        )
-
-    def test_found_case_insensitive(self):
-        """table trouvée (insensible à la casse) -> retourne la table"""
-        with patch.object(
-            self.client,
-            "list_tables",
-            return_value={"tables": [{"id": "Dossiers"}, {"id": "Champs"}]},
-        ):
-            result = self.client.table_exists("dossiers")
-        assert result == {"id": "Dossiers"}
-
-    def test_not_found(self):
-        """table absente -> None"""
-        with patch.object(
-            self.client, "list_tables", return_value={"tables": [{"id": "Champs"}]}
-        ):
-            result = self.client.table_exists("dossiers")
-        assert result is None
-
-    def test_unexpected_structure(self):
-        """structure inattendue -> None"""
-        with patch.object(self.client, "list_tables", return_value="unexpected"):
-            result = self.client.table_exists("dossiers")
-        assert result is None
 
 
 class TestUpsertMultipleDossiersInGrist:

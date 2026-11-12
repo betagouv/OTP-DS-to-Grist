@@ -15,7 +15,7 @@ la vraie pagination DS est donc traversée. Ce faux serveur sert un dossier
 "résumé" ou "détaillé" selon la query reçue, si bien qu'une requête qui
 abandonnerait les détails se verrait dans l'état final Grist.
 
-Sont mockés, pour isoler le périmètre : `get_demarche_schema_robust` (schéma DS),
+Sont mockés, pour isoler le périmètre : `get_demarche_schema` (schéma DS),
 `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
 `detect_demandeur_type` et `hide_columns_with_id` (dernière tâche de niveau
 démarche, dont on vérifie seulement qu'elle est exécutée).
@@ -723,7 +723,7 @@ def run_pipeline(
         stack.enter_context(
             patch.object(
                 gpa,
-                "get_demarche_schema_robust",
+                "get_demarche_schema",
                 return_value=schema or make_schema(),
                 side_effect=schema_error,
             )

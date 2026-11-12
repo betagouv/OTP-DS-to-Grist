@@ -24,7 +24,7 @@ from dn.extract import dossier_to_flat_data
 from utils.timing import get_timings
 from schema_utils import (
     create_columns_from_schema,
-    get_demarche_schema_robust,
+    get_demarche_schema,
     update_grist_tables_from_schema,
 )
 from sync.filters import (
@@ -59,19 +59,6 @@ def print_api_timings():
     print("-" * 50)
     print(f"[API] Total: {len(timings)} requêtes en {total_duration:.2f}s")
     print("=" * 50 + "\n")
-
-
-def log_schema_improvements(schema, demarche_number):
-    """Affiche les améliorations apportées par la nouvelle version"""
-    if schema.get("metadata", {}).get("optimized"):
-        log("AMÉLIORATIONS DÉTECTÉES:")
-        revision_id = schema.get("metadata", {}).get("revision_id", "N/A")
-        retrieved_at = schema.get("metadata", {}).get("retrieved_at", "N/A")
-        log(f"Révision active: {revision_id}")
-        log(f"Récupéré à: {retrieved_at}")
-        log("Filtrage automatique des champs problématiques activé")
-        log("Gestion robuste des erreurs activée")
-        log("Métadonnées enrichies disponibles")
 
 
 def extract_demandeur_data(dossier, demandeur_type):
@@ -209,11 +196,11 @@ def run_demarche_level_tasks(
     """
     Opérations de niveau démarche, indépendantes des dossiers effectivement traités.
 
-    À appeler depuis les deux `return` de `process_demarche_for_grist_optimized` :
-    celui de fin de fonction et celui du cas `total_dossiers == 0`. Poser une
-    étiquette, ajouter un instructeur ou supprimer un dossier ne met à jour aucun
-    dossier au sens d'`updatedSince` : sans le second appel, ces changements ne
-    remonteraient dans Grist que si un dossier avait bougé par ailleurs.
+    Appelée en fin de `process_demarche_for_grist_optimized`, y compris quand
+    aucun dossier n'a été modifié. Poser une étiquette, ajouter un instructeur
+    ou supprimer un dossier ne met à jour aucun dossier au sens
+    d'`updatedSince` : sans cet appel, ces changements ne remonteraient dans
+    Grist que si un dossier avait bougé par ailleurs.
 
     Chaque tâche est isolée dans son propre try/except : un échec n'empêche pas
     les suivantes.
@@ -368,8 +355,7 @@ def process_demarche_for_grist_optimized(
             reset=True,
         )
         log(f"Récupération du schéma complet de la démarche {demarche_number}...")
-        demarche_schema = get_demarche_schema_robust(demarche_number)
-        log_schema_improvements(demarche_schema, demarche_number)
+        demarche_schema = get_demarche_schema(demarche_number)
         log(f"Schéma récupéré avec succès pour la démarche: {demarche_schema['title']}")
 
         # Générer les définitions de colonnes à partir du schéma complet
