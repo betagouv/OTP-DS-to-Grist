@@ -605,6 +605,18 @@ class TestCreateTable:
         assert result["tables"][0]["id"] == "t"
         assert "coupure" in mock_error.call_args.args[0]
 
+    def test_columns_read_network_error_keeps_table(self):
+        """erreur réseau à la relecture des colonnes -> journalisée, sans déliage ni exception"""
+        session = self._session()
+        session.get.side_effect = requests.ConnectionError("coupure relecture")
+        with patch.object(GristClient, "_get_session", return_value=session), patch(
+            "grist.client.log_error"
+        ) as mock_error:
+            result = self.client.create_table("t", [{"id": "col1", "type": "Text"}])
+        assert result["tables"][0]["id"] == "t"
+        assert "coupure relecture" in mock_error.call_args.args[0]
+        session.patch.assert_not_called()
+
 
 class TestGetColumns:
     """Tests unitaires pour GristClient.get_columns"""

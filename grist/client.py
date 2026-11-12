@@ -328,7 +328,13 @@ class GristClient:
         # La réponse ne liste pas les colonnes : on relit celles réellement
         # créées, Grist ayant pu corriger un id demandé.
         created_table_id = result["tables"][0]["id"]
-        self._untie_columns(created_table_id, list(self.get_columns(created_table_id)))
+        try:
+            col_ids = list(self.get_columns(created_table_id))
+        except requests.RequestException as e:
+            log_error(f"Déliage des colonnes de {created_table_id} impossible : {e}")
+            return result
+
+        self._untie_columns(created_table_id, col_ids)
 
         return result
 
@@ -394,43 +400,6 @@ class GristClient:
             self._untie_columns(table_id, _created_column_ids(response))
 
         return response
-
-    def _untie_columns(self, table_id: str, col_ids: list[str]) -> None:
-        """
-        Délie l'id des colonnes de leur libellé (`untieColIdFromLabel`) : un
-        libellé renommé dans Grist ne renomme plus l'id sur lequel la
-        synchronisation écrit.
-
-        Grist ignore ce réglage à la création, d'où ce second appel, sur les
-        ids réellement créés. Un échec est journalisé sans être levé : la
-        colonne reste liée, comme avant, et la création n'est pas remise en
-        cause.
-        """
-        if not col_ids:
-            return
-
-        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
-        log_verbose(f"PATCH {url} : déliage de {len(col_ids)} colonne(s)")
-        payload = {
-            "columns": [
-                {"id": col_id, "fields": {"untieColIdFromLabel": True}}
-                for col_id in col_ids
-            ]
-        }
-
-        try:
-            response = self._get_session().patch(
-                url, headers=self.headers, json=payload
-            )
-        except requests.RequestException as e:
-            log_error(f"Déliage des colonnes de {table_id} impossible : {e}")
-            return
-
-        if response.status_code != 200:
-            log_error(
-                f"Déliage des colonnes de {table_id} impossible "
-                f"({response.status_code}) : {response.text}"
-            )
 
     def post_records(
         self, table_id: str, records: list[dict[str, Any]]
@@ -808,6 +777,43 @@ class GristClient:
             raise GristReadError(SYNC_METADATA_TABLE_ID, response)
 
         return response.json().get("records", [])
+
+    def _untie_columns(self, table_id: str, col_ids: list[str]) -> None:
+        """
+        Délie l'id des colonnes de leur libellé (`untieColIdFromLabel`) : un
+        libellé renommé dans Grist ne renomme plus l'id sur lequel la
+        synchronisation écrit.
+
+        Grist ignore ce réglage à la création, d'où ce second appel, sur les
+        ids réellement créés. Un échec est journalisé sans être levé : la
+        colonne reste liée, comme avant, et la création n'est pas remise en
+        cause.
+        """
+        if not col_ids:
+            return
+
+        url = f"{self.base_url}/docs/{self.doc_id}/tables/{table_id}/columns"
+        log_verbose(f"PATCH {url} : déliage de {len(col_ids)} colonne(s)")
+        payload = {
+            "columns": [
+                {"id": col_id, "fields": {"untieColIdFromLabel": True}}
+                for col_id in col_ids
+            ]
+        }
+
+        try:
+            response = self._get_session().patch(
+                url, headers=self.headers, json=payload
+            )
+        except requests.RequestException as e:
+            log_error(f"Déliage des colonnes de {table_id} impossible : {e}")
+            return
+
+        if response.status_code != 200:
+            log_error(
+                f"Déliage des colonnes de {table_id} impossible "
+                f"({response.status_code}) : {response.text}"
+            )
 
     def _update_cache_after_create(
         self,
