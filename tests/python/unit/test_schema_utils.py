@@ -10,7 +10,7 @@ from schema_utils import (
     auto_clean_schema_descriptors,
     create_columns_from_schema,
     get_demarche_schema,
-    update_grist_tables_from_schema,
+    ensure_sync_table_structure,
 )
 
 
@@ -179,9 +179,9 @@ class TestSchemaUtils:
         assert cleaned == schema
 
 
-class TestUpdateGristTablesFromSchema:
+class TestEnsureSyncTableStructure:
     """Tests unitaires pour la fonction imbriquée add_missing_columns
-    via update_grist_tables_from_schema"""
+    via ensure_sync_table_structure"""
 
     def setup_method(self):
         self.client = MagicMock()
@@ -212,7 +212,7 @@ class TestUpdateGristTablesFromSchema:
             patch("schema_utils.API_TOKEN", "fake-token"),
             patch("schema_utils.requests.post") as mock_post,
         ):
-            result = update_grist_tables_from_schema(
+            result = ensure_sync_table_structure(
                 self.client, 123, self._column_types()
             )
         assert result["dossiers"] == "Demarche_123_dossiers"
@@ -231,7 +231,7 @@ class TestUpdateGristTablesFromSchema:
             patch("schema_utils.API_TOKEN", "fake-token"),
             patch("schema_utils.requests.post") as mock_post,
         ):
-            result = update_grist_tables_from_schema(
+            result = ensure_sync_table_structure(
                 self.client, 123, self._column_types()
             )
         assert result["dossiers"] == "Demarche_123_dossiers"
@@ -614,3 +614,40 @@ class TestGetDemarcheSchema:
             get_demarche_schema(123)
 
         mock_request.assert_not_called()
+
+    def _demarche_avec_champs_sans_donnees(self):
+        demarche = _text_demarche()
+        demarche["activeRevision"]["champDescriptors"] += [
+            {
+                "__typename": "HeaderSectionChampDescriptor",
+                "id": "d_titre",
+                "label": "Section",
+            },
+            {
+                "__typename": "ExplicationChampDescriptor",
+                "id": "d_explication",
+                "label": "Aide",
+            },
+        ]
+        return demarche
+
+    def test_champs_sans_donnees_retires(self, mock_request):
+        """titres de section et explications absents du schéma rendu"""
+        mock_request.return_value = _mock_graphql_response(
+            {"data": {"demarche": self._demarche_avec_champs_sans_donnees()}}
+        )
+
+        result = get_demarche_schema(123)
+
+        descriptors = result["activeRevision"]["champDescriptors"]
+        assert [descriptor["id"] for descriptor in descriptors] == ["d1"]
+
+    def test_ids_des_champs_sans_donnees_fournis(self, mock_request):
+        """les ids des champs retirés sont fournis pour create_columns_from_schema"""
+        mock_request.return_value = _mock_graphql_response(
+            {"data": {"demarche": self._demarche_avec_champs_sans_donnees()}}
+        )
+
+        result = get_demarche_schema(123)
+
+        assert result["metadata"]["problematic_ids"] == {"d_titre", "d_explication"}
