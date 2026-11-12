@@ -12,7 +12,8 @@ const {
   demarcheIndex,
   totalDemarches,
   finishCurrentTask,
-  recordTaskUpdate
+  recordTaskUpdate,
+  restoreTasks
 } = useSyncTask()
 const emit = defineEmits(['sync-running-changed'])
 const task = ref(null)
@@ -25,8 +26,36 @@ watch(() => task.value?.status, (status) => {
   }
 })
 
+// Page ouverte pendant une synchro : reprend son état complet sur le serveur.
+// Demandé une fois le socket connecté, pour ne manquer aucun envoi ; sans
+// contexte Grist, rien à reprendre (l'erreur est affichée par le formulaire).
+const resumeSync = async () => {
+  let context
+  try {
+    context = await getGristContext()
+  } catch {
+    return
+  }
+
+  socket.value?.emit(
+    'sync_state',
+    { grist_user_id: context.userId, grist_doc_id: context.docId },
+    (syncs) => {
+      if (!syncs?.length) return
+
+      restoreTasks(syncs)
+      const current = syncs.find(sync => sync.task_id === currentTaskId.value)
+      if (!current) return
+
+      task.value = current.task
+      emit('sync-running-changed', true)
+    }
+  )
+}
+
 onMounted(() => {
   socket.value = io()
+  socket.value.on('connect', resumeSync)
   socket.value.on('task_update', (data) => {
     // Toutes les démarches de la série alimentent le tableau ; la barre ne suit que la courante
     recordTaskUpdate(data.task_id, data.task)

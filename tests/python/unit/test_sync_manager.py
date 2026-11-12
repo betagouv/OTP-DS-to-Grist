@@ -256,6 +256,22 @@ class TestSyncManager:
         ]
 
     @patch("threading.Thread")
+    @patch("sync.sync_manager.MAX_LOGS_PER_TASK", 3)
+    def test_add_log_records_absolute_index(self, mock_thread):
+        """Chaque log porte sa position absolue, inchangée après rognage"""
+        mock_thread.return_value = MagicMock()
+        task_id = self.manager.start_task(MagicMock())
+
+        for i in range(5):
+            self.manager._add_log(task_id, f"ligne {i}")
+
+        assert [log["index"] for log in self.manager.tasks[task_id]["logs"]] == [
+            2,
+            3,
+            4,
+        ]
+
+    @patch("threading.Thread")
     def test_run_task_success(self, mock_thread):
         """Test _run_task avec exécution réussie"""
         mock_thread.return_value = MagicMock()
@@ -296,8 +312,50 @@ class TestSyncManager:
             self.manager.start_sync(server_config)
 
             mock_start_task.assert_called_once_with(
-                self.manager.run_synchronization_task, server_config, auto=False
+                self.manager.run_synchronization_task,
+                server_config,
+                auto=False,
+                config=server_config,
             )
+
+    @patch("threading.Thread")
+    def test_start_task_records_owner_from_config(self, mock_thread):
+        """La tâche porte le propriétaire et la démarche de la config, émis avec elle"""
+        mock_thread.return_value = MagicMock()
+        config = {
+            "grist_user_id": "user1",
+            "grist_doc_id": "docA",
+            "demarche_number": "123",
+        }
+
+        task_id = self.manager.start_task(MagicMock(), config=config)
+        self.manager._emit_update(task_id)
+
+        emitted = self.mock_callback.call_args.args[1]["task"]
+        assert emitted["grist_user_id"] == "user1"
+        assert emitted["grist_doc_id"] == "docA"
+        assert emitted["demarche_number"] == "123"
+
+    @patch("threading.Thread")
+    def test_start_task_without_config_has_no_owner(self, mock_thread):
+        """Sans config, la tâche n'a pas de propriétaire"""
+        mock_thread.return_value = MagicMock()
+
+        task_id = self.manager.start_task(MagicMock())
+
+        task = self.manager.tasks[task_id]
+        assert task["grist_user_id"] is None
+        assert task["grist_doc_id"] is None
+        assert task["demarche_number"] is None
+
+    @patch("threading.Thread")
+    def test_start_task_does_not_forward_config_to_task_function(self, mock_thread):
+        """La config sert à la tâche, elle n'est pas transmise en plus à la fonction"""
+        mock_thread.return_value = MagicMock()
+
+        self.manager.start_task(MagicMock(), "arg1", config={}, kwarg1="value1")
+
+        assert mock_thread.call_args.kwargs["kwargs"] == {"kwarg1": "value1"}
 
     @patch("sync.sync_manager.SessionLocal")
     @patch.dict(
@@ -1505,6 +1563,48 @@ class TestStartSyncSeries:
         assert not stopper.is_alive()
         assert ran == [1]
 
+    def test_finished_tasks_kept_until_series_ends(self):
+        """
+        Les démarches terminées d'une série restent dans l'état complet tant
+        que la série tourne, puis toutes ses tâches sont retirées
+        """
+        release_second = threading.Event()
+        configs = [
+            {
+                "otp_config_id": otp_config_id,
+                "grist_user_id": "userA",
+                "grist_doc_id": "docA",
+                "demarche_number": str(otp_config_id),
+            }
+            for otp_config_id in (1, 2)
+        ]
+
+        def fake_sync(config, *, log_callback, **_kwargs):
+            log_callback(f"log {config['otp_config_id']}")
+            if config["otp_config_id"] == 2:
+                release_second.wait(_SERIES_TIMEOUT)
+            return {"success": True}
+
+        def statuses():
+            return [
+                entry["task"]["status"]
+                for entry in self.manager.sync_state("userA", "docA")
+            ]
+
+        with patch.object(self.manager, "run_synchronization_task", fake_sync):
+            task_ids = self.manager.start_sync_series(_SERIES_KEY, configs)
+            _wait_until(lambda: statuses() == ["completed", "running"])
+
+            first_task = self.manager.sync_state("userA", "docA")[0]["task"]
+            release_second.set()
+            _wait_until(lambda: self._all_tasks_finished(task_ids))
+
+        assert [log["message"] for log in first_task["logs"]] == ["log 1"]
+        assert self.manager.sync_state("userA", "docA") == []
+        assert all(
+            task_id not in self.manager._broadcast_offset for task_id in task_ids
+        )
+
     def test_auto_sync_runs_while_series_is_running(self):
         """
         Une synchro auto n'attend pas la série, même pour une démarche de la
@@ -1546,6 +1646,79 @@ class TestStartSyncSeries:
 
         assert series_still_running
         assert ran == [("series", 1), ("auto", 1), ("series", 2)]
+
+
+class TestSyncState:
+    """État complet des synchros d'un utilisateur sur un document."""
+
+    def setup_method(self):
+        self.manager = SyncManager(notify_callback=MagicMock())
+        self._thread_patcher = patch("threading.Thread")
+        self._thread_patcher.start()
+
+    def teardown_method(self):
+        self._thread_patcher.stop()
+
+    def _start(self, user, doc, demarche="123"):
+        return self.manager.start_task(
+            MagicMock(),
+            config={
+                "grist_user_id": user,
+                "grist_doc_id": doc,
+                "demarche_number": demarche,
+            },
+        )
+
+    def test_returns_only_tasks_of_user_and_document(self):
+        """Les synchros d'un autre utilisateur ou document sont exclues"""
+        mine = self._start("user1", "docA", "111")
+        self._start("user2", "docA")
+        self._start("user1", "docB")
+        self.manager.start_task(MagicMock())
+
+        state = self.manager.sync_state("user1", "docA")
+
+        assert [entry["task_id"] for entry in state] == [mine]
+        assert state[0]["task"]["demarche_number"] == "111"
+
+    def test_returns_tasks_in_creation_order(self):
+        """Plusieurs synchros sont rendues dans leur ordre de création"""
+        first = self._start("user1", "docA")
+        second = self._start("user1", "docA")
+
+        state = self.manager.sync_state("user1", "docA")
+
+        assert [entry["task_id"] for entry in state] == [first, second]
+
+    def test_returns_all_retained_logs_even_after_delta_emission(self):
+        """Les logs déjà émis en delta restent dans l'état complet"""
+        task_id = self._start("user1", "docA")
+        self.manager._add_log(task_id, "ligne 1")
+        self.manager._add_log(task_id, "ligne 2")
+
+        logs = self.manager.sync_state("user1", "docA")[0]["task"]["logs"]
+
+        assert [(log["index"], log["message"]) for log in logs] == [
+            (0, "ligne 1"),
+            (1, "ligne 2"),
+        ]
+
+    def test_returns_a_copy(self):
+        """Modifier l'état rendu ne touche pas la tâche"""
+        task_id = self._start("user1", "docA")
+        self.manager._add_log(task_id, "ligne 1")
+
+        state = self.manager.sync_state("user1", "docA")
+        state[0]["task"]["logs"].clear()
+        state[0]["task"]["status"] = "error"
+
+        task = self.manager.tasks[task_id]
+        assert len(task["logs"]) == 1
+        assert task["status"] == "running"
+
+    def test_empty_without_tasks(self):
+        """Aucune synchro : état vide"""
+        assert self.manager.sync_state("user1", "docA") == []
 
 
 class TestMissingSyncFields:

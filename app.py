@@ -50,6 +50,7 @@ from sync.scheduled_sync import (
     register_daily_sync_job,
     scheduler,
 )
+from sync.live_tracking import init_live_tracking, socketio
 from sync.sequencer import sequencer
 from sync.sync_manager import (
     SyncManager,
@@ -75,10 +76,8 @@ from utils.constants import (
     IP_BLOCKLIST_WINDOW_SECONDS,
     IP_BLOCKLIST_WHITELIST,
     SQLALCHEMY_DATABASE_URL,
+    VITE_DEV_ORIGIN,
 )
-from utils.socketio import socketio
-
-VITE_DEV_ORIGIN = "http://localhost:5173"
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -91,16 +90,10 @@ config_manager = ConfigManager(DATABASE_URL)
 # Configuration de l'application Flask
 app = Flask(__name__)
 
-
-# Callback d'injection pour les notifications WebSocket
-def socketio_notify_callback(event_type, data):
-    socketio.emit(event_type, data)
-
-
-sync_manager = SyncManager(notify_callback=socketio_notify_callback)
+sync_manager = SyncManager(notify_callback=socketio.emit)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-change-in-production-2024")
 
-socketio.init_app(app)
+init_live_tracking(app, sync_manager)
 
 # Configuration du logging pour Flask
 logging.basicConfig(level=logging.INFO)
@@ -1015,18 +1008,3 @@ app.jinja_env.globals["vite_asset"] = vite_asset
 @app.context_processor
 def inject_vite():
     return {"vite_asset": vite_asset}
-
-
-# WebSocket events
-
-
-@socketio.on("connect")
-def handle_connect():
-    """Gestion de la connexion WebSocket"""
-    logger.info("Client connecté")
-
-
-@socketio.on("disconnect")
-def handle_disconnect():
-    """Gestion de la déconnexion WebSocket"""
-    logger.info("Client déconnecté")

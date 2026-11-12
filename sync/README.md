@@ -101,6 +101,24 @@ automatiques :
 Le bouton de synchronisation d'une seule démarche (`POST /api/start-sync`) ne
 passe par aucune séquence : la synchro démarre immédiatement.
 
+## Suivi des synchronisations manuelles
+
+Chaque tâche porte son propriétaire (utilisateur et document Grist) et sa
+démarche, émis avec les événements `task_update`. `SyncManager.sync_state`
+renvoie l'état complet (logs retenus compris) des synchros d'un utilisateur
+sur un document, pour qu'une page rouverte reprenne l'affichage : le client
+l'obtient en accusé de réception du message socket `sync_state`
+(`{grist_user_id, grist_doc_id}`), non authentifié comme `task_update`. Le
+websocket (instance, branchement sur l'application, événements) vit dans
+`live_tracking.py` ; `SyncManager` n'en dépend pas : il émet par le
+`notify_callback` qu'on lui injecte. Chaque log
+porte sa position absolue (`index`), ce qui permet de fusionner sans doublon
+cet état et les envois en delta.
+
+Une tâche terminée est oubliée aussitôt, sauf dans une série : ses démarches
+terminées restent consultables jusqu'à la fin de la dernière. Tout est en
+mémoire : rien n'est repris après un redémarrage.
+
 ## Historique des synchronisations
 
 Chaque synchronisation, automatique ou manuelle, est enregistrée dans la table

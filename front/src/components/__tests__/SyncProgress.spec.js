@@ -4,11 +4,12 @@ import { mount } from '@vue/test-utils'
 import SyncProgress from '../SyncProgress.vue'
 import { useSyncTask } from '../../composables/useSyncTask'
 
-const { setCurrentTaskId, setTasks, seriesTasks } = useSyncTask()
+const { setCurrentTaskId, setTasks, seriesTasks, currentTaskId } = useSyncTask()
 
 const mockOn = vi.fn()
+const mockEmit = vi.fn()
 const mockDisconnect = vi.fn()
-const mockSocket = { on: mockOn, disconnect: mockDisconnect }
+const mockSocket = { on: mockOn, emit: mockEmit, disconnect: mockDisconnect }
 
 vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket)
@@ -16,6 +17,15 @@ vi.mock('socket.io-client', () => ({
 
 const scrollIntoView = vi.fn()
 Element.prototype.scrollIntoView = scrollIntoView
+
+// Connexion du socket ; le serveur répond à sync_state par `syncs`
+async function triggerConnect(syncs = []) {
+  mockEmit.mockImplementation((event, _data, ack) => {
+    if (event === 'sync_state') ack(syncs)
+  })
+  const handler = mockOn.mock.calls.find(([event]) => event === 'connect')?.[1]
+  await handler()
+}
 
 function triggerTaskUpdate(task, taskId = 'task_1') {
   const handler = mockOn.mock.calls.find(([event]) => event === 'task_update')?.[1]
@@ -27,6 +37,7 @@ describe('SyncProgress', () => {
 
   beforeEach(() => {
     mockOn.mockClear()
+    mockEmit.mockReset()
     mockDisconnect.mockClear()
     scrollIntoView.mockClear()
     setCurrentTaskId('task_1', '12345')
@@ -222,6 +233,83 @@ describe('SyncProgress', () => {
       triggerTaskUpdate({ status: 'running', progress: 0, message: 'Première' }, 'task_1')
 
       expect(seriesTasks.value.map(task => task.message)).toEqual(['Première', 'En attente…'])
+    })
+  })
+
+  describe('resume on connect', () => {
+    const serverTask = (status, demarcheNumber, extra = {}) => ({
+      status,
+      demarche_number: demarcheNumber,
+      progress: 0,
+      message: '',
+      logs: [],
+      ...extra
+    })
+
+    beforeEach(() => {
+      setCurrentTaskId(null)
+      globalThis.getGristContext = vi.fn().mockResolvedValue({ userId: 'userA', docId: 'docA' })
+    })
+
+    afterEach(() => {
+      delete globalThis.getGristContext
+    })
+
+    it('asks the server for the syncs of the user and document', async () => {
+      await triggerConnect()
+
+      expect(mockEmit).toHaveBeenCalledWith(
+        'sync_state',
+        { grist_user_id: 'userA', grist_doc_id: 'docA' },
+        expect.any(Function)
+      )
+    })
+
+    it('displays a running sync and reports it as running', async () => {
+      await triggerConnect([{ task_id: 'task_7', task: serverTask('running', '111', { progress: 42 }) }])
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.text()).toContain('Progression de la démarche n°111')
+      expect(wrapper.text()).toContain('42%')
+      expect(wrapper.emitted('sync-running-changed')).toEqual([[true]])
+    })
+
+    it('displays the current démarche of a series and keeps all of them for the table', async () => {
+      await triggerConnect([
+        { task_id: 'task_1', task: serverTask('completed', '111') },
+        { task_id: 'task_2', task: serverTask('running', '222', { progress: 10 }) },
+        { task_id: 'task_3', task: serverTask('queued', '333') }
+      ])
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/3')
+      expect(seriesTasks.value.map(task => task.status)).toEqual(['completed', 'running', 'queued'])
+    })
+
+    it('keeps following the restored sync with later updates', async () => {
+      await triggerConnect([{ task_id: 'task_7', task: serverTask('running', '111') }])
+      triggerTaskUpdate({ status: 'completed', progress: 100, message: 'Terminé' }, 'task_7')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.text()).toContain('100%')
+      expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [false]])
+    })
+
+    it('changes nothing when the server has no sync', async () => {
+      setCurrentTaskId('task_1', '12345')
+      await triggerConnect([])
+      await wrapper.vm.$nextTick()
+
+      expect(currentTaskId.value).toBe('task_1')
+      expect(wrapper.find('.fr-card').exists()).toBe(false)
+      expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
+    })
+
+    it('asks nothing without Grist context', async () => {
+      globalThis.getGristContext = vi.fn().mockRejectedValue(new Error('grist not available'))
+      await triggerConnect()
+
+      expect(mockEmit).not.toHaveBeenCalled()
     })
   })
 })
