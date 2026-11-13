@@ -150,6 +150,18 @@ describe('DN form section', () => {
     expect(wrapper.emitted('error-update')[0]).toEqual([null])
   })
 
+  it('demarche number input is a text field with numeric keyboard (no spinner)', () => {
+    const wrapper = mount(DNFormSection, {
+      props: { index: 0 },
+      global: globalComponents
+    })
+    const numberInput = wrapper.find('[data-test-id="dn-number"]')
+
+    expect(numberInput.attributes('type')).not.toBe('number')
+    expect(numberInput.attributes('inputmode')).toBe('numeric')
+    expect(numberInput.classes()).toContain('otp-input-demarche-number')
+  })
+
   it('does not call API when only number is filled', async () => {
     const mockFetch = vi.fn()
     globalThis.fetch = mockFetch
