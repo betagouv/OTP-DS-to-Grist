@@ -10,7 +10,7 @@ import {
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import FieldLabel from './FieldLabel.vue'
-import { api } from '../utils/InternalApi'
+import { useConnectionCheck, CONNECTION_STATUS } from '../composables/useConnectionCheck'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
 
@@ -30,37 +30,42 @@ const inputGristToken = ref('')
 const accordionTitleGrist = ref('Configurer Grist')
 const activeAccordion = ref(-1)
 
-const gristTokenErrorMessage = ref(null)
 const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
+const GRIST_NETWORK_ERROR = 'Erreur lors du test de connexion Grist'
 const gristTokenPlaceholder = ref(DEFAULT_GRIST_PLACEHOLDER)
 const gristFetchError = ref(null)
-const gristVerified = computed(() => gristTokenErrorMessage.value === '')
+
+const buildGristTestBody = () => ({
+  type: 'grist',
+  base_url: baseUrl.value,
+  api_key: inputGristToken.value,
+  doc_id: docId.value,
+  ...(!inputGristToken.value && props.existingConfig?.otp_config_id
+    ? { otp_config_id: props.existingConfig.otp_config_id }
+    : {})
+})
+
+const gristConnection = useConnectionCheck()
+const gristTokenErrorMessage = gristConnection.errorMessage
+const gristVerified = computed(() => gristConnection.status.value === CONNECTION_STATUS.VERIFIED)
 
 const validateGristConnection = async () => {
-  const body = {
-    type: 'grist',
-    base_url: baseUrl.value,
-    api_key: inputGristToken.value,
-    doc_id: docId.value
-  }
-
-  if (!inputGristToken.value && props.existingConfig?.otp_config_id) {
-    body.otp_config_id = props.existingConfig.otp_config_id
-  }
-
   try {
-    const result = await api.testConnection(body)
-    gristTokenErrorMessage.value = result.success ? '' : result.message
-  } catch (e) {
-    gristFetchError.value = 'Erreur lors du test de connexion Grist'
+    await gristConnection.check(buildGristTestBody())
+  } catch {
+    // Message affiché dans l'alerte, et remonté pour bloquer l'auto-save
+    gristFetchError.value = GRIST_NETWORK_ERROR
+    emit('error-update', GRIST_NETWORK_ERROR)
+
+    return
   }
-  emit('error-update', gristTokenErrorMessage.value === '' ? '' : gristTokenErrorMessage.value)
+  emit('error-update', gristTokenErrorMessage.value)
 }
 
 const debouncedValidate = debounce(validateGristConnection)
 
 const handleGristInputChange = () => {
-  gristTokenErrorMessage.value = null
+  gristConnection.reset()
   gristFetchError.value = null
   debouncedValidate()
 }
@@ -96,6 +101,7 @@ const resetConfig = () => {
   inputGristToken.value = ''
   gristTokenPlaceholder.value = DEFAULT_GRIST_PLACEHOLDER
   baseUrl.value = context.value?.baseUrl || ''
+  gristConnection.reset()
   emit('error-update', null)
 }
 
@@ -145,7 +151,10 @@ defineExpose({
           :error-message="gristTokenErrorMessage"
         >
           <h5 class="fr-mt-3w fr-mb-0">Renseignez votre clé API Grist</h5>
-          <FieldLabel label="Clé API Grist *" :verified="gristVerified" />
+          <FieldLabel
+            label="Clé API Grist *"
+            :verified="gristVerified"
+          />
           <DsfrInput
             :error-message="gristTokenErrorMessage"
             data-test-id="grist-token"

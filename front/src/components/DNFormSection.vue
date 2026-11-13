@@ -13,8 +13,8 @@ import {
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
 import FieldLabel from './FieldLabel.vue'
 import DNFiltersSection from './DNFiltersSection.vue'
-import { api } from '../utils/InternalApi'
 import { useAutoSync } from '../composables/useAutoSync'
+import { useConnectionCheck, CONNECTION_STATUS } from '../composables/useConnectionCheck'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
 
@@ -32,11 +32,11 @@ const HELP_LINKS = window.HELP_LINKS
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
 const ERROR_DN_TITLE = 'Échec'
 const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
+const DN_NETWORK_ERROR = 'Erreur lors du test de connexion'
 
 const accordionTitleDN = ref(DEFAULT_DN_TITLE)
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
-const dnErrorMessage = ref(null)
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const isDirty = ref(false)
 const dnFiltersError = ref('')
@@ -51,33 +51,41 @@ const nextRunLabel = computed(() => {
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
-const validateDSConnection = async () => {
-  if (!inputDNNumber.value) return
-  if (!inputDNToken.value && !props.existingConfig?.otp_config_id) return
+const dnConnection = useConnectionCheck({ networkErrorMessage: DN_NETWORK_ERROR })
+const dnErrorMessage = dnConnection.errorMessage
 
-  const body = {
+// Corps du test de connexion, ou null s'il manque le numéro ou un jeton
+// (saisi, ou à défaut celui stocké pour une config enregistrée)
+const buildDNTestBody = () => {
+  if (!inputDNNumber.value) return null
+  if (!inputDNToken.value && !props.existingConfig?.otp_config_id) return null
+
+  return {
     type: 'demarches',
     demarche_number: inputDNNumber.value,
     ...(inputDNToken.value
       ? { api_token: inputDNToken.value }
       : { otp_config_id: props.existingConfig.otp_config_id })
   }
+}
+
+const validateDSConnection = async () => {
+  const body = buildDNTestBody()
+  if (!body) return
 
   accordionTitleDN.value = '...'
 
   try {
-    const result = await api.testConnection(body)
-    dnErrorMessage.value = result.success ? '' : result.message
+    const result = await dnConnection.check(body)
     accordionTitleDN.value = result.success
       ? formatTitle(inputDNNumber.value, result.title || DEFAULT_DN_TITLE)
       : ERROR_DN_TITLE
     if (result.success && result.title) emit('title-loaded', inputDNNumber.value, result.title)
-  } catch (e) {
-    dnErrorMessage.value = 'Erreur lors du test de connexion'
+  } catch {
     accordionTitleDN.value = ERROR_DN_TITLE
   }
 
-  emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
+  emit('error-update', dnErrorMessage.value)
   debouncedAutoSave()
 }
 
@@ -90,7 +98,7 @@ const sectionEmpty = computed(() => {
 })
 
 // Le jeton est vérifié par le test de connexion (mené avec le numéro de démarche)
-const dnVerified = computed(() => dnErrorMessage.value === '')
+const dnVerified = computed(() => dnConnection.status.value === CONNECTION_STATUS.VERIFIED)
 
 const configValid = computed(() =>
   props.gristError === '' && dnErrorMessage.value === '' && dnFiltersError.value === ''
@@ -108,7 +116,7 @@ const debouncedAutoSave = debounce(() => {
 
 const handleDNInputsChange = () => {
   isDirty.value = true
-  dnErrorMessage.value = null
+  dnConnection.reset()
   emit('error-update', null)
   debouncedValidate()
   debouncedAutoSave()
@@ -158,7 +166,7 @@ const resetConfig = () => {
 }
 
 watch(() => props.existingConfig, async (config) => {
-  dnErrorMessage.value = null
+  dnConnection.reset()
 
   // La garde ci-dessous protège les champs des réécritures du reload (frappes
   // pendant une sauvegarde en vol), mais le rafraîchissement du schedule
@@ -214,7 +222,10 @@ watch(() => props.existingConfig, async (config) => {
           :error-message="dnErrorMessage"
       >
         <h5 class="fr-mt-3w fr-mb-0">Renseignez les informations de votre démarche numérique</h5>
-        <FieldLabel label="Jeton d'API *" :verified="dnVerified" />
+        <FieldLabel
+          label="Jeton d'API *"
+          :verified="dnVerified"
+        />
         <DsfrInput
           :error-message="dnErrorMessage"
           data-test-id="dn-token"

@@ -365,4 +365,25 @@ describe('Verified badge', () => {
 
     expect(badge(wrapper).exists()).toBe(true)
   })
+
+  it('disappears and blocks auto-save when a later test fails on network after a success', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+    const savedConfig = { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+
+    await wrapper.setProps({ existingConfig: savedConfig })
+    await flushPromises()
+    expect(badge(wrapper).exists()).toBe(true)
+
+    // Rechargement de la config (ex: après une sauvegarde) : le nouveau test échoue sur le réseau
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+    await wrapper.setProps({ existingConfig: { ...savedConfig } })
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(false)
+    // Une erreur non vide bloque l'auto-save côté DN (configValid)
+    expect(wrapper.emitted('error-update').at(-1)).toEqual(['Erreur lors du test de connexion Grist'])
+    // Message affiché dans l'alerte uniquement, pas en double sous le champ
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
+  })
 })
