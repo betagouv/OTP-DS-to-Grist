@@ -29,7 +29,10 @@ const handleTitleLoaded = (demarcheNumber, title) => {
   <NotificationToast />
   <header>
     <div class="wrapper">
-      <SyncSeriesTable :history="syncHistory" :titles="demarcheTitles" />
+      <SyncSeriesTable
+        :history="syncHistory"
+        :titles="demarcheTitles"
+      />
 
       <SyncProgress @sync-running-changed="syncRunning = $event" />
 

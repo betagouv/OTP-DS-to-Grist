@@ -18,7 +18,7 @@ const props = defineProps({
   existingConfig: { type: Object, default: null }
 })
 
-const HELP_LINKS = window.HELP_LINKS
+const {HELP_LINKS} = window
 const emit = defineEmits(['error-update'])
 const context = ref(null)
 // Vrai une fois le contexte Grist résolu (ou en échec) : la config n'est
@@ -120,6 +120,7 @@ watch([() => props.existingConfig, contextReady], ([config, ready]) => {
   if (config?.otp_config_id) {
     applyExistingConfig(config)
     activeAccordion.value = -1
+
     return
   }
   resetConfig()
@@ -144,8 +145,8 @@ defineExpose({
       type="error"
       :title="gristFetchError"
       closeable
-      @close="gristFetchError = null"
       class="fr-mb-3w"
+      @close="gristFetchError = null"
     />
 
     <DsfrAccordionsGroup v-model="activeAccordion">

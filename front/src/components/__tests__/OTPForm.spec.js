@@ -1062,7 +1062,7 @@ describe('Sync action', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
-  it("does not call sync API route when syncRunning is true", async () => {
+  it('does not call sync API route when syncRunning is true', async () => {
     globalThis.getGristContext.mockResolvedValue({
       params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
@@ -1357,6 +1357,7 @@ describe('Accordion DN state', () => {
     })
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
+
     return wrapper
   }
 
@@ -1490,6 +1491,7 @@ describe('Grist key access warning', () => {
     })
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
+
     return wrapper
   }
 

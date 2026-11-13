@@ -82,8 +82,8 @@ onUnmounted(() => {
 
 <template>
   <div
-    ref="syncCardEl"
     v-if="task"
+    ref="syncCardEl"
     class="fr-card fr-card--light-grey fr-card--no-border fr-mb-4w"
   >
     <div class="fr-card__body">
@@ -93,7 +93,10 @@ onUnmounted(() => {
         </p>
         <div class="progress-wrapper">
           <div class="progress-track">
-            <div class="progress-bar" :style="{ width: Math.round(task.progress) + '%' }" />
+            <div
+              class="progress-bar"
+              :style="{ width: Math.round(task.progress) + '%' }"
+            />
           </div>
           <DsfrBadge
             :label="`${Math.round(task.progress)}%`"

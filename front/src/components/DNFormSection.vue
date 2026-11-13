@@ -28,7 +28,7 @@ const props = defineProps({
   index: { type: Number, required: true }
 })
 
-const HELP_LINKS = window.HELP_LINKS
+const {HELP_LINKS} = window
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
 const ERROR_DN_TITLE = 'Échec'
 const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
@@ -46,6 +46,7 @@ const scheduleToggle = ref(false)
 
 const nextRunLabel = computed(() => {
   if (!nextRun.value) return null
+
   return new Date(nextRun.value).toLocaleString('fr-FR')
 })
 
@@ -94,6 +95,7 @@ const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null
     || props.existingConfig?.otp_config_id === null
+
   return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
 })
 
@@ -195,8 +197,8 @@ watch(() => props.existingConfig, async (config) => {
       type="error"
       :title="error"
       closeable
-      @close="$emit('clear-error')"
       class="fr-mb-3w"
+      @close="$emit('clear-error')"
     />
 
     <DsfrAccordion>
@@ -275,24 +277,33 @@ watch(() => props.existingConfig, async (config) => {
       />
 
       <div class="fr-mt-4w">
-        <fieldset class="fr-fieldset" :aria-labelledby="`auto-sync-legend-${index}`">
-          <legend class="fr-fieldset__legend" :id="`auto-sync-legend-${index}`">
+        <fieldset
+          class="fr-fieldset"
+          :aria-labelledby="`auto-sync-legend-${index}`"
+        >
+          <legend
+            :id="`auto-sync-legend-${index}`"
+            class="fr-fieldset__legend"
+          >
             Synchronisation automatique
           </legend>
 
           <div class="fr-fieldset__content">
             <div class="fr-checkbox-group">
-                <input
-                  type="checkbox"
-                  :id="`auto_sync_enabled-${index}`"
-                  :name="`auto_sync_enabled-${index}`"
-                  :checked="scheduleToggle"
-                  :disabled="scheduleLoading"
-                  @change="handleAutoSyncToggle"
-                  data-test-id="auto-sync-toggle"
-                >
+              <input
+                :id="`auto_sync_enabled-${index}`"
+                type="checkbox"
+                :name="`auto_sync_enabled-${index}`"
+                :checked="scheduleToggle"
+                :disabled="scheduleLoading"
+                data-test-id="auto-sync-toggle"
+                @change="handleAutoSyncToggle"
+              >
 
-              <label class="fr-label" :for="`auto_sync_enabled-${index}`">
+              <label
+                class="fr-label"
+                :for="`auto_sync_enabled-${index}`"
+              >
                 Activer la synchronisation automatique
               </label>
             </div>
@@ -306,7 +317,10 @@ watch(() => props.existingConfig, async (config) => {
         </fieldset>
       </div>
 
-      <DsfrButtonGroup inline-layout-when="always" size="large">
+      <DsfrButtonGroup
+        inline-layout-when="always"
+        size="large"
+      >
         <DsfrButton
           label="Lancer la synchronisation"
           data-test-id="sync-button"
