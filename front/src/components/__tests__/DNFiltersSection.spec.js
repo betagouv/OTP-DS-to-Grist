@@ -24,9 +24,6 @@ const setDate = (wrapper, testId, value) =>
 const toggleStatus = (wrapper, value) =>
   wrapper.find(`input[type="checkbox"][value="${value}"]`).setValue(true)
 
-const mountWithConfig = (existingConfig) =>
-  mount(DNFiltersSection, { props: { existingConfig } })
-
 const mockGroupsResponse = (groups) => {
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -190,7 +187,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('shows the loading indicator while groups are loading', () => {
     globalThis.fetch = vi.fn().mockReturnValue(new Promise(() => {}))
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
 
     expect(hasGroupsSection(wrapper)).toBe(true)
     expect(wrapper.find('p').text()).toBe('...')
@@ -198,7 +195,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('shows an error alert when groups loading fails', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
     await flushPromises()
 
     const alert = wrapper.findComponent(OtpAlert)
@@ -208,7 +205,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('masks the groups section when the groups list is empty', async () => {
     mockGroupsResponse([])
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
     await flushPromises()
 
     expect(hasGroupsSection(wrapper)).toBe(false)
@@ -216,7 +213,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('masks the groups section when the demarche has a single default group', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
     await flushPromises()
 
     expect(hasGroupsSection(wrapper)).toBe(false)
@@ -224,7 +221,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('keeps a valid saved group filter when the section is hidden (single group)', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1' })
     await flushPromises()
 
     expect(hasGroupsSection(wrapper)).toBe(false)
@@ -233,7 +230,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('renders the group options once loaded', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
     await flushPromises()
 
     expect(wrapper.findComponent(DsfrMultiselect).props('options')).toEqual([
@@ -244,7 +241,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('emits change and returns selected groups in getData', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
     await flushPromises()
 
     await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1, 2])
@@ -255,7 +252,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('clears removed groups and warns when none of the saved groups are available', async () => {
     mockGroupsResponse([])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,3' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1,3' })
     await flushPromises()
 
     expect(wrapper.vm.getData().filter_groups).toBe('')
@@ -266,7 +263,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('keeps available groups, warns and emits change when some saved groups disappeared', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [3, 'Groupe C']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,2' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1,2' })
     await flushPromises()
 
     expect(wrapper.vm.getData().filter_groups).toBe('1')
@@ -277,7 +274,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('clears the filter and warns when a single remaining group no longer matches the saved filter', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '2' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '2' })
     await flushPromises()
 
     expect(wrapper.vm.getData().filter_groups).toBe('')
@@ -288,7 +285,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('keeps the saved groups without warning when they all still exist', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,2' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1,2' })
     await flushPromises()
 
     expect(wrapper.vm.getData().filter_groups).toBe('1,2')
@@ -298,7 +295,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('does not warn when there is no saved group filter', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
     await flushPromises()
 
     expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
@@ -307,7 +304,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('keeps the saved groups and shows no warning when the groups load fails', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1' })
     await flushPromises()
 
     expect(wrapper.vm.getData().filter_groups).toBe('1')
@@ -317,7 +314,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('resets groups when config becomes null', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1' })
     await flushPromises()
 
     await wrapper.setProps({ existingConfig: null })
@@ -328,7 +325,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('shows one tag per selected group when the section is visible', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
-    const wrapper = mountWithConfig({ otp_config_id: 1 })
+    const wrapper = mountSection({ otp_config_id: 1 })
     await flushPromises()
 
     await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1, 2])
@@ -338,7 +335,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('shows no groups tag when the section is hidden (single group)', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1' })
     await flushPromises()
 
     expect(activeTags(wrapper)).toHaveLength(0)
@@ -346,7 +343,7 @@ describe('DNFiltersSection — groupes instructeurs', () => {
 
   it('removes only the dismissed group and emits change', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,2' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '1,2' })
     await flushPromises()
 
     await dismissTag(wrapper, 'Groupe A')
@@ -491,7 +488,7 @@ describe('DNFiltersSection — Réinitialiser', () => {
 
   it('keeps the groups warning after a reset', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({
+    const wrapper = mountSection({
       otp_config_id: 1,
       filter_groups: '2',
       filter_date_start: '2023-01-01'
@@ -508,7 +505,7 @@ describe('DNFiltersSection — Réinitialiser', () => {
 
   it('clears the groups warning when the reset is saved (reload with empty filter)', async () => {
     mockGroupsResponse([[1, 'Groupe A']])
-    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '2' })
+    const wrapper = mountSection({ otp_config_id: 1, filter_groups: '2' })
     await flushPromises()
     expect(wrapper.findComponent(OtpAlert).props('type')).toBe('warning')
 
