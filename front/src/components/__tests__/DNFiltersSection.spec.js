@@ -34,6 +34,11 @@ const mockGroupsResponse = (groups) => {
   })
 }
 
+const activeTags = (wrapper) => wrapper.findAll('.fr-tag')
+
+const dismissTag = (wrapper, label) =>
+  activeTags(wrapper).find((tag) => tag.text() === label).trigger('click')
+
 const DATE_DEBUT = 'filter-date-start'
 const DATE_FIN = 'filter-date-end'
 
@@ -321,14 +326,14 @@ describe('DNFiltersSection — groupes instructeurs', () => {
     expect(hasGroupsSection(wrapper)).toBe(false)
   })
 
-  it('shows a groups tag when groups are selected and the section is visible', async () => {
+  it('shows one tag per selected group when the section is visible', async () => {
     mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
     const wrapper = mountWithConfig({ otp_config_id: 1 })
     await flushPromises()
 
-    await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1])
+    await wrapper.findComponent(DsfrMultiselect).vm.$emit('update:modelValue', [1, 2])
 
-    expect(wrapper.text()).toContain('Groupes: Groupe A')
+    expect(activeTags(wrapper).map((tag) => tag.text())).toEqual(['Groupe A', 'Groupe B'])
   })
 
   it('shows no groups tag when the section is hidden (single group)', async () => {
@@ -336,7 +341,19 @@ describe('DNFiltersSection — groupes instructeurs', () => {
     const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1' })
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('Groupes:')
+    expect(activeTags(wrapper)).toHaveLength(0)
+  })
+
+  it('removes only the dismissed group and emits change', async () => {
+    mockGroupsResponse([[1, 'Groupe A'], [2, 'Groupe B']])
+    const wrapper = mountWithConfig({ otp_config_id: 1, filter_groups: '1,2' })
+    await flushPromises()
+
+    await dismissTag(wrapper, 'Groupe A')
+
+    expect(wrapper.vm.getData().filter_groups).toBe('2')
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(activeTags(wrapper).map((tag) => tag.text())).toEqual(['Groupe B'])
   })
 })
 
@@ -355,11 +372,11 @@ describe('DNFiltersSection — Filtres actifs', () => {
     expect(wrapper.text()).toContain('Date de fin: 31/12/2023')
   })
 
-  it('shows a status tag with labels', () => {
+  it('shows one tag per selected status', () => {
     const wrapper = mountSection({
       filter_statuses: 'en_construction,accepte'
     })
-    expect(wrapper.text()).toContain('Statuts: En construction, Accepté')
+    expect(activeTags(wrapper).map((tag) => tag.text())).toEqual(['En construction', 'Accepté'])
   })
 
   it('hides a date tag when the date is cleared', async () => {
@@ -373,12 +390,62 @@ describe('DNFiltersSection — Filtres actifs', () => {
     expect(wrapper.text()).not.toContain('Date de début:')
   })
 
-  it('renders tags as non-interactive spans', () => {
+  it('renders tags as dismiss buttons with an accessible label', () => {
     const wrapper = mountSection({
       filter_date_start: '2023-01-01'
     })
     const tag = wrapper.find('.fr-tag')
-    expect(tag.element.tagName).toBe('SPAN')
+    expect(tag.element.tagName).toBe('BUTTON')
+    expect(tag.attributes('type')).toBe('button')
+    expect(tag.classes()).toContain('fr-tag--dismiss')
+    expect(tag.attributes('aria-label')).toBe('Retirer Date de début: 01/01/2023')
+  })
+
+  it('removes a date when its tag is dismissed and emits change', async () => {
+    const wrapper = mountSection({
+      filter_date_start: '2023-01-01',
+      filter_date_end: '2023-12-31'
+    })
+
+    await dismissTag(wrapper, 'Date de début: 01/01/2023')
+
+    expect(wrapper.vm.getData().filter_date_start).toBe('')
+    expect(wrapper.vm.getData().filter_date_end).toBe('2023-12-31')
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('Date de début:')
+  })
+
+  it('clears the date error when the inconsistent end date is dismissed', async () => {
+    const wrapper = mountSection({
+      filter_date_start: '2023-12-31',
+      filter_date_end: '2023-01-01'
+    })
+
+    await dismissTag(wrapper, 'Date de fin: 01/01/2023')
+
+    expect(wrapper.emitted('error-update').at(-1)).toEqual([''])
+  })
+
+  it('removes only the dismissed status and emits change', async () => {
+    const wrapper = mountSection({
+      filter_statuses: 'en_construction,accepte'
+    })
+
+    await dismissTag(wrapper, 'En construction')
+
+    expect(wrapper.vm.getData().filter_statuses).toBe('accepte')
+    expect(wrapper.emitted('change')).toHaveLength(1)
+    expect(activeTags(wrapper).map((tag) => tag.text())).toEqual(['Accepté'])
+  })
+
+  it('hides the active filters block when the last tag is dismissed', async () => {
+    const wrapper = mountSection({
+      filter_statuses: 'accepte'
+    })
+
+    await dismissTag(wrapper, 'Accepté')
+
+    expect(wrapper.find('h5').exists()).toBe(false)
   })
 })
 
