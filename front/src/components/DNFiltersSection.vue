@@ -83,21 +83,13 @@ const tagRows = computed(() =>
 
 const hasActiveFilters = computed(() => tagRows.value.length > 0)
 
-const handleDateChange = () => {
-  emit('change')
-}
-
-const handleStatusChange = () => {
-  emit('change')
-}
-
-const handleGroupsChange = () => {
+const emitChange = () => {
   emit('change')
 }
 
 const handleTagDismiss = (tag) => {
   tag.remove()
-  emit('change')
+  emitChange()
 }
 
 const handleReset = () => {
@@ -105,7 +97,7 @@ const handleReset = () => {
   dateFin.value = ''
   selectedStatuses.value = []
   selectedGroups.value = []
-  emit('change')
+  emitChange()
 }
 
 watch([dateDebut, dateFin], () => {
@@ -144,7 +136,7 @@ watch(() => props.existingConfig, async (config) => {
     if (missing.length > 0) {
       selectedGroups.value = selectedGroups.value.filter((n) => available.has(n))
       groupsWarning.value = 'Certains groupes instructeurs sauvegardés ne sont plus proposés par la démarche. Ils ont été retirés du filtre. Vérifiez la sélection puis enregistrez vos modifications.'
-      emit('change')
+      emitChange()
     }
   } catch {
     groupsError.value = 'Erreur lors du chargement des groupes instructeurs'
@@ -179,7 +171,7 @@ defineExpose({
               label="Date de début"
               type="date"
               data-test-id="filter-date-start"
-              @input="handleDateChange"
+              @input="emitChange"
             />
           </DsfrInputGroup>
         </div>
@@ -192,7 +184,7 @@ defineExpose({
               :is-invalid="!!dateError"
               type="date"
               data-test-id="filter-date-end"
-              @input="handleDateChange"
+              @input="emitChange"
             />
           </DsfrInputGroup>
         </div>
@@ -210,7 +202,7 @@ defineExpose({
         v-model="selectedStatuses"
         :options="STATUS_OPTIONS"
         inline
-        @update:model-value="handleStatusChange"
+        @update:model-value="emitChange"
       />
     </div>
   </fieldset>
@@ -237,7 +229,7 @@ defineExpose({
         id-key="number"
         label-key="label"
         search
-        @update:model-value="handleGroupsChange"
+        @update:model-value="emitChange"
       />
       <OtpAlert
         v-if="groupsWarning"
