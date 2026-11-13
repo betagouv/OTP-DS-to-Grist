@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { h } from 'vue'
 
 import { DsfrInput, DsfrInputGroup, DsfrMultiselect } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
@@ -1388,5 +1389,41 @@ describe('Verified badge', () => {
     await flushPromises()
 
     expect(badges(wrapper)).toHaveLength(1)
+  })
+})
+
+describe('Accessible labels', () => {
+  const labelOf = (wrapper, testId) => {
+    const input = wrapper.find(`[data-test-id="${testId}"]`)
+
+    return wrapper.find(`label[for="${input.attributes('id')}"]`)
+  }
+
+  it.each([
+    ['dn-token', "Jeton d'API *"],
+    ['dn-number', 'Numéro de démarche *']
+  ])('links a visible French label to the %s input', (testId, text) => {
+    const wrapper = mount(DNFormSection, {
+      props: { index: 0 },
+      global: globalComponents
+    })
+    const label = labelOf(wrapper, testId)
+
+    expect(label.exists()).toBe(true)
+    expect(label.classes()).not.toContain('invisible')
+    // Texte exact : pas d'astérisque DSFR en double de celui du libellé
+    expect(label.text()).toBe(text)
+  })
+
+  it('gives distinct label targets to two demarche sections of the same page', () => {
+    // Même application Vue, comme dans OTPForm : les id générés (useId) y sont uniques
+    const wrapper = mount(
+      { render: () => [h(DNFormSection, { index: 0 }), h(DNFormSection, { index: 1 })] },
+      { global: globalComponents }
+    )
+    const [first, second] = wrapper.findAllComponents(DNFormSection)
+
+    expect(labelOf(first, 'dn-token').attributes('for'))
+      .not.toBe(labelOf(second, 'dn-token').attributes('for'))
   })
 })

@@ -427,3 +427,18 @@ describe('Verified badge', () => {
     expect(wrapper.find('.fr-error-text').exists()).toBe(false)
   })
 })
+
+describe('Accessible label', () => {
+  it('links a visible French label to the Grist key input', () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const input = wrapper.find('[data-test-id="grist-token"]')
+    const label = wrapper.find(`label[for="${input.attributes('id')}"]`)
+
+    expect(label.exists()).toBe(true)
+    expect(label.classes()).not.toContain('invisible')
+    // Texte exact : pas d'astérisque DSFR en double de celui du libellé
+    expect(label.text()).toBe('Clé API Grist *')
+  })
+})
