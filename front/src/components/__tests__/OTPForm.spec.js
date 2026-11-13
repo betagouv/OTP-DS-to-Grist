@@ -1422,7 +1422,10 @@ describe('Accordion DN state', () => {
     globalThis.fetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] })
+      })
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     const dnSections = wrapper.findAllComponents(DNFormSection)
@@ -1452,7 +1455,10 @@ describe('Accordion DN state', () => {
     globalThis.fetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] })
+      })
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     const dnSections = wrapper.findAllComponents(DNFormSection)
