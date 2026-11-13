@@ -235,7 +235,9 @@ watch(() => props.existingConfig, async (config) => {
           v-model="inputDNNumber"
           @input="handleDNInputsChange"
           label="DN number"
-          placeholder="Saisissez votre numéro DN"
+          placeholder="Ex. : 123456"
+          inputmode="numeric"
+          class="otp-input-demarche-number"
           required
         />
       </DsfrInputGroup>
@@ -319,5 +321,11 @@ watch(() => props.existingConfig, async (config) => {
 }
 .otp-accordion-badge {
   flex-shrink: 0;
+}
+/* Largeur ajustée à un numéro de démarche (quelques chiffres) plus le padding
+   horizontal du champ DSFR. DsfrInput rend un fragment : :deep() est requis
+   pour atteindre l'input depuis ce composant. */
+:deep(.otp-input-demarche-number) {
+  max-width: calc(20ch + 2rem);
 }
 </style>
