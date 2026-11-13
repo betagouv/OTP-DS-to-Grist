@@ -156,28 +156,34 @@ defineExpose({
         <DsfrInputGroup
           :error-message="gristTokenErrorMessage"
         >
-          <h5 class="fr-mt-3w fr-mb-0">Renseignez votre clé API Grist</h5>
-          <FieldLabel
-            label="Clé API Grist *"
-            :verified="gristVerified"
-          />
+          <h5 class="fr-mt-3w fr-mb-0">
+            Renseignez votre clé API Grist
+          </h5>
           <DsfrInput
+            v-model="inputGristToken"
             :error-message="gristTokenErrorMessage"
             data-test-id="grist-token"
-            v-model="inputGristToken"
-            @input="handleGristInputChange"
-            label="Grist token"
+            label-visible
             :placeholder="gristTokenPlaceholder"
             type="password"
             required
-          />
+            @input="handleGristInputChange"
+          >
+            <template #label>
+              <FieldLabel
+                label="Clé API Grist *"
+                :verified="gristVerified"
+              />
+            </template>
+          </DsfrInput>
           <p class="fr-mt-2w">
-            <DsfrInfoIcon class="fr-mr-1v"/>
+            <DsfrInfoIcon class="fr-mr-1v" />
             <a
               :href="HELP_LINKS.grist_api_key"
               target="_blank"
               rel="noopener noreferrer"
-              class="fr-link fr-text--xs">Où trouver votre clé API Grist ?</a>
+              class="fr-link fr-text--xs"
+            >Où trouver votre clé API Grist ?</a>
           </p>
         </DsfrInputGroup>
       </DsfrAccordion>

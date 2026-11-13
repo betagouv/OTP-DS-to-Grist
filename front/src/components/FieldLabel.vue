@@ -1,8 +1,8 @@
 <script setup>
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
-// Libellé de champ, suivi d'un badge « Vérifié » quand la valeur saisie a été
-// confirmée par un test de connexion
+// Contenu du libellé d'un champ (slot `label` de DsfrInput), suivi d'un badge
+// « Vérifié » quand la valeur saisie a été confirmée par un test de connexion
 defineProps({
   label: { type: String, required: true },
   verified: { type: Boolean, default: false }
@@ -10,7 +10,7 @@ defineProps({
 </script>
 
 <template>
-  <p class="fr-mb-0 otp-field-label">
+  <span class="otp-field-label">
     {{ label }}
     <DsfrBadge
       v-if="verified"
@@ -19,12 +19,12 @@ defineProps({
       small
       data-test-id="verified-badge"
     />
-  </p>
+  </span>
 </template>
 
 <style scoped>
 .otp-field-label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
 }

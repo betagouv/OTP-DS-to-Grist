@@ -219,43 +219,52 @@ watch(() => props.existingConfig, async (config) => {
       </template>
 
       <DsfrInputGroup
-          :error-message="dnErrorMessage"
+        :error-message="dnErrorMessage"
       >
-        <h5 class="fr-mt-3w fr-mb-0">Renseignez les informations de votre démarche numérique</h5>
-        <FieldLabel
-          label="Jeton d'API *"
-          :verified="dnVerified"
-        />
+        <h5 class="fr-mt-3w fr-mb-0">
+          Renseignez les informations de votre démarche numérique
+        </h5>
         <DsfrInput
+          v-model="inputDNToken"
           :error-message="dnErrorMessage"
           data-test-id="dn-token"
-          v-model="inputDNToken"
-          @input="handleDNInputsChange"
-          label="DN token"
+          label-visible
           :placeholder="dnTokenPlaceholder"
           type="password"
           required
-        />
+          @input="handleDNInputsChange"
+        >
+          <template #label>
+            <FieldLabel
+              label="Jeton d'API *"
+              :verified="dnVerified"
+            />
+          </template>
+        </DsfrInput>
         <p class="fr-mt-2w">
-          <DsfrInfoIcon class="fr-mr-1v"/>
+          <DsfrInfoIcon class="fr-mr-1v" />
           <a
             :href="HELP_LINKS.token_api"
             target="_blank"
             rel="noopener noreferrer"
-            class="fr-link fr-text--xs">Où trouver votre jeton API ?</a>
+            class="fr-link fr-text--xs"
+          >Où trouver votre jeton API ?</a>
         </p>
 
-        <p class="fr-mb-0">Numéro de démarche *</p>
         <DsfrInput
-          data-test-id="dn-number"
           v-model="inputDNNumber"
-          @input="handleDNInputsChange"
-          label="DN number"
+          class="otp-input-demarche-number"
+          data-test-id="dn-number"
+          label-visible
           placeholder="Ex. : 123456"
           inputmode="numeric"
-          class="otp-input-demarche-number"
           required
-        />
+          @input="handleDNInputsChange"
+        >
+          <template #label>
+            <FieldLabel label="Numéro de démarche *" />
+          </template>
+        </DsfrInput>
       </DsfrInputGroup>
 
       <DNFiltersSection
