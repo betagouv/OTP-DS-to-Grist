@@ -38,6 +38,7 @@ const showGroupsSection = computed(() =>
 const dateError = computed(() => {
   if (dateDebut.value && dateFin.value && dateFin.value < dateDebut.value)
     return 'La date de fin doit être postérieure ou égale à la date de début'
+
   return ''
 })
 
@@ -55,6 +56,7 @@ const dateTags = computed(() => {
       label: `Date de fin: ${formatDate(dateFin.value)}`,
       remove: () => { dateFin.value = '' }
     })
+
   return tags
 })
 
@@ -69,6 +71,7 @@ const statusTags = computed(() =>
 const groupTags = computed(() => {
   if (groups.value.length <= 1) return []
   const groupMap = new Map(groups.value.map((g) => [g.number, g.label]))
+
   return selectedGroups.value.map((n) => ({
     key: n,
     label: groupMap.get(n) ?? `Groupe #${n}`,
@@ -207,7 +210,10 @@ defineExpose({
     </div>
   </fieldset>
 
-  <fieldset v-if="showGroupsSection" class="fr-fieldset fr-mt-3w">
+  <fieldset
+    v-if="showGroupsSection"
+    class="fr-fieldset fr-mt-3w"
+  >
     <legend class="fr-fieldset__legend">
       Filtrer par groupe instructeur
     </legend>
@@ -240,7 +246,10 @@ defineExpose({
     </div>
   </fieldset>
 
-  <div v-if="hasActiveFilters" class="fr-mt-3w">
+  <div
+    v-if="hasActiveFilters"
+    class="fr-mt-3w"
+  >
     <h5 class="fr-mb-1w">Filtres actifs</h5>
     <ul
       v-for="(tags, index) in tagRows"
@@ -248,7 +257,10 @@ defineExpose({
       class="fr-tags-group"
       :class="{ 'fr-mt-1w': index > 0 }"
     >
-      <li v-for="tag in tags" :key="tag.key">
+      <li
+        v-for="tag in tags"
+        :key="tag.key"
+      >
         <button
           type="button"
           class="fr-tag fr-tag--dismiss"

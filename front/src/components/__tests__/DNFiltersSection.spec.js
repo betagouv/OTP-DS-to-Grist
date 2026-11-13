@@ -6,7 +6,8 @@ import OtpAlert from '../OtpAlert.vue'
 import { DsfrMultiselect } from '@gouvminint/vue-dsfr'
 
 beforeEach(() => {
-  globalThis.formatDate = (dateString) => dateString.split('-').reverse().join('/')
+  globalThis.formatDate = (dateString) => dateString.split('-').reverse()
+    .join('/')
 })
 
 afterEach(() => {
@@ -34,7 +35,8 @@ const mockGroupsResponse = (groups) => {
 const activeTags = (wrapper) => wrapper.findAll('.fr-tag')
 
 const dismissTag = (wrapper, label) =>
-  activeTags(wrapper).find((tag) => tag.text() === label).trigger('click')
+  activeTags(wrapper).find((tag) => tag.text() === label)
+    .trigger('click')
 
 const DATE_DEBUT = 'filter-date-start'
 const DATE_FIN = 'filter-date-end'

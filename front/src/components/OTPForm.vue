@@ -76,6 +76,7 @@ const loadConfig = async () => {
 
 const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
+
   return sortConfigs(serverConfigs.value)
 })
 
@@ -96,6 +97,7 @@ watch(configs, (sections) => {
     const target = sections.findIndex(config => config?.otp_config_id === pendingOpenId)
     activeDnAccordion.value = target >= 0 ? target : -1
     pendingOpenId = null
+
     return
   }
   const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
@@ -230,8 +232,8 @@ const handleAddDemarche = async () => {
     type="error"
     :title="configError"
     closeable
-    @close="configError = null"
     class="fr-mb-4w"
+    @close="configError = null"
   />
 
   <OtpAlert
@@ -239,8 +241,8 @@ const handleAddDemarche = async () => {
     type="warning"
     title="Clé API Grist insuffisante"
     closeable
-    @close="gristKeyWarningDismissed = true"
     class="fr-mb-4w"
+    @close="gristKeyWarningDismissed = true"
   >
     La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document.
   </OtpAlert>
@@ -259,59 +261,68 @@ const handleAddDemarche = async () => {
     @error-update="gristError = $event"
   />
 
-    <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w fr-mb-1w">
-      <div class="fr-col-6">
-        <h6 class="fr-mb-3w">2. Démarche numérique</h6>
-      </div>
-
-      <div class="fr-col-6" style="text-align: right">
-        <DsfrButton
-          label="Ajouter une démarche numérique"
-          icon="fr-icon-add-circle-line"
-          data-test-id="add-dn-section-button"
-          secondary
-          @click="handleAddDemarche"
-          :disabled="hasUnsavedSection"
-        />
-      </div>
+  <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w fr-mb-1w">
+    <div class="fr-col-6">
+      <h6 class="fr-mb-3w">2. Démarche numérique</h6>
     </div>
 
-    <DsfrAccordionsGroup v-model="activeDnAccordion" :key="accordionGroupKey">
-      <DNFormSection 
-        :index="index"
-        @save="handleSave"
-        @delete="handleDelete"
-        @sync="handleSync"
-        @title-loaded="(demarcheNumber, title) => emit('title-loaded', demarcheNumber, title)"
-        :grist-error="gristError"
-        :can-delete="canDelete(config)"
-        :can-sync="canSync(config)"
-        :in-flight="savingIndices.has(index)"
-        :existing-config="config"
-        :error="actionErrors[index] || null"
-        @clear-error="actionErrors[index] = null"
-        v-for="(config, index) in configs"
-        :key="config?.otp_config_id || 'new'"
-        :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
-      />
-    </DsfrAccordionsGroup>
-
-    <OtpAlert
-      v-if="syncAllError"
-      type="error"
-      :title="syncAllError"
-      closeable
-      @close="syncAllError = null"
-      class="fr-mt-4w"
-    />
-
-    <div class="fr-mt-4w" style="text-align: right">
+    <div
+      class="fr-col-6"
+      style="text-align: right"
+    >
       <DsfrButton
-        label="Tout synchroniser"
-        icon="fr-icon-refresh-line"
-        data-test-id="sync-all-button"
-        @click="handleSyncAll"
-        :disabled="syncRunning || syncAllPending || !hasSavedConfig"
+        label="Ajouter une démarche numérique"
+        icon="fr-icon-add-circle-line"
+        data-test-id="add-dn-section-button"
+        secondary
+        :disabled="hasUnsavedSection"
+        @click="handleAddDemarche"
       />
     </div>
+  </div>
+
+  <DsfrAccordionsGroup
+    :key="accordionGroupKey"
+    v-model="activeDnAccordion"
+  >
+    <DNFormSection
+      v-for="(config, index) in configs"
+      :key="config?.otp_config_id || 'new'"
+      :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
+      :index="index"
+      :grist-error="gristError"
+      :can-delete="canDelete(config)"
+      :can-sync="canSync(config)"
+      :in-flight="savingIndices.has(index)"
+      :existing-config="config"
+      :error="actionErrors[index] || null"
+      @save="handleSave"
+      @delete="handleDelete"
+      @sync="handleSync"
+      @title-loaded="(demarcheNumber, title) => emit('title-loaded', demarcheNumber, title)"
+      @clear-error="actionErrors[index] = null"
+    />
+  </DsfrAccordionsGroup>
+
+  <OtpAlert
+    v-if="syncAllError"
+    type="error"
+    :title="syncAllError"
+    closeable
+    class="fr-mt-4w"
+    @close="syncAllError = null"
+  />
+
+  <div
+    class="fr-mt-4w"
+    style="text-align: right"
+  >
+    <DsfrButton
+      label="Tout synchroniser"
+      icon="fr-icon-refresh-line"
+      data-test-id="sync-all-button"
+      :disabled="syncRunning || syncAllPending || !hasSavedConfig"
+      @click="handleSyncAll"
+    />
+  </div>
 </template>

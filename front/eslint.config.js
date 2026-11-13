@@ -38,6 +38,9 @@ export default [
       'no-warning-comments': 'warn',
       'prefer-destructuring': 'warn',
 
+      // Style des templates : contenu d'un élément court laissé sur sa ligne
+      'vue/singleline-html-element-content-newline': 'off',
+
       // Style : relais des anciennes règles de formatage d'ESLint
       '@stylistic/array-bracket-spacing': ['warn', 'never'],
       '@stylistic/brace-style': ['warn', '1tbs', { allowSingleLine: true }],
