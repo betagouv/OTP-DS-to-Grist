@@ -157,7 +157,7 @@ const handleSave = async (index) => {
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
-  } catch (e) {
+  } catch {
     actionErrors.value[index] = 'Erreur lors de la sauvegarde'
   } finally {
     savingIndices.value.delete(index)
@@ -183,7 +183,7 @@ const handleDelete = async (index) => {
 
     await loadConfig()
     notify('Configuration supprimée', 'success')
-  } catch (e) {
+  } catch {
     actionErrors.value[index] = 'Erreur lors de la suppression'
   }
 }
@@ -197,7 +197,7 @@ const handleSync = async (index) => {
     const result = await api.startSync(otpConfigIdToSync)
     setCurrentTaskId(result.task_id, configs.value[index].demarche_number)
     activeDnAccordion.value = -1
-  } catch (e) {
+  } catch {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'
   }
 }

@@ -36,7 +36,8 @@ export default [
       'no-unneeded-ternary': 'warn',
       'no-useless-return': 'warn',
       'no-warning-comments': 'warn',
-      'prefer-destructuring': 'warn',
+      // Objets seulement : un accès par indice (tab[0]) reste plus lisible
+      'prefer-destructuring': ['warn', { array: false, object: true }],
 
       // Style des templates : contenu d'un élément court laissé sur sa ligne
       'vue/singleline-html-element-content-newline': 'off',

@@ -8,9 +8,8 @@ describe('useNotification', () => {
 
   beforeEach(async () => {
     vi.useFakeTimers()
-    vi.resetModules()
-    const mod = await import('../useNotification.js')
-    useNotification = mod.useNotification;
+    vi.resetModules();
+    ({ useNotification } = await import('../useNotification.js'));
     ({ notifications, notify, remove } = useNotification())
   })
 
