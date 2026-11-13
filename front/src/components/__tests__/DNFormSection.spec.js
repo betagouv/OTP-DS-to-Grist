@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { nextTick } from 'vue'
 
 import { DsfrInput, DsfrInputGroup, DsfrMultiselect } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
@@ -357,11 +356,12 @@ describe('index prop', () => {
 
 describe('Auto-save', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn((url, opts) => {
+    globalThis.fetch = vi.fn((url) => {
       if (String(url).includes('/api/schedule'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: false }) })
       if (String(url).includes('/api/groups'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
     })
   })
@@ -930,11 +930,12 @@ describe('Filters section integration', () => {
 
 describe('Auto-sync toggle', () => {
   const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
-    globalThis.fetch = vi.fn((url, opts) => {
+    globalThis.fetch = vi.fn((url) => {
       if (String(url).includes('/api/schedule'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
       if (String(url).includes('/api/groups'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
     })
   }
@@ -1006,7 +1007,7 @@ describe('Auto-sync toggle', () => {
     await checkbox.setChecked(true)
 
     const scheduleCalls = globalThis.fetch.mock.calls.filter(
-      ([url, opts]) => String(url).includes('/api/schedule')
+      ([url]) => String(url).includes('/api/schedule')
     )
     expect(scheduleCalls).toHaveLength(1) // uniquement le GET de chargement
     expect(scheduleCalls[0][1]).toBeUndefined()
@@ -1029,7 +1030,7 @@ describe('Auto-sync toggle', () => {
     await checkbox.setChecked(false)
 
     const scheduleCalls = globalThis.fetch.mock.calls.filter(
-      ([url, opts]) => String(url).includes('/api/schedule')
+      ([url]) => String(url).includes('/api/schedule')
     )
     expect(scheduleCalls).toHaveLength(1)
     expect(wrapper.vm.getData().auto_sync_enabled).toBe(false)
@@ -1090,11 +1091,12 @@ describe('Auto-sync toggle', () => {
 
 describe('Auto-sync badge in accordion title', () => {
   const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
-    globalThis.fetch = vi.fn((url, opts) => {
+    globalThis.fetch = vi.fn((url) => {
       if (String(url).includes('/api/schedule'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
       if (String(url).includes('/api/groups'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
     })
   }
@@ -1163,7 +1165,7 @@ describe('Auto-sync badge in accordion title', () => {
   })
 
   it('updates the badge and the next-run hint immediately when toggling to manual', async () => {
-    globalThis.fetch = vi.fn((url, opts) => {
+    globalThis.fetch = vi.fn((url) => {
       if (String(url).includes('/api/schedule'))
         return Promise.resolve({
           ok: true,
@@ -1171,6 +1173,7 @@ describe('Auto-sync badge in accordion title', () => {
         })
       if (String(url).includes('/api/groups'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
     })
     const wrapper = mount(DNFormSection, {
@@ -1196,11 +1199,12 @@ describe('Auto-sync badge in accordion title', () => {
 
 describe('Auto-sync next run display', () => {
   const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
-    globalThis.fetch = vi.fn((url, opts) => {
+    globalThis.fetch = vi.fn((url) => {
       if (String(url).includes('/api/schedule'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
       if (String(url).includes('/api/groups'))
         return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
     })
   }
