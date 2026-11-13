@@ -43,40 +43,53 @@ const dateError = computed(() => {
 
 const dateTags = computed(() => {
   const tags = []
-  if (dateDebut.value) tags.push(`Date de début: ${formatDate(dateDebut.value)}`)
-  if (dateFin.value) tags.push(`Date de fin: ${formatDate(dateFin.value)}`)
+  if (dateDebut.value)
+    tags.push({
+      key: 'date-debut',
+      label: `Date de début: ${formatDate(dateDebut.value)}`,
+      remove: () => { dateDebut.value = '' }
+    })
+  if (dateFin.value)
+    tags.push({
+      key: 'date-fin',
+      label: `Date de fin: ${formatDate(dateFin.value)}`,
+      remove: () => { dateFin.value = '' }
+    })
   return tags
 })
 
-const statusTags = computed(() => {
-  if (selectedStatuses.value.length === 0) return []
-  const labels = selectedStatuses.value.map(
-    (value) => STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value
-  )
-  return [`Statuts: ${labels.join(', ')}`]
-})
-
-const groupTags = computed(() => {
-  if (groups.value.length <= 1 || selectedGroups.value.length === 0) return []
-  const groupMap = new Map(groups.value.map((g) => [g.number, g.label]))
-  const labels = selectedGroups.value.map((n) => groupMap.get(n) ?? `Groupe #${n}`)
-  return [`Groupes: ${labels.join(', ')}`]
-})
-
-const hasActiveFilters = computed(() =>
-  dateTags.value.length > 0 || statusTags.value.length > 0 || groupTags.value.length > 0
+const statusTags = computed(() =>
+  selectedStatuses.value.map((value) => ({
+    key: value,
+    label: STATUS_OPTIONS.find((option) => option.value === value)?.label ?? value,
+    remove: () => { selectedStatuses.value = selectedStatuses.value.filter((v) => v !== value) }
+  }))
 )
 
-const handleDateChange = () => {
+const groupTags = computed(() => {
+  if (groups.value.length <= 1) return []
+  const groupMap = new Map(groups.value.map((g) => [g.number, g.label]))
+  return selectedGroups.value.map((n) => ({
+    key: n,
+    label: groupMap.get(n) ?? `Groupe #${n}`,
+    remove: () => { selectedGroups.value = selectedGroups.value.filter((g) => g !== n) }
+  }))
+})
+
+// Une ligne d'étiquettes par type de filtre, pour distinguer statuts et groupes
+const tagRows = computed(() =>
+  [dateTags.value, statusTags.value, groupTags.value].filter((tags) => tags.length > 0)
+)
+
+const hasActiveFilters = computed(() => tagRows.value.length > 0)
+
+const emitChange = () => {
   emit('change')
 }
 
-const handleStatusChange = () => {
-  emit('change')
-}
-
-const handleGroupsChange = () => {
-  emit('change')
+const handleTagDismiss = (tag) => {
+  tag.remove()
+  emitChange()
 }
 
 const handleReset = () => {
@@ -84,7 +97,7 @@ const handleReset = () => {
   dateFin.value = ''
   selectedStatuses.value = []
   selectedGroups.value = []
-  emit('change')
+  emitChange()
 }
 
 watch([dateDebut, dateFin], () => {
@@ -123,7 +136,7 @@ watch(() => props.existingConfig, async (config) => {
     if (missing.length > 0) {
       selectedGroups.value = selectedGroups.value.filter((n) => available.has(n))
       groupsWarning.value = 'Certains groupes instructeurs sauvegardés ne sont plus proposés par la démarche. Ils ont été retirés du filtre. Vérifiez la sélection puis enregistrez vos modifications.'
-      emit('change')
+      emitChange()
     }
   } catch {
     groupsError.value = 'Erreur lors du chargement des groupes instructeurs'
@@ -158,7 +171,7 @@ defineExpose({
               label="Date de début"
               type="date"
               data-test-id="filter-date-start"
-              @input="handleDateChange"
+              @input="emitChange"
             />
           </DsfrInputGroup>
         </div>
@@ -171,7 +184,7 @@ defineExpose({
               :is-invalid="!!dateError"
               type="date"
               data-test-id="filter-date-end"
-              @input="handleDateChange"
+              @input="emitChange"
             />
           </DsfrInputGroup>
         </div>
@@ -189,7 +202,7 @@ defineExpose({
         v-model="selectedStatuses"
         :options="STATUS_OPTIONS"
         inline
-        @update:model-value="handleStatusChange"
+        @update:model-value="emitChange"
       />
     </div>
   </fieldset>
@@ -216,7 +229,7 @@ defineExpose({
         id-key="number"
         label-key="label"
         search
-        @update:model-value="handleGroupsChange"
+        @update:model-value="emitChange"
       />
       <OtpAlert
         v-if="groupsWarning"
@@ -229,19 +242,21 @@ defineExpose({
 
   <div v-if="hasActiveFilters" class="fr-mt-3w">
     <h5 class="fr-mb-1w">Filtres actifs</h5>
-    <ul v-if="dateTags.length" class="fr-tags-group">
-      <li v-for="tag in dateTags" :key="tag">
-        <span class="fr-tag fr-tag--high-blue-france">{{ tag }}</span>
-      </li>
-    </ul>
-    <ul v-if="statusTags.length" class="fr-tags-group fr-mt-1w">
-      <li v-for="tag in statusTags" :key="tag">
-        <span class="fr-tag fr-tag--high-blue-france">{{ tag }}</span>
-      </li>
-    </ul>
-    <ul v-if="groupTags.length" class="fr-tags-group fr-mt-1w">
-      <li v-for="tag in groupTags" :key="tag">
-        <span class="fr-tag fr-tag--high-blue-france">{{ tag }}</span>
+    <ul
+      v-for="(tags, index) in tagRows"
+      :key="index"
+      class="fr-tags-group"
+      :class="{ 'fr-mt-1w': index > 0 }"
+    >
+      <li v-for="tag in tags" :key="tag.key">
+        <button
+          type="button"
+          class="fr-tag fr-tag--dismiss"
+          :aria-label="`Retirer ${tag.label}`"
+          @click="handleTagDismiss(tag)"
+        >
+          {{ tag.label }}
+        </button>
       </li>
     </ul>
   </div>
