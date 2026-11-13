@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 
 import {
   DsfrAccordion,
@@ -9,6 +9,7 @@ import {
 } from '@gouvminint/vue-dsfr'
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import FieldLabel from './FieldLabel.vue'
 import { api } from '../utils/InternalApi'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
@@ -33,6 +34,7 @@ const gristTokenErrorMessage = ref(null)
 const DEFAULT_GRIST_PLACEHOLDER = 'Saisissez votre clé grist'
 const gristTokenPlaceholder = ref(DEFAULT_GRIST_PLACEHOLDER)
 const gristFetchError = ref(null)
+const gristVerified = computed(() => gristTokenErrorMessage.value === '')
 
 const validateGristConnection = async () => {
   const body = {
@@ -143,7 +145,7 @@ defineExpose({
           :error-message="gristTokenErrorMessage"
         >
           <h5 class="fr-mt-3w fr-mb-0">Renseignez votre clé API Grist</h5>
-          <p class="fr-mb-0">Clé API Grist *</p>
+          <FieldLabel label="Clé API Grist *" :verified="gristVerified" />
           <DsfrInput
             :error-message="gristTokenErrorMessage"
             data-test-id="grist-token"

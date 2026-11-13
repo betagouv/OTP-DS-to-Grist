@@ -11,6 +11,7 @@ import {
 } from '@gouvminint/vue-dsfr'
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import FieldLabel from './FieldLabel.vue'
 import DNFiltersSection from './DNFiltersSection.vue'
 import { api } from '../utils/InternalApi'
 import { useAutoSync } from '../composables/useAutoSync'
@@ -87,6 +88,9 @@ const sectionEmpty = computed(() => {
     || props.existingConfig?.otp_config_id === null
   return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
 })
+
+// Le jeton est vérifié par le test de connexion (mené avec le numéro de démarche)
+const dnVerified = computed(() => dnErrorMessage.value === '')
 
 const configValid = computed(() =>
   props.gristError === '' && dnErrorMessage.value === '' && dnFiltersError.value === ''
@@ -201,6 +205,7 @@ watch(() => props.existingConfig, async (config) => {
             type="grey"
             no-icon
             class="otp-accordion-badge"
+            data-test-id="schedule-badge"
           />
         </div>
       </template>
@@ -209,7 +214,7 @@ watch(() => props.existingConfig, async (config) => {
           :error-message="dnErrorMessage"
       >
         <h5 class="fr-mt-3w fr-mb-0">Renseignez les informations de votre démarche numérique</h5>
-        <p class="fr-mb-0">Jeton d'API *</p>
+        <FieldLabel label="Jeton d'API *" :verified="dnVerified" />
         <DsfrInput
           :error-message="dnErrorMessage"
           data-test-id="dn-token"

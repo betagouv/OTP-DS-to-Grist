@@ -1111,7 +1111,7 @@ describe('Auto-sync badge in accordion title', () => {
     })
     await flushPromises()
 
-    const badge = wrapper.find('.fr-badge')
+    const badge = wrapper.find('[data-test-id="schedule-badge"]')
     expect(badge.exists()).toBe(false)
   })
 
@@ -1126,7 +1126,7 @@ describe('Auto-sync badge in accordion title', () => {
     })
     await flushPromises()
 
-    const badge = wrapper.find('.fr-badge')
+    const badge = wrapper.find('[data-test-id="schedule-badge"]')
     expect(badge.exists()).toBe(true)
     expect(badge.text()).toBe('Manuelle')
   })
@@ -1142,7 +1142,7 @@ describe('Auto-sync badge in accordion title', () => {
     })
     await flushPromises()
 
-    const badge = wrapper.find('.fr-badge')
+    const badge = wrapper.find('[data-test-id="schedule-badge"]')
     expect(badge.exists()).toBe(true)
     expect(badge.text()).toBe('Automatique')
   })
@@ -1158,7 +1158,7 @@ describe('Auto-sync badge in accordion title', () => {
     })
     await flushPromises()
 
-    const badge = wrapper.find('.fr-badge')
+    const badge = wrapper.find('[data-test-id="schedule-badge"]')
     expect(badge.text()).toBe('Manuelle')
   })
 
@@ -1182,14 +1182,14 @@ describe('Auto-sync badge in accordion title', () => {
     })
     await flushPromises()
 
-    expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
+    expect(wrapper.find('[data-test-id="schedule-badge"]').text()).toBe('Automatique')
     expect(wrapper.find('p.fr-hint-text').exists()).toBe(true)
 
     const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
     await checkbox.setChecked(false)
     await flushPromises()
 
-    expect(wrapper.find('.fr-badge').text()).toBe('Manuelle')
+    expect(wrapper.find('[data-test-id="schedule-badge"]').text()).toBe('Manuelle')
     expect(wrapper.find('p.fr-hint-text').exists()).toBe(false)
   })
 })
@@ -1286,7 +1286,7 @@ describe('Schedule refresh on reload', () => {
     })
     await flushPromises()
 
-    expect(wrapper.find('.fr-badge').text()).toBe('Manuelle')
+    expect(wrapper.find('[data-test-id="schedule-badge"]').text()).toBe('Manuelle')
 
     mockFetchForSchedule({
       success: true,
@@ -1300,7 +1300,7 @@ describe('Schedule refresh on reload', () => {
     await flushPromises()
 
     expect(wrapper.vm.scheduleEnabled).toBe(true)
-    expect(wrapper.find('.fr-badge').text()).toBe('Automatique')
+    expect(wrapper.find('[data-test-id="schedule-badge"]').text()).toBe('Automatique')
     expect(wrapper.find('p.fr-hint-text').text()).toContain('Prochaine synchronisation')
   })
 
@@ -1363,5 +1363,79 @@ describe('title-loaded', () => {
     await flushPromises()
 
     expect(wrapper.emitted('title-loaded')).toBeFalsy()
+  })
+})
+
+describe('Verified badge', () => {
+  const mountSection = (props = {}) => mount(DNFormSection, {
+    props: { index: 0, ...props },
+    global: globalComponents
+  })
+
+  const mockConnection = (success) => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(success ? { success: true } : { success: false, message: 'Token invalide' })
+    })
+  }
+
+  const badges = (wrapper) => wrapper.findAll('[data-test-id="verified-badge"]')
+
+  const fillInputs = async (wrapper, token, number) => {
+    await wrapper.find('[data-test-id="dn-token"]').setValue(token)
+    await wrapper.find('[data-test-id="dn-number"]').setValue(number)
+    await flushPromises()
+  }
+
+  it('is hidden before any connection test', () => {
+    const wrapper = mountSection()
+
+    expect(badges(wrapper)).toHaveLength(0)
+  })
+
+  it('appears on the token label only when the connection test succeeds', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+
+    await fillInputs(wrapper, 'bon-token', DEMARCHE_NUMBER)
+
+    // Le numéro de démarche n'affiche pas de badge
+    expect(badges(wrapper)).toHaveLength(1)
+    expect(badges(wrapper)[0].text()).toBe('Vérifié')
+    expect(badges(wrapper)[0].element.parentElement.textContent).toContain("Jeton d'API")
+  })
+
+  it('stays hidden when the connection test fails', async () => {
+    mockConnection(false)
+    const wrapper = mountSection()
+
+    await fillInputs(wrapper, 'mauvais-token', DEMARCHE_NUMBER)
+
+    expect(badges(wrapper)).toHaveLength(0)
+  })
+
+  it('disappears as soon as the demarche number is edited again', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+
+    await fillInputs(wrapper, 'bon-token', DEMARCHE_NUMBER)
+
+    // Nouveau test en cours, jamais résolu : seul l'effet de la saisie compte
+    globalThis.fetch = vi.fn(() => new Promise(() => {}))
+    await wrapper.find('[data-test-id="dn-number"]').setValue('12345')
+    await flushPromises()
+
+    expect(badges(wrapper)).toHaveLength(0)
+  })
+
+  it('appears for a saved config once its stored token is tested', async () => {
+    mockConnection(true)
+    const wrapper = mountSection({
+      existingConfig: { otp_config_id: 42, demarche_number: DEMARCHE_NUMBER, has_ds_token: true }
+    })
+
+    await flushPromises()
+
+    expect(badges(wrapper)).toHaveLength(1)
   })
 })
