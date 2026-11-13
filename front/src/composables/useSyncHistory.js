@@ -4,6 +4,7 @@ export const useSyncHistory = () => {
   // Dernière synchro de chaque démarche, lue en base, en lignes du tableau
   const fetchHistory = async () => {
     const data = await api.getLatestSyncsByDemarche()
+
     return data.syncs.map(toRow)
   }
 

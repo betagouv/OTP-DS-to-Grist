@@ -59,10 +59,12 @@ export const useSyncTask = () => {
   const finishCurrentTask = () => {
     if (_currentIndex.value < _tasks.value.length - 1) {
       _currentIndex.value += 1
+
       return true
     }
 
     _finished.value = true
+
     return false
   }
 

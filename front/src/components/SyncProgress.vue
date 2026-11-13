@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
@@ -19,6 +19,15 @@ const emit = defineEmits(['sync-running-changed'])
 const task = ref(null)
 const socket = ref(null)
 const syncCardEl = ref(null)
+
+// « Progression de la démarche n°X — i/n » : position affichée en synchro groupée
+const progressTitle = computed(() => {
+  if (!demarcheNumber.value) return 'Progression'
+
+  const position = totalDemarches.value > 1 ? ` — ${demarcheIndex.value}/${totalDemarches.value}` : ''
+
+  return `Progression de la démarche n°${demarcheNumber.value}${position}`
+})
 
 watch(() => task.value?.status, (status) => {
   if (status === 'running') {
@@ -82,18 +91,21 @@ onUnmounted(() => {
 
 <template>
   <div
-    ref="syncCardEl"
     v-if="task"
+    ref="syncCardEl"
     class="fr-card fr-card--light-grey fr-card--no-border fr-mb-4w"
   >
     <div class="fr-card__body">
       <div class="fr-card__content fr-mb-3w">
         <p class="fr-text--sm fr-mb-1w">
-          Progression<template v-if="demarcheNumber"> de la démarche n°{{ demarcheNumber }}<template v-if="totalDemarches > 1"> — {{ demarcheIndex }}/{{ totalDemarches }}</template></template>
+          {{ progressTitle }}
         </p>
         <div class="progress-wrapper">
           <div class="progress-track">
-            <div class="progress-bar" :style="{ width: Math.round(task.progress) + '%' }" />
+            <div
+              class="progress-bar"
+              :style="{ width: Math.round(task.progress) + '%' }"
+            />
           </div>
           <DsfrBadge
             :label="`${Math.round(task.progress)}%`"

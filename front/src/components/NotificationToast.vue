@@ -13,8 +13,8 @@ const { notifications, remove } = useNotification()
       :type="notif.type"
       :title="notif.message"
       closeable
-      @close="remove(notif.id)"
       class="notification-toast"
+      @close="remove(notif.id)"
     />
   </div>
 </template>

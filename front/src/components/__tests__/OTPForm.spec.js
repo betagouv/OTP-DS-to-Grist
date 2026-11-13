@@ -334,6 +334,26 @@ describe('Config loading on mount', () => {
     expect(wrapper.getComponent(DNFormSection).props('existingConfig')).toBeNull()
   })
 
+  it('renders the Grist section only once the config is loaded', async () => {
+    globalThis.getGristContext.mockResolvedValue(mockContext)
+    let resolveConfig
+    globalThis.fetch.mockReturnValue(new Promise((resolve) => { resolveConfig = resolve }))
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+
+    // Pas de null provisoire transmis au bloc Grist pendant le chargement
+    expect(wrapper.findComponent(GristFormSection).exists()).toBe(false)
+
+    resolveConfig({ json: () => Promise.resolve({ configs: [] }) })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
+  })
+
   it('handles getGristContext error gracefully', async () => {
     globalThis.getGristContext.mockRejectedValue(new Error('context error'))
 
@@ -1042,7 +1062,7 @@ describe('Sync action', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
-  it("does not call sync API route when syncRunning is true", async () => {
+  it('does not call sync API route when syncRunning is true', async () => {
     globalThis.getGristContext.mockResolvedValue({
       params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
@@ -1337,6 +1357,7 @@ describe('Accordion DN state', () => {
     })
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
+
     return wrapper
   }
 
@@ -1401,7 +1422,10 @@ describe('Accordion DN state', () => {
     globalThis.fetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] })
+      })
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     const dnSections = wrapper.findAllComponents(DNFormSection)
@@ -1431,7 +1455,10 @@ describe('Accordion DN state', () => {
     globalThis.fetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] })
+      })
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     const dnSections = wrapper.findAllComponents(DNFormSection)
@@ -1470,6 +1497,7 @@ describe('Grist key access warning', () => {
     })
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
+
     return wrapper
   }
 
