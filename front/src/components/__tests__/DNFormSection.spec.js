@@ -27,6 +27,19 @@ afterEach(() => {
 const globalComponents = { components: { DsfrInput, DsfrInputGroup } }
 const DEMARCHE_NUMBER = '67890'
 
+// Faux fetch aiguillé par route : planification, groupes instructeurs, et
+// succès par défaut pour le reste (test de connexion, sauvegardes)
+const mockFetchRoutes = ({ schedule = { success: true, enabled: false }, groups = [] } = {}) => {
+  const respond = (data) => Promise.resolve({ ok: true, json: () => Promise.resolve(data) })
+
+  globalThis.fetch = vi.fn((url) => {
+    if (String(url).includes('/api/schedule')) return respond(schedule)
+    if (String(url).includes('/api/groups')) return respond(groups)
+
+    return respond({ success: true })
+  })
+}
+
 describe('DN form section', () => {
   it('shows error message when form validation fails', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
@@ -356,14 +369,7 @@ describe('index prop', () => {
 
 describe('Auto-save', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/schedule'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, enabled: false }) })
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
+    mockFetchRoutes()
   })
 
   afterEach(() => {
@@ -756,11 +762,7 @@ describe('Accordion title', () => {
 
 describe('Filters section integration', () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
+    mockFetchRoutes()
   })
 
   afterEach(() => {
@@ -877,11 +879,7 @@ describe('Filters section integration', () => {
   })
 
   it('includes pre-filled filter groups in getData', async () => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([[1, 'Groupe A'], [3, 'Groupe C']]) })
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
+    mockFetchRoutes({ groups: [[1, 'Groupe A'], [3, 'Groupe C']] })
     const wrapper = mountWithValidConfig({
       filter_groups: '1,3'
     })
@@ -897,11 +895,7 @@ describe('Filters section integration', () => {
   })
 
   it('auto-saves when a group is selected', async () => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([[1, 'Groupe A'], [2, 'Groupe B']]) })
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
+    mockFetchRoutes({ groups: [[1, 'Groupe A'], [2, 'Groupe B']] })
     const wrapper = mountWithValidConfig()
     await flushPromises()
 
@@ -929,23 +923,12 @@ describe('Filters section integration', () => {
 })
 
 describe('Auto-sync toggle', () => {
-  const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/schedule'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
-  }
-
   afterEach(() => {
     delete globalThis.fetch
   })
 
   it('is enabled without existingConfig', async () => {
-    mockFetchForSchedule()
+    mockFetchRoutes()
     const wrapper = mount(DNFormSection, {
       props: { index: 0 },
       global: globalComponents
@@ -957,7 +940,7 @@ describe('Auto-sync toggle', () => {
   })
 
   it('is enabled when existingConfig has no has_grist_key', async () => {
-    mockFetchForSchedule()
+    mockFetchRoutes()
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -972,7 +955,7 @@ describe('Auto-sync toggle', () => {
   })
 
   it('loads schedule state when existingConfig is provided', async () => {
-    mockFetchForSchedule({ success: true, enabled: true })
+    mockFetchRoutes({ schedule: { success: true, enabled: true } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -993,7 +976,7 @@ describe('Auto-sync toggle', () => {
   })
 
   it('only updates local state when checked (no API call)', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1015,7 +998,7 @@ describe('Auto-sync toggle', () => {
   })
 
   it('only updates local state when unchecked (no API call)', async () => {
-    mockFetchForSchedule({ success: true, enabled: true })
+    mockFetchRoutes({ schedule: { success: true, enabled: true } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1037,7 +1020,7 @@ describe('Auto-sync toggle', () => {
   })
 
   it('updates scheduleEnabled immediately when toggling (before save)', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1056,7 +1039,7 @@ describe('Auto-sync toggle', () => {
   })
 
   it('exposes auto_sync_enabled in getData (default false)', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: { index: 0 },
       global: globalComponents
@@ -1067,7 +1050,7 @@ describe('Auto-sync toggle', () => {
   })
 
   it('sets isDirty when toggling auto-sync', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1090,23 +1073,12 @@ describe('Auto-sync toggle', () => {
 })
 
 describe('Auto-sync badge in accordion title', () => {
-  const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/schedule'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
-  }
-
   afterEach(() => {
     delete globalThis.fetch
   })
 
   it('is absent when no saved config', async () => {
-    mockFetchForSchedule()
+    mockFetchRoutes()
     const wrapper = mount(DNFormSection, {
       props: { index: 0 },
       global: globalComponents
@@ -1118,7 +1090,7 @@ describe('Auto-sync badge in accordion title', () => {
   })
 
   it('shows "Manuelle" when config is saved with schedule disabled', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1134,7 +1106,7 @@ describe('Auto-sync badge in accordion title', () => {
   })
 
   it('shows "Automatique" when config is saved with schedule enabled', async () => {
-    mockFetchForSchedule({ success: true, enabled: true })
+    mockFetchRoutes({ schedule: { success: true, enabled: true } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1150,7 +1122,7 @@ describe('Auto-sync badge in accordion title', () => {
   })
 
   it('shows "Manuelle" when config has no grist key (schedule inactive)', async () => {
-    mockFetchForSchedule()
+    mockFetchRoutes()
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1165,16 +1137,8 @@ describe('Auto-sync badge in accordion title', () => {
   })
 
   it('updates the badge and the next-run hint immediately when toggling to manual', async () => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/schedule'))
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ success: true, enabled: true, next_run: '2026-09-03T09:14:00+00:00' })
-        })
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+    mockFetchRoutes({
+      schedule: { success: true, enabled: true, next_run: '2026-09-03T09:14:00+00:00' }
     })
     const wrapper = mount(DNFormSection, {
       props: {
@@ -1198,23 +1162,12 @@ describe('Auto-sync badge in accordion title', () => {
 })
 
 describe('Auto-sync next run display', () => {
-  const mockFetchForSchedule = (scheduleResponse = { success: true, enabled: false }) => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/schedule'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
-  }
-
   afterEach(() => {
     delete globalThis.fetch
   })
 
   it('is hidden when schedule is disabled', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1229,7 +1182,7 @@ describe('Auto-sync next run display', () => {
   })
 
   it('is hidden when schedule is enabled without next_run', async () => {
-    mockFetchForSchedule({ success: true, enabled: true })
+    mockFetchRoutes({ schedule: { success: true, enabled: true } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1244,10 +1197,12 @@ describe('Auto-sync next run display', () => {
   })
 
   it('shows the formatted next run when schedule is enabled', async () => {
-    mockFetchForSchedule({
-      success: true,
-      enabled: true,
-      next_run: '2026-09-03T09:14:00+00:00'
+    mockFetchRoutes({
+      schedule: {
+        success: true,
+        enabled: true,
+        next_run: '2026-09-03T09:14:00+00:00'
+      }
     })
     const wrapper = mount(DNFormSection, {
       props: {
@@ -1265,22 +1220,12 @@ describe('Auto-sync next run display', () => {
 })
 
 describe('Schedule refresh on reload', () => {
-  const mockFetchForSchedule = (scheduleResponse) => {
-    globalThis.fetch = vi.fn((url) => {
-      if (String(url).includes('/api/schedule'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(scheduleResponse) })
-      if (String(url).includes('/api/groups'))
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
-    })
-  }
-
   afterEach(() => {
     delete globalThis.fetch
   })
 
   it('refreshes schedule state from the server on reload (existingConfig change)', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
@@ -1292,10 +1237,12 @@ describe('Schedule refresh on reload', () => {
 
     expect(wrapper.find('[data-test-id="schedule-badge"]').text()).toBe('Manuelle')
 
-    mockFetchForSchedule({
-      success: true,
-      enabled: true,
-      next_run: '2026-09-03T09:14:00+00:00'
+    mockFetchRoutes({
+      schedule: {
+        success: true,
+        enabled: true,
+        next_run: '2026-09-03T09:14:00+00:00'
+      }
     })
 
     await wrapper.setProps({
@@ -1309,7 +1256,7 @@ describe('Schedule refresh on reload', () => {
   })
 
   it('still refreshes the schedule when a section has unsaved local edits', async () => {
-    mockFetchForSchedule({ success: true, enabled: false })
+    mockFetchRoutes({ schedule: { success: true, enabled: false } })
     const wrapper = mount(DNFormSection, {
       props: {
         index: 0,
