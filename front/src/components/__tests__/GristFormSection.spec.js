@@ -297,3 +297,72 @@ describe('Grist form section', () => {
     expect(wrapper.vm.gristFetchError).toBe('Erreur lors du test de connexion Grist')
   })
 })
+
+describe('Verified badge', () => {
+  const mountSection = () => mount(GristFormSection, {
+    global: { components: { DsfrInput, DsfrInputGroup } }
+  })
+
+  const mockConnection = (success) => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(success ? { success: true } : { success: false, message: 'Token invalide' })
+    })
+  }
+
+  const badge = (wrapper) => wrapper.find('[data-test-id="verified-badge"]')
+
+  it('is hidden before any connection test', () => {
+    const wrapper = mountSection()
+
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  it('appears when the connection test succeeds', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+
+    await wrapper.find('[data-test-id="grist-token"]').setValue('bon-token')
+    await flushPromises()
+
+    expect(badge(wrapper).text()).toBe('Vérifié')
+  })
+
+  it('stays hidden when the connection test fails', async () => {
+    mockConnection(false)
+    const wrapper = mountSection()
+
+    await wrapper.find('[data-test-id="grist-token"]').setValue('mauvais-token')
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  it('disappears as soon as the key is edited again', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+
+    await tokenInput.setValue('bon-token')
+    await flushPromises()
+
+    // Nouveau test en cours, jamais résolu : seul l'effet de la saisie compte
+    globalThis.fetch = vi.fn(() => new Promise(() => {}))
+    await tokenInput.setValue('autre-token')
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  it('appears for a saved config once its stored key is tested', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+    })
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(true)
+  })
+})
