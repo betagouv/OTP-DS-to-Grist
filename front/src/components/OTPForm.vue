@@ -48,9 +48,10 @@ const gristKeyAccessWarning = computed(() =>
   )
 )
 
-// Chargement initial : tout doit rester fermé. `loaded` devient vrai à la 1re
-// requête ; l'ouverture d'une section sauvegardée est gérée dans handleSave.
-let loaded = false
+// Chargement initial : tout doit rester fermé. `loaded` devient vrai à la fin de
+// la 1re requête, même en échec ; l'ouverture d'une section sauvegardée est
+// gérée dans handleSave. Le bloc Grist n'est monté qu'ensuite.
+const loaded = ref(false)
 
 // Après une sauvegarde, la section à rouvrir est cherchée par otp_config_id
 // dans la liste rechargée : son index peut changer après le tri décroissant.
@@ -65,10 +66,11 @@ const loadConfig = async () => {
     const context = await getGristContext()
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
-    loaded = true
     emit('config-loaded')
-  } catch (e) {
+  } catch {
     configError.value = 'Erreur lors du chargement de la configuration'
+  } finally {
+    loaded.value = true
   }
 }
 
@@ -97,7 +99,7 @@ watch(configs, (sections) => {
     return
   }
   const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
-  activeDnAccordion.value = loaded ? emptyIndex : -1
+  activeDnAccordion.value = loaded.value ? emptyIndex : -1
 }, { immediate: true })
 
 onMounted(loadConfig)
@@ -223,38 +225,39 @@ const handleAddDemarche = async () => {
 </script>
 
 <template>
-    <OtpAlert
-      v-if="configError"
-      type="error"
-      :title="configError"
-      closeable
-      @close="configError = null"
-      class="fr-mb-4w"
-    />
+  <OtpAlert
+    v-if="configError"
+    type="error"
+    :title="configError"
+    closeable
+    @close="configError = null"
+    class="fr-mb-4w"
+  />
 
-    <OtpAlert
-      v-if="gristKeyAccessWarning && !gristKeyWarningDismissed"
-      type="warning"
-      title="Clé API Grist insuffisante"
-      closeable
-      @close="gristKeyWarningDismissed = true"
-      class="fr-mb-4w"
-    >
-      La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document.
-    </OtpAlert>
+  <OtpAlert
+    v-if="gristKeyAccessWarning && !gristKeyWarningDismissed"
+    type="warning"
+    title="Clé API Grist insuffisante"
+    closeable
+    @close="gristKeyWarningDismissed = true"
+    class="fr-mb-4w"
+  >
+    La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document.
+  </OtpAlert>
 
-    <p class="fr-mb-4w">Les champs suivis d'un astérisque (*) sont obligatoires.</p>
+  <p class="fr-mb-4w">Les champs suivis d'un astérisque (*) sont obligatoires.</p>
 
-    <h6 class="fr-mb-3w">1. Grist</h6>
+  <h6 class="fr-mb-3w">1. Grist</h6>
 
-    <!-- Bloc Grist unique et partagé par toutes les sections DN :
-         on l'initialise volontairement avec la première configuration renvoyée
-         par le serveur (serverConfigs[0]), pas avec la liste triée `configs`. -->
-    <GristFormSection
-      @error-update="gristError = $event"
-      :existing-config="serverConfigs[0] || null"
-      ref="gristSectionRef"
-    />
+  <!-- Bloc Grist unique et partagé par toutes les sections DN :
+       on l'initialise volontairement avec la première configuration renvoyée
+       par le serveur (serverConfigs[0]), pas avec la liste triée `configs`. -->
+  <GristFormSection
+    v-if="loaded"
+    ref="gristSectionRef"
+    :existing-config="serverConfigs[0] || null"
+    @error-update="gristError = $event"
+  />
 
     <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w fr-mb-1w">
       <div class="fr-col-6">
