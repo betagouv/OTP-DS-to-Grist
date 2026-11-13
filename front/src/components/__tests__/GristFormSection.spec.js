@@ -268,6 +268,46 @@ describe('Grist form section', () => {
     expect(wrapper.vm.activeAccordion).toBe(-1)
   })
 
+  it('opens the accordion when mounted without any config (new user)', async () => {
+    const wrapper = mount(GristFormSection, {
+      props: { existingConfig: null },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.activeAccordion).toBe(0)
+    expect(wrapper.emitted('error-update')).toEqual([[null]])
+  })
+
+  it('applies a saved config received at mount after the Grist context', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(GristFormSection, {
+      props: {
+        existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+      },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    await flushPromises()
+
+    // Le baseUrl de la config n'est pas écrasé par celui du contexte,
+    // et le test de connexion part avec le docId du contexte
+    expect(wrapper.vm.baseUrl).toBe('https://grist.example.com')
+    expect(wrapper.vm.activeAccordion).toBe(-1)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
+      type: 'grist',
+      base_url: 'https://grist.example.com',
+      api_key: '',
+      doc_id: 'doc-xyz789',
+      otp_config_id: 42
+    })
+  })
+
   it('opens the accordion when the config is not saved', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }

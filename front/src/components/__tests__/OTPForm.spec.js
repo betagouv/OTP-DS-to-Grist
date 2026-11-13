@@ -334,6 +334,26 @@ describe('Config loading on mount', () => {
     expect(wrapper.getComponent(DNFormSection).props('existingConfig')).toBeNull()
   })
 
+  it('renders the Grist section only once the config is loaded', async () => {
+    globalThis.getGristContext.mockResolvedValue(mockContext)
+    let resolveConfig
+    globalThis.fetch.mockReturnValue(new Promise((resolve) => { resolveConfig = resolve }))
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+
+    // Pas de null provisoire transmis au bloc Grist pendant le chargement
+    expect(wrapper.findComponent(GristFormSection).exists()).toBe(false)
+
+    resolveConfig({ json: () => Promise.resolve({ configs: [] }) })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
+  })
+
   it('handles getGristContext error gracefully', async () => {
     globalThis.getGristContext.mockRejectedValue(new Error('context error'))
 

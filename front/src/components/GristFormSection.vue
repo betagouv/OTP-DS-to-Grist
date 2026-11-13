@@ -21,6 +21,9 @@ const props = defineProps({
 const HELP_LINKS = window.HELP_LINKS
 const emit = defineEmits(['error-update'])
 const context = ref(null)
+// Vrai une fois le contexte Grist résolu (ou en échec) : la config n'est
+// appliquée qu'ensuite, pour que son baseUrl ne soit pas écrasé par celui du contexte
+const contextReady = ref(false)
 
 const userId = ref('')
 const docId = ref('')
@@ -79,6 +82,8 @@ onMounted(async () => {
     baseUrl.value = context.value.baseUrl
   } catch (e) {
     gristFetchError.value = e.message
+  } finally {
+    contextReady.value = true
   }
 })
 
@@ -105,12 +110,13 @@ const resetConfig = () => {
   emit('error-update', null)
 }
 
-// Le backend ne renvoie jamais `null` pour existingConfig : sur une page sans
-// configuration, load_config (configuration/config_manager.py) renvoie un objet
-// config "vierge" avec otp_config_id = null. On traite donc comme "non configuré"
-// tout objet dont otp_config_id est falsy, ce qui ouvre l'accordéon pour guider
-// l'utilisateur (à la fois Grist ici et le premier volet DN dans OTPForm).
-watch(() => props.existingConfig, (config) => {
+// Sans configuration, OTPForm transmet null (le backend renvoie une liste vide) ;
+// une config non enregistrée (otp_config_id falsy) est traitée de même : l'accordéon
+// s'ouvre pour guider l'utilisateur. OTPForm ne monte ce bloc qu'une fois la config
+// chargée : la première valeur reçue est donc la bonne, sans null provisoire.
+watch([() => props.existingConfig, contextReady], ([config, ready]) => {
+  if (!ready) return
+
   if (config?.otp_config_id) {
     applyExistingConfig(config)
     activeAccordion.value = -1
