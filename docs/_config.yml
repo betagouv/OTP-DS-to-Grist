@@ -1,0 +1,5 @@
+# Seule la page index.html est publiée sur GitHub Pages ; les guides Markdown restent consultables dans le dépôt.
+exclude:
+  - README.md
+  - install.md
+  - deploy.md

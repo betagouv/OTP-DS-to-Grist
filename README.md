@@ -10,6 +10,10 @@ Il permet d'exporter des données de Démarches Simplifiées vers Grist pour une
 
 Voir [doc installation](./docs/install.md)
 
+## 📚 Documentation
+
+Voir le [dossier docs](./docs/README.md), notamment le [schéma des tables Grist créées par OTP](./docs/index.html) (publié sur GitHub Pages).
+
 ## 🔑 Obtention des tokens API
 
 ### Token Démarches Simplifiées

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="fr" data-fr-scheme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>Tables Grist créées par OTP – schéma</title>
+<meta name="description" content="Schéma des tables et colonnes créées par OTP (DN vers Grist) pour une démarche.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.15.4/dist/dsfr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.15.4/dist/utility/icons/icons.min.css">
+<style>
+  .schema-wrap { overflow-x: auto; }
+  .schema-wrap svg { width: 100%; min-width: 640px; height: auto; }
+  .sc-box { fill: var(--background-alt-blue-france); stroke: var(--border-plain-blue-france); stroke-width: 1; cursor: pointer; }
+  .sc-box:hover { fill: var(--background-alt-blue-france-hover); }
+  .sc-main { stroke-width: 2.5; }
+  .sc-opt { stroke-dasharray: 5 4; }
+  .sc-grey { fill: var(--background-alt-grey); stroke: var(--border-plain-grey); }
+  .sc-grey:hover { fill: var(--background-alt-grey-hover); }
+  .sc-t { fill: var(--text-title-blue-france); font: 700 14px Marianne, Arial, sans-serif; pointer-events: none; }
+  .sc-t-grey { fill: var(--text-title-grey); }
+  .sc-s { fill: var(--text-default-grey); font: 400 12px Marianne, Arial, sans-serif; pointer-events: none; }
+  .sc-line { stroke: var(--border-default-grey); stroke-width: 1.5; fill: none; }
+  .sc-zone { fill: none; stroke: var(--border-default-grey); stroke-width: 1; stroke-dasharray: 4 4; }
+  .sc-sticky { position: sticky; top: 1rem; }
+  @media (max-width: 767px) { .sc-sticky { position: static; } }
+  #cols code { font-size: .8125rem; word-break: break-all; }
+  #cols td:nth-child(2) { color: var(--text-mention-grey); font-size: .875rem; }
+  #cols .fr-table table { width: 100%; }
+  #cols th[scope="colgroup"] { background: var(--background-contrast-grey); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header role="banner" class="fr-header">
+  <div class="fr-header__body">
+    <div class="fr-container">
+      <div class="fr-header__body-row">
+        <div class="fr-header__brand fr-enlarge-link">
+          <div class="fr-header__brand-top">
+            <div class="fr-header__logo">
+              <p class="fr-logo">République<br>Française</p>
+            </div>
+          </div>
+          <div class="fr-header__service">
+            <a href="." title="Accueil – OTP">
+              <p class="fr-header__service-title">OTP</p>
+            </a>
+            <p class="fr-header__service-tagline">Synchronisation Démarche Numérique vers Grist</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main role="main" id="contenu" class="fr-container fr-my-6w">
+  <h1>Tables créées par OTP dans Grist</h1>
+  <p class="fr-text--lead">Pour chaque démarche synchronisée, OTP crée des tables préfixées par <code>Demarche_N_</code> (N est le numéro de la démarche). Cliquez sur une table du schéma ou sur un bouton pour voir ses colonnes et l’origine de leurs valeurs dans DN.</p>
+
+  <div class="fr-callout fr-callout--sm fr-mb-4w">
+    <p class="fr-callout__text">Les tables en pointillés ne sont créées que si la démarche en a besoin : annotations privées, blocs répétables, avis.</p>
+  </div>
+
+  <h2 class="fr-h4">Vue d’ensemble</h2>
+  <div class="schema-wrap fr-mb-4w">
+    <svg viewBox="0 0 680 320" role="img" aria-labelledby="sc-title sc-desc">
+      <title id="sc-title">Tables créées par OTP pour une démarche</title>
+      <desc id="sc-desc">Les tables dossiers, demandeurs, champs, annotations, avis et blocs répétables sont reliées par dossier_number. Annotations, avis et blocs répétables sont conditionnelles. Instructeurs et Sync_metadata sont au niveau démarche.</desc>
+
+      <g class="sc-lines">
+        <line class="sc-line" x1="110" y1="74" x2="110" y2="104"/>
+        <line class="sc-line" x1="262" y1="74" x2="262" y2="104"/>
+        <line class="sc-line" x1="414" y1="74" x2="414" y2="104"/>
+        <line class="sc-line" x1="566" y1="74" x2="566" y2="104"/>
+        <line class="sc-line" x1="110" y1="104" x2="566" y2="104"/>
+        <line class="sc-line" x1="290" y1="104" x2="290" y2="130"/>
+        <line class="sc-line" x1="490" y1="104" x2="490" y2="130"/>
+      </g>
+      <text class="sc-s" x="338" y="92" text-anchor="middle">dossier_number</text>
+
+      <g onclick="show('dem_pm')" tabindex="0" role="button" aria-label="Voir les colonnes de demandeurs" onkeydown="if(event.key==='Enter')show('dem_pm')">
+        <rect class="sc-box" x="40" y="30" width="140" height="44" rx="4"/>
+        <text class="sc-t" x="110" y="48" text-anchor="middle">demandeurs</text>
+        <text class="sc-s" x="110" y="64" text-anchor="middle">1 ligne par dossier</text>
+      </g>
+      <g onclick="show('champs')" tabindex="0" role="button" aria-label="Voir les colonnes de champs" onkeydown="if(event.key==='Enter')show('champs')">
+        <rect class="sc-box" x="192" y="30" width="140" height="44" rx="4"/>
+        <text class="sc-t" x="262" y="48" text-anchor="middle">champs</text>
+        <text class="sc-s" x="262" y="64" text-anchor="middle">1 ligne par dossier</text>
+      </g>
+      <g onclick="show('annotations')" tabindex="0" role="button" aria-label="Voir les colonnes de annotations" onkeydown="if(event.key==='Enter')show('annotations')">
+        <rect class="sc-box sc-opt" x="344" y="30" width="140" height="44" rx="4"/>
+        <text class="sc-t" x="414" y="48" text-anchor="middle">annotations</text>
+        <text class="sc-s" x="414" y="64" text-anchor="middle">si annotations</text>
+      </g>
+      <g onclick="show('repet')" tabindex="0" role="button" aria-label="Voir les colonnes des blocs répétables" onkeydown="if(event.key==='Enter')show('repet')">
+        <rect class="sc-box sc-opt" x="496" y="30" width="140" height="44" rx="4"/>
+        <text class="sc-t" x="566" y="48" text-anchor="middle">repetable_*</text>
+        <text class="sc-s" x="566" y="64" text-anchor="middle">si blocs répétables</text>
+      </g>
+
+      <g onclick="show('dossiers')" tabindex="0" role="button" aria-label="Voir les colonnes de dossiers" onkeydown="if(event.key==='Enter')show('dossiers')">
+        <rect class="sc-box sc-main" x="200" y="130" width="180" height="44" rx="4"/>
+        <text class="sc-t" x="290" y="148" text-anchor="middle">dossiers</text>
+        <text class="sc-s" x="290" y="164" text-anchor="middle">1 ligne par dossier</text>
+      </g>
+      <g onclick="show('avis')" tabindex="0" role="button" aria-label="Voir les colonnes de avis" onkeydown="if(event.key==='Enter')show('avis')">
+        <rect class="sc-box sc-opt" x="420" y="130" width="140" height="44" rx="4"/>
+        <text class="sc-t" x="490" y="148" text-anchor="middle">avis</text>
+        <text class="sc-s" x="490" y="164" text-anchor="middle">si avis, 1 ligne par avis</text>
+      </g>
+
+      <rect class="sc-zone" x="40" y="204" width="600" height="100" rx="6"/>
+      <text class="sc-s" x="56" y="224">Niveau démarche, sans dossier_number</text>
+      <g onclick="show('instr')" tabindex="0" role="button" aria-label="Voir les colonnes de instructeurs" onkeydown="if(event.key==='Enter')show('instr')">
+        <rect class="sc-box sc-grey" x="60" y="240" width="200" height="44" rx="4"/>
+        <text class="sc-t sc-t-grey" x="160" y="258" text-anchor="middle">instructeurs</text>
+        <text class="sc-s" x="160" y="274" text-anchor="middle">1 ligne par instructeur et groupe</text>
+      </g>
+      <g onclick="show('sync')" tabindex="0" role="button" aria-label="Voir les colonnes de Sync_metadata" onkeydown="if(event.key==='Enter')show('sync')">
+        <rect class="sc-box sc-grey" x="280" y="240" width="200" height="44" rx="4"/>
+        <text class="sc-t sc-t-grey" x="380" y="258" text-anchor="middle">Sync_metadata</text>
+        <text class="sc-s" x="380" y="274" text-anchor="middle">1 ligne par démarche</text>
+      </g>
+    </svg>
+  </div>
+
+  <h2 class="fr-h4">Colonnes par table</h2>
+  <div class="fr-grid-row fr-grid-row--gutters">
+    <div class="fr-col-12 fr-col-md-4 fr-col-lg-3">
+      <div class="sc-sticky">
+        <nav class="fr-sidemenu" role="navigation" aria-labelledby="sommaire-title">
+          <div class="fr-sidemenu__inner">
+            <button class="fr-sidemenu__btn" hidden aria-controls="sommaire-wrapper" aria-expanded="false">Sommaire des tables</button>
+            <div class="fr-collapse" id="sommaire-wrapper">
+              <p class="fr-sidemenu__title" id="sommaire-title">Tables</p>
+              <ul class="fr-sidemenu__list" id="nav"></ul>
+            </div>
+          </div>
+        </nav>
+      </div>
+    </div>
+
+    <div class="fr-col-12 fr-col-md-8 fr-col-lg-9" id="cols">
+      <h3 class="fr-h5 fr-mb-1w" id="ttl-name"></h3>
+      <p class="fr-text--sm fr-mb-2w" id="ttl"></p>
+      <div class="fr-table fr-table--no-caption">
+        <table>
+          <caption>Colonnes de la table sélectionnée</caption>
+          <thead>
+            <tr>
+              <th scope="col" style="width:36%">Colonne</th>
+              <th scope="col" style="width:12%">Type Grist</th>
+              <th scope="col">Valeur</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p class="fr-text--sm fr-mb-0" id="note"></p>
+    </div>
+  </div>
+</main>
+
+<footer class="fr-footer" role="contentinfo">
+  <div class="fr-container">
+    <div class="fr-footer__body">
+      <div class="fr-footer__brand">
+        <p class="fr-logo">République<br>Française</p>
+      </div>
+      <div class="fr-footer__content">
+        <p class="fr-footer__content-desc">Schéma établi d’après le code de la branche principale de <a href="https://github.com/betagouv/OTP-DS-to-Grist" target="_blank" rel="noopener external" title="OTP-DS-to-Grist - nouvelle fenêtre">betagouv/OTP-DS-to-Grist</a>. Les types sont ceux déclarés à la création des colonnes.</p>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="https://cdn.jsdelivr.net/npm/@gouvfr/dsfr@1.15.4/dist/dsfr.module.min.js"></script>
+<script>
+var P = 'Demarche_N_';
+var D = {
+dossiers: {n:'Dossiers', t:P+'dossiers · clé : dossier_number', g:[
+ ['Identité et suivi', [
+  ['dossier_id','Text','Identifiant technique du dossier dans DN (id GraphQL)'],
+  ['dossier_number','Int','Numéro du dossier tel qu’affiché dans DN'],
+  ['state','Text','Statut : en_construction, en_instruction, accepte, refuse ou sans_suite'],
+  ['suivi_par','Text','E-mails des instructeurs qui suivent le dossier, séparés par une virgule'],
+  ['label_names','Text','Noms des étiquettes, séparés par une virgule'],
+  ['labels_json','Text','Étiquettes en JSON : id, nom, couleur']]],
+ ['Dates', [
+  ['date_depot','DateTime','Dépôt du dossier par l’usager (dateDepot)'],
+  ['date_derniere_modification','DateTime','Dernière modification, tous éléments confondus'],
+  ['date_derniere_modification_champs','DateTime','Dernière modification des champs du formulaire'],
+  ['date_derniere_modification_annotations','DateTime','Dernière modification des annotations privées'],
+  ['date_derniere_correction_en_attente','DateTime','Dernière demande de correction encore en attente'],
+  ['date_accuse_lecture','DateTime','dateAccuseLectureAgreement de DN'],
+  ['date_expiration','DateTime','Expiration du dossier (dateExpiration)'],
+  ['date_traitement','DateTime','Décision : acceptation, refus ou classement sans suite']]],
+ ['Décision et correction', [
+  ['correction_instructeur','Text','E-mail de l’instructeur ayant demandé la dernière correction'],
+  ['motivation','Text','Créée, mais le code actuel ne la remplit pas']]],
+ ['Suppression (colonnes ajoutées par la tâche dédiée)', [
+  ['dossiers_supprimes_DN','Bool','Vrai si le dossier figure dans les dossiers supprimés de DN'],
+  ['date_suppression','DateTime','Date de suppression renvoyée par DN (dateSupression)'],
+  ['raison_suppression','Text','Raison de suppression renvoyée par DN']]]],
+ note:'Lus dans DN mais sans colonne, donc non écrits : date_passage_en_construction, date_passage_en_instruction, date_suppression_par_usager.'},
+
+dem_pm: {n:'Demandeurs, personne morale', t:P+'demandeurs · clé : dossier_number · colonnes par défaut', g:[
+ ['Métadonnées', [
+  ['dossier_number','Int','Numéro du dossier'],
+  ['type','Text','Type DN du demandeur : PersonneMorale (PersonneMoraleIncomplete traité comme tel)'],
+  ['usager_email','Text','E-mail du compte DN qui a déposé le dossier'],
+  ['connection_usager','Text','Mode de connexion de l’usager à DN (connectionUsager)']]],
+ ['Identifiants', [
+  ['siret','Text','SIRET de l’établissement'],
+  ['siren','Text','SIREN de l’entreprise'],
+  ['siege_social','Bool','Vrai si l’établissement est le siège'],
+  ['naf','Text','Code NAF'],
+  ['libelle_naf','Text','Libellé du code NAF']]],
+ ['Entreprise (enrichie SIRENE)', [
+  ['raison_sociale','Text','Raison sociale'],
+  ['nom_commercial','Text','Nom commercial'],
+  ['forme_juridique','Text','Libellé de la forme juridique'],
+  ['forme_juridique_code','Text','Code de la forme juridique'],
+  ['capital_social','Text','Capital social, converti en texte'],
+  ['code_effectif_entreprise','Text','Code de tranche d’effectif'],
+  ['numero_tva_intracommunautaire','Text','N° de TVA intracommunautaire'],
+  ['date_creation','Date','Date de création de l’entreprise'],
+  ['etat_administratif','Text','État administratif (actif, cessé…)']]],
+ ['Association (vide si le demandeur n’en est pas une)', [
+  ['rna','Text','Numéro RNA'],
+  ['titre_association','Text','Titre de l’association'],
+  ['objet_association','Text','Objet de l’association'],
+  ['date_creation_association','Date','Date de création'],
+  ['date_declaration_association','Date','Date de déclaration'],
+  ['date_publication_association','Date','Date de publication au JO']]],
+ ['Adresse', [
+  ['adresse_label','Text','Adresse complète, en une ligne'],
+  ['adresse_type','Text','Type d’adresse'],
+  ['street_address','Text','Numéro et voie'],
+  ['street_number','Text','Numéro'],
+  ['street_name','Text','Nom de la voie'],
+  ['code_postal','Text','Code postal'],
+  ['ville','Text','Commune'],
+  ['code_insee_ville','Text','Code INSEE de la commune'],
+  ['departement','Text','Nom du département'],
+  ['code_departement','Text','Code du département'],
+  ['region','Text','Nom de la région'],
+  ['code_region','Text','Code de la région']]]],
+ note:'Le type de table (personne morale ou physique) est détecté sur le premier dossier de la démarche ; sans dossier, personne morale par défaut.'},
+
+dem_pp: {n:'Demandeurs, personne physique', t:P+'demandeurs · clé : dossier_number · si le premier dossier est une personne physique', g:[
+ ['Colonnes', [
+  ['dossier_number','Int','Numéro du dossier'],
+  ['type','Text','Type DN du demandeur : PersonnePhysique'],
+  ['civilite','Text','Civilité du demandeur'],
+  ['nom','Text','Nom du demandeur'],
+  ['prenom','Text','Prénom du demandeur'],
+  ['email','Text','E-mail du demandeur, à défaut celui du compte DN'],
+  ['usager_email','Text','E-mail du compte DN qui a déposé le dossier'],
+  ['prenom_mandataire','Text','Prénom du mandataire, si dépôt par un tiers'],
+  ['nom_mandataire','Text','Nom du mandataire, si dépôt par un tiers'],
+  ['depose_par_un_tiers','Bool','Vrai si le dossier est déposé pour le compte d’un tiers'],
+  ['connection_usager','Text','Mode de connexion de l’usager à DN (connectionUsager)']]]], note:''},
+
+champs: {n:'Champs', t:P+'champs · clé : dossier_number', g:[
+ ['Colonnes fixes', [
+  ['dossier_number','Int','Numéro du dossier'],
+  ['champ_id','Text','Identifiants DN des champs du dossier, joints par _']]],
+ ['Colonnes créées depuis le formulaire de la démarche', [
+  ['‹libellé du champ›','Text, Int, Numeric, Date, DateTime ou Bool','Valeur saisie. Id Grist = libellé normalisé, libellé = celui de DN ; doublon suffixé _1, _2…'],
+  ['‹libellé›_nom, _code_postal, _departement, _code_insee, _code_departement','Text','Champ commune, éclaté en 5 colonnes'],
+  ['‹libellé›_nom, _code','Text','Champ pays, région ou département'],
+  ['‹libellé pièce justificative›','Text','Nom du fichier seulement, le fichier n’est pas récupéré'],
+  ['sous-colonnes OCR','selon la nature','Valeurs lues par l’OCR de DN (RIB : Titulaire, IBAN, BIC, Nom de la Banque)']]]],
+ note:'Les titres de section et blocs explicatifs ne créent pas de colonne. Un bloc répétable va dans sa propre table.'},
+
+annotations: {n:'Annotations', t:P+'annotations · clé : dossier_number · créée seulement s’il y a au moins une annotation', g:[
+ ['Colonnes', [
+  ['dossier_number','Int','Numéro du dossier'],
+  ['‹libellé de l’annotation›','selon le type','Valeur de l’annotation privée ; le préfixe annotation_ est retiré du nom de colonne']]]],
+ note:'Un bloc répétable d’annotations donne une table '+P+'repetable_annotation_‹libellé›.'},
+
+repet: {n:'Blocs répétables', t:P+'repetable_‹bloc› · créée seulement si la démarche contient un bloc répétable, une table par bloc · clé : dossier_number', g:[
+ ['Colonnes fixes', [
+  ['dossier_number','Int','Numéro du dossier'],
+  ['block_id','Text','Identifiant du bloc dans DN'],
+  ['block_row_index','Int','Rang de la ligne dans le bloc'],
+  ['block_row_id','Text','Identifiant de la ligne dans DN']]],
+ ['Colonnes variables', [
+  ['‹libellé du sous-champ›','selon le type','Une colonne par champ du bloc, avec sous-colonnes OCR des pièces justificatives']]],
+ ['Si le bloc contient un champ carte', [
+  ['geo_id, geo_source, geo_description, geo_type','Text','Identité et nature de la zone dessinée'],
+  ['geo_coordinates, geo_wkt','Text','Géométrie'],
+  ['geo_commune, geo_numero, geo_section, geo_prefixe','Text','Référence cadastrale'],
+  ['geo_surface','Numeric','Surface']]]],
+ note:'Sans bloc répétable dans le formulaire (ni dans les annotations), aucune table de ce type n’est créée.'},
+
+avis: {n:'Avis', t:P+'avis · clé : dossier_number · créée au premier avis détecté', g:[
+ ['Colonnes', [
+  ['dossier_number','Int','Numéro du dossier'],
+  ['avis_id','Text','Identifiant de l’avis dans DN'],
+  ['instructeur_email','Text','E-mail de l’instructeur qui a demandé l’avis'],
+  ['expert_email','Text','E-mail de l’expert sollicité'],
+  ['date_question','Text','Date de la question'],
+  ['date_reponse','Text','Date de la réponse, vide tant qu’il n’y en a pas'],
+  ['question','Text','Texte de la question'],
+  ['reponse','Text','Texte de la réponse']]]], note:''},
+
+instr: {n:'Instructeurs', t:P+'instructeurs · une ligne par instructeur dans un groupe', g:[
+ ['Colonnes', [
+  ['groupe_instructeur_id','Text','Identifiant du groupe dans DN'],
+  ['groupe_instructeur_number','Int','Numéro du groupe'],
+  ['groupe_instructeur_label','Text','Nom du groupe'],
+  ['instructeur_id','Text','Identifiant de l’instructeur dans DN'],
+  ['instructeur_email','Text','E-mail de l’instructeur']]]],
+ note:'Mise à jour à chaque synchro, y compris quand aucun dossier n’a bougé.'},
+
+sync: {n:'Sync_metadata', t:'Sync_metadata · table commune aux démarches du document', g:[
+ ['Colonnes', [
+  ['demarche_number','Int','Numéro de la démarche'],
+  ['last_sync_at','Text','Date de la dernière synchro'],
+  ['updated_since_cursor','Text','Repère de la synchro incrémentale (updatedSince)'],
+  ['deleted_since_cursor','Text','Repère pour les dossiers supprimés'],
+  ['deleted_after_cursor','Text','Repère pour les dossiers supprimés'],
+  ['last_sync_status','Text','Statut de la dernière synchro'],
+  ['last_sync_duration','Numeric','Durée de la dernière synchro'],
+  ['force_full_sync','Bool','Force une synchro complète à la prochaine exécution'],
+  ['filters_hash','Text','Empreinte des filtres de synchro']]]], note:''}
+};
+var order = ['dossiers','dem_pm','dem_pp','champs','annotations','repet','avis','instr','sync'];
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+var nav = document.getElementById('nav');
+order.forEach(function(k){
+  var li = document.createElement('li');
+  li.className = 'fr-sidemenu__item';
+  var a = document.createElement('a');
+  a.className = 'fr-sidemenu__link';
+  a.id = 'b_' + k;
+  a.href = '#' + k;
+  a.target = '_self';
+  a.textContent = D[k].n;
+  a.addEventListener('click', function(e){ e.preventDefault(); show(k); });
+  li.appendChild(a);
+  nav.appendChild(li);
+});
+
+function show(k){
+  order.forEach(function(x){
+    var a = document.getElementById('b_' + x);
+    if (x === k) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  var d = D[k], h = '';
+  document.getElementById('ttl-name').textContent = d.n;
+  document.getElementById('ttl').textContent = d.t;
+  d.g.forEach(function(g){
+    h += '<tr><th scope="colgroup" colspan="3">' + esc(g[0]) + '</th></tr>';
+    g[1].forEach(function(r){
+      h += '<tr><td><code>' + esc(r[0]) + '</code></td><td>' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td></tr>';
+    });
+  });
+  document.getElementById('rows').innerHTML = h;
+  document.getElementById('note').textContent = d.note;
+  var panel = document.getElementById('cols');
+  var ev = window.event;
+  if (ev && ev.currentTarget && ev.currentTarget.tagName === 'g') panel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+show('dossiers');
+</script>
+</body>
+</html>
