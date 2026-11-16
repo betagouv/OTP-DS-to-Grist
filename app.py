@@ -75,7 +75,6 @@ from utils.constants import (
     IP_BLOCKLIST_THRESHOLD,
     IP_BLOCKLIST_WINDOW_SECONDS,
     IP_BLOCKLIST_WHITELIST,
-    SQLALCHEMY_DATABASE_URL,
     VITE_DEV_ORIGIN,
 )
 
@@ -102,9 +101,7 @@ logger = logging.getLogger(__name__)
 # Protection anti-scanner : bannie les IP qui produisent trop de réponses 4xx.
 # Les compteurs vivent en mémoire, les bannissements en base :
 # voir le dossier `security/`.
-ip_blocklist_store = IpBlocklistStore(
-    SQLALCHEMY_DATABASE_URL, cache_ttl=IP_BLOCKLIST_CACHE_TTL_SECONDS
-)
+ip_blocklist_store = IpBlocklistStore(cache_ttl=IP_BLOCKLIST_CACHE_TTL_SECONDS)
 ip_blocklist_whitelist = parse_whitelist(IP_BLOCKLIST_WHITELIST.split(","))
 ip_blocklist_hits: dict[str, list[float]] = {}
 

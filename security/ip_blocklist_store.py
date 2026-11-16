@@ -1,11 +1,13 @@
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 
-from sqlalchemy import Float, create_engine, func
-from sqlalchemy.orm import InstrumentedAttribute, sessionmaker
+from sqlalchemy import Float, func
+from sqlalchemy.orm import InstrumentedAttribute, Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from database.models import IpBlocklist
+from database.session import SessionLocal
 from security.ip_blocklist import ban_duration
 
 DEFAULT_CACHE_TTL = 60.0
@@ -34,18 +36,21 @@ class IpBlocklistStore:
     durer plus longtemps.
 
     Args:
-        database_url: URL de connexion PostgreSQL
+        session_factory: Fabrique des sessions de base de données ; par
+            défaut, celle partagée par l'application (`database.session`)
         cache_ttl: Durée de validité du cache des bannissements actifs, en
             secondes. Le cache évite une lecture de base sur chaque requête,
             ce qui est nécessaire car psycopg2 est bloquant et l'application
             ne tourne qu'avec un seul worker.
     """
 
-    def __init__(self, database_url: str, cache_ttl: float = DEFAULT_CACHE_TTL):
-        self._database_url = database_url
+    def __init__(
+        self,
+        session_factory: Callable[[], Session] = SessionLocal,
+        cache_ttl: float = DEFAULT_CACHE_TTL,
+    ):
+        self._session_factory = session_factory
         self._cache_ttl = cache_ttl
-        self._engine = None
-        self._session_factory = None
         self._active_bans = None
         self._cache_loaded_at = None
 
@@ -58,16 +63,6 @@ class IpBlocklistStore:
             return moment
 
         return moment.astimezone(timezone.utc).replace(tzinfo=None)
-
-    def _new_session(self):
-        """Crée une session, en initialisant le moteur au premier usage."""
-        if self._session_factory is None:
-            self._engine = create_engine(self._database_url)
-            self._session_factory = sessionmaker(
-                autocommit=False, autoflush=False, bind=self._engine
-            )
-
-        return self._session_factory()
 
     def is_banned(self, ip: str) -> bool:
         banned_until = self._get_active_bans().get(ip)
@@ -86,7 +81,7 @@ class IpBlocklistStore:
             timezone.utc
         ))
 
-        db = self._new_session()
+        db = self._session_factory()
 
         try:
             row = db.query(IpBlocklist).filter_by(ip=ip).one_or_none()
@@ -121,7 +116,7 @@ class IpBlocklistStore:
         moment = time.time()
         epoch = _as_epoch(IpBlocklist.banned_until)
 
-        db = self._new_session()
+        db = self._session_factory()
         try:
             # La sélection se fait en epoch : PostgreSQL compare
             # et le store ne voit que des `float`.
