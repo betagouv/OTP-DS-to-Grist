@@ -13,9 +13,19 @@ from datetime import timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, Response, g, jsonify, render_template, request, url_for
+from flask import (
+    Flask,
+    Response,
+    abort,
+    g,
+    jsonify,
+    render_template,
+    request,
+    url_for,
+)
 from sqlalchemy import func, select
-from werkzeug.exceptions import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.exceptions import HTTPException, InternalServerError
 
 from api.responses import config_not_found_response, error_response
 from configuration.config_manager import (
@@ -152,6 +162,14 @@ def _blocklist_target_ip() -> str | None:
     return client_ip
 
 
+def _server_error_response() -> Response:
+    """
+    Réponse 500, au même format que celle d'une erreur non rattrapée
+    (JSON sous /api, page HTML ailleurs).
+    """
+    return app.make_response(handle_http_exception(InternalServerError()))
+
+
 def _mark_configs_used(otp_config_ids: Iterable[int]) -> None:
     """
     Note que le client de la requête en cours utilise ces configurations.
@@ -185,7 +203,16 @@ def check_banned_ip() -> tuple[Response, int] | None:
     if client_ip is None:
         return None
 
-    g.ip_banned = ip_blocklist_store.is_banned(client_ip)
+    try:
+        g.ip_banned = ip_blocklist_store.is_banned(client_ip)
+    except SQLAlchemyError:
+        # Sans la base, l'IP ne peut être ni refusée ni autorisée
+        logger.exception(
+            "Vérification du bannissement impossible pour l'IP %s : "
+            "base de données en défaut",
+            client_ip,
+        )
+        abort(500)
 
     if g.ip_banned:
         logger.warning("Requête refusée : IP bannie %s", client_ip)
@@ -241,7 +268,17 @@ def check_and_count_ip(response: Response) -> Response:
     )
 
     if hits >= IP_BLOCKLIST_THRESHOLD:
-        banned_until = ip_blocklist_store.apply_ban(client_ip)
+        try:
+            banned_until = ip_blocklist_store.apply_ban(client_ip)
+        except SQLAlchemyError:
+            # Une erreur levée après la route serait journalisée une seconde
+            # fois par Flask : la réponse 500 est donc renvoyée directement
+            logger.exception(
+                "Bannissement de l'IP %s non enregistré : base de données en défaut",
+                client_ip,
+            )
+            return _server_error_response()
+
         banned_until_local = banned_until.replace(tzinfo=timezone.utc).astimezone()
 
         logger.warning(
