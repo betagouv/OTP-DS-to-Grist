@@ -131,5 +131,4 @@ la dernière manuelle du document, ne sert plus qu'au front legacy.
 
 ## tasks/
 
-Opérations de niveau démarche exécutées pendant une synchronisation, également
-lançables en autonome depuis la racine : `python -m sync.tasks.<module>`.
+Opérations de niveau démarche exécutées pendant une synchronisation.

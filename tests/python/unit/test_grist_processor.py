@@ -249,3 +249,35 @@ class TestMainGristReadError:
             "pas créer de doublons ; elle reprendra au prochain lancement."
         ]
         assert "Traceback" not in captured.err
+
+
+class TestRunDemarcheLevelTasks:
+    """Tests unitaires de run_demarche_level_tasks"""
+
+    def test_instructeurs_failure_does_not_stop_next_tasks(self, capsys):
+        """Un échec des instructeurs est loggé, les tâches suivantes s'exécutent."""
+        table_ids = {"instructeurs": "Instructeurs", "dossier_table_id": "Dossiers"}
+
+        with (
+            patch.object(
+                gpa, "sync_instructeurs", side_effect=RuntimeError("DN indisponible")
+            ),
+            patch.object(gpa, "sync_labels_for_demarche") as sync_labels,
+            patch.object(
+                gpa, "check_deleted_dossiers", return_value={"newly_marked": 0}
+            ) as check_deleted,
+        ):
+            deletions_checked = gpa.run_demarche_level_tasks(
+                MagicMock(),
+                table_ids,
+                123,
+                updated_since_cursor="2024-01-01T00:00:00Z",
+            )
+
+        sync_labels.assert_called_once()
+        check_deleted.assert_called_once()
+        assert deletions_checked is True
+        assert (
+            "Erreur synchronisation instructeurs: DN indisponible"
+            in capsys.readouterr().out
+        )
