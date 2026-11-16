@@ -179,13 +179,18 @@ def _mark_configs_used(otp_config_ids: Iterable[int]) -> None:
 def check_banned_ip() -> tuple[Response, int] | None:
     """
     Refuse la requête si l'IP est bannie.
+
+    La décision est retenue dans `g.ip_banned`, pour que le comptage après la
+    route la reprenne sans relire le store.
     """
     client_ip = _blocklist_target_ip()
 
     if client_ip is None:
         return None
 
-    if ip_blocklist_store.is_banned(client_ip):
+    g.ip_banned = ip_blocklist_store.is_banned(client_ip)
+
+    if g.ip_banned:
         logger.warning("Requête refusée : IP bannie %s", client_ip)
         return jsonify({"error": "Forbidden"}), 403
 
@@ -209,6 +214,7 @@ def check_and_count_ip(response: Response) -> Response:
 
     Une IP déjà bannie n'est pas comptée.
     Son bannissement ne peut donc pas s'allonger pendant qu'il est actif.
+    L'état de bannissement est celui décidé avant la route (`g.ip_banned`).
 
     À chaque comptage, les IP dont plus aucune erreur n'est récente sont oubliées.
     """
@@ -222,7 +228,7 @@ def check_and_count_ip(response: Response) -> Response:
     if client_ip is None or should_ignore_path(request.path):
         return response
 
-    if ip_blocklist_store.is_banned(client_ip):
+    if g.get("ip_banned", False):
         return response
 
     now = time.time()

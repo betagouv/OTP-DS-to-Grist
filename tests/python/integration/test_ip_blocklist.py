@@ -52,8 +52,10 @@ class FakeStore:
     def __init__(self):
         self.banned_until = {}
         self.applied = []
+        self.checked = []
 
     def is_banned(self, ip):
+        self.checked.append(ip)
         return self.banned_until.get(ip, 0.0) > time.time()
 
     def apply_ban(self, ip):
@@ -320,6 +322,30 @@ class TestBannieQuiInsiste:
         assert store.banned_until[_IP] == pytest.approx(
             time.time() + ban_duration(2).total_seconds(), abs=10
         )
+
+
+class TestLectureDuBannissement:
+    """
+    Le bannissement n'est lu qu'une fois par requête : le comptage reprend la
+    décision prise avant la route, sans redemander au store.
+    """
+
+    def test_une_lecture_pour_une_requete_en_echec(self, store, client):
+        assert get(client, "/.env").status_code == 404
+
+        assert store.checked == [_IP]
+
+    def test_une_lecture_pour_une_ip_bannie(self, store, client):
+        set_ban(store, _IP)
+
+        assert get(client, "/.env").status_code == 403
+
+        assert store.checked == [_IP]
+
+    def test_une_lecture_pour_une_requete_reussie(self, store, client):
+        assert get(client, "/__blocklist-test__/slash/").status_code == 200
+
+        assert store.checked == [_IP]
 
 
 class TestMenageDesCompteurs:
