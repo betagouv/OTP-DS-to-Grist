@@ -15,7 +15,7 @@ la vraie pagination DS est donc traversée. Ce faux serveur sert un dossier
 "résumé" ou "détaillé" selon la query reçue, si bien qu'une requête qui
 abandonnerait les détails se verrait dans l'état final Grist.
 
-Sont mockés, pour isoler le périmètre : `get_optimized_schema` (schéma DS),
+Sont mockés, pour isoler le périmètre : `get_demarche_schema` (schéma DS),
 `sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
 `detect_demandeur_type` et `hide_columns_with_id` (dernière tâche de niveau
 démarche, dont on vérifie seulement qu'elle est exécutée).
@@ -39,6 +39,7 @@ import grist_processor_working_all as gpa
 import schema_utils
 from grist.client import GristClient, GristReadError
 from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
+from grist.pages import PAGES_TABLE, TABLES_TABLE, VIEWS_TABLE
 from sync.filters import build_filters_cache_key
 
 BASE_URL = "https://grist.test"
@@ -109,10 +110,24 @@ class FakeGristServer:
     la normale.
 
     `untied` garde, par table, les colonnes déliées de leur libellé
-    (`PATCH /columns` avec `untieColIdFromLabel`).
+    (`PATCH /columns` avec `untieColIdFromLabel`) ; `created_tables`, les
+    tables créées par `POST /tables`, dans l'ordre.
+
+    Comme Grist, chaque table créée reçoit une vue et une page, ajoutée en bas
+    à la racine, dans les méta-tables `_grist_Views`, `_grist_Pages` et
+    `_grist_Tables`. `with_demarche_tables=False` part d'un document sans
+    table de la démarche (première synchro) ; sinon ses tables dossiers et
+    champs existent déjà, sans page (démarche synchronisée avant
+    l'arborescence).
     """
 
-    def __init__(self, initial_records=None, failing_reads=(), failing_writes=()):
+    def __init__(
+        self,
+        initial_records=None,
+        failing_reads=(),
+        failing_writes=(),
+        with_demarche_tables=True,
+    ):
         self.tables = {}
         self.store = {}
         self._next_id = {}
@@ -120,7 +135,9 @@ class FakeGristServer:
         self.failing_reads = set(failing_reads)
         self.failing_writes = set(failing_writes)
         self.untied = {}
-        self._add_initial_tables()
+        self.created_tables = []
+        if with_demarche_tables:
+            self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
             for fields in records:
                 self._insert(table_id, fields)
@@ -178,6 +195,34 @@ class FakeGristServer:
             for _, fields in sorted(self.store.get(VIEW_FIELDS_TABLE, {}).items())
         ]
 
+    def page_tree(self):
+        """Arbre des pages : (nom de la vue, indentation, pliée), par pagePos."""
+        views = self.store.get(VIEWS_TABLE, {})
+        pages = sorted(
+            self.store.get(PAGES_TABLE, {}).values(), key=lambda p: p["pagePos"]
+        )
+        return [
+            (
+                views[page["viewRef"]]["name"],
+                page["indentation"],
+                json.loads(page.get("options") or "{}").get("collapsed", False),
+            )
+            for page in pages
+        ]
+
+    def _add_table_meta(self, table_id):
+        """Vue, page en bas à la racine et lien table → vue, comme `AddTable`."""
+        view_id = self._insert(VIEWS_TABLE, {"name": table_id})
+        self._insert(
+            PAGES_TABLE,
+            {"viewRef": view_id, "indentation": 0, "pagePos": self._next_page_pos()},
+        )
+        self._insert(TABLES_TABLE, {"tableId": table_id, "primaryViewId": view_id})
+
+    def _next_page_pos(self):
+        positions = [p["pagePos"] for p in self.store.get(PAGES_TABLE, {}).values()]
+        return max(positions, default=0) + 1
+
     def call_count(self, method, route):
         """Nombre d'appels `(méthode, route)` reçus, route normalisée."""
         return self.calls.count((method, route))
@@ -210,11 +255,19 @@ class FakeGristServer:
             if method == "GET":
                 return build_response({"tables": [{"id": tid} for tid in self.tables]})
             if method == "POST":
+                # Comme Grist : une table sans colonne est refusée à la validation
+                if any(not table["columns"] for table in payload["tables"]):
+                    return build_response(
+                        {"error": "Invalid payload: columns[0] is not an object"},
+                        status=400,
+                    )
                 for table in payload["tables"]:
                     self.tables[table["id"]] = {
                         col["id"]: col.get("type", "Text")
                         for col in table["columns"]
                     }
+                    self._add_table_meta(table["id"])
+                    self.created_tables.append(table["id"])
                 return build_response(
                     {"tables": [{"id": t["id"]} for t in payload["tables"]]}
                 )
@@ -324,13 +377,33 @@ class FakeGristServer:
         )
 
     def _apply(self, payload):
-        """`POST /apply` : seule l'action `BulkRemoveRecord` est servie."""
+        """`POST /apply` : actions utilisateur sur les enregistrements.
+
+        `pagePos` à None place la page en bas, comme Grist.
+        """
         for action in payload or []:
-            name, table_id, record_ids = action
-            if name != "BulkRemoveRecord":
+            name, table_id, *args = action
+            records = self.store.setdefault(table_id, {})
+            if name == "BulkRemoveRecord":
+                for record_id in args[0]:
+                    records.pop(record_id, None)
+            elif name == "RemoveRecord":
+                records.pop(args[0], None)
+            elif name == "AddRecord":
+                fields = dict(args[1])
+                if table_id == PAGES_TABLE and fields.get("pagePos") is None:
+                    fields["pagePos"] = self._next_page_pos()
+                self._insert(table_id, fields)
+            elif name == "UpdateRecord":
+                records[args[0]].update(args[1])
+            elif name == "BulkUpdateRecord":
+                record_ids, columns = args
+                for index, record_id in enumerate(record_ids):
+                    records[record_id].update(
+                        {col: values[index] for col, values in columns.items()}
+                    )
+            else:
                 raise AssertionError(f"Action non servie : {name}")
-            for record_id in record_ids:
-                self.store.get(table_id, {}).pop(record_id, None)
         return build_response({})
 
 
@@ -361,6 +434,32 @@ def make_schema():
             ],
         },
     }
+
+
+def make_schema_with_repetable_block():
+    """Schéma minimal avec un bloc répétable « Membres » (un champ texte)."""
+    schema = make_schema()
+    schema["activeRevision"]["champDescriptors"].append(
+        {
+            "__typename": "RepetitionChampDescriptor",
+            "id": "desc_bloc",
+            "type": "repetition",
+            "label": "Membres",
+            "description": "",
+            "required": False,
+            "champDescriptors": [
+                {
+                    "__typename": "TextChampDescriptor",
+                    "id": "desc_nom",
+                    "type": "text",
+                    "label": "Nom",
+                    "description": "",
+                    "required": False,
+                }
+            ],
+        }
+    )
+    return schema
 
 
 def make_dossier(number, **overrides):
@@ -630,7 +729,13 @@ def grist_transport(server):
 
 
 def run_pipeline(
-    server, dn_server, filters=None, deletion_error=None, **pipeline_kwargs
+    server,
+    dn_server,
+    filters=None,
+    deletion_error=None,
+    schema_error=None,
+    schema=None,
+    **pipeline_kwargs,
 ):
     """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
 
@@ -639,10 +744,18 @@ def run_pipeline(
 
     `filters` surcharge les variables de filtre neutralisées par défaut, afin
     que les tests n dépendent pas du `.env` du poste.
+
+    `schema_error` fait échouer la récupération du schéma de la démarche ;
+    `schema` remplace le schéma minimal de `make_schema`.
     """
     with ExitStack() as stack, grist_transport(server) as client:
         stack.enter_context(
-            patch.object(gpa, "get_optimized_schema", return_value=make_schema())
+            patch.object(
+                gpa,
+                "get_demarche_schema",
+                return_value=schema or make_schema(),
+                side_effect=schema_error,
+            )
         )
         stack.enter_context(
             patch.object(dn_client_module, "API_TOKEN", "jeton-de-test")
@@ -1395,6 +1508,216 @@ class TestResumeMarkerOnFailedDossiers:
         assert metadata["last_sync_status"] == "partial"
         assert metadata["updated_since_cursor"] == self.CURSOR
         assert metadata["deleted_since_cursor"] == self.CURSOR
+
+    def test_all_dossiers_failed_still_returns_true(self):
+        """Tous les dossiers sélectionnés en échec : la synchro va à son terme
+        et se déclare réussie, le repère de reprise étant conservé.
+        """
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer(dossiers_de_test(3))
+
+        with patch.object(
+            gpa, "dossier_to_flat_data", side_effect=RuntimeError("extraction")
+        ):
+            result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert server.rows(DOSSIERS_TABLE) == []
+        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "partial"
+
+
+class TestTableSetupFailure:
+    """Schéma ou création des tables en échec : la synchro échoue, sans chemin
+    de secours qui créerait des tables par une autre voie.
+    """
+
+    def test_schema_unavailable_fails_sync(self):
+        """schéma DN indisponible -> échec, aucune table créée ni écrite"""
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+        initial_tables = set(server.tables)
+
+        result, _ = run_pipeline(
+            server,
+            dn_server,
+            schema_error=RuntimeError("schéma indisponible"),
+            parallel=False,
+        )
+
+        assert result is False
+        assert set(server.tables) == initial_tables
+        assert server.rows(DOSSIERS_TABLE) == []
+
+    def test_table_creation_error_fails_sync(self):
+        """création des tables en échec -> échec, aucune table créée ni écrite"""
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+        initial_tables = set(server.tables)
+
+        with patch.object(
+            gpa,
+            "ensure_sync_table_structure",
+            side_effect=RuntimeError("création impossible"),
+        ):
+            result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is False
+        assert set(server.tables) == initial_tables
+        assert server.rows(DOSSIERS_TABLE) == []
+
+
+class TestPageTree:
+    """Pages de la démarche rangées sous la page parente « N° <numéro> »."""
+
+    def test_first_sync_files_every_demarche_page(self):
+        """première synchro : page parente pliée, toutes les pages de la
+        démarche dessous, y compris la table avis créée en cours de route
+        après Sync_metadata ; Sync_metadata reste à la racine"""
+        server = FakeGristServer(with_demarche_tables=False)
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert server.page_tree() == [
+            ("N° 12345", 0, True),
+            (DOSSIERS_TABLE, 1, False),
+            (CHAMPS_TABLE, 1, False),
+            (ANNOTATIONS_TABLE, 1, False),
+            ("Demarche_12345_demandeurs", 1, False),
+            ("Demarche_12345_instructeurs", 1, False),
+            (AVIS_TABLE, 1, False),
+            (SYNC_METADATA_TABLE, 0, False),
+        ]
+        assert "Demarche_12345" in server.tables
+
+    def test_repetable_block_page_filed_under_parent(self):
+        """la table d'un bloc répétable est rangée comme les autres"""
+        schema = make_schema_with_repetable_block()
+        server = FakeGristServer(with_demarche_tables=False)
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, schema=schema, parallel=False)
+
+        assert result is True
+        repetable_pages = [
+            (name, indentation)
+            for name, indentation, _ in server.page_tree()
+            if name.startswith("Demarche_12345_repetable_")
+        ]
+        assert repetable_pages == [("Demarche_12345_repetable_membres", 1)]
+
+    def test_demarche_synced_before_tree_keeps_root_pages(self):
+        """démarche déjà synchronisée sans page parente : aucune page parente,
+        les nouvelles pages restent à la racine"""
+        server = FakeGristServer()
+        dn_server = FakeDemarchesServer([make_dossier(1)])
+
+        result, _ = run_pipeline(server, dn_server, parallel=False)
+
+        assert result is True
+        assert "Demarche_12345" not in server.tables
+        assert all(indentation == 0 for _, indentation, _ in server.page_tree())
+        assert not any(name.startswith("N° ") for name, _, _ in server.page_tree())
+
+
+REPETABLE_TABLE = "Demarche_12345_repetable_membres"
+
+
+def first_sync_columns():
+    """Colonnes de chaque table après une première synchro, sur un document vide."""
+    server = FakeGristServer(with_demarche_tables=False)
+    run_pipeline(
+        server,
+        FakeDemarchesServer([make_dossier(1)]),
+        schema=make_schema_with_repetable_block(),
+        parallel=False,
+    )
+    return {table_id: set(columns) for table_id, columns in server.tables.items()}
+
+
+class TestSyncTableStructure:
+    """Création des tables manquantes et complétion des tables existantes."""
+
+    @pytest.mark.parametrize(
+        "table_id, kept_column",
+        [
+            (CHAMPS_TABLE, "dossier_number"),
+            (ANNOTATIONS_TABLE, "dossier_number"),
+            (REPETABLE_TABLE, "dossier_number"),
+            ("Demarche_12345_demandeurs", "dossier_number"),
+            ("Demarche_12345_instructeurs", "groupe_instructeur_id"),
+            (AVIS_TABLE, "dossier_number"),
+            (SYNC_METADATA_TABLE, "demarche_number"),
+        ],
+    )
+    def test_existing_table_gets_missing_columns(self, table_id, kept_column):
+        """une table existante incomplète est complétée, sans être recréée"""
+        expected = first_sync_columns()[table_id]
+        server = FakeGristServer()
+        server.tables[table_id] = {kept_column: "Int"}
+
+        result, _ = run_pipeline(
+            server,
+            FakeDemarchesServer([make_dossier(1)]),
+            schema=make_schema_with_repetable_block(),
+            parallel=False,
+        )
+
+        assert result is True
+        assert set(server.tables[table_id]) == expected
+        assert table_id not in server.created_tables
+
+    def test_existing_table_found_whatever_the_case(self):
+        """une table existante écrite dans une autre casse est réutilisée"""
+        server = FakeGristServer()
+        server.tables["demarche_12345_instructeurs"] = {
+            "groupe_instructeur_id": "Text"
+        }
+
+        result, _ = run_pipeline(server, FakeDemarchesServer([make_dossier(1)]))
+
+        assert result is True
+        assert "Demarche_12345_instructeurs" not in server.created_tables
+
+    def test_no_annotation_no_annotations_table(self):
+        """démarche sans annotation -> pas de table des annotations"""
+        schema = make_schema()
+        schema["activeRevision"]["annotationDescriptors"] = []
+        server = FakeGristServer(with_demarche_tables=False)
+
+        result, _ = run_pipeline(
+            server,
+            FakeDemarchesServer([make_dossier(1, annotations=[])]),
+            schema=schema,
+            parallel=False,
+        )
+
+        assert result is True
+        assert ANNOTATIONS_TABLE not in server.tables
+
+    def test_avis_table_created_at_first_avis_only(self):
+        """pas d'avis -> pas de table avis ; elle apparaît au premier avis"""
+        server = FakeGristServer(with_demarche_tables=False)
+
+        run_pipeline(
+            server,
+            FakeDemarchesServer([make_dossier(1, avis=[])]),
+            parallel=False,
+        )
+        assert AVIS_TABLE not in server.tables
+
+        # Dossier modifié après la première synchro : repris par le delta
+        recent = "2099-01-01T00:00:00Z"
+        run_pipeline(
+            server,
+            FakeDemarchesServer(
+                [make_dossier(2, dateDerniereModification=recent)]
+            ),
+            parallel=False,
+        )
+        assert AVIS_TABLE in server.tables
+        assert len(server.rows(AVIS_TABLE)) == 1
 
 
 class TestHiddenIdColumns:

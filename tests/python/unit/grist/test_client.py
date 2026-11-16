@@ -16,6 +16,7 @@ from grist.client import (
     _split_records_by_size,
     extract_dossier_numbers,
 )
+from grist.pages import PARENT_TABLE_COLUMNS
 from utils.rate_limited_session import RateLimitedSession
 
 
@@ -523,8 +524,8 @@ class TestCreateTable:
             self.client.create_table("t", [{"type": "Text"}])
 
     def test_column_missing_type_raises(self):
-        """colonne sans type -> ValueError"""
-        with pytest.raises(ValueError):
+        """colonne sans type -> ValueError qui le dit"""
+        with pytest.raises(ValueError, match="Column missing type"):
             self.client.create_table("t", [{"id": "col1"}])
 
     def test_success_posts(self):
@@ -616,6 +617,131 @@ class TestCreateTable:
         assert result["tables"][0]["id"] == "t"
         assert "coupure relecture" in mock_error.call_args.args[0]
         session.patch.assert_not_called()
+
+
+class TestCreateDemarcheTable:
+    """Tests unitaires pour GristClient.create_demarche_table"""
+
+    CHILD = "Demarche_5_dossiers"
+    PARENT = "Demarche_5"
+
+    # Arbre lu après création : page parente (vue 1) puis page enfant (vue 2)
+    PAGES = [
+        {"id": 1, "fields": {"viewRef": 1, "indentation": 0, "pagePos": 1}},
+        {"id": 2, "fields": {"viewRef": 2, "indentation": 0, "pagePos": 2}},
+    ]
+    TABLES = [
+        {"id": 1, "fields": {"tableId": PARENT, "primaryViewId": 1}},
+        {"id": 2, "fields": {"tableId": CHILD, "primaryViewId": 2}},
+    ]
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def _run(self, existing_tables, apply_status=200):
+        """Crée la table enfant ; `existing_tables` est la liste relue après
+        création. Renvoie (résultat, mocks)."""
+        records = {"_grist_Pages": self.PAGES, "_grist_Tables": self.TABLES}
+        with (
+            patch.object(
+                self.client,
+                "create_table",
+                side_effect=lambda table_id, columns: {"tables": [{"id": table_id}]},
+            ) as create,
+            patch.object(
+                self.client,
+                "list_tables",
+                return_value={"tables": [{"id": t} for t in existing_tables]},
+            ),
+            patch.object(
+                self.client,
+                "get_records",
+                side_effect=lambda table_id: _response(200, records[table_id]),
+            ) as get_records,
+            patch.object(
+                self.client,
+                "apply_user_actions",
+                return_value=_response(apply_status, text="refus Grist"),
+            ) as apply,
+            patch("grist.client.log_error") as log_error,
+        ):
+            result = self.client.create_demarche_table(
+                5, self.CHILD, [{"id": "a", "type": "Text"}]
+            )
+
+        return result, MagicMock(
+            create=create, get_records=get_records, apply=apply, log_error=log_error
+        )
+
+    def test_first_table_creates_folded_parent(self):
+        """première table de la démarche -> table parente vide, page pliée,
+        puis page enfant rangée dessous"""
+        result, mocks = self._run([self.CHILD, "Sync_metadata"])
+
+        assert result == {"tables": [{"id": self.CHILD}]}
+        assert [c.args for c in mocks.create.call_args_list] == [
+            (self.CHILD, [{"id": "a", "type": "Text"}]),
+            (self.PARENT, PARENT_TABLE_COLUMNS),
+        ]
+        fold, attach = [c.args[0] for c in mocks.apply.call_args_list]
+        assert [action[0] for action in fold] == [
+            "RemoveRecord",
+            "AddRecord",
+            "UpdateRecord",
+        ]
+        assert fold[2][3] == {"name": "N° 5"}
+        assert attach[0][0] == "BulkUpdateRecord"
+        mocks.log_error.assert_not_called()
+
+    def test_parent_exists_attaches_page(self):
+        """table parente présente -> page rangée dessous, sans nouvelle parente"""
+        result, mocks = self._run([self.PARENT, "Demarche_5_champs", self.CHILD])
+
+        assert result == {"tables": [{"id": self.CHILD}]}
+        mocks.create.assert_called_once()
+        [[actions], _] = mocks.apply.call_args
+        assert actions[0][0] == "BulkUpdateRecord"
+
+    def test_demarche_synced_before_tree_left_at_root(self):
+        """démarche déjà synchronisée sans page parente -> aucun rangement"""
+        result, mocks = self._run(["Demarche_5_champs", self.CHILD])
+
+        assert result == {"tables": [{"id": self.CHILD}]}
+        mocks.create.assert_called_once()
+        mocks.get_records.assert_not_called()
+        mocks.apply.assert_not_called()
+
+    def test_other_demarche_tables_do_not_count(self):
+        """les tables d'une autre démarche n'empêchent pas la page parente"""
+        _, mocks = self._run(["Demarche_6_dossiers", self.CHILD])
+
+        assert mocks.create.call_args_list[1].args == (self.PARENT, PARENT_TABLE_COLUMNS)
+
+    def test_arrangement_error_logged_and_table_kept(self):
+        """rangement refusé par Grist -> erreur journalisée, table renvoyée"""
+        result, mocks = self._run([self.PARENT, self.CHILD], apply_status=500)
+
+        assert result == {"tables": [{"id": self.CHILD}]}
+        message = mocks.log_error.call_args.args[0]
+        assert self.CHILD in message
+        assert "« N° 5 »" in message
+        assert "500" in message
+        assert "refus Grist" in message
+        assert "reste à la racine" in message
+
+    def test_creation_error_raises(self):
+        """création de la table en échec -> l'erreur remonte, sans rangement"""
+        with (
+            patch.object(
+                self.client, "create_table", side_effect=requests.HTTPError("500")
+            ),
+            patch.object(self.client, "list_tables") as list_tables,
+        ):
+            with pytest.raises(requests.HTTPError):
+                self.client.create_demarche_table(5, self.CHILD, [])
+        list_tables.assert_not_called()
 
 
 class TestGetColumns:
@@ -1185,92 +1311,6 @@ class TestRunSql:
         client = GristClient("https://grist.example.com", "test_key")
         with pytest.raises(ValueError):
             client.run_sql("SELECT 1")
-
-
-class TestCreateOrClearGristTables:
-    """Tests unitaires pour GristClient.create_or_clear_grist_tables"""
-
-    def setup_method(self):
-        self.client = GristClient(
-            "https://grist.example.com", "test_key", doc_id="doc123"
-        )
-
-    def test_creates_missing_tables(self):
-        """aucune table existante -> crée les 3 tables"""
-        with (
-            patch.object(self.client, "list_tables", return_value={"tables": []}),
-            patch.object(
-                self.client,
-                "create_table",
-                side_effect=lambda table_id, columns: {"tables": [{"id": table_id}]},
-            ) as mock_create,
-        ):
-            result = self.client.create_or_clear_grist_tables(
-                5,
-                {
-                    "dossier": [{"id": "a", "type": "Text"}],
-                    "champs": [],
-                    "annotations": [],
-                },
-            )
-        assert result["dossier_table_id"] == "Demarche_5_dossiers"
-        assert result["champ_table_id"] == "Demarche_5_champs"
-        assert result["annotation_table_id"] == "Demarche_5_annotations"
-        assert mock_create.call_count == 3
-
-    def test_uses_existing_tables(self):
-        """tables existantes -> aucune création"""
-        existing = {
-            "tables": [
-                {"id": "Demarche_5_dossiers"},
-                {"id": "Demarche_5_champs"},
-                {"id": "Demarche_5_annotations"},
-            ]
-        }
-        with (
-            patch.object(self.client, "list_tables", return_value=existing),
-            patch.object(self.client, "create_table") as mock_create,
-        ):
-            result = self.client.create_or_clear_grist_tables(
-                5, {"dossier": [], "champs": [], "annotations": []}
-            )
-        mock_create.assert_not_called()
-        assert result["dossier_table_id"] == "Demarche_5_dossiers"
-        assert result["champ_table_id"] == "Demarche_5_champs"
-        assert result["annotation_table_id"] == "Demarche_5_annotations"
-
-
-class TestTableExists:
-    """Tests unitaires pour GristClient.table_exists"""
-
-    def setup_method(self):
-        self.client = GristClient(
-            "https://grist.example.com", "test_key", doc_id="doc123"
-        )
-
-    def test_found_case_insensitive(self):
-        """table trouvée (insensible à la casse) -> retourne la table"""
-        with patch.object(
-            self.client,
-            "list_tables",
-            return_value={"tables": [{"id": "Dossiers"}, {"id": "Champs"}]},
-        ):
-            result = self.client.table_exists("dossiers")
-        assert result == {"id": "Dossiers"}
-
-    def test_not_found(self):
-        """table absente -> None"""
-        with patch.object(
-            self.client, "list_tables", return_value={"tables": [{"id": "Champs"}]}
-        ):
-            result = self.client.table_exists("dossiers")
-        assert result is None
-
-    def test_unexpected_structure(self):
-        """structure inattendue -> None"""
-        with patch.object(self.client, "list_tables", return_value="unexpected"):
-            result = self.client.table_exists("dossiers")
-        assert result is None
 
 
 class TestUpsertMultipleDossiersInGrist:

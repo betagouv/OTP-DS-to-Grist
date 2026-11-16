@@ -256,7 +256,7 @@ class TestRunDemarcheLevelTasks:
 
     def test_instructeurs_failure_does_not_stop_next_tasks(self, capsys):
         """Un échec des instructeurs est loggé, les tâches suivantes s'exécutent."""
-        table_ids = {"instructeurs": "Instructeurs", "dossier_table_id": "Dossiers"}
+        table_ids = {"instructeurs": "Instructeurs", "dossiers": "Dossiers"}
 
         with (
             patch.object(
