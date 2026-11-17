@@ -10,6 +10,7 @@ Ces tests couvrent l'ensemble des fonctionnalités de la classe :
 """
 
 import os
+import re
 import threading
 import time
 from io import StringIO
@@ -1742,3 +1743,139 @@ class TestMissingSyncFields:
         del config["grist_user_id"]
 
         assert missing_sync_fields(config) == ["ds_api_token", "grist_user_id"]
+
+
+class TestSyncErrorLogging:
+    """Erreurs d'une synchro en échec recopiées dans les logs serveur"""
+
+    CONFIG = {
+        "otp_config_id": 324,
+        "ds_api_token": "token",
+        "demarche_number": "149188",
+        "grist_base_url": "https://grist.example",
+        "grist_api_key": "key",
+        "grist_doc_id": "docA",
+        "grist_user_id": "userA",
+    }
+
+    # Horodatage UTC au format ISO 8601, à la milliseconde
+    TIMESTAMP = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"
+
+    def setup_method(self):
+        self.manager = SyncManager()
+        self._patchers = [
+            patch("sync.sync_manager.grist_doc_access_level", return_value="owners"),
+            patch("sync.sync_manager.SessionLocal"),
+            patch("sync.sync_manager.ConfigManager"),
+        ]
+        self.grist_access_mock = self._patchers[0].start()
+        for patcher in self._patchers[1:]:
+            patcher.start()
+
+    def teardown_method(self):
+        for patcher in self._patchers:
+            patcher.stop()
+
+    def _run(self, capsys, stdout, stderr="", returncode=0, auto=True):
+        """Lance une synchro sur un sous-processus simulé ; renvoie les messages
+        d'erreur écrits dans les logs serveur (utils.log.log_sync_errors)."""
+        with patch(
+            "subprocess.Popen",
+            return_value=create_mock_process(stdout, stderr, returncode=returncode),
+        ):
+            result = self.manager.run_synchronization_task(
+                self.CONFIG, progress_callback=_ignore_progress, auto=auto
+            )
+        messages = [
+            line.removeprefix("ERREUR: ")
+            for line in capsys.readouterr().out.splitlines()
+            if line.startswith("ERREUR: ")
+        ]
+        return result, messages
+
+    def test_synchro_partielle_logue_ses_erreurs_dans_l_ordre(self, capsys):
+        """Code retour 0 mais dossiers en échec : en-tête puis chaque erreur, dans l'ordre"""
+        stdout = "\n".join(
+            [
+                "Traitement de la page 1 (11/11 dossiers)...",
+                "ERREUR: Erreur lors de la création par lot de la table T_champs: 400",
+                "Dossiers traités avec succès: 0",
+                "Dossiers en échec: 11",
+                "ERREUR: 11 dossier(s) en échec : le repère de reprise est conservé",
+            ]
+        )
+
+        result, messages = self._run(capsys, stdout)
+
+        assert result["success"] is False
+        assert len(messages) == 3
+        assert "config 324" in messages[0]
+        assert "démarche 149188" in messages[0]
+        assert "auto" in messages[0]
+        assert result["message"] in messages[0]
+        assert re.search(
+            self.TIMESTAMP
+            + r" Erreur lors de la création par lot de la table T_champs: 400$",
+            messages[1],
+        )
+        assert re.search(
+            self.TIMESTAMP + r" 11 dossier\(s\) en échec", messages[2]
+        )
+
+    def test_synchro_plantee_logue_stdout_puis_stderr(self, capsys):
+        """Script planté : erreurs de stdout, puis message final du stderr sans traceback"""
+        stderr = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/grist_processor_working_all.py", line 42, in run\n'
+            "GristReadError: Grist a refusé la lecture (500)\n"
+        )
+
+        result, messages = self._run(
+            capsys, "ERREUR: Lecture de la table T_dossiers impossible", stderr, 3
+        )
+
+        assert result["success"] is False
+        assert "manuelle" not in messages[0]
+        assert messages[1].endswith("Lecture de la table T_dossiers impossible")
+        assert messages[2].endswith("GristReadError: Grist a refusé la lecture (500)")
+        assert not any("Traceback" in message for message in messages)
+        assert len(messages) == 3
+
+    def test_synchro_manuelle_indiquee_dans_l_en_tete(self, capsys):
+        """L'en-tête distingue une synchro manuelle d'une synchro auto"""
+        _, messages = self._run(
+            capsys, "ERREUR: boom\nDossiers en échec: 1", auto=False
+        )
+
+        assert "manuelle" in messages[0]
+
+    def test_synchro_reussie_ne_logue_aucune_erreur(self, capsys):
+        """Synchro réussie : rien dans les logs d'erreur, même avec une ligne ERREUR:"""
+        stdout = "\n".join(
+            [
+                "ERREUR: Erreur rafraîchissement des labels: timeout",
+                "Dossiers traités avec succès: 5",
+            ]
+        )
+
+        result, messages = self._run(capsys, stdout)
+
+        assert result["success"] is True
+        assert messages == []
+
+    def test_cle_refusee_logue_le_refus(self, capsys):
+        """Clé Grist sans droits propriétaire : le refus est logué comme erreur"""
+        self.grist_access_mock.return_value = "viewers"
+
+        result, messages = self._run(capsys, "")
+
+        assert result["success"] is False
+        assert len(messages) == 2
+        assert messages[1].endswith(result["message"])
+
+    def test_longueur_des_erreurs_bornee(self, capsys):
+        """Un message d'erreur trop long est tronqué"""
+        _, messages = self._run(capsys, "ERREUR: " + "x" * 2000 + "\nDossiers en échec: 1")
+
+        assert messages[1].endswith("…")
+        assert "x" * sync_manager_module.MAX_ERROR_MESSAGE_LENGTH not in messages[1]

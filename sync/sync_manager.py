@@ -9,12 +9,17 @@ from typing import Callable, Any
 from datetime import datetime, timezone
 from sync.sync_result_parser import SYNC_METADATA_PREFIX, parse_output
 from sync.environment_config import build_environment
-from sync.error_parser import extract_error_parts
+from sync.error_parser import (
+    error_message,
+    extract_error_parts,
+    stderr_error_messages,
+)
 from sync.sequencer import STATUS_PENDING, STATUS_RUNNING, SyncSequencer
 from database.models import SyncLog
 from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
 from security.widget_auth import grist_doc_access_level, is_key_write_allowed
+from utils.log import log_sync_errors
 
 load_dotenv()
 
@@ -150,6 +155,8 @@ class SyncManager:
         """
 
         output_lines = []
+        # Erreurs de la synchro, horodatées à leur réception, dans l'ordre
+        errors: list[dict[str, str]] = []
 
         # Pré-définition en cas d'erreur
         result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
@@ -174,6 +181,7 @@ class SyncManager:
                     )
                     if log_callback:
                         log_callback(f"ERREUR: {message}")
+                    errors.append(_timestamped_error(message))
                     result = {
                         "success": False,
                         "message": message,
@@ -243,6 +251,9 @@ class SyncManager:
                     continue
                 line = line.strip()
                 output_lines.append(line)
+                message = error_message(line)
+                if message is not None:
+                    errors.append(_timestamped_error(message))
 
                 if line.startswith("Progression: "):
                     parts = line.split(": ", 1)[1].split(" - ")
@@ -256,6 +267,10 @@ class SyncManager:
                         log_callback(line)
 
             stderr_output = process.stderr.read()
+            errors.extend(
+                _timestamped_error(message)
+                for message in stderr_error_messages(stderr_output)
+            )
 
             if stderr_output and log_callback:
                 for line in stderr_output.split("\n"):
@@ -296,11 +311,7 @@ class SyncManager:
         except Exception as e:
             error_parts = extract_error_parts(e, output_lines)
             if error_parts:
-                summary = "; ".join(error_parts)
-                if len(summary) > MAX_ERROR_MESSAGE_LENGTH:
-                    summary = (
-                        summary[: MAX_ERROR_MESSAGE_LENGTH - 1].rstrip() + "…"
-                    )
+                summary = _truncate("; ".join(error_parts))
                 error_msg = f"Erreur lors de la synchronisation: {summary}"
             else:
                 error_msg = f"Erreur lors de la synchronisation: {str(e)}"
@@ -321,6 +332,16 @@ class SyncManager:
 
             return result
         finally:
+            if not result.get("success"):
+                mode = "auto" if auto else "manuelle"
+                log_sync_errors(
+                    f"Synchro {mode} en échec pour config "
+                    f"{config.get('otp_config_id')} "
+                    f"(démarche {config.get('demarche_number')}) : "
+                    f"{result.get('message')}",
+                    errors,
+                )
+
             sync_log = SyncLog(
                 grist_user_id=config.get("grist_user_id"),
                 grist_doc_id=config.get("grist_doc_id"),
@@ -532,3 +553,20 @@ def _has_unfinished_steps(series: SyncSequencer) -> bool:
     return any(
         step["status"] in (STATUS_PENDING, STATUS_RUNNING) for step in series.snapshot()
     )
+
+
+def _timestamped_error(message: str) -> dict[str, str]:
+    """Erreur de synchro horodatée à sa réception (UTC, à la milliseconde),
+    message borné."""
+    now = datetime.now(timezone.utc)
+    timestamp = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return {"timestamp": timestamp, "message": _truncate(message)}
+
+
+def _truncate(text: str) -> str:
+    """Texte borné à MAX_ERROR_MESSAGE_LENGTH caractères, terminé par « … »
+    s'il est coupé."""
+    if len(text) <= MAX_ERROR_MESSAGE_LENGTH:
+        return text
+
+    return text[: MAX_ERROR_MESSAGE_LENGTH - 1].rstrip() + "…"

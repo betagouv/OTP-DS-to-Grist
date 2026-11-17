@@ -1,7 +1,11 @@
 import pytest
 from unittest.mock import MagicMock
 import subprocess
-from sync.error_parser import extract_error_parts
+from sync.error_parser import (
+    error_message,
+    extract_error_parts,
+    stderr_error_messages,
+)
 
 
 class TestExtractErrorParts:
@@ -109,3 +113,45 @@ class TestExtractErrorParts:
         result = extract_error_parts(e, [])
 
         assert result == ["GristReadError: Grist a refusé l'écriture (403)"]
+
+
+class TestErrorMessage:
+    def test_ligne_erreur_renvoie_le_message_sans_prefixe(self):
+        """Ligne ERREUR: → message sans le préfixe ni les espaces qui le suivent"""
+        assert error_message("ERREUR:  Connexion échouée") == "Connexion échouée"
+
+    def test_casse_ignoree(self):
+        """Erreur: et erreur: sont aussi des lignes d'erreur"""
+        assert error_message("Erreur: capitalisé") == "capitalisé"
+        assert error_message("erreur: minuscule") == "minuscule"
+
+    def test_ligne_ordinaire_renvoie_none(self):
+        """Une ligne sans ERREUR: n'est pas une erreur"""
+        assert error_message("Progression: 50 - Traitement") is None
+        assert error_message("Dossiers en échec: 11") is None
+
+
+class TestStderrErrorMessages:
+    def test_lignes_vides_ecartees(self):
+        """Chaque ligne non vide du stderr est un message"""
+        assert stderr_error_messages("Erreur 1\n\n  \nErreur 2\n") == [
+            "Erreur 1",
+            "Erreur 2",
+        ]
+
+    def test_traceback_reduit_au_message_final(self):
+        """Les en-têtes et frames d'un traceback Python sont écartés"""
+        stderr = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/grist_processor_working_all.py", line 42, in run\n'
+            "    raise GristReadError(detail)\n"
+            "GristReadError: Grist a refusé l'écriture (403)\n"
+        )
+
+        assert stderr_error_messages(stderr) == [
+            "GristReadError: Grist a refusé l'écriture (403)"
+        ]
+
+    def test_stderr_vide(self):
+        """Stderr vide → aucun message"""
+        assert stderr_error_messages("") == []
