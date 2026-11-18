@@ -11,6 +11,7 @@ from sync.sync_result_parser import (
     SYNC_ERRORS_PREFIX,
     SYNC_METADATA_PREFIX,
     parse_output,
+    read_sync_errors,
     timestamped_error,
 )
 from sync.environment_config import build_environment
@@ -24,7 +25,7 @@ from database.models import SyncLog
 from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
 from security.widget_auth import grist_doc_access_level, is_key_write_allowed
-from utils.log import MAX_SYNC_ERRORS, log_sync_errors
+from utils.log import log_sync_errors
 
 load_dotenv()
 
@@ -162,6 +163,8 @@ class SyncManager:
         output_lines = []
         # Erreurs de la synchro, horodatées à leur réception, dans l'ordre
         errors: list[dict[str, str]] = []
+        # Celles que le script ne peut pas émettre dans sa ligne SYNC_ERRORS
+        unemitted_errors: list[dict[str, str]] = []
 
         # Pré-définition en cas d'erreur
         result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
@@ -187,6 +190,7 @@ class SyncManager:
                     if log_callback:
                         log_callback(f"ERREUR: {message}")
                     errors.append(_timestamped_error(message))
+                    unemitted_errors.append(errors[-1])
                     result = {
                         "success": False,
                         "message": message,
@@ -273,10 +277,11 @@ class SyncManager:
                         log_callback(line)
 
             stderr_output = process.stderr.read()
-            errors.extend(
+            unemitted_errors.extend(
                 _timestamped_error(message)
                 for message in stderr_error_messages(stderr_output)
             )
+            errors.extend(unemitted_errors)
 
             if stderr_output and log_callback:
                 for line in stderr_output.split("\n"):
@@ -362,7 +367,11 @@ class SyncManager:
                 duration_seconds=result.get("duration_seconds"),
                 force_full_sync=result.get("force_full_sync"),
                 filters_hash=result.get("filters_hash"),
-                errors=errors[:MAX_SYNC_ERRORS] if failed else None,
+                errors=(
+                    _sync_log_errors(output_lines, unemitted_errors)
+                    if failed
+                    else None
+                ),
             )
             db_session = SessionLocal()
             try:
@@ -575,3 +584,25 @@ def _truncate(text: str) -> str:
         return text
 
     return text[: MAX_ERROR_MESSAGE_LENGTH - 1].rstrip() + "…"
+
+
+def _sync_log_errors(
+    output_lines: list[str], unemitted_errors: list[dict[str, str]]
+) -> dict:
+    """Erreurs enregistrées dans sync_logs : celles émises par le script, suivies
+    dans les erreurs générales de celles qu'il ne peut pas émettre (stderr, refus
+    de la clé), messages bornés."""
+    emitted = read_sync_errors(output_lines)
+    return {
+        **emitted,
+        "dossiers": [_truncated_error(error) for error in emitted["dossiers"]],
+        "general": [
+            _truncated_error(error)
+            for error in emitted["general"] + unemitted_errors
+        ],
+    }
+
+
+def _truncated_error(error: dict[str, str]) -> dict[str, str]:
+    """Erreur au message borné."""
+    return {**error, "message": _truncate(error["message"])}

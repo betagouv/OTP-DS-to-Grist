@@ -66,6 +66,27 @@ def emit_sync_errors(
     )
 
 
+def read_sync_errors(output_lines: list[str]) -> dict:
+    """Erreurs émises par le sous-processus (ligne SYNC_ERRORS) : aucune si la
+    ligne est absente ; si elle est illisible, une erreur générale le signale."""
+    errors = {"dossiers": [], "dossiers_total": 0, "general": []}
+    for line in output_lines:
+        if not line.startswith(SYNC_ERRORS_PREFIX):
+            continue
+        payload = line[len(SYNC_ERRORS_PREFIX) :]
+        try:
+            emitted = json.loads(payload)
+        except ValueError:
+            emitted = None
+        if not isinstance(emitted, dict):
+            errors["general"].append(
+                timestamped_error(f"Ligne SYNC_ERRORS illisible : {payload}")
+            )
+            continue
+        errors.update(emitted)
+    return errors
+
+
 def _parse_success_count(line: str) -> tuple[int | None, int | None]:
     """Extrait le nombre de succès depuis une ligne de log"""
     if "Dossiers traités avec succès:" not in line:

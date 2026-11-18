@@ -12,6 +12,7 @@ from sync.sync_result_parser import (
     emit_sync_errors,
     emit_sync_metadata,
     parse_output,
+    read_sync_errors,
     timestamped_error,
 )
 from utils.log import MAX_SYNC_ERRORS
@@ -302,3 +303,37 @@ class TestSyncErrorsContract:
 
         assert result["error_count"] == 0
         assert result["sync_reason"] == "synced"
+
+
+class TestReadSyncErrors:
+    """Lecture de la ligne SYNC_ERRORS dans la sortie du sous-processus"""
+
+    def test_relit_ce_qui_est_emis(self, capsys):
+        dossier_errors = {"7": {"timestamp": "t1", "message": "Création : 400"}}
+        general = [{"timestamp": "t2", "message": "Labels"}]
+        emit_sync_errors(dossier_errors, general)
+        lines = ["Dossiers en échec: 1"] + capsys.readouterr().out.splitlines()
+
+        assert read_sync_errors(lines) == {
+            "dossiers": [{"dossier": "7", "timestamp": "t1", "message": "Création : 400"}],
+            "dossiers_total": 1,
+            "general": general,
+        }
+
+    def test_ligne_absente_aucune_erreur(self):
+        assert read_sync_errors(["Dossiers en échec: 1"]) == {
+            "dossiers": [],
+            "dossiers_total": 0,
+            "general": [],
+        }
+
+    @pytest.mark.parametrize("payload", ["{pas du json", "[]"])
+    def test_ligne_illisible_signalee_dans_general(self, payload):
+        errors = read_sync_errors([SYNC_ERRORS_PREFIX + payload])
+
+        assert errors["dossiers"] == []
+        (error,) = errors["general"]
+        assert "SYNC_ERRORS illisible" in error["message"]
+        assert re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", error["timestamp"]
+        )

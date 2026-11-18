@@ -14,6 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 from datetime import datetime, timezone
+from typing import Any
 
 
 # Les modèles décrivent la base telle qu'elle existe : colonnes TEXT, valeurs
@@ -82,9 +83,12 @@ class SyncLog(Base):
     duration_seconds: Mapped[float | None] = mapped_column(Float)
     force_full_sync: Mapped[bool | None] = mapped_column(Boolean)
     filters_hash: Mapped[str | None] = mapped_column(Text)
-    # Erreurs d'une synchro en échec, dans l'ordre : [{"timestamp", "message"}],
-    # bornées à utils.log.MAX_SYNC_ERRORS ; NULL si la synchro a réussi
-    errors: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB)
+    # Erreurs d'une synchro en échec ; NULL si elle a réussi. Première erreur de
+    # chaque dossier en échec (au plus utils.log.MAX_SYNC_ERRORS, dans l'ordre),
+    # leur nombre total, et erreurs sans lien avec un dossier :
+    # {"dossiers": [{"dossier", "timestamp", "message"}], "dossiers_total",
+    #  "general": [{"timestamp", "message"}]}
+    errors: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class IpBlocklist(Base):
