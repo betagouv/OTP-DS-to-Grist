@@ -40,6 +40,7 @@ import schema_utils
 from grist.client import GristClient, GristReadError
 from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
 from sync.filters import build_filters_cache_key
+from sync.sync_result_parser import SYNC_ERRORS_PREFIX
 
 BASE_URL = "https://grist.test"
 DOC_ID = "doc123"
@@ -108,17 +109,31 @@ class FakeGristServer:
     PATCH) échoue en 500 ; modifiable entre deux runs pour simuler un retour à
     la normale.
 
+    `refused_dossiers` liste, par table, les numéros de dossier que Grist
+    refuse (400) : une écriture qui en contient un échoue, les autres passent,
+    ce qui permet d'observer le repli ligne par ligne d'une mise à jour.
+
     `untied` garde, par table, les colonnes déliées de leur libellé
     (`PATCH /columns` avec `untieColIdFromLabel`).
     """
 
-    def __init__(self, initial_records=None, failing_reads=(), failing_writes=()):
+    def __init__(
+        self,
+        initial_records=None,
+        failing_reads=(),
+        failing_writes=(),
+        refused_dossiers=None,
+    ):
         self.tables = {}
         self.store = {}
         self._next_id = {}
         self.calls = []
         self.failing_reads = set(failing_reads)
         self.failing_writes = set(failing_writes)
+        self.refused_dossiers = {
+            table_id: {str(number) for number in numbers}
+            for table_id, numbers in (refused_dossiers or {}).items()
+        }
         self.untied = {}
         self._add_initial_tables()
         for table_id, records in (initial_records or {}).items():
@@ -259,6 +274,12 @@ class FakeGristServer:
         if method in ("POST", "PATCH") and parts[4:] == ["records"]:
             if table_id in self.failing_writes:
                 return build_response({"error": "Erreur interne"}, status=500)
+            refused = self.refused_dossiers.get(table_id, set())
+            if any(
+                str(record["fields"].get("dossier_number")) in refused
+                for record in payload["records"]
+            ):
+                return build_response({"error": "Valeur refusée"}, status=400)
             # L'API Grist refuse au-delà de 1 Mio. Les corps ne sont pas
             # journalisés : seule la taille compte.
             if _payload_too_large(payload):
@@ -1395,6 +1416,90 @@ class TestResumeMarkerOnFailedDossiers:
         assert metadata["last_sync_status"] == "partial"
         assert metadata["updated_since_cursor"] == self.CURSOR
         assert metadata["deleted_since_cursor"] == self.CURSOR
+
+
+class TestSyncErrorsEmitted:
+    """Ligne SYNC_ERRORS émise en fin de synchro : première erreur source de
+    chaque dossier en échec, et erreurs générales."""
+
+    @staticmethod
+    def _sync_errors(capsys) -> dict:
+        lines = [
+            line
+            for line in capsys.readouterr().out.splitlines()
+            if line.startswith(SYNC_ERRORS_PREFIX)
+        ]
+        assert len(lines) == 1
+        return json.loads(lines[0][len(SYNC_ERRORS_PREFIX):])
+
+    def test_seul_le_dossier_refuse_est_en_echec(self, capsys):
+        """Mise à jour par lot refusée à cause d'un dossier : le repli ligne par
+        ligne écrit les autres, seul le dossier refusé est en échec, avec la
+        réponse de Grist qui le concerne.
+
+        Régression : tous les dossiers du lot étaient comptés en échec.
+        """
+        server = FakeGristServer(
+            initial_records={
+                CHAMPS_TABLE: [{"dossier_number": number} for number in (1, 2, 3)]
+            },
+            refused_dossiers={CHAMPS_TABLE: {2}},
+        )
+
+        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(3)), parallel=False)
+
+        output_errors = self._sync_errors(capsys)
+        assert [d["dossier"] for d in output_errors["dossiers"]] == ["2"]
+        assert output_errors["dossiers"][0]["message"] == (
+            f"Mise à jour dans {CHAMPS_TABLE} : 400 - Valeur refusée"
+        )
+        assert output_errors["dossiers_total"] == 1
+
+    def test_creation_refusee_chaque_dossier_avec_la_reponse_du_lot(self, capsys):
+        server = FakeGristServer(failing_writes={CHAMPS_TABLE})
+
+        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(3)), parallel=False)
+
+        output_errors = self._sync_errors(capsys)
+        assert sorted(d["dossier"] for d in output_errors["dossiers"]) == [
+            "1",
+            "2",
+            "3",
+        ]
+        assert {d["message"] for d in output_errors["dossiers"]} == {
+            f"Création dans {CHAMPS_TABLE} : 500 - Erreur interne"
+        }
+
+    def test_premiere_erreur_du_dossier_conservee(self, capsys):
+        """Dossier en échec sur deux tables : seule la première erreur est gardée"""
+        server = FakeGristServer(failing_writes={CHAMPS_TABLE, ANNOTATIONS_TABLE})
+
+        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(1)), parallel=False)
+
+        (dossier,) = self._sync_errors(capsys)["dossiers"]
+        assert dossier["message"].startswith(f"Création dans {CHAMPS_TABLE}")
+
+    def test_erreur_generale(self, capsys):
+        """Erreur sans lien avec un dossier : dans les erreurs générales"""
+        run_pipeline(
+            FakeGristServer(),
+            FakeDemarchesServer(dossiers_de_test(1)),
+            deletion_error=RuntimeError("API DN indisponible"),
+            parallel=False,
+        )
+
+        output_errors = self._sync_errors(capsys)
+        assert output_errors["dossiers"] == []
+        assert [error["message"] for error in output_errors["general"]] == [
+            "Erreur vérification dossiers supprimés : API DN indisponible"
+        ]
+
+    def test_rien_n_est_emis_sans_erreur(self, capsys):
+        run_pipeline(
+            FakeGristServer(), FakeDemarchesServer(dossiers_de_test(1)), parallel=False
+        )
+
+        assert SYNC_ERRORS_PREFIX not in capsys.readouterr().out
 
 
 class TestHiddenIdColumns:

@@ -7,7 +7,12 @@ import sys
 import traceback
 from typing import Callable, Any
 from datetime import datetime, timezone
-from sync.sync_result_parser import SYNC_METADATA_PREFIX, parse_output
+from sync.sync_result_parser import (
+    SYNC_ERRORS_PREFIX,
+    SYNC_METADATA_PREFIX,
+    parse_output,
+    timestamped_error,
+)
 from sync.environment_config import build_environment
 from sync.error_parser import (
     error_message,
@@ -251,6 +256,9 @@ class SyncManager:
                     continue
                 line = line.strip()
                 output_lines.append(line)
+                # Lignes techniques : ni erreurs à capturer, ni logs pour le client
+                if line.startswith((SYNC_METADATA_PREFIX, SYNC_ERRORS_PREFIX)):
+                    continue
                 message = error_message(line)
                 if message is not None:
                     errors.append(_timestamped_error(message))
@@ -260,9 +268,7 @@ class SyncManager:
                     progress_value = float(parts[0])
                     phase_name = parts[1] if len(parts) > 1 else ""
                     progress_callback(progress_value, phase_name)
-                elif not line.startswith(
-                    ("Progression pourcentage:", SYNC_METADATA_PREFIX)
-                ):
+                elif not line.startswith("Progression pourcentage:"):
                     if log_callback:
                         log_callback(line)
 
@@ -558,11 +564,8 @@ def _has_unfinished_steps(series: SyncSequencer) -> bool:
 
 
 def _timestamped_error(message: str) -> dict[str, str]:
-    """Erreur de synchro horodatée à sa réception (UTC, à la milliseconde),
-    message borné."""
-    now = datetime.now(timezone.utc)
-    timestamp = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    return {"timestamp": timestamp, "message": _truncate(message)}
+    """Erreur de synchro horodatée à sa réception, message borné."""
+    return timestamped_error(_truncate(message))
 
 
 def _truncate(text: str) -> str:

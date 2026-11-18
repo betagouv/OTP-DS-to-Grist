@@ -1,13 +1,20 @@
 import pytest
 
+import json
+import re
+
 from sync.sync_result_parser import (
+    SYNC_ERRORS_PREFIX,
     SyncMetadataParseError,
     _parse_success_count,
     _parse_error_count,
     _parse_sync_metadata,
+    emit_sync_errors,
     emit_sync_metadata,
     parse_output,
+    timestamped_error,
 )
+from utils.log import MAX_SYNC_ERRORS
 
 
 class TestParseSuccessCount:
@@ -206,3 +213,92 @@ class TestParseOutputWithDetailedErrorLogs:
         ]
         result = parse_output(lignes)
         assert result["error_count"] == 0
+
+
+class TestTimestampedError:
+    """Erreur horodatée à l'instant présent"""
+
+    def test_horodatage_utc_a_la_milliseconde(self):
+        error = timestamped_error("boom")
+
+        assert error["message"] == "boom"
+        assert re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", error["timestamp"]
+        )
+
+
+class TestSyncErrorsContract:
+    """Émission de la ligne SYNC_ERRORS par le sous-processus : première erreur
+    de chaque dossier en échec et erreurs générales, ignorée par parse_output."""
+
+    @staticmethod
+    def _emitted(capsys) -> dict:
+        line = capsys.readouterr().out.strip()
+        assert line.startswith(SYNC_ERRORS_PREFIX)
+        return json.loads(line[len(SYNC_ERRORS_PREFIX):])
+
+    def test_dossiers_dans_l_ordre_des_echecs_et_erreurs_generales(self, capsys):
+        dossier_errors = {
+            "7": {"timestamp": "2026-11-16T23:05:27.100Z", "message": "Création : 400"},
+            "3": {"timestamp": "2026-11-16T23:05:27.200Z", "message": "Préparation"},
+        }
+        general = [{"timestamp": "2026-11-16T23:05:28.000Z", "message": "Labels"}]
+
+        emit_sync_errors(dossier_errors, general)
+
+        assert self._emitted(capsys) == {
+            "dossiers": [
+                {
+                    "dossier": "7",
+                    "timestamp": "2026-11-16T23:05:27.100Z",
+                    "message": "Création : 400",
+                },
+                {
+                    "dossier": "3",
+                    "timestamp": "2026-11-16T23:05:27.200Z",
+                    "message": "Préparation",
+                },
+            ],
+            "dossiers_total": 2,
+            "general": general,
+        }
+
+    def test_dossiers_bornes_erreurs_generales_non_bornees(self, capsys):
+        """Au plus MAX_SYNC_ERRORS dossiers, les premiers en échec ; total conservé"""
+        count = MAX_SYNC_ERRORS + 5
+        dossier_errors = {
+            str(number): {"timestamp": "t", "message": "m"} for number in range(count)
+        }
+        general = [{"timestamp": "t", "message": f"g{n}"} for n in range(count)]
+
+        emit_sync_errors(dossier_errors, general)
+
+        emitted = self._emitted(capsys)
+        assert [d["dossier"] for d in emitted["dossiers"]] == [
+            str(number) for number in range(MAX_SYNC_ERRORS)
+        ]
+        assert emitted["dossiers_total"] == count
+        assert len(emitted["general"]) == count
+
+    def test_rien_n_est_emis_sans_erreur(self, capsys):
+        emit_sync_errors({}, [])
+
+        assert capsys.readouterr().out == ""
+
+    def test_accents_conserves(self, capsys):
+        emit_sync_errors({}, [{"timestamp": "t", "message": "Échec réseau"}])
+
+        assert "Échec réseau" in capsys.readouterr().out
+
+    def test_ignoree_par_parse_output(self, capsys):
+        """Une phrase de bilan dans un message ne modifie pas les compteurs"""
+        emit_sync_errors(
+            {"1": {"timestamp": "t", "message": "Dossiers en échec: 99"}},
+            [{"timestamp": "t", "message": "Grist déjà à jour"}],
+        )
+        lines = capsys.readouterr().out.splitlines()
+
+        result = parse_output(lines + ["Dossiers traités avec succès: 0"])
+
+        assert result["error_count"] == 0
+        assert result["sync_reason"] == "synced"

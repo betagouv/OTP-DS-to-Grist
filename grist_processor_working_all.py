@@ -5,13 +5,19 @@ import os
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 import repetable_processor as rp
-from grist.client import GristClient, GristReadError, extract_dossier_numbers
+from grist.client import (
+    GristClient,
+    GristReadError,
+    UpsertResult,
+    extract_dossier_numbers,
+)
 from grist.column_cache import ColumnCache
 from grist.columns import hide_columns_with_id
 from grist.formatter import format_value
@@ -37,7 +43,11 @@ from sync.filters import (
     filter_dossiers,
     read_filters_from_env,
 )
-from sync.sync_result_parser import emit_sync_metadata
+from sync.sync_result_parser import (
+    emit_sync_errors,
+    emit_sync_metadata,
+    timestamped_error,
+)
 from sync.tasks.deleted_dossiers import check_deleted_dossiers
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
@@ -421,9 +431,13 @@ def run_demarche_level_tasks(
     force_full_sync: bool = False,
     deleted_since_cursor: str | None = None,
     schema_method_successful: bool = False,
+    report_error: Callable[[str], None] = log_error,
 ) -> bool:
     """
     Opérations de niveau démarche, indépendantes des dossiers effectivement traités.
+
+    Les échecs de ces tâches sont signalés par `report_error` (par défaut
+    `log_error`) : ils ne concernent aucun dossier en particulier.
 
     À appeler depuis les deux `return` de `process_demarche_for_grist_optimized` :
     celui de fin de fonction et celui du cas `total_dossiers == 0`. Poser une
@@ -444,7 +458,7 @@ def run_demarche_level_tasks(
                 client, table_ids["instructeurs"], demarche_number, log, log_error
             )
         except Exception as e:
-            log_error(f"Erreur synchronisation instructeurs: {e}")
+            report_error(f"Erreur synchronisation instructeurs: {e}")
 
     # 2. Labels : uniquement en sync incrémentale.
     #    En sync complète, tous les dossiers sont refetchés et leurs labels réécrits
@@ -455,7 +469,7 @@ def run_demarche_level_tasks(
                 client, table_ids["dossier_table_id"], demarche_number, log, log_error
             )
         except Exception as e:
-            log_error(f"Erreur rafraîchissement des labels: {e}")
+            report_error(f"Erreur rafraîchissement des labels: {e}")
     else:
         log("Sync complète — rafraîchissement des labels ignoré (déjà à jour).")
 
@@ -474,14 +488,14 @@ def run_demarche_level_tasks(
         log(f"Nombre de dossiers marqués supprimés dans Grist : {deleted_count}")
         deletions_checked = True
     except Exception as e:
-        log_error(f"Erreur vérification dossiers supprimés : {e}")
+        report_error(f"Erreur vérification dossiers supprimés : {e}")
 
     # 4. Masquage des colonnes _id (toujours en dernier)
     if schema_method_successful:
         try:
             hide_columns_with_id(client)
         except Exception as e:
-            log_error(f"Erreur lors du masquage des colonnes _id: {e}")
+            report_error(f"Erreur lors du masquage des colonnes _id: {e}")
 
     return deletions_checked
 
@@ -555,13 +569,40 @@ def process_demarche_for_grist_optimized(
     Returns:
         bool: Succès ou échec global
     """
+    # Première erreur de chaque dossier en échec, dans l'ordre des échecs, et
+    # erreurs sans lien avec un dossier : émises en fin de synchro (SYNC_ERRORS)
+    failed_dossiers: dict[str, dict[str, str]] = {}
+    general_errors: list[dict[str, str]] = []
+
+    def fail_dossier(number: Any, message: str) -> None:
+        """Marque un dossier en échec ; seule sa première erreur est retenue."""
+        failed_dossiers.setdefault(str(number), timestamped_error(message))
+
+    def fail_upsert(
+        upsert: UpsertResult, table_id: str, records: list[dict[str, Any]]
+    ) -> None:
+        """Marque en échec les dossiers refusés par une écriture par lot, avec
+        leur erreur source ; tous ceux du lot si rien n'a été écrit."""
+        if upsert.ok:
+            return
+        if upsert.failed_dossiers:
+            for number, message in upsert.failed_dossiers.items():
+                fail_dossier(number, message)
+            return
+        for number in extract_dossier_numbers(records):
+            fail_dossier(number, f"Aucun enregistrement écrit dans {table_id}")
+
+    def report_error(message: str) -> None:
+        """Logue une erreur sans lien avec un dossier et la retient."""
+        log_error(message)
+        general_errors.append(timestamped_error(message))
+
     try:
         start_time = time.time()
         sync_start_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # Initialiser des ensembles pour suivre les dossiers traités
+        # Dossiers écrits ; ceux en échec sur une table en sont retirés à la fin
         successful_dossiers = set()
-        failed_dossiers = set()
 
         # Initialiser le cache de colonnes
         column_cache = ColumnCache(client)
@@ -576,7 +617,7 @@ def process_demarche_for_grist_optimized(
             )
             log(f"Document Grist trouvé: {doc_name}")
         except Exception as e:
-            log_error(f"Erreur lors de la vérification du document Grist: {e}")
+            report_error(f"Erreur lors de la vérification du document Grist: {e}")
             return False
 
         # Méthode avancée: Récupérer le schéma complet de la démarche
@@ -636,7 +677,7 @@ def process_demarche_for_grist_optimized(
                     "Méthode basée sur le schéma non disponible, utilisation de la méthode alternative..."
                 )
         except Exception as e:
-            log_error(f"Erreur lors de la récupération du schéma: {str(e)}")
+            report_error(f"Erreur lors de la récupération du schéma: {str(e)}")
             traceback.print_exc()
             log(
                 "Utilisation de la méthode alternative avec échantillons de dossiers..."
@@ -689,7 +730,7 @@ def process_demarche_for_grist_optimized(
                     demarche_number, column_types if schema_method_successful else None
                 )
         except Exception as e:
-            log_error(f"Erreur lors de la mise à jour des tables Grist: {str(e)}")
+            report_error(f"Erreur lors de la mise à jour des tables Grist: {str(e)}")
             # Fallback sur la méthode classique si pas de column_types
             if not schema_method_successful:
                 # Récupérer les IDs des champs problématiques à filtrer : un
@@ -701,7 +742,7 @@ def process_demarche_for_grist_optimized(
                         )
                     )
                 except Exception as e:
-                    log_error(f"Descripteurs problématiques non récupérés: {e}")
+                    report_error(f"Descripteurs problématiques non récupérés: {e}")
                     problematic_descriptor_ids = set()
                 log(
                     f"Filtrage de {len(problematic_descriptor_ids)} descripteurs problématiques"
@@ -717,11 +758,13 @@ def process_demarche_for_grist_optimized(
                         sample_dossiers = page[:3]
                         break
                 except Exception as e:
-                    log_error(f"Erreur lors de la récupération des échantillons: {e}")
+                    report_error(
+                        f"Erreur lors de la récupération des échantillons: {e}"
+                    )
                     return False
 
                 if not sample_dossiers:
-                    log_error(
+                    report_error(
                         "Aucun dossier n'a pu être récupéré pour l'analyse du schéma"
                     )
                     return False
@@ -938,7 +981,7 @@ def process_demarche_for_grist_optimized(
                 }
             except Exception as e:
                 log_error(f"Erreur préparation dossier {dossier_num}: {str(e)}")
-                return None
+                return {"error": f"Préparation du dossier : {e}"}
 
         # Préchargement des caches UNE SEULE FOIS avant la boucle
         log("Préchargement des enregistrements existants (global)...")
@@ -988,7 +1031,7 @@ def process_demarche_for_grist_optimized(
             except Exception as e:
                 # La page est perdue : on arrête sans avancer le repère de reprise,
                 # sinon les dossiers qu'elle contenait ne seraient jamais réintégrés.
-                log_error(
+                report_error(
                     f"Erreur de l'API DN sur la page {page_number + 1} de la démarche "
                     f"{demarche_number}: {e}"
                 )
@@ -1055,11 +1098,11 @@ def process_demarche_for_grist_optimized(
                 ]
 
             for num, result in preparations:
-                if result is None:
+                if "error" in result:
                     # Un dossier illisible ne fait pas échouer la page entière, mais
                     # il est compté en échec pour que la synchro soit marquée partielle.
                     log_error(f"  Dossier {num} : préparation échouée, dossier ignoré")
-                    failed_dossiers.add(str(num))
+                    fail_dossier(num, result["error"])
                     continue
                 dossier_records.append(result["dossier"])
                 champ_records.append(result["champ"])
@@ -1090,34 +1133,32 @@ def process_demarche_for_grist_optimized(
             # Effectuer les opérations d'upsert par lot
             if dossier_records:
                 log(f"  Upsert par lot de {len(dossier_records)} dossiers...")
-                success = client.upsert_multiple_dossiers_in_grist(
+                fail_upsert(
+                    client.upsert_multiple_dossiers_in_grist(
+                        table_ids["dossier_table_id"],
+                        dossier_records,
+                        existing_records=cache_dossiers,
+                        column_cache=column_cache,
+                    ),
                     table_ids["dossier_table_id"],
                     dossier_records,
-                    existing_records=cache_dossiers,
-                    column_cache=column_cache,
-                ).ok
-
-                # Mettre à jour les ensembles de dossiers
-                for record in dossier_records:
-                    dossier_num = record.get("number") or record.get("dossier_number")
-                    if dossier_num:
-                        if success:
-                            successful_dossiers.add(str(dossier_num))
-                        else:
-                            failed_dossiers.add(str(dossier_num))
+                )
+                successful_dossiers.update(extract_dossier_numbers(dossier_records))
 
             if champ_records:
                 log(
                     f"  Upsert par lot de {len(champ_records)} enregistrements de champs..."
                 )
-                success = client.upsert_multiple_dossiers_in_grist(
+                fail_upsert(
+                    client.upsert_multiple_dossiers_in_grist(
+                        table_ids["champ_table_id"],
+                        champ_records,
+                        existing_records=cache_champs,
+                        column_cache=column_cache,
+                    ),
                     table_ids["champ_table_id"],
                     champ_records,
-                    existing_records=cache_champs,
-                    column_cache=column_cache,
-                ).ok
-                if not success:
-                    failed_dossiers.update(extract_dossier_numbers(champ_records))
+                )
 
                 log(f"[TIMING] Après upsert champs: {time.time() - page_start:.1f}s")
                 log_progress.log("Mise à jour des enregistrements de champs")
@@ -1126,14 +1167,16 @@ def process_demarche_for_grist_optimized(
                 log(
                     f"  Upsert par lot de {len(annotation_records)} enregistrements d'annotations..."
                 )
-                success = client.upsert_multiple_dossiers_in_grist(
-                    table_ids.get("annotations"),
+                fail_upsert(
+                    client.upsert_multiple_dossiers_in_grist(
+                        table_ids["annotations"],
+                        annotation_records,
+                        existing_records=cache_annotations,
+                        column_cache=column_cache,
+                    ),
+                    table_ids["annotations"],
                     annotation_records,
-                    existing_records=cache_annotations,
-                    column_cache=column_cache,
-                ).ok
-                if not success:
-                    failed_dossiers.update(extract_dossier_numbers(annotation_records))
+                )
 
                 log(
                     f"[TIMING] Après upsert annotations: {time.time() - page_start:.1f}s"
@@ -1162,23 +1205,23 @@ def process_demarche_for_grist_optimized(
                         log_error(
                             f"  Erreur extraction demandeur dossier {dossier_num}: {str(e)}"
                         )
-                        failed_dossiers.add(str(dossier_num))
+                        fail_dossier(dossier_num, f"Extraction du demandeur : {e}")
 
                 if demandeur_records:
                     log(f"  Upsert par lot de {len(demandeur_records)} demandeurs...")
-                    success = client.upsert_multiple_dossiers_in_grist(
+                    upsert = client.upsert_multiple_dossiers_in_grist(
                         table_ids["demandeurs"],
                         demandeur_records,
                         existing_records=cache_demandeurs,
                         column_cache=column_cache,
-                    ).ok
-                    if success:
+                    )
+                    if upsert.ok:
                         log(
                             f"   {len(demandeur_records)} demandeurs traités avec succès"
                         )
                     else:
                         log_error("   Erreur lors du traitement des demandeurs")
-                        failed_dossiers.update(extract_dossier_numbers(demandeur_records))
+                        fail_upsert(upsert, table_ids["demandeurs"], demandeur_records)
 
                 log(
                     f"[TIMING] Après upsert demandeurs: {time.time() - page_start:.1f}s"
@@ -1245,20 +1288,24 @@ def process_demarche_for_grist_optimized(
                                 f"{error_count} échecs"
                             )
                         if error_count:
-                            failed_dossiers.update(
-                                extract_dossier_numbers(rows)
-                                or {str(number) for number in page_dossiers}
-                            )
+                            for number in extract_dossier_numbers(rows) or set(
+                                page_dossiers
+                            ):
+                                fail_dossier(
+                                    number,
+                                    f"Bloc '{normalized_block}' : "
+                                    f"{error_count} échec(s)",
+                                )
                     except GristReadError:
                         raise
                     except Exception as e:
                         log_error(
                             f"  Erreur traitement bloc '{normalized_block}': {str(e)}"
                         )
-                        failed_dossiers.update(
-                            extract_dossier_numbers(rows)
-                            or {str(number) for number in page_dossiers}
-                        )
+                        for number in extract_dossier_numbers(rows) or set(
+                            page_dossiers
+                        ):
+                            fail_dossier(number, f"Bloc '{normalized_block}' : {e}")
 
             log(f"[TIMING] Après blocs répétables: {time.time() - page_start:.1f}s")
             log_progress.log("Traitement des champs répétables")
@@ -1312,7 +1359,7 @@ def process_demarche_for_grist_optimized(
 
         # Calculer les nombres à partir des ensembles : un dossier écrit dans la
         # table dossiers mais en échec sur une autre table est compté en échec
-        total_success = len(successful_dossiers - failed_dossiers)
+        total_success = len(successful_dossiers.difference(failed_dossiers))
         total_errors = len(failed_dossiers)
 
         log("\nTraitement terminé!")
@@ -1351,7 +1398,7 @@ def process_demarche_for_grist_optimized(
             # l'avancer perdrait les dossiers en échec non modifiés depuis.
             log_error(
                 f"{len(failed_dossiers)} dossier(s) en échec "
-                f"({format_numbers(failed_dossiers)}) : le repère de reprise est "
+                f"({format_numbers(set(failed_dossiers))}) : le repère de reprise est "
                 "conservé, ils seront repris au prochain run"
             )
 
@@ -1365,6 +1412,7 @@ def process_demarche_for_grist_optimized(
             force_full_sync=force_full_sync,
             deleted_since_cursor=deleted_since_cursor,
             schema_method_successful=schema_method_successful,
+            report_error=report_error,
         )
         if not deletions_checked:
             log_error(
@@ -1402,18 +1450,22 @@ def process_demarche_for_grist_optimized(
         except GristReadError:
             raise
         except Exception as e:
-            log_error(f"Erreur sauvegarde Sync_metadata: {e}")
+            report_error(f"Erreur sauvegarde Sync_metadata: {e}")
 
         return total_success > 0 or schema_method_successful or selected_count == 0
 
-    except GristReadError:
+    except GristReadError as e:
         # Remontée telle quelle à main() : code de sortie dédié, sans trace
         # d'appels (elle finirait dans le message affiché à l'utilisateur).
+        # main() la logue : elle n'est ici que retenue.
+        general_errors.append(timestamped_error(str(e)))
         raise
     except Exception as e:
-        log_error(f"Erreur lors du traitement de la démarche pour Grist: {e}")
+        report_error(f"Erreur lors du traitement de la démarche pour Grist: {e}")
         traceback.print_exc()
         return False
+    finally:
+        emit_sync_errors(failed_dossiers, general_errors)
 
 
 def main():
@@ -1465,6 +1517,14 @@ def main():
                 status = "✓" if r["success"] else "✗"
                 log_error(f"  {r['type']}: {status} {r['message']}")
 
+            emit_sync_errors(
+                {},
+                [
+                    timestamped_error(f"{r['type']} : {r['message']}")
+                    for r in results
+                    if not r["success"]
+                ],
+            )
             return EXIT_CODE_EXTERNAL_API_ERROR
         else:
             log("✓ Connexions aux APIs vérifiées avec succès")

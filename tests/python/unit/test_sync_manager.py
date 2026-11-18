@@ -1927,3 +1927,27 @@ class TestSyncErrors:
         errors = self._sync_log().errors
         assert len(errors) == MAX_SYNC_ERRORS
         assert errors[0]["message"] == "erreur 0"
+
+    def test_ligne_sync_errors_ni_affichee_ni_capturee(self, capsys):
+        """La ligne technique SYNC_ERRORS n'est ni envoyée au client ni prise
+        pour une erreur, même si un message qu'elle porte contient « Erreur: »"""
+        stdout = "\n".join(
+            [
+                'SYNC_ERRORS: {"dossiers": [], "dossiers_total": 0, '
+                '"general": [{"timestamp": "t", "message": "Erreur: labels"}]}',
+                "Dossiers en échec: 1",
+            ]
+        )
+        client_lines = []
+
+        with patch(
+            "subprocess.Popen", return_value=create_mock_process(stdout)
+        ):
+            self.manager.run_synchronization_task(
+                self.CONFIG,
+                progress_callback=_ignore_progress,
+                log_callback=client_lines.append,
+            )
+
+        assert not any("SYNC_ERRORS" in line for line in client_lines)
+        assert self._sync_log().errors == []
