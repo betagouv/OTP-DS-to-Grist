@@ -19,7 +19,7 @@ from database.models import SyncLog
 from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
 from security.widget_auth import grist_doc_access_level, is_key_write_allowed
-from utils.log import log_sync_errors
+from utils.log import MAX_SYNC_ERRORS, log_sync_errors
 
 load_dotenv()
 
@@ -332,7 +332,8 @@ class SyncManager:
 
             return result
         finally:
-            if not result.get("success"):
+            failed = not result.get("success")
+            if failed:
                 mode = "auto" if auto else "manuelle"
                 log_sync_errors(
                     f"Synchro {mode} en échec pour config "
@@ -347,7 +348,7 @@ class SyncManager:
                 grist_doc_id=config.get("grist_doc_id"),
                 otp_config_id=config.get("otp_config_id"),
                 demarche_number=config.get("demarche_number"),
-                status="success" if result.get("success") else "error",
+                status="error" if failed else "success",
                 message=result.get("message"),
                 auto=auto,
                 success_count=result.get("success_count", 0),
@@ -355,6 +356,7 @@ class SyncManager:
                 duration_seconds=result.get("duration_seconds"),
                 force_full_sync=result.get("force_full_sync"),
                 filters_hash=result.get("filters_hash"),
+                errors=errors[:MAX_SYNC_ERRORS] if failed else None,
             )
             db_session = SessionLocal()
             try:

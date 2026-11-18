@@ -1095,7 +1095,7 @@ def process_demarche_for_grist_optimized(
                     dossier_records,
                     existing_records=cache_dossiers,
                     column_cache=column_cache,
-                )
+                ).ok
 
                 # Mettre à jour les ensembles de dossiers
                 for record in dossier_records:
@@ -1115,7 +1115,7 @@ def process_demarche_for_grist_optimized(
                     champ_records,
                     existing_records=cache_champs,
                     column_cache=column_cache,
-                )
+                ).ok
                 if not success:
                     failed_dossiers.update(extract_dossier_numbers(champ_records))
 
@@ -1131,7 +1131,7 @@ def process_demarche_for_grist_optimized(
                     annotation_records,
                     existing_records=cache_annotations,
                     column_cache=column_cache,
-                )
+                ).ok
                 if not success:
                     failed_dossiers.update(extract_dossier_numbers(annotation_records))
 
@@ -1171,7 +1171,7 @@ def process_demarche_for_grist_optimized(
                         demandeur_records,
                         existing_records=cache_demandeurs,
                         column_cache=column_cache,
-                    )
+                    ).ok
                     if success:
                         log(
                             f"   {len(demandeur_records)} demandeurs traités avec succès"

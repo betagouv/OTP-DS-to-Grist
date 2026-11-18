@@ -45,3 +45,18 @@ class TestModelsPersistence:
 
         assert sync_log.otp_config_id is None
 
+    def test_sync_log_round_trip_errors(self, db_session):
+        """Les erreurs d'une synchro sont relues telles qu'enregistrées, dans l'ordre"""
+        errors = [
+            {"timestamp": "2026-11-16T23:05:27.412Z", "message": "Erreur 400 : « é »"},
+            {"timestamp": "2026-11-16T23:05:27.630Z", "message": "11 dossiers"},
+        ]
+        db_session.add(SyncLog(status="error", errors=errors))
+        db_session.add(SyncLog(status="success"))
+        db_session.commit()
+        db_session.expunge_all()
+
+        failed, succeeded = db_session.query(SyncLog).order_by(SyncLog.id).all()
+
+        assert failed.errors == errors
+        assert succeeded.errors is None

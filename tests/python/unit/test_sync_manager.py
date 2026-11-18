@@ -19,6 +19,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import sync.sync_manager as sync_manager_module
+from utils.log import MAX_SYNC_ERRORS
 from sync.sync_manager import (
     SyncManager,
     SyncSeriesAlreadyRunningError,
@@ -1745,8 +1746,9 @@ class TestMissingSyncFields:
         assert missing_sync_fields(config) == ["ds_api_token", "grist_user_id"]
 
 
-class TestSyncErrorLogging:
-    """Erreurs d'une synchro en échec recopiées dans les logs serveur"""
+class TestSyncErrors:
+    """Erreurs d'une synchro en échec : recopiées dans les logs serveur et
+    enregistrées dans sync_logs"""
 
     CONFIG = {
         "otp_config_id": 324,
@@ -1769,8 +1771,8 @@ class TestSyncErrorLogging:
             patch("sync.sync_manager.ConfigManager"),
         ]
         self.grist_access_mock = self._patchers[0].start()
-        for patcher in self._patchers[1:]:
-            patcher.start()
+        self.session_local_mock = self._patchers[1].start()
+        self._patchers[2].start()
 
     def teardown_method(self):
         for patcher in self._patchers:
@@ -1879,3 +1881,49 @@ class TestSyncErrorLogging:
 
         assert messages[1].endswith("…")
         assert "x" * sync_manager_module.MAX_ERROR_MESSAGE_LENGTH not in messages[1]
+
+    def _sync_log(self):
+        """Ligne sync_logs écrite par la dernière synchro."""
+        return self.session_local_mock.return_value.add.call_args[0][0]
+
+    def test_sync_log_enregistre_les_erreurs_dans_l_ordre(self, capsys):
+        """Synchro partielle : erreurs horodatées, dans l'ordre, dans sync_logs"""
+        stdout = "\n".join(
+            [
+                "ERREUR: Erreur lors de la création par lot de la table T_champs: 400",
+                "Dossiers en échec: 11",
+                "ERREUR: 11 dossier(s) en échec",
+            ]
+        )
+
+        self._run(capsys, stdout)
+
+        errors = self._sync_log().errors
+        assert [error["message"] for error in errors] == [
+            "Erreur lors de la création par lot de la table T_champs: 400",
+            "11 dossier(s) en échec",
+        ]
+        assert all(re.fullmatch(self.TIMESTAMP, error["timestamp"]) for error in errors)
+
+    def test_sync_log_sans_erreurs_si_synchro_reussie(self, capsys):
+        """Synchro réussie : colonne errors à NULL, même avec une ligne ERREUR:"""
+        self._run(
+            capsys,
+            "ERREUR: Erreur rafraîchissement des labels\n"
+            "Dossiers traités avec succès: 5",
+        )
+
+        assert self._sync_log().errors is None
+
+    def test_sync_log_erreurs_bornees(self, capsys):
+        """Au-delà de MAX_SYNC_ERRORS, seules les premières erreurs sont enregistrées"""
+        stdout = "\n".join(
+            [f"ERREUR: erreur {number}" for number in range(MAX_SYNC_ERRORS + 5)]
+            + ["Dossiers en échec: 1"]
+        )
+
+        self._run(capsys, stdout)
+
+        errors = self._sync_log().errors
+        assert len(errors) == MAX_SYNC_ERRORS
+        assert errors[0]["message"] == "erreur 0"

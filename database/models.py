@@ -11,6 +11,7 @@ from sqlalchemy import (
     text,
     true,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 from datetime import datetime, timezone
 
@@ -81,6 +82,9 @@ class SyncLog(Base):
     duration_seconds: Mapped[float | None] = mapped_column(Float)
     force_full_sync: Mapped[bool | None] = mapped_column(Boolean)
     filters_hash: Mapped[str | None] = mapped_column(Text)
+    # Erreurs d'une synchro en échec, dans l'ordre : [{"timestamp", "message"}],
+    # bornées à utils.log.MAX_SYNC_ERRORS ; NULL si la synchro a réussi
+    errors: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB)
 
 
 class IpBlocklist(Base):

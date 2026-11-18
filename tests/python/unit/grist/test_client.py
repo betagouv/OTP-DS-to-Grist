@@ -1298,7 +1298,7 @@ class TestUpsertMultipleDossiersInGrist:
         session.patch.return_value = update_response
         session.post.return_value = create_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [
                     {"dossier_number": "1001", "name": "update-me"},
@@ -1306,7 +1306,7 @@ class TestUpsertMultipleDossiersInGrist:
                 ],
                 existing_records={"1001": 5},
             )
-        assert ok is True
+        assert result.ok is True
         session.get.assert_called_once()
         session.patch.assert_called_once()
         session.post.assert_called_once()
@@ -1328,12 +1328,85 @@ class TestUpsertMultipleDossiersInGrist:
         session.get.return_value = columns_response
         session.patch.side_effect = [update_response, individual_response]
         with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x"}],
                 existing_records={"1001": 5},
             )
-        assert ok is False
+        assert result.ok is False
+
+    def test_failed_dossiers_vide_en_cas_de_succes(self):
+        """Écriture réussie : aucun dossier en échec"""
+        update_response = MagicMock(status_code=200)
+        session = MagicMock()
+        session.patch.return_value = update_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": "1001", "name": "x"}],
+                existing_records={"1001": 5},
+                column_cache=MagicMock(get_columns=MagicMock(return_value=set())),
+            )
+        assert result.failed_dossiers == {}
+
+    def test_failed_dossiers_mise_a_jour_individuelle(self):
+        """Repli ligne par ligne : seul le dossier refusé, avec sa propre réponse"""
+        batch_response = MagicMock(status_code=400, text="lot refusé")
+        accepted_response = MagicMock(status_code=200)
+        refused_response = MagicMock(status_code=400, text="Invalid value for date")
+        session = MagicMock()
+        session.patch.side_effect = [
+            batch_response,
+            accepted_response,
+            refused_response,
+        ]
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.upsert_multiple_dossiers_in_grist(
+                "Demarche_1_champs",
+                [
+                    {"dossier_number": "1001", "name": "ok"},
+                    {"dossier_number": "1002", "name": "ko"},
+                ],
+                existing_records={"1001": 5, "1002": 6},
+                column_cache=MagicMock(get_columns=MagicMock(return_value=set())),
+            )
+        assert result.ok is False
+        assert result.failed_dossiers == {
+            "1002": "Mise à jour dans Demarche_1_champs : 400 - Invalid value for date"
+        }
+
+    def test_failed_dossiers_creation_par_lot(self):
+        """Création par lot refusée : chaque dossier du lot, avec la réponse du lot"""
+        create_response = MagicMock(status_code=400, text="Invalid column date_x")
+        session = MagicMock()
+        session.post.return_value = create_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.upsert_multiple_dossiers_in_grist(
+                "Demarche_1_champs",
+                [{"dossier_number": "2001"}, {"dossier_number": 2002}],
+                existing_records={},
+                column_cache=MagicMock(get_columns=MagicMock(return_value=set())),
+            )
+        assert result.ok is False
+        assert result.failed_dossiers == {
+            "2001": "Création dans Demarche_1_champs : 400 - Invalid column date_x",
+            "2002": "Création dans Demarche_1_champs : 400 - Invalid column date_x",
+        }
+
+    def test_dossier_trop_volumineux_pas_en_echec(self):
+        """Dossier rejeté car trop volumineux : rejet définitif, pas un échec"""
+        session = MagicMock()
+        with patch.object(GristClient, "_get_session", return_value=session), patch(
+            "grist.client.GRIST_MAX_BODY_BYTES", 10
+        ):
+            result = self.client.upsert_multiple_dossiers_in_grist(
+                "dossiers",
+                [{"dossier_number": "1001", "name": "trop long"}],
+                existing_records={},
+                column_cache=MagicMock(get_columns=MagicMock(return_value=set())),
+            )
+        assert result.ok is True
+        assert result.failed_dossiers == {}
 
     def test_filters_unknown_fields_without_cache(self):
         """sans cache -> les colonnes de l'API filtrent les champs inconnus"""
@@ -1348,12 +1421,12 @@ class TestUpsertMultipleDossiersInGrist:
         session.get.return_value = columns_response
         session.patch.return_value = update_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
                 existing_records={"1001": 5},
             )
-        assert ok is True
+        assert result.ok is True
         fields = session.patch.call_args.kwargs["json"]["records"][0]["fields"]
         assert set(fields.keys()) == {"name", "dossier_number"}
 
@@ -1368,12 +1441,12 @@ class TestUpsertMultipleDossiersInGrist:
         session.get.return_value = columns_response
         session.patch.return_value = update_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
                 existing_records={"1001": 5},
             )
-        assert ok is True
+        assert result.ok is True
         fields = session.patch.call_args.kwargs["json"]["records"][0]["fields"]
         assert set(fields.keys()) == {"name", "dossier_number", "unknown_field"}
 
@@ -1386,13 +1459,13 @@ class TestUpsertMultipleDossiersInGrist:
         session = MagicMock()
         session.patch.return_value = update_response
         with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x", "unknown_field": "y"}],
                 existing_records={"1001": 5},
                 column_cache=column_cache,
             )
-        assert ok is True
+        assert result.ok is True
         session.get.assert_not_called()
         column_cache.get_columns.assert_called_once_with("dossiers")
         session.patch.assert_called_once()
@@ -1490,11 +1563,11 @@ class TestUpsertMultipleDossiersCache:
         session.post.side_effect = _post_creates_ids
         cache = {}
 
-        ok = self._upsert(
+        result = self._upsert(
             session, [{"dossier_number": 1}, {"dossier_number": 2}], cache
         )
 
-        assert ok is True
+        assert result.ok is True
         session.get.assert_not_called()
         assert cache == {"1": 1, "2": 2}
 
@@ -1521,9 +1594,9 @@ class TestUpsertMultipleDossiersCache:
         )
         session.patch.side_effect = _patch_returns_ids
 
-        ok = self._upsert(session, [{"dossier_number": 1}], None)
+        result = self._upsert(session, [{"dossier_number": 1}], None)
 
-        assert ok is True
+        assert result.ok is True
         session.get.assert_called_once()
         session.post.assert_not_called()
 
@@ -1568,7 +1641,7 @@ class TestUpsertMultipleDossiersCache:
         cache = {}
 
         with patch("grist.client.log_error") as mock_log_error:
-            ok = self._upsert(
+            result = self._upsert(
                 session,
                 [
                     {"dossier_number": 1, "name": "ok"},
@@ -1577,7 +1650,7 @@ class TestUpsertMultipleDossiersCache:
                 cache,
             )
 
-        assert ok is True
+        assert result.ok is True
         sent = session.post.call_args.kwargs["json"]["records"]
         assert [r["fields"]["dossier_number"] for r in sent] == [1]
         assert cache == {"1": 1}
@@ -1612,12 +1685,12 @@ class TestUpsertMultipleDossiersCache:
             patch.object(GristClient, "_get_session", return_value=session),
             patch("grist.client.log_error") as mock_log_error,
         ):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": "1001", "name": "x"}],
                 existing_records={"1001": 5},
             )
-        assert ok is False
+        assert result.ok is False
         logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
         assert "mise à jour par lot de la table dossiers" in logs
         assert "Échec individuel pour le dossier 1001 (ligne Grist 5)" in logs
@@ -1636,7 +1709,7 @@ class TestUpsertMultipleDossiersCache:
             patch.object(GristClient, "_get_session", return_value=session),
             patch("grist.client.log_error") as mock_log_error,
         ):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "champs",
                 [
                     {"dossier_number": 1, "name": "x"},
@@ -1644,7 +1717,7 @@ class TestUpsertMultipleDossiersCache:
                 ],
                 existing_records={},
             )
-        assert ok is False
+        assert result.ok is False
         logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
         assert "création par lot de la table champs (2 dossiers)" in logs
 
@@ -1659,10 +1732,10 @@ class TestUpsertMultipleDossiersCache:
             patch.object(GristClient, "_get_session", return_value=session),
             patch("grist.client.log_error") as mock_log_error,
         ):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "champs", [{"name": "orphelin"}], existing_records={}
             )
-        assert ok is False
+        assert result.ok is False
         session.patch.assert_not_called()
         session.post.assert_not_called()
         logs = " ".join(str(call.args[0]) for call in mock_log_error.call_args_list)
@@ -1674,12 +1747,12 @@ class TestUpsertMultipleDossiersCache:
         """cache vide (table vide) -> pas de relecture des enregistrements"""
         session = self._session_with_columns()
         with patch.object(GristClient, "_get_session", return_value=session):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers",
                 [{"dossier_number": 1001, "name": "x"}],
                 existing_records={},
             )
-        assert ok is True
+        assert result.ok is True
         urls = [call.args[0] for call in session.get.call_args_list]
         assert not any(url.endswith("/records") for url in urls)
 
@@ -1713,10 +1786,10 @@ class TestUpsertMultipleDossiersCache:
                 GristClient, "get_existing_dossier_numbers", return_value={"1001": 5}
             ) as mock_existing,
         ):
-            ok = self.client.upsert_multiple_dossiers_in_grist(
+            result = self.client.upsert_multiple_dossiers_in_grist(
                 "dossiers", [{"dossier_number": 1001, "name": "x"}]
             )
-        assert ok is True
+        assert result.ok is True
         mock_existing.assert_called_once_with("dossiers")
         assert session.patch.call_args.kwargs["json"]["records"][0]["id"] == 5
         session.post.assert_not_called()
