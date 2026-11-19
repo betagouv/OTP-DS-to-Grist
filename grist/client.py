@@ -2,6 +2,7 @@ import json
 import os
 import traceback
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 import requests
@@ -46,6 +47,21 @@ class GristReadError(Exception):
             f"Grist n'a pas pu lire la table {table_id} "
             f"({response.status_code} : {_error_detail(response)})"
         )
+
+
+@dataclass
+class UpsertResult:
+    """
+    Issue d'une écriture par lot dans une table Grist.
+
+    `ok` garde le sens historique : aucun dossier en échec, et au moins un
+    enregistrement écrit ou rejeté car trop volumineux. `failed_dossiers` donne,
+    pour chaque dossier refusé par Grist, son erreur source (opération, table,
+    code HTTP et réponse).
+    """
+
+    ok: bool
+    failed_dossiers: dict[str, str] = field(default_factory=dict)
 
 
 class GristClient:
@@ -568,7 +584,7 @@ class GristClient:
         dossiers_list: list[dict[str, Any]],
         existing_records: dict[str, int] | None = None,
         column_cache=None,
-    ) -> bool:
+    ) -> UpsertResult:
         """
         Insère ou met à jour plusieurs dossiers en une seule requête.
         Version corrigée avec gestion appropriée des succès/échecs et cache optionnel.
@@ -658,9 +674,9 @@ class GristClient:
 
         self._report_ignored_columns(table_id, ignored_columns)
 
-        # Variables pour suivre les succès
+        # Variables pour suivre les succès et les dossiers refusés par Grist
         total_success = 0
-        total_errors = 0
+        failed_dossiers: dict[str, str] = {}
 
         # Traitement des mises à jour
         if to_update:
@@ -704,8 +720,10 @@ class GristClient:
                     if individual_response.status_code in [200, 201]:
                         update_success += 1
                     else:
-                        total_errors += 1
                         dossier_number = _dossier_number(individual_record["fields"])
+                        failed_dossiers[str(dossier_number)] = _write_error(
+                            "Mise à jour", table_id, individual_response
+                        )
                         log_error(
                             f"Échec individuel pour le dossier {dossier_number} "
                             f"(ligne Grist {individual_record['id']})"
@@ -747,19 +765,26 @@ class GristClient:
                     f"({len(normalized_creations)} dossiers): "
                     f"{create_response.status_code} - {create_response.text}"
                 )
-                total_errors += len(normalized_creations)
+                error = _write_error("Création", table_id, create_response)
+                failed_dossiers.update(
+                    (number, error)
+                    for number in extract_dossier_numbers(
+                        [record["fields"] for record in normalized_creations]
+                    )
+                )
 
         # Retourner le succès global : un dossier rejeté car trop volumineux
         # n'est pas un échec (le réessayer ne changerait rien)
-        success = total_errors == 0 and (total_success > 0 or total_rejected > 0)
+        success = not failed_dossiers and (total_success > 0 or total_rejected > 0)
 
         # Log du résumé
-        if total_success > 0 or total_errors > 0:
+        if total_success > 0 or failed_dossiers:
             log(
-                f"Résumé upsert table {table_id}: {total_success} succès, {total_errors} échecs"
+                f"Résumé upsert table {table_id}: {total_success} succès, "
+                f"{len(failed_dossiers)} échecs"
             )
 
-        return success
+        return UpsertResult(ok=success, failed_dossiers=failed_dossiers)
 
     # --- Helpers privés ---
 
@@ -962,6 +987,13 @@ def _split_records_by_size(
         packets.append(packet)
 
     return packets
+
+
+def _write_error(operation: str, table_id: str, response: requests.Response) -> str:
+    """Erreur source d'un dossier refusé par Grist : opération, table, code HTTP
+    et réponse."""
+    detail = _error_detail(response)
+    return f"{operation} dans {table_id} : {response.status_code} - {detail}"
 
 
 def _error_detail(response: requests.Response) -> str:

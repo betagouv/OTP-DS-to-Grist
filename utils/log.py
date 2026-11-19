@@ -2,6 +2,9 @@ import os
 
 PROGRESS_START = 2
 
+# Nombre maximal d'erreurs d'une synchro reproduites (logs serveur, sync_logs)
+MAX_SYNC_ERRORS = 20
+
 # Configuration du niveau de log
 LOG_LEVEL = int(os.getenv("LOG_LEVEL", "1"))
 
@@ -56,6 +59,17 @@ def format_numbers(numbers: set[str], limit: int = 20) -> str:
     if len(ordered) > limit:
         shown += f", … (+{len(ordered) - limit})"
     return shown
+
+
+def log_sync_errors(
+    header: str, errors: list[dict[str, str]], limit: int = MAX_SYNC_ERRORS
+) -> None:
+    """En-tête puis erreurs horodatées d'une synchro, tronquées au-delà de `limit`."""
+    log_error(header)
+    for error in errors[:limit]:
+        log_error(f"  {error['timestamp']} {error['message']}")
+    if len(errors) > limit:
+        log_error(f"  … (+{len(errors) - limit})")
 
 
 log_progress = LogProgress(ceiling=98)

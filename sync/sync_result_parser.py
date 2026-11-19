@@ -1,9 +1,10 @@
 import json
 from datetime import datetime, timezone
 
-from utils.log import log
+from utils.log import MAX_SYNC_ERRORS, log
 
 SYNC_METADATA_PREFIX = "SYNC_METADATA: "
+SYNC_ERRORS_PREFIX = "SYNC_ERRORS: "
 
 
 def emit_sync_metadata(
@@ -26,6 +27,64 @@ def emit_sync_metadata(
         ),
         0,
     )
+
+
+def timestamped_error(message: str) -> dict[str, str]:
+    """Erreur horodatée à l'instant présent (UTC, à la milliseconde)."""
+    now = datetime.now(timezone.utc)
+    timestamp = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return {"timestamp": timestamp, "message": message}
+
+
+def emit_sync_errors(
+    dossier_errors: dict[str, dict[str, str]], general_errors: list[dict[str, str]]
+) -> None:
+    """Émet les erreurs de fin de sync, s'il y en a : première erreur de chaque
+    dossier en échec (au plus MAX_SYNC_ERRORS, dans l'ordre des échecs, avec
+    leur nombre total) et erreurs générales, sans lien avec un dossier.
+
+    Ligne technique, non destinée à l'utilisateur.
+    """
+    if not dossier_errors and not general_errors:
+        return
+
+    first_dossier_errors = list(dossier_errors.items())[:MAX_SYNC_ERRORS]
+    log(
+        SYNC_ERRORS_PREFIX
+        + json.dumps(
+            {
+                "dossiers": [
+                    {"dossier": number, **error}
+                    for number, error in first_dossier_errors
+                ],
+                "dossiers_total": len(dossier_errors),
+                "general": general_errors,
+            },
+            ensure_ascii=False,
+        ),
+        0,
+    )
+
+
+def read_sync_errors(output_lines: list[str]) -> dict:
+    """Erreurs émises par le sous-processus (ligne SYNC_ERRORS) : aucune si la
+    ligne est absente ; si elle est illisible, une erreur générale le signale."""
+    errors = {"dossiers": [], "dossiers_total": 0, "general": []}
+    for line in output_lines:
+        if not line.startswith(SYNC_ERRORS_PREFIX):
+            continue
+        payload = line[len(SYNC_ERRORS_PREFIX) :]
+        try:
+            emitted = json.loads(payload)
+        except ValueError:
+            emitted = None
+        if not isinstance(emitted, dict):
+            errors["general"].append(
+                timestamped_error(f"Ligne SYNC_ERRORS illisible : {payload}")
+            )
+            continue
+        errors.update(emitted)
+    return errors
 
 
 def _parse_success_count(line: str) -> tuple[int | None, int | None]:
@@ -109,6 +168,11 @@ def parse_output(output_lines: list[str]) -> dict:
     force_full_sync = None
     filters_hash = None
     sync_metadata_error = False
+    # La ligne SYNC_ERRORS porte des messages libres : une phrase de bilan
+    # qu'ils contiendraient ne doit pas fausser les statistiques
+    output_lines = [
+        line for line in output_lines if not line.startswith(SYNC_ERRORS_PREFIX)
+    ]
     # Parser la sortie pour extraire les statistiques
     for line in output_lines:
         # Essayer de parser succès

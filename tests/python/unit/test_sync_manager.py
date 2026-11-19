@@ -9,7 +9,9 @@ Ces tests couvrent l'ensemble des fonctionnalités de la classe :
 - Gestion des erreurs
 """
 
+import json
 import os
+import re
 import threading
 import time
 from io import StringIO
@@ -18,6 +20,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import sync.sync_manager as sync_manager_module
+from sync.sync_result_parser import SYNC_ERRORS_PREFIX
 from sync.sync_manager import (
     SyncManager,
     SyncSeriesAlreadyRunningError,
@@ -1742,3 +1745,263 @@ class TestMissingSyncFields:
         del config["grist_user_id"]
 
         assert missing_sync_fields(config) == ["ds_api_token", "grist_user_id"]
+
+
+class TestSyncErrors:
+    """Erreurs d'une synchro en échec : recopiées dans les logs serveur et
+    enregistrées dans sync_logs"""
+
+    CONFIG = {
+        "otp_config_id": 324,
+        "ds_api_token": "token",
+        "demarche_number": "149188",
+        "grist_base_url": "https://grist.example",
+        "grist_api_key": "key",
+        "grist_doc_id": "docA",
+        "grist_user_id": "userA",
+    }
+
+    # Contenu d'une ligne SYNC_ERRORS émise par le script
+    SYNC_ERRORS = {
+        "dossiers": [
+            {
+                "dossier": "7",
+                "timestamp": "2026-11-16T23:05:27.100Z",
+                "message": "Création dans T_champs : 400 - Valeur refusée",
+            }
+        ],
+        "dossiers_total": 11,
+        "general": [
+            {
+                "timestamp": "2026-11-16T23:05:28.000Z",
+                "message": "Grist : 404 - document introuvable",
+            }
+        ],
+    }
+
+    # Horodatage UTC au format ISO 8601, à la milliseconde
+    TIMESTAMP = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"
+
+    def setup_method(self):
+        self.manager = SyncManager()
+        self._patchers = [
+            patch("sync.sync_manager.grist_doc_access_level", return_value="owners"),
+            patch("sync.sync_manager.SessionLocal"),
+            patch("sync.sync_manager.ConfigManager"),
+        ]
+        self.grist_access_mock = self._patchers[0].start()
+        self.session_local_mock = self._patchers[1].start()
+        self._patchers[2].start()
+
+    def teardown_method(self):
+        for patcher in self._patchers:
+            patcher.stop()
+
+    def _run(self, capsys, stdout, stderr="", returncode=0, auto=True):
+        """Lance une synchro sur un sous-processus simulé ; renvoie les messages
+        d'erreur écrits dans les logs serveur (utils.log.log_sync_errors)."""
+        with patch(
+            "subprocess.Popen",
+            return_value=create_mock_process(stdout, stderr, returncode=returncode),
+        ):
+            result = self.manager.run_synchronization_task(
+                self.CONFIG, progress_callback=_ignore_progress, auto=auto
+            )
+        messages = [
+            line.removeprefix("ERREUR: ")
+            for line in capsys.readouterr().out.splitlines()
+            if line.startswith("ERREUR: ")
+        ]
+        return result, messages
+
+    def test_synchro_partielle_logue_ses_erreurs_dans_l_ordre(self, capsys):
+        """Code retour 0 mais dossiers en échec : en-tête puis chaque erreur, dans l'ordre"""
+        stdout = "\n".join(
+            [
+                "Traitement de la page 1 (11/11 dossiers)...",
+                "ERREUR: Erreur lors de la création par lot de la table T_champs: 400",
+                "Dossiers traités avec succès: 0",
+                "Dossiers en échec: 11",
+                "ERREUR: 11 dossier(s) en échec : le repère de reprise est conservé",
+            ]
+        )
+
+        result, messages = self._run(capsys, stdout)
+
+        assert result["success"] is False
+        assert len(messages) == 3
+        assert "config 324" in messages[0]
+        assert "démarche 149188" in messages[0]
+        assert "auto" in messages[0]
+        assert result["message"] in messages[0]
+        assert re.search(
+            self.TIMESTAMP
+            + r" Erreur lors de la création par lot de la table T_champs: 400$",
+            messages[1],
+        )
+        assert re.search(
+            self.TIMESTAMP + r" 11 dossier\(s\) en échec", messages[2]
+        )
+
+    def test_synchro_plantee_logue_stdout_puis_stderr(self, capsys):
+        """Script planté : erreurs de stdout, puis message final du stderr sans traceback"""
+        stderr = (
+            "Traceback (most recent call last):\n"
+            '  File "/app/grist_processor_working_all.py", line 42, in run\n'
+            "GristReadError: Grist a refusé la lecture (500)\n"
+        )
+
+        result, messages = self._run(
+            capsys, "ERREUR: Lecture de la table T_dossiers impossible", stderr, 3
+        )
+
+        assert result["success"] is False
+        assert "manuelle" not in messages[0]
+        assert messages[1].endswith("Lecture de la table T_dossiers impossible")
+        assert messages[2].endswith("GristReadError: Grist a refusé la lecture (500)")
+        assert not any("Traceback" in message for message in messages)
+        assert len(messages) == 3
+
+    def test_synchro_manuelle_indiquee_dans_l_en_tete(self, capsys):
+        """L'en-tête distingue une synchro manuelle d'une synchro auto"""
+        _, messages = self._run(
+            capsys, "ERREUR: boom\nDossiers en échec: 1", auto=False
+        )
+
+        assert "manuelle" in messages[0]
+
+    def test_synchro_reussie_ne_logue_aucune_erreur(self, capsys):
+        """Synchro réussie : rien dans les logs d'erreur, même avec une ligne ERREUR:"""
+        stdout = "\n".join(
+            [
+                "ERREUR: Erreur rafraîchissement des labels: timeout",
+                "Dossiers traités avec succès: 5",
+            ]
+        )
+
+        result, messages = self._run(capsys, stdout)
+
+        assert result["success"] is True
+        assert messages == []
+
+    def test_cle_refusee_logue_le_refus(self, capsys):
+        """Clé Grist sans droits propriétaire : le refus est logué comme erreur"""
+        self.grist_access_mock.return_value = "viewers"
+
+        result, messages = self._run(capsys, "")
+
+        assert result["success"] is False
+        assert len(messages) == 2
+        assert messages[1].endswith(result["message"])
+
+    def test_longueur_des_erreurs_bornee(self, capsys):
+        """Un message d'erreur trop long est tronqué"""
+        _, messages = self._run(capsys, "ERREUR: " + "x" * 2000 + "\nDossiers en échec: 1")
+
+        assert messages[1].endswith("…")
+        assert "x" * sync_manager_module.MAX_ERROR_MESSAGE_LENGTH not in messages[1]
+
+    def _sync_log(self):
+        """Ligne sync_logs écrite par la dernière synchro."""
+        return self.session_local_mock.return_value.add.call_args[0][0]
+
+    def test_sync_log_enregistre_les_erreurs_emises_par_le_script(self, capsys):
+        """Synchro partielle : sync_logs reçoit la ligne SYNC_ERRORS, pas les
+        lignes ERREUR: déjà résumées par celle-ci"""
+        stdout = "\n".join(
+            [
+                "ERREUR: Erreur lors de la création par lot de la table T_champs: 400",
+                "Dossiers en échec: 11",
+                SYNC_ERRORS_PREFIX + json.dumps(self.SYNC_ERRORS),
+            ]
+        )
+
+        self._run(capsys, stdout)
+
+        assert self._sync_log().errors == self.SYNC_ERRORS
+
+    def test_sync_log_erreurs_du_script_en_echec(self, capsys):
+        """Script sorti en erreur (connexion refusée) : la ligne SYNC_ERRORS est
+        lue quand même, suivie dans general des erreurs de stderr"""
+        stdout = SYNC_ERRORS_PREFIX + json.dumps(self.SYNC_ERRORS)
+        stderr = "Traceback (most recent call last):\nRuntimeError: boom\n"
+
+        self._run(capsys, stdout, stderr, returncode=2)
+
+        errors = self._sync_log().errors
+        assert errors["dossiers"] == self.SYNC_ERRORS["dossiers"]
+        assert [error["message"] for error in errors["general"]] == [
+            "Grist : 404 - document introuvable",
+            "RuntimeError: boom",
+        ]
+        assert re.fullmatch(self.TIMESTAMP, errors["general"][1]["timestamp"])
+
+    def test_sync_log_cle_refusee_dans_general(self, capsys):
+        """Clé refusée, script non lancé : le refus est la seule erreur générale"""
+        self.grist_access_mock.return_value = "viewers"
+
+        result, _ = self._run(capsys, "")
+
+        errors = self._sync_log().errors
+        assert errors["dossiers"] == []
+        assert errors["dossiers_total"] == 0
+        assert [error["message"] for error in errors["general"]] == [
+            result["message"]
+        ]
+
+    def test_sync_log_sans_erreurs_si_synchro_reussie(self, capsys):
+        """Synchro réussie : colonne errors à NULL, même avec une ligne ERREUR:"""
+        self._run(
+            capsys,
+            "ERREUR: Erreur rafraîchissement des labels\n"
+            "Dossiers traités avec succès: 5",
+        )
+
+        assert self._sync_log().errors is None
+
+    def test_sync_log_longueur_des_messages_bornee(self, capsys):
+        """Messages des dossiers et des erreurs générales tronqués"""
+        long_message = "x" * 2000
+        sync_errors = {
+            "dossiers": [{"dossier": "7", "timestamp": "t", "message": long_message}],
+            "dossiers_total": 1,
+            "general": [{"timestamp": "t", "message": long_message}],
+        }
+        stdout = "\n".join(
+            ["Dossiers en échec: 1", SYNC_ERRORS_PREFIX + json.dumps(sync_errors)]
+        )
+
+        self._run(capsys, stdout)
+
+        errors = self._sync_log().errors
+        for error in (errors["dossiers"][0], errors["general"][0]):
+            assert error["message"].endswith("…")
+            assert len(error["message"]) <= sync_manager_module.MAX_ERROR_MESSAGE_LENGTH
+
+    def test_ligne_sync_errors_ni_affichee_ni_capturee(self, capsys):
+        """La ligne technique SYNC_ERRORS n'est ni envoyée au client ni prise
+        pour une erreur, même si un message qu'elle porte contient « Erreur: »"""
+        stdout = "\n".join(
+            [
+                'SYNC_ERRORS: {"dossiers": [], "dossiers_total": 0, '
+                '"general": [{"timestamp": "t", "message": "Erreur: labels"}]}',
+                "Dossiers en échec: 1",
+            ]
+        )
+        client_lines = []
+
+        with patch(
+            "subprocess.Popen", return_value=create_mock_process(stdout)
+        ):
+            self.manager.run_synchronization_task(
+                self.CONFIG,
+                progress_callback=_ignore_progress,
+                log_callback=client_lines.append,
+            )
+
+        assert not any("SYNC_ERRORS" in line for line in client_lines)
+        assert self._sync_log().errors == {
+            "dossiers": [],
+            "dossiers_total": 0,
+            "general": [{"timestamp": "t", "message": "Erreur: labels"}],
+        }
