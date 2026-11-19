@@ -4,7 +4,8 @@ from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from datetime import datetime, timezone
 
-from sqlalchemy import Engine, inspect, text
+from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy.pool import NullPool
 
 from database.models import Base
 from tests.python.db.schema_helpers import assert_database_matches_models
@@ -76,6 +77,23 @@ class TestUpgradeKeepsStoredInstants:
         assert [float(epoch) for epoch in epochs] == [expected] * 3
 
 
+class TestDatabaseTimezone:
+    """Fuseau de la base, appliqué à toute nouvelle connexion"""
+
+    def test_upgrade_sets_paris_timezone(self, empty_database, alembic_config):
+        command.upgrade(alembic_config, "head")
+
+        assert _new_connection_timezone(empty_database) == "Europe/Paris"
+
+    def test_downgrade_restores_default_timezone(self, empty_database, alembic_config):
+        default_timezone = _new_connection_timezone(empty_database)
+        command.upgrade(alembic_config, "head")
+
+        command.downgrade(alembic_config, "base")
+
+        assert _new_connection_timezone(empty_database) == default_timezone
+
+
 class TestDowngrade:
     def test_downgrade_to_base_removes_application_tables(
         self, empty_database, alembic_config
@@ -95,6 +113,20 @@ def _current_revision(engine: Engine) -> str | None:
     """Version du schéma enregistrée par Alembic dans la base."""
     with engine.connect() as connection:
         return MigrationContext.configure(connection).get_current_revision()
+
+
+def _new_connection_timezone(engine: Engine) -> str:
+    """
+    Fuseau d'une connexion ouverte pour l'occasion : celles du pool gardent le
+    fuseau de leur ouverture.
+    """
+    fresh_engine = create_engine(engine.url, poolclass=NullPool)
+
+    try:
+        with fresh_engine.connect() as connection:
+            return connection.execute(text("SHOW timezone")).scalar_one()
+    finally:
+        fresh_engine.dispose()
 
 
 def _head_revision(alembic_config: Config) -> str | None:
