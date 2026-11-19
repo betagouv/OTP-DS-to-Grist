@@ -279,7 +279,7 @@ def _access_log(
     if oldest is not None and oldest > start:
         notes.append(
             f"Attention : logs disponibles seulement depuis le "
-            f"{_local_time_aware(oldest)}"
+            f"{_local_time_with_seconds(oldest)}"
         )
 
     if entries and all(entry.ip is None for entry in entries):
@@ -542,7 +542,7 @@ def _requests(entries: Sequence[AccessLogEntry] | None) -> list[str]:
 
     last = max(entry.moment for entry in entries)
 
-    return [str(len(entries)), _local_time_aware(last)]
+    return [str(len(entries)), _local_time_with_seconds(last)]
 
 
 def _refusals_count(entries: Sequence[AccessLogEntry] | None) -> str:
@@ -589,7 +589,7 @@ def _logs_section(
 
     for entry in shown[-LOGS_DISPLAYED_MAX:]:
         fields = [
-            _local_time_aware(entry.moment),
+            _local_time_with_seconds(entry.moment),
             f"{entry.otp_config_id or '-':<6}" if with_config else "",
             f"{entry.ip or '-':<15}" if with_ip else "",
             f"{entry.method:<6}",
@@ -716,7 +716,7 @@ def _optional_local_time(moment: datetime | None) -> str:
     return _local_time(moment) if moment is not None else "-"
 
 
-def _local_time_aware(moment: datetime) -> str:
+def _local_time_with_seconds(moment: datetime) -> str:
     """Horodatage des logs, affiché à l'heure locale."""
     return moment.astimezone().strftime("%d/%m %H:%M:%S")
 
