@@ -1,10 +1,13 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from flask import g
 
 from database.models import OtpConfiguration, SyncLog
+
+PARIS = ZoneInfo("Europe/Paris")
 
 
 @pytest.fixture
@@ -23,6 +26,60 @@ def _add_config(db_session) -> int:
     db_session.add(otp_config)
     db_session.flush()
     return otp_config.id
+
+
+class TestApiSyncLogLatest:
+    """GET /api/sync-log/latest : heure des synchros lues dans sync_logs réelle"""
+
+    def _latest(self, app_module, otp_config_id):
+        with app_module.app.test_request_context(
+            f"/api/sync-log/latest?otp_config_id={otp_config_id}"
+        ):
+            g.widget_identity = {"userId": "userA", "docId": "docA"}
+            response = app_module.api_sync_log_latest()
+
+        return json.loads(response.data)
+
+    def test_returns_paris_time_of_sync_finished_after_midnight(
+        self, app_module, db_session
+    ):
+        # Synchro programmée à 00:00 (Paris), finie à 00:00:10 : 23:00:10 UTC la veille
+        otp_config_id = _add_config(db_session)
+        db_session.add(
+            SyncLog(
+                otp_config_id=otp_config_id,
+                grist_user_id="userA",
+                grist_doc_id="docA",
+                status="success",
+                auto=True,
+                timestamp=datetime(2026, 11, 17, 23, 0, 10, tzinfo=timezone.utc),
+            )
+        )
+        db_session.commit()
+
+        latest = self._latest(app_module, otp_config_id)
+
+        assert latest["auto"]["timestamp"] == "2026-11-18T00:00:10"
+        assert latest["manual"] is None
+
+    def test_sync_without_explicit_time_is_dated_now(self, app_module, db_session):
+        otp_config_id = _add_config(db_session)
+        db_session.add(
+            SyncLog(
+                otp_config_id=otp_config_id,
+                grist_user_id="userA",
+                grist_doc_id="docA",
+                status="success",
+                auto=False,
+            )
+        )
+        db_session.commit()
+
+        latest = self._latest(app_module, otp_config_id)
+
+        timestamp = datetime.fromisoformat(latest["manual"]["timestamp"])
+        now = datetime.now(PARIS).replace(tzinfo=None)
+        assert abs(now - timestamp) < timedelta(minutes=1)
 
 
 class TestApiSyncLogLatestByDemarche:
