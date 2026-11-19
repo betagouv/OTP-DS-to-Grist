@@ -296,12 +296,15 @@ watch(() => props.existingConfig, async (config) => {
         @update:model-value="handleAutoSyncToggle"
       />
 
+      <!-- fr-btns-group--icon-left : sans elle, le DSFR réduit à leur icône les boutons qui en ont une -->
       <DsfrButtonGroup
+        class="fr-btns-group--icon-left"
         inline-layout-when="always"
-        size="large"
+        size="medium"
       >
         <DsfrButton
-          label="Lancer la synchronisation"
+          label="Synchroniser maintenant"
+          icon="fr-icon-refresh-line"
           data-test-id="sync-button"
           primary
           :disabled="!canSync || sectionEmpty || inFlight"
@@ -309,7 +312,8 @@ watch(() => props.existingConfig, async (config) => {
         />
 
         <DsfrButton
-          label="Supprimer"
+          label="Supprimer cette démarche"
+          icon="fr-icon-delete-line"
           data-test-id="delete-config-button"
           secondary
           :disabled="!canDelete || sectionEmpty || inFlight"
