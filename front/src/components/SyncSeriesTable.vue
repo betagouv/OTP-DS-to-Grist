@@ -1,7 +1,7 @@
 <script setup>
 import { DsfrBadge, DsfrButton } from '@gouvminint/vue-dsfr'
 
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useSyncTask } from '../composables/useSyncTask'
 import { useNotification } from '../composables/useNotification'
@@ -15,6 +15,7 @@ const props = defineProps({
 
 const { seriesTasks } = useSyncTask()
 const { notify } = useNotification()
+const tableEl = ref(null)
 
 // Synchros lancées depuis la page ; à défaut, dernières synchros lues en base
 const isLive = computed(() => seriesTasks.value.length > 0)
@@ -22,6 +23,14 @@ const rows = computed(() => (isLive.value
   ? seriesTasks.value.map(task => ({ ...task, key: task.taskId }))
   : props.history
 ))
+
+// Nouveau lancement (une démarche ou une série) ou reprise à la réouverture de la
+// page : la liste des synchros suivies est remplacée, son premier taskId change.
+// Le passage à la démarche suivante d'une série ne la remplace pas.
+// flush 'post' : le tableau est rendu avant le scroll, même s'il vient d'apparaître.
+watch(() => seriesTasks.value[0]?.taskId, (taskId) => {
+  if (taskId) tableEl.value?.scrollIntoView({ behavior: 'smooth' })
+}, { flush: 'post' })
 
 const formatDemarche = (task) => {
   const title = props.titles[task.demarcheNumber]
@@ -71,6 +80,7 @@ const copyLogs = (task) => {
 <template>
   <div
     v-if="rows.length"
+    ref="tableEl"
     class="fr-table fr-mb-4w"
   >
     <table data-test-id="sync-series-table">

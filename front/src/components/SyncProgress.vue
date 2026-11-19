@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
@@ -18,7 +18,6 @@ const {
 const emit = defineEmits(['sync-running-changed'])
 const task = ref(null)
 const socket = ref(null)
-const syncCardEl = ref(null)
 
 // « Progression de la démarche n°X — i/n » : position affichée en synchro groupée
 const progressTitle = computed(() => {
@@ -27,12 +26,6 @@ const progressTitle = computed(() => {
   const position = totalDemarches.value > 1 ? ` — ${demarcheIndex.value}/${totalDemarches.value}` : ''
 
   return `Progression de la démarche n°${demarcheNumber.value}${position}`
-})
-
-watch(() => task.value?.status, (status) => {
-  if (status === 'running') {
-    nextTick(() => syncCardEl.value?.scrollIntoView({ behavior: 'smooth' }))
-  }
 })
 
 // Page ouverte pendant une synchro : reprend son état complet sur le serveur.
@@ -92,7 +85,6 @@ onUnmounted(() => {
 <template>
   <div
     v-if="task"
-    ref="syncCardEl"
     class="fr-card fr-card--light-grey fr-card--no-border fr-mb-4w"
   >
     <div class="fr-card__body">

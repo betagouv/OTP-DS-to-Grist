@@ -15,9 +15,6 @@ vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket)
 }))
 
-const scrollIntoView = vi.fn()
-Element.prototype.scrollIntoView = scrollIntoView
-
 // Connexion du socket ; le serveur répond à sync_state par `syncs`
 async function triggerConnect(syncs = []) {
   mockEmit.mockImplementation((event, _data, ack) => {
@@ -39,7 +36,6 @@ describe('SyncProgress', () => {
     mockOn.mockClear()
     mockEmit.mockReset()
     mockDisconnect.mockClear()
-    scrollIntoView.mockClear()
     setCurrentTaskId('task_1', '12345')
     wrapper = mount(SyncProgress)
   })
@@ -123,27 +119,6 @@ describe('SyncProgress', () => {
     const emitted = wrapper.emitted('sync-running-changed')
     expect(emitted[0][0]).toBe(true)
     expect(emitted[1][0]).toBe(false)
-  })
-
-  it('scrolls into view when sync starts running', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Démarrage' })
-
-    await new Promise(resolve => setTimeout(resolve))
-
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' })
-  })
-
-  it('does not scroll on subsequent progress updates', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 0, message: 'Démarrage' })
-
-    await new Promise(resolve => setTimeout(resolve))
-    scrollIntoView.mockClear()
-
-    triggerTaskUpdate({ status: 'running', progress: 50, message: 'Progression' })
-
-    await new Promise(resolve => setTimeout(resolve))
-
-    expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
   it('disconnect socket on unmount', () => {

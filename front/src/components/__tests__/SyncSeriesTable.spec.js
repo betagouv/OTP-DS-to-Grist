@@ -1,11 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 
 import SyncSeriesTable from '../SyncSeriesTable.vue'
 import { useSyncTask } from '../../composables/useSyncTask'
 import { useNotification } from '../../composables/useNotification'
 
-const { setTasks, setCurrentTaskId, recordTaskUpdate } = useSyncTask()
+const { setTasks, setCurrentTaskId, recordTaskUpdate, finishCurrentTask, restoreTasks } = useSyncTask()
+
+const scrollIntoView = vi.fn()
+Element.prototype.scrollIntoView = scrollIntoView
+
+// Les composants restés montés réagiraient aux synchros partagées par useSyncTask
+enableAutoUnmount(afterEach)
 
 const SERIES = [
   { taskId: 'task_1', demarcheNumber: '111' },
@@ -229,6 +235,56 @@ describe('SyncSeriesTable', () => {
         message: 'Erreur lors de la copie des logs',
         type: 'error'
       })
+    })
+  })
+
+  describe('scroll to the table', () => {
+    // Monté sans synchro suivie, comme au chargement de la page
+    beforeEach(() => {
+      setCurrentTaskId(null)
+      scrollIntoView.mockClear()
+    })
+
+    it('scrolls when the sync of a single démarche is launched', async () => {
+      mount(SyncSeriesTable)
+      setCurrentTaskId('task_1', '111')
+      await flushPromises()
+
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth' })
+    })
+
+    it('scrolls once for a series, not when the next démarche starts', async () => {
+      mount(SyncSeriesTable)
+      setTasks(SERIES)
+      await flushPromises()
+      recordTaskUpdate('task_1', { status: 'completed' })
+      finishCurrentTask()
+      recordTaskUpdate('task_2', { status: 'running' })
+      await flushPromises()
+
+      expect(scrollIntoView).toHaveBeenCalledOnce()
+    })
+
+    it('does not scroll on progress updates', async () => {
+      mount(SyncSeriesTable)
+      setCurrentTaskId('task_1', '111')
+      await flushPromises()
+      scrollIntoView.mockClear()
+
+      recordTaskUpdate('task_1', { status: 'running', message: 'Démarrage' })
+      recordTaskUpdate('task_1', { status: 'running', message: 'Progression' })
+      await flushPromises()
+
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    })
+
+    it('scrolls when a running sync is resumed on page reopen', async () => {
+      mount(SyncSeriesTable)
+      restoreTasks([{ task_id: 'task_1', task: { status: 'running', demarche_number: '111' } }])
+      await flushPromises()
+
+      expect(scrollIntoView).toHaveBeenCalledOnce()
     })
   })
 
