@@ -269,6 +269,8 @@ watch(() => props.existingConfig, async (config) => {
         </DsfrInput>
       </DsfrInputGroup>
 
+      <hr class="fr-hr">
+
       <DNFiltersSection
         ref="dnFiltersSectionRef"
         :existing-config="existingConfig"

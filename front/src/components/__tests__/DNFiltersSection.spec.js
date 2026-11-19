@@ -356,10 +356,36 @@ describe('DNFiltersSection — groupes instructeurs', () => {
   })
 })
 
+describe('DNFiltersSection — titre', () => {
+  it('heads the filters with a title above their legends', () => {
+    const wrapper = mountSection()
+    expect(wrapper.find('h5').text()).toBe('Filtrer les dossiers')
+  })
+
+  it('names the status filter by its legend, without nested fieldset', () => {
+    const wrapper = mountSection()
+    const fieldset = wrapper.find('fieldset[aria-labelledby]')
+    const legend = wrapper.find(`#${fieldset.attributes('aria-labelledby')}`)
+    expect(legend.text()).toBe('Filtrer par statut')
+    expect(wrapper.find('fieldset fieldset').exists()).toBe(false)
+  })
+
+  it('offers the status filter first, then the dates', () => {
+    const wrapper = mountSection()
+    const legends = wrapper.findAll('legend').map((legend) => legend.text())
+    expect(legends.slice(0, 2)).toEqual(['Filtrer par statut', 'Filtrer par dates'])
+  })
+})
+
 describe('DNFiltersSection — Filtres actifs', () => {
   it('shows no active filters block when nothing is selected', () => {
     const wrapper = mountSection()
-    expect(wrapper.find('h5').exists()).toBe(false)
+    expect(wrapper.find('h6').exists()).toBe(false)
+  })
+
+  it('heads the active filters below the filters title', () => {
+    const wrapper = mountSection({ filter_statuses: 'accepte' })
+    expect(wrapper.find('h6').text()).toBe('Filtres actifs')
   })
 
   it('shows date tags from existingConfig', () => {
@@ -369,6 +395,14 @@ describe('DNFiltersSection — Filtres actifs', () => {
     })
     expect(wrapper.text()).toContain('Date de début: 01/01/2023')
     expect(wrapper.text()).toContain('Date de fin: 31/12/2023')
+  })
+
+  it('lists the status tags before the date tags, like the filters', () => {
+    const wrapper = mountSection({
+      filter_date_start: '2023-01-01',
+      filter_statuses: 'accepte'
+    })
+    expect(activeTags(wrapper).map((tag) => tag.text())).toEqual(['Accepté', 'Date de début: 01/01/2023'])
   })
 
   it('shows one tag per selected status', () => {
@@ -444,7 +478,7 @@ describe('DNFiltersSection — Filtres actifs', () => {
 
     await dismissTag(wrapper, 'Accepté')
 
-    expect(wrapper.find('h5').exists()).toBe(false)
+    expect(wrapper.find('h6').exists()).toBe(false)
   })
 })
 
@@ -484,7 +518,7 @@ describe('DNFiltersSection — Réinitialiser', () => {
       filter_groups: ''
     })
     expect(wrapper.emitted('change')).toHaveLength(1)
-    expect(wrapper.find('h5').exists()).toBe(false)
+    expect(wrapper.find('h6').exists()).toBe(false)
     expect(resetButton(wrapper).attributes('disabled')).toBeDefined()
   })
 

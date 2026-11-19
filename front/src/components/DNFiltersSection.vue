@@ -81,7 +81,7 @@ const groupTags = computed(() => {
 
 // Une ligne d'étiquettes par type de filtre, pour distinguer statuts et groupes
 const tagRows = computed(() =>
-  [dateTags.value, statusTags.value, groupTags.value].filter((tags) => tags.length > 0)
+  [statusTags.value, dateTags.value, groupTags.value].filter((tags) => tags.length > 0)
 )
 
 const hasActiveFilters = computed(() => tagRows.value.length > 0)
@@ -160,7 +160,23 @@ defineExpose({
 </script>
 
 <template>
-  <fieldset class="fr-fieldset">
+  <h5 class="fr-mb-2w">Filtrer les dossiers</h5>
+
+  <!-- Fieldset et légende rendus par DsfrCheckboxSet : pas de fieldset imbriqué -->
+  <DsfrCheckboxSet
+    v-model="selectedStatuses"
+    class="status-filter"
+    :options="STATUS_OPTIONS"
+    inline
+    @update:model-value="emitChange"
+  >
+    <template #legend>
+      <!-- La légende de DsfrCheckboxSet est en graisse normale : gras comme les autres filtres -->
+      <span class="fr-text--bold">Filtrer par statut</span>
+    </template>
+  </DsfrCheckboxSet>
+
+  <fieldset class="fr-fieldset fr-mt-3w">
     <legend class="fr-fieldset__legend">
       Filtrer par dates
     </legend>
@@ -192,21 +208,6 @@ defineExpose({
           </DsfrInputGroup>
         </div>
       </div>
-    </div>
-  </fieldset>
-
-  <fieldset class="fr-fieldset fr-mt-3w">
-    <legend class="fr-fieldset__legend">
-      Filtrer par statut
-    </legend>
-
-    <div class="fr-fieldset__content">
-      <DsfrCheckboxSet
-        v-model="selectedStatuses"
-        :options="STATUS_OPTIONS"
-        inline
-        @update:model-value="emitChange"
-      />
     </div>
   </fieldset>
 
@@ -250,7 +251,7 @@ defineExpose({
     v-if="hasActiveFilters"
     class="fr-mt-3w"
   >
-    <h5 class="fr-mb-1w">Filtres actifs</h5>
+    <h6 class="fr-mb-1w">Filtres actifs</h6>
     <ul
       v-for="(tags, index) in tagRows"
       :key="index"
@@ -290,5 +291,21 @@ defineExpose({
     > .fr-fieldset__element {
   float: left;
   width: 50%;
+}
+</style>
+
+<style scoped>
+/* Sous les cases, la marge de la dernière ligne (1rem) s'ajoute à l'écart
+   entre filtres. -1rem sur le fieldset, combiné à la marge haute du filtre
+   suivant, ramène cet écart à celui des autres filtres, comme le DSFR le
+   fait pour un groupe de boutons en fin de fieldset. */
+.status-filter :deep(.fr-fieldset) {
+  margin-bottom: -1rem;
+}
+
+/* Les cases se partagent toute la largeur (fr-fieldset__element--inline-grow
+   du DSFR, que DsfrCheckboxSet ne permet pas de poser sur chaque case) */
+.status-filter :deep(.fr-fieldset__element--inline) {
+  flex-grow: 1;
 }
 </style>
