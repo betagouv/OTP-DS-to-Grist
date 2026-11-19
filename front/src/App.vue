@@ -29,12 +29,14 @@ const handleTitleLoaded = (demarcheNumber, title) => {
   <NotificationToast />
   <header>
     <div class="wrapper">
-      <SyncSeriesTable
-        :history="syncHistory"
-        :titles="demarcheTitles"
-      />
-
-      <SyncProgress @sync-running-changed="syncRunning = $event" />
+      <!-- Tableau et barre accolés : la marge basse est portée par le groupe -->
+      <div class="sync-status">
+        <SyncSeriesTable
+          :history="syncHistory"
+          :titles="demarcheTitles"
+        />
+        <SyncProgress @sync-running-changed="syncRunning = $event" />
+      </div>
 
       <OTPForm
         :sync-running="syncRunning"
@@ -46,6 +48,11 @@ const handleTitleLoaded = (demarcheNumber, title) => {
 </template>
 
 <style>
+/* Les v-if non rendus ne laissent que des commentaires, ignorés par :empty */
+.sync-status:not(:empty) {
+  margin-bottom: 2rem;
+}
+
 /* Le menu des DsfrMultiselect est positionné en absolu dans le contenu des
    accordéons DSFR. Or .fr-collapse--expanded a overflow-y:auto qui le rogne.
    On ne cible que le panneau d'accordéon (.fr-accordion > .fr-collapse), pas

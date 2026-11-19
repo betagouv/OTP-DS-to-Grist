@@ -8,9 +8,6 @@ import { useSyncTask } from '../composables/useSyncTask'
 
 const {
   currentTaskId,
-  demarcheNumber,
-  demarcheIndex,
-  totalDemarches,
   finishCurrentTask,
   recordTaskUpdate,
   restoreTasks
@@ -18,15 +15,7 @@ const {
 const emit = defineEmits(['sync-running-changed'])
 const task = ref(null)
 const socket = ref(null)
-
-// « Progression de la démarche n°X — i/n » : position affichée en synchro groupée
-const progressTitle = computed(() => {
-  if (!demarcheNumber.value) return 'Progression'
-
-  const position = totalDemarches.value > 1 ? ` — ${demarcheIndex.value}/${totalDemarches.value}` : ''
-
-  return `Progression de la démarche n°${demarcheNumber.value}${position}`
-})
+const percent = computed(() => Math.round(task.value?.progress ?? 0))
 
 // Page ouverte pendant une synchro : reprend son état complet sur le serveur.
 // Demandé une fois le socket connecté, pour ne manquer aucun envoi ; sans
@@ -83,57 +72,56 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- Barre seule, collée sous le tableau des synchros : ni carte ni titre -->
   <div
     v-if="task"
-    class="fr-card fr-card--light-grey fr-card--no-border fr-mb-4w"
+    class="sync-progress"
   >
-    <div class="fr-card__body">
-      <div class="fr-card__content fr-mb-3w">
-        <p class="fr-text--sm fr-mb-1w">
-          {{ progressTitle }}
-        </p>
-        <div class="progress-wrapper">
-          <div class="progress-track">
-            <div
-              class="progress-bar"
-              :style="{ width: Math.round(task.progress) + '%' }"
-            />
-          </div>
-          <DsfrBadge
-            :label="`${Math.round(task.progress)}%`"
-            type="info"
-            class="progress-badge"
-            :style="{ left: Math.round(task.progress) + '%' }"
-            no-icon
-          />
-        </div>
-      </div>
+    <div class="progress-track">
+      <div
+        class="progress-bar"
+        :style="{ width: `${percent}%` }"
+      />
     </div>
+    <!-- Décalé d'autant que la progression : reste dans la largeur de la barre à 0 % comme à 100 % -->
+    <DsfrBadge
+      :label="`${percent}%`"
+      type="info"
+      class="progress-badge"
+      :style="{
+        left: `${percent}%`,
+        transform: `translateX(-${percent}%)`
+      }"
+      no-icon
+    />
   </div>
 </template>
 
 <style scoped>
-.progress-wrapper {
+.sync-progress {
   position: relative;
+  /* Place du badge, positionné en absolu sous la barre (top + hauteur du badge - barre) */
+  padding-bottom: 1.875rem;
 }
 
 .progress-track {
-  height: 8px;
+  height: 4px;
   background: var(--border-default-grey);
-  border-radius: 4px;
+  /* Coins du haut droits : la barre prolonge le bas du tableau */
+  border-radius: 0 0 2px 2px;
   overflow: hidden;
 }
 
 .progress-bar {
   height: 100%;
-  background: var(--background-action-high-blue-france);
+  /* Même bleu que le pourcentage du badge « info » */
+  background: var(--background-action-high-info);
   transition: width 0.3s ease;
 }
 
 .progress-badge {
   position: absolute;
-  top: 14px;
-  transform: translateX(-50%);
-  transition: left 0.3s ease;
+  top: 10px;
+  transition: left 0.3s ease, transform 0.3s ease;
 }
 </style>

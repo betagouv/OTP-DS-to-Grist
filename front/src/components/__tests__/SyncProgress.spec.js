@@ -46,36 +46,14 @@ describe('SyncProgress', () => {
   })
 
   it('hided by default', () => {
-    expect(wrapper.find('.fr-card').exists()).toBe(false)
+    expect(wrapper.find('.sync-progress').exists()).toBe(false)
   })
 
   it('displayed once task_update is running', async () => {
     triggerTaskUpdate({ status: 'running', progress: 0, message: 'Démarrage' })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.fr-card').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Progression')
-  })
-
-  it('display the démarche number without counter for a single sync', async () => {
-    triggerTaskUpdate({ status: 'running', progress: 50, message: 'En cours' })
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('Progression de la démarche n°12345')
-    expect(wrapper.text()).not.toContain('/1')
-  })
-
-  it('display the démarche number and its position in a series', async () => {
-    setTasks([
-      { taskId: 'task_1', demarcheNumber: '111' },
-      { taskId: 'task_2', demarcheNumber: '222' },
-      { taskId: 'task_3', demarcheNumber: '333' }
-    ])
-    triggerTaskUpdate({ status: 'completed', progress: 100, message: 'Terminé' }, 'task_1')
-    triggerTaskUpdate({ status: 'running', progress: 10, message: 'En cours' }, 'task_2')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/3')
+    expect(wrapper.find('.sync-progress').exists()).toBe(true)
   })
 
   it('display current percent', async () => {
@@ -91,6 +69,15 @@ describe('SyncProgress', () => {
 
     const bar = wrapper.find('.progress-bar')
     expect(bar.attributes('style')).toContain('width: 75%')
+  })
+
+  it('keeps the percent badge within the bar width', async () => {
+    triggerTaskUpdate({ status: 'running', progress: 75, message: 'Test' })
+    await wrapper.vm.$nextTick()
+
+    const badge = wrapper.find('.progress-badge')
+    expect(badge.attributes('style')).toContain('left: 75%')
+    expect(badge.attributes('style')).toContain('transform: translateX(-75%)')
   })
 
   it('emit sync-running-changed(true) on first event running', async () => {
@@ -131,7 +118,7 @@ describe('SyncProgress', () => {
     triggerTaskUpdate({ status: 'running', progress: 0, message: 'Autre synchro' }, 'task_2')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.fr-card').exists()).toBe(false)
+    expect(wrapper.find('.sync-progress').exists()).toBe(false)
     expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
   })
 
@@ -140,7 +127,7 @@ describe('SyncProgress', () => {
     triggerTaskUpdate({ status: 'running', progress: 50, message: 'Quelque chose' }, 'task_3')
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.fr-card').exists()).toBe(false)
+    expect(wrapper.find('.sync-progress').exists()).toBe(false)
     expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
   })
 
@@ -180,7 +167,7 @@ describe('SyncProgress', () => {
       triggerTaskUpdate({ status: 'running', progress: 20, message: 'Seconde' }, 'task_2')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/2')
+      expect(wrapper.text()).toContain('20%')
       expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true]])
     })
 
@@ -192,15 +179,14 @@ describe('SyncProgress', () => {
       await wrapper.vm.$nextTick()
 
       expect(wrapper.emitted('sync-running-changed')).toEqual([[true], [true], [false]])
-      expect(wrapper.find('.fr-card').exists()).toBe(true)
-      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/2')
+      expect(wrapper.find('.sync-progress').exists()).toBe(true)
     })
 
     it('ignores updates of a démarche which is not the current one', async () => {
       triggerTaskUpdate({ status: 'running', progress: 0, message: 'Seconde' }, 'task_2')
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.find('.fr-card').exists()).toBe(false)
+      expect(wrapper.find('.sync-progress').exists()).toBe(false)
     })
 
     it('records the updates of every démarche of the series for the table', () => {
@@ -244,7 +230,6 @@ describe('SyncProgress', () => {
       await triggerConnect([{ task_id: 'task_7', task: serverTask('running', '111', { progress: 42 }) }])
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.text()).toContain('Progression de la démarche n°111')
       expect(wrapper.text()).toContain('42%')
       expect(wrapper.emitted('sync-running-changed')).toEqual([[true]])
     })
@@ -257,7 +242,7 @@ describe('SyncProgress', () => {
       ])
       await wrapper.vm.$nextTick()
 
-      expect(wrapper.text()).toContain('Progression de la démarche n°222 — 2/3')
+      expect(wrapper.text()).toContain('10%')
       expect(seriesTasks.value.map(task => task.status)).toEqual(['completed', 'running', 'queued'])
     })
 
@@ -276,7 +261,7 @@ describe('SyncProgress', () => {
       await wrapper.vm.$nextTick()
 
       expect(currentTaskId.value).toBe('task_1')
-      expect(wrapper.find('.fr-card').exists()).toBe(false)
+      expect(wrapper.find('.sync-progress').exists()).toBe(false)
       expect(wrapper.emitted('sync-running-changed')).toBeFalsy()
     })
 

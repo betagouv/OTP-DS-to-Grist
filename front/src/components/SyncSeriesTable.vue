@@ -78,10 +78,11 @@ const copyLogs = (task) => {
 </script>
 
 <template>
+  <!-- Sans marge basse : la barre de progression s'y colle ; App.vue porte l'espacement -->
   <div
     v-if="rows.length"
     ref="tableEl"
-    class="fr-table fr-mb-4w"
+    class="fr-table fr-mb-0"
   >
     <table data-test-id="sync-series-table">
       <!-- Largeurs fixes : le contenu, qui change à chaque événement, ne redimensionne plus les colonnes -->
