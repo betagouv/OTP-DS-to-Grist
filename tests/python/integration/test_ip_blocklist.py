@@ -1,8 +1,10 @@
+import logging
 import time
 from datetime import datetime, timezone
 
 import pytest
 from flask import jsonify
+from sqlalchemy.exc import OperationalError
 
 import app as app_module
 from app import app
@@ -52,8 +54,10 @@ class FakeStore:
     def __init__(self):
         self.banned_until = {}
         self.applied = []
+        self.checked = []
 
     def is_banned(self, ip):
+        self.checked.append(ip)
         return self.banned_until.get(ip, 0.0) > time.time()
 
     def apply_ban(self, ip):
@@ -322,6 +326,92 @@ class TestBannieQuiInsiste:
         )
 
 
+class TestLectureDuBannissement:
+    """
+    Le bannissement n'est lu qu'une fois par requête : le comptage reprend la
+    décision prise avant la route, sans redemander au store.
+    """
+
+    def test_une_lecture_pour_une_requete_en_echec(self, store, client):
+        assert get(client, "/.env").status_code == 404
+
+        assert store.checked == [_IP]
+
+    def test_une_lecture_pour_une_ip_bannie(self, store, client):
+        set_ban(store, _IP)
+
+        assert get(client, "/.env").status_code == 403
+
+        assert store.checked == [_IP]
+
+    def test_une_lecture_pour_une_requete_reussie(self, store, client):
+        assert get(client, "/__blocklist-test__/slash/").status_code == 200
+
+        assert store.checked == [_IP]
+
+
+class TestBaseEnDefaut:
+    """
+    Base injoignable : la requête n'est ni bannie ni autorisée, elle échoue
+    en 500, et l'erreur est journalisée une seule fois, avec un message qui
+    nomme la vérification en cause.
+    """
+
+    @pytest.fixture(autouse=True)
+    def production_errors(self, monkeypatch):
+        """Erreurs traitées comme en production : un 500, pas une exception."""
+        monkeypatch.setitem(app.config, "PROPAGATE_EXCEPTIONS", False)
+
+    def test_verification_impossible_repond_500(self, store, client, monkeypatch):
+        monkeypatch.setattr(store, "is_banned", _database_failure)
+
+        assert get(client, "/.env").status_code == 500
+
+    def test_verification_impossible_journalisee_une_fois(
+        self, store, client, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(store, "is_banned", _database_failure)
+
+        get(client, "/.env")
+
+        [record] = _error_records(caplog)
+        assert record.getMessage() == (
+            f"Vérification du bannissement impossible pour l'IP {_IP} : "
+            "base de données en défaut"
+        )
+        assert record.exc_info is not None
+
+    def test_verification_impossible_sous_api_en_json(self, store, client, monkeypatch):
+        monkeypatch.setattr(store, "is_banned", _database_failure)
+
+        response = get(client, "/api/config")
+
+        assert response.status_code == 500
+        assert response.get_json()["success"] is False
+
+    def test_ban_non_enregistre_repond_500(self, store, client, monkeypatch):
+        monkeypatch.setattr(store, "apply_ban", _database_failure)
+
+        for _ in range(IP_BLOCKLIST_THRESHOLD - 1):
+            assert get(client, "/.env").status_code == 404
+
+        assert get(client, "/.env").status_code == 500
+
+    def test_ban_non_enregistre_journalise_une_fois(
+        self, store, client, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(store, "apply_ban", _database_failure)
+
+        for _ in range(IP_BLOCKLIST_THRESHOLD):
+            get(client, "/.env")
+
+        [record] = _error_records(caplog)
+        assert record.getMessage() == (
+            f"Bannissement de l'IP {_IP} non enregistré : base de données en défaut"
+        )
+        assert record.exc_info is not None
+
+
 class TestMenageDesCompteurs:
     """Les IP dont plus aucune erreur n'est récente finissent par être oubliées."""
 
@@ -353,3 +443,16 @@ class TestMenageDesCompteurs:
         get(client, "/.env")
 
         assert store.applied == []
+
+
+# --- Fonctions privées ---
+
+
+def _database_failure(ip):
+    """Remplace une méthode du store : la base est injoignable."""
+    raise OperationalError("SELECT 1", {}, Exception("connexion refusée"))
+
+
+def _error_records(caplog):
+    """Enregistrements de log de niveau erreur ou plus."""
+    return [record for record in caplog.records if record.levelno >= logging.ERROR]

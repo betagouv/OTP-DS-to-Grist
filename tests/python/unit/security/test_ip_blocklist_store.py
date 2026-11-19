@@ -31,18 +31,17 @@ def _naive_utc(epoch):
 
 def _store_with_cache(active_bans, cache_ttl=60.0):
     """Store dont le cache est déjà rempli, sans accès à la base."""
-    store = IpBlocklistStore("url", cache_ttl=cache_ttl)
+    store = IpBlocklistStore(session_factory=MagicMock(), cache_ttl=cache_ttl)
     store._active_bans = active_bans
     store._cache_loaded_at = time.monotonic()
-    store._new_session = MagicMock()
     return store
 
 
 def _store_with_db(db, cache_ttl=60.0):
     """Store dont la session est mockée et le cache vide."""
-    store = IpBlocklistStore("url", cache_ttl=cache_ttl)
-    store._new_session = MagicMock(return_value=db)
-    return store
+    return IpBlocklistStore(
+        session_factory=MagicMock(return_value=db), cache_ttl=cache_ttl
+    )
 
 
 def _make_row(ip, ban_count, banned_until):
@@ -102,19 +101,19 @@ class TestIsBanned:
 
             store.is_banned("203.0.113.7")
 
-            store._new_session.assert_not_called()
+            store._session_factory.assert_not_called()
 
     def test_recharge_la_base_quand_le_cache_a_expire(self):
         store = _store_with_cache({"203.0.113.7": 2000.0}, cache_ttl=60.0)
         store._cache_loaded_at = time.monotonic() - 61.0
         db = MagicMock()
         db.query.return_value.filter.return_value = []
-        store._new_session = MagicMock(return_value=db)
+        store._session_factory = MagicMock(return_value=db)
 
         with _frozen_time(1000.0):
             store.is_banned("203.0.113.7")
 
-        store._new_session.assert_called_once()
+        store._session_factory.assert_called_once()
 
 
 class TestApplyBan:
@@ -260,11 +259,11 @@ class TestCacheDesBannissements:
         store._cache_loaded_at = time.monotonic() - 61.0
         db = MagicMock()
         db.query.return_value.filter.return_value = []
-        store._new_session = MagicMock(return_value=db)
+        store._session_factory = MagicMock(return_value=db)
 
         store._get_active_bans()
 
-        store._new_session.assert_called_once()
+        store._session_factory.assert_called_once()
 
     def test_derniere_borne_de_validite(self):
         store = _store_with_cache({"203.0.113.7": 5000.0}, cache_ttl=60.0)
@@ -272,7 +271,7 @@ class TestCacheDesBannissements:
 
         store._get_active_bans()
 
-        store._new_session.assert_not_called()
+        store._session_factory.assert_not_called()
 
     def test_ferme_la_session(self):
         db = MagicMock()
@@ -310,36 +309,3 @@ class TestExpressionEpoch:
 
         assert isinstance(expression, ColumnElement)
         assert expression.type.python_type is float
-
-
-class TestMoteurParesseux:
-    @patch("security.ip_blocklist_store.create_engine")
-    @patch("security.ip_blocklist_store.sessionmaker")
-    def test_aucun_moteur_tant_que_le_store_n_est_pas_utilise(
-        self, mock_sessionmaker, mock_create_engine
-    ):
-        store = IpBlocklistStore("url")
-
-        assert store._session_factory is None
-        mock_create_engine.assert_not_called()
-        mock_sessionmaker.assert_not_called()
-
-    @patch("security.ip_blocklist_store.create_engine")
-    @patch("security.ip_blocklist_store.sessionmaker")
-    def test_moteur_cree_au_premier_usage(self, mock_sessionmaker, mock_create_engine):
-        store = IpBlocklistStore("url")
-
-        store._new_session()
-
-        mock_create_engine.assert_called_once_with("url")
-        assert store._session_factory is mock_sessionmaker.return_value
-
-    @patch("security.ip_blocklist_store.create_engine")
-    @patch("security.ip_blocklist_store.sessionmaker")
-    def test_moteur_reutilise_ensuite(self, mock_sessionmaker, mock_create_engine):
-        store = IpBlocklistStore("url")
-
-        store._new_session()
-        store._new_session()
-
-        mock_create_engine.assert_called_once()

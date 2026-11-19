@@ -2,6 +2,8 @@ import time
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
 
 from database.models import IpBlocklist
 from security.ip_blocklist import ban_duration
@@ -10,11 +12,15 @@ from utils.constants import SQLALCHEMY_DATABASE_URL
 
 IP = "203.0.113.7"
 
+# Attente maximale de la fin d'une connexion coupée par pg_terminate_backend
+TERMINATE_TIMEOUT_MS = 5000
+
 
 @pytest.fixture
 def store(initialized_database) -> IpBlocklistStore:
-    # Même URL que app.py ; sans cache : chaque lecture interroge la base
-    return IpBlocklistStore(SQLALCHEMY_DATABASE_URL, cache_ttl=0)
+    # Même fabrique de sessions que app.py ; sans cache : chaque lecture
+    # interroge la base
+    return IpBlocklistStore(cache_ttl=0)
 
 
 class TestApplyBan:
@@ -55,3 +61,43 @@ class TestBanExpiration:
 
         with patch("security.ip_blocklist_store.time.time", return_value=before_end):
             assert store.is_banned(IP) is True
+
+
+class TestConnexionCoupee:
+    """
+    Une connexion coupée côté serveur pendant qu'elle attend dans le pool
+    (inactivité, redémarrage) ne fait pas échouer la lecture suivante.
+    """
+
+    def test_is_banned_repond_apres_coupure_de_la_connexion(self, store):
+        # Première lecture : la connexion ouverte reste ensuite dans le pool
+        store.is_banned(IP)
+
+        _terminate_other_connections()
+
+        assert store.is_banned(IP) is False
+
+
+# --- Fonctions privées ---
+
+
+def _terminate_other_connections() -> None:
+    """
+    Coupe, côté serveur, toutes les connexions à la base de test sauf celle
+    qui exécute la coupure.
+
+    Cette connexion est ouverte hors pool : elle n'est pas réutilisée ensuite.
+    Le délai passé à `pg_terminate_backend` attend la fin effective de chaque
+    connexion, sinon la lecture suivante pourrait encore la trouver vivante.
+    """
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, poolclass=NullPool)
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(text(
+                "SELECT pg_terminate_backend(pid, :timeout_ms) "
+                "FROM pg_stat_activity "
+                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+            ), {"timeout_ms": TERMINATE_TIMEOUT_MS})
+    finally:
+        engine.dispose()
