@@ -370,6 +370,19 @@ describe('DNFiltersSection — titre', () => {
     expect(wrapper.find('fieldset fieldset').exists()).toBe(false)
   })
 
+  it('shows a label and a hint above each date field', () => {
+    const wrapper = mountSection()
+    const label = (testId) => wrapper.find(`label[for="${wrapper.find(`[data-test-id="${testId}"]`).attributes('id')}"]`)
+    const hint = (testId) => label(testId).find('.fr-hint-text')
+
+    expect(label('filter-date-start').classes()).not.toContain('invisible')
+    expect(label('filter-date-start').text()).toContain('Date de début')
+    expect(hint('filter-date-start').text()).toBe('Dossiers déposés à partir de cette date (inclus)')
+    expect(label('filter-date-end').classes()).not.toContain('invisible')
+    expect(label('filter-date-end').text()).toContain('Date de fin')
+    expect(hint('filter-date-end').text()).toBe('Dossiers déposés jusqu\'à cette date (inclus)')
+  })
+
   it('offers the status filter first, then the dates', () => {
     const wrapper = mountSection()
     const legends = wrapper.findAll('legend').map((legend) => legend.text())

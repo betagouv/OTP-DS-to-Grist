@@ -188,6 +188,8 @@ defineExpose({
             <DsfrInput
               v-model="dateDebut"
               label="Date de début"
+              label-visible
+              hint="Dossiers déposés à partir de cette date (inclus)"
               type="date"
               data-test-id="filter-date-start"
               @input="emitChange"
@@ -200,6 +202,8 @@ defineExpose({
             <DsfrInput
               v-model="dateFin"
               label="Date de fin"
+              label-visible
+              hint="Dossiers déposés jusqu'à cette date (inclus)"
               :is-invalid="!!dateError"
               type="date"
               data-test-id="filter-date-end"
