@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 
-import { DsfrButton, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
+import { DsfrButton, DsfrButtonGroup, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
@@ -261,25 +261,7 @@ const handleAddDemarche = async () => {
     @error-update="gristError = $event"
   />
 
-  <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w fr-mb-1w">
-    <div class="fr-col-6">
-      <h6 class="fr-mb-3w">2. Démarche numérique</h6>
-    </div>
-
-    <div
-      class="fr-col-6"
-      style="text-align: right"
-    >
-      <DsfrButton
-        label="Ajouter une démarche numérique"
-        icon="fr-icon-add-circle-line"
-        data-test-id="add-dn-section-button"
-        secondary
-        :disabled="hasUnsavedSection"
-        @click="handleAddDemarche"
-      />
-    </div>
-  </div>
+  <h6 class="fr-mt-4w fr-mb-3w">2. Démarche numérique</h6>
 
   <DsfrAccordionsGroup
     :key="accordionGroupKey"
@@ -313,10 +295,19 @@ const handleAddDemarche = async () => {
     @close="syncAllError = null"
   />
 
-  <div
-    class="fr-mt-4w"
-    style="text-align: right"
+  <!-- fr-btns-group--icon-left : sans elle, le DSFR réduit à leur icône les boutons qui en ont une -->
+  <DsfrButtonGroup
+    class="fr-btns-group--icon-left fr-mt-4w"
+    inline-layout-when="always"
   >
+    <DsfrButton
+      label="Ajouter une démarche numérique"
+      icon="fr-icon-add-circle-line"
+      data-test-id="add-dn-section-button"
+      secondary
+      :disabled="hasUnsavedSection"
+      @click="handleAddDemarche"
+    />
     <DsfrButton
       label="Tout synchroniser"
       icon="fr-icon-refresh-line"
@@ -324,5 +315,5 @@ const handleAddDemarche = async () => {
       :disabled="syncRunning || syncAllPending || !hasSavedConfig"
       @click="handleSyncAll"
     />
-  </div>
+  </DsfrButtonGroup>
 </template>
