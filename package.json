@@ -1,7 +1,7 @@
 {
   "name": "otp-ds-to-grist-flask-local",
   "version": "1.0.0",
-  "description": "One Trick Pony DS to Grist (OTP) est un gestionnaire de connecteur entre [Démarches Simplifiées](https://www.demarches-simplifiees.fr/admin/procedures) et [Grist](https://lasuite.numerique.gouv.fr/services/grist).",
+  "description": "One Trick Pony DS to Grist (OTP) est un outil de synchronisation [Démarche numérique](https://www.demarches-simplifiees.fr/admin/procedures) et [Grist](https://lasuite.numerique.gouv.fr/services/grist).",
   "homepage": "https://github.com/jlllyfish/OTP-DS-to-Grist-flask-local#readme",
   "bugs": {
     "url": "https://github.com/jlllyfish/OTP-DS-to-Grist-flask-local/issues"
@@ -23,16 +23,13 @@
   "scripts": {
     "test": "jest",
     "test:vue": "cd front && npm run test",
-    "lint": "eslint static/js/",
-    "lint:fix": "eslint static/js/ --fix",
+    "lint": "cd front && npm run lint",
+    "lint:fix": "cd front && npm run lint:fix",
     "dev": "cd front && npm run dev",
     "build": "cd front && npm ci --include=dev && npm run build"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "baseline-browser-mapping": "^2.11.32",
-    "eslint": "^10.13.0",
-    "globals": "^17.13.0",
     "jest": "^30.5.2",
     "jest-environment-jsdom": "^30.5.2"
   }

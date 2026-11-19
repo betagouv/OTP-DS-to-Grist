@@ -7,13 +7,15 @@ import {
   DsfrButton,
   DsfrButtonGroup,
   DsfrInputGroup,
-  DsfrInput
+  DsfrInput,
+  DsfrToggleSwitch
 } from '@gouvminint/vue-dsfr'
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import FieldLabel from './FieldLabel.vue'
 import DNFiltersSection from './DNFiltersSection.vue'
-import { api } from '../utils/InternalApi'
 import { useAutoSync } from '../composables/useAutoSync'
+import { useConnectionCheck, CONNECTION_STATUS } from '../composables/useConnectionCheck'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
 
@@ -27,15 +29,15 @@ const props = defineProps({
   index: { type: Number, required: true }
 })
 
-const HELP_LINKS = window.HELP_LINKS
+const {HELP_LINKS} = window
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
 const ERROR_DN_TITLE = 'Échec'
 const DEFAULT_DN_PLACEHOLDER = 'Saisissez votre clé Démarche Numérique'
+const DN_NETWORK_ERROR = 'Erreur lors du test de connexion'
 
 const accordionTitleDN = ref(DEFAULT_DN_TITLE)
 const inputDNToken = ref('')
 const inputDNNumber = ref('')
-const dnErrorMessage = ref(null)
 const dnTokenPlaceholder = ref(DEFAULT_DN_PLACEHOLDER)
 const isDirty = ref(false)
 const dnFiltersError = ref('')
@@ -45,38 +47,47 @@ const scheduleToggle = ref(false)
 
 const nextRunLabel = computed(() => {
   if (!nextRun.value) return null
+
   return new Date(nextRun.value).toLocaleString('fr-FR')
 })
 
 const formatTitle = (number, title) => (number ? `N°${number} — ${title}` : title)
 
-const validateDSConnection = async () => {
-  if (!inputDNNumber.value) return
-  if (!inputDNToken.value && !props.existingConfig?.otp_config_id) return
+const dnConnection = useConnectionCheck({ networkErrorMessage: DN_NETWORK_ERROR })
+const dnErrorMessage = dnConnection.errorMessage
 
-  const body = {
+// Corps du test de connexion, ou null s'il manque le numéro ou un jeton
+// (saisi, ou à défaut celui stocké pour une config enregistrée)
+const buildDNTestBody = () => {
+  if (!inputDNNumber.value) return null
+  if (!inputDNToken.value && !props.existingConfig?.otp_config_id) return null
+
+  return {
     type: 'demarches',
     demarche_number: inputDNNumber.value,
     ...(inputDNToken.value
       ? { api_token: inputDNToken.value }
       : { otp_config_id: props.existingConfig.otp_config_id })
   }
+}
+
+const validateDSConnection = async () => {
+  const body = buildDNTestBody()
+  if (!body) return
 
   accordionTitleDN.value = '...'
 
   try {
-    const result = await api.testConnection(body)
-    dnErrorMessage.value = result.success ? '' : result.message
+    const result = await dnConnection.check(body)
     accordionTitleDN.value = result.success
       ? formatTitle(inputDNNumber.value, result.title || DEFAULT_DN_TITLE)
       : ERROR_DN_TITLE
     if (result.success && result.title) emit('title-loaded', inputDNNumber.value, result.title)
-  } catch (e) {
-    dnErrorMessage.value = 'Erreur lors du test de connexion'
+  } catch {
     accordionTitleDN.value = ERROR_DN_TITLE
   }
 
-  emit('error-update', dnErrorMessage.value === '' ? '' : dnErrorMessage.value)
+  emit('error-update', dnErrorMessage.value)
   debouncedAutoSave()
 }
 
@@ -85,8 +96,12 @@ const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null
     || props.existingConfig?.otp_config_id === null
+
   return isUnsaved && inputDNToken.value === '' && inputDNNumber.value === ''
 })
+
+// Le jeton est vérifié par le test de connexion (mené avec le numéro de démarche)
+const dnVerified = computed(() => dnConnection.status.value === CONNECTION_STATUS.VERIFIED)
 
 const configValid = computed(() =>
   props.gristError === '' && dnErrorMessage.value === '' && dnFiltersError.value === ''
@@ -104,7 +119,7 @@ const debouncedAutoSave = debounce(() => {
 
 const handleDNInputsChange = () => {
   isDirty.value = true
-  dnErrorMessage.value = null
+  dnConnection.reset()
   emit('error-update', null)
   debouncedValidate()
   debouncedAutoSave()
@@ -115,10 +130,10 @@ const handleDNFiltersChange = () => {
   debouncedAutoSave()
 }
 
-const handleAutoSyncToggle = (event) => {
+const handleAutoSyncToggle = (enabled) => {
   isDirty.value = true
-  scheduleToggle.value = event.target.checked
-  setScheduleEnabled(event.target.checked)
+  scheduleToggle.value = enabled
+  setScheduleEnabled(enabled)
   debouncedAutoSave()
 }
 
@@ -154,7 +169,7 @@ const resetConfig = () => {
 }
 
 watch(() => props.existingConfig, async (config) => {
-  dnErrorMessage.value = null
+  dnConnection.reset()
 
   // La garde ci-dessous protège les champs des réécritures du reload (frappes
   // pendant une sauvegarde en vol), mais le rafraîchissement du schedule
@@ -183,8 +198,8 @@ watch(() => props.existingConfig, async (config) => {
       type="error"
       :title="error"
       closeable
-      @close="$emit('clear-error')"
       class="fr-mb-3w"
+      @close="$emit('clear-error')"
     />
 
     <DsfrAccordion>
@@ -201,44 +216,61 @@ watch(() => props.existingConfig, async (config) => {
             type="grey"
             no-icon
             class="otp-accordion-badge"
+            data-test-id="schedule-badge"
           />
         </div>
       </template>
 
       <DsfrInputGroup
-          :error-message="dnErrorMessage"
+        :error-message="dnErrorMessage"
       >
-        <h5 class="fr-mt-3w fr-mb-0">Renseignez les informations de votre démarche numérique</h5>
-        <p class="fr-mb-0">Jeton d'API *</p>
+        <h5 class="fr-mt-3w fr-mb-0">
+          Renseignez les informations de votre démarche numérique
+        </h5>
         <DsfrInput
+          v-model="inputDNToken"
           :error-message="dnErrorMessage"
           data-test-id="dn-token"
-          v-model="inputDNToken"
-          @input="handleDNInputsChange"
-          label="DN token"
+          label-visible
           :placeholder="dnTokenPlaceholder"
           type="password"
           required
-        />
+          @input="handleDNInputsChange"
+        >
+          <template #label>
+            <FieldLabel
+              label="Jeton d'API *"
+              :verified="dnVerified"
+            />
+          </template>
+        </DsfrInput>
         <p class="fr-mt-2w">
-          <DsfrInfoIcon class="fr-mr-1v"/>
+          <DsfrInfoIcon class="fr-mr-1v" />
           <a
             :href="HELP_LINKS.token_api"
             target="_blank"
             rel="noopener noreferrer"
-            class="fr-link fr-text--xs">Où trouver votre jeton API ?</a>
+            class="fr-link fr-text--xs"
+          >Où trouver votre jeton API ?</a>
         </p>
 
-        <p class="fr-mb-0">Numéro de démarche *</p>
         <DsfrInput
-          data-test-id="dn-number"
           v-model="inputDNNumber"
-          @input="handleDNInputsChange"
-          label="DN number"
-          placeholder="Saisissez votre numéro DN"
+          class="otp-input-demarche-number"
+          data-test-id="dn-number"
+          label-visible
+          placeholder="Ex. : 123456"
+          inputmode="numeric"
           required
-        />
+          @input="handleDNInputsChange"
+        >
+          <template #label>
+            <FieldLabel label="Numéro de démarche *" />
+          </template>
+        </DsfrInput>
       </DsfrInputGroup>
+
+      <hr class="fr-hr">
 
       <DNFiltersSection
         ref="dnFiltersSectionRef"
@@ -247,41 +279,32 @@ watch(() => props.existingConfig, async (config) => {
         @error-update="dnFiltersError = $event"
       />
 
-      <div class="fr-mt-4w">
-        <fieldset class="fr-fieldset" :aria-labelledby="`auto-sync-legend-${index}`">
-          <legend class="fr-fieldset__legend" :id="`auto-sync-legend-${index}`">
-            Synchronisation automatique
-          </legend>
+      <hr class="fr-hr fr-mt-3w">
 
-          <div class="fr-fieldset__content">
-            <div class="fr-checkbox-group">
-                <input
-                  type="checkbox"
-                  :id="`auto_sync_enabled-${index}`"
-                  :name="`auto_sync_enabled-${index}`"
-                  :checked="scheduleToggle"
-                  :disabled="scheduleLoading"
-                  @change="handleAutoSyncToggle"
-                  data-test-id="auto-sync-toggle"
-                >
+      <h5 class="fr-mb-2w">Synchronisation automatique</h5>
 
-              <label class="fr-label" :for="`auto_sync_enabled-${index}`">
-                Activer la synchronisation automatique
-              </label>
-            </div>
-            <p
-              v-if="scheduleEnabled && nextRunLabel"
-              class="fr-hint-text fr-mt-1v"
-            >
-              Prochaine synchronisation : {{ nextRunLabel }}
-            </p>
-          </div>
-        </fieldset>
-      </div>
+      <DsfrToggleSwitch
+        :input-id="`auto_sync_enabled-${index}`"
+        :name="`auto_sync_enabled-${index}`"
+        :model-value="scheduleToggle"
+        :disabled="scheduleLoading"
+        label="Synchroniser automatiquement chaque nuit"
+        no-text
+        :hint="scheduleEnabled && nextRunLabel ? `Prochaine synchronisation : ${nextRunLabel}` : ''"
+        class="fr-mb-3w"
+        data-test-id="auto-sync-toggle"
+        @update:model-value="handleAutoSyncToggle"
+      />
 
-      <DsfrButtonGroup inline-layout-when="always" size="large">
+      <!-- fr-btns-group--icon-left : sans elle, le DSFR réduit à leur icône les boutons qui en ont une -->
+      <DsfrButtonGroup
+        class="fr-btns-group--icon-left"
+        inline-layout-when="always"
+        size="medium"
+      >
         <DsfrButton
-          label="Lancer la synchronisation"
+          label="Synchroniser maintenant"
+          icon="fr-icon-refresh-line"
           data-test-id="sync-button"
           primary
           :disabled="!canSync || sectionEmpty || inFlight"
@@ -289,7 +312,8 @@ watch(() => props.existingConfig, async (config) => {
         />
 
         <DsfrButton
-          label="Supprimer"
+          label="Supprimer cette démarche"
+          icon="fr-icon-delete-line"
           data-test-id="delete-config-button"
           secondary
           :disabled="!canDelete || sectionEmpty || inFlight"
@@ -319,5 +343,11 @@ watch(() => props.existingConfig, async (config) => {
 }
 .otp-accordion-badge {
   flex-shrink: 0;
+}
+/* Largeur ajustée à un numéro de démarche (quelques chiffres) plus le padding
+   horizontal du champ DSFR. DsfrInput rend un fragment : :deep() est requis
+   pour atteindre l'input depuis ce composant. */
+:deep(.otp-input-demarche-number) {
+  max-width: calc(20ch + 2rem);
 }
 </style>

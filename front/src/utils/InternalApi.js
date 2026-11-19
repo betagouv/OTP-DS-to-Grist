@@ -14,6 +14,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const readServerMessage = async (response) => {
   try {
     const body = await response.json()
+
     return typeof body?.message === 'string' ? body.message : null
   } catch {
     return null

@@ -1,7 +1,9 @@
 {% extends "base.html" %}
-{# Le front Vue embarque son propre CSS DSFR (bundle) et gère les composants
-   via vue-dsfr. On retire donc les assets DSFR du CDN, qui instanciaient une
-   seconde fois les accordéons et corrompaient leur état de repli. #}
+{# Le front Vue embarque son propre DSFR (bundle) et gère les composants
+   via vue-dsfr. On retire donc les assets DSFR du CDN : le JS instanciait une
+   seconde fois les accordéons et corrompait leur état de repli ; le CSS, d'une
+   autre version, se mêlait à celui du bundle (ex. interrupteur décalé). #}
+{% block dsfr_css %}{% endblock %}
 {% block dsfr_js %}{% endblock %}
 {% block content %}
   <script>
