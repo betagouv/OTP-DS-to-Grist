@@ -29,6 +29,15 @@ afterEach(() => {
 const globalComponents = { components: { DsfrInput, DsfrInputGroup } }
 const DEMARCHE_NUMBER = '67890'
 
+// Interrupteur de synchro auto : data-test-id est posé sur le conteneur de
+// DsfrToggleSwitch, qui réagit à l'événement input (pas change, que déclenche setChecked)
+const autoSyncInput = (wrapper) => wrapper.find('[data-test-id="auto-sync-toggle"] input')
+const toggleAutoSync = async (wrapper, checked) => {
+  const input = autoSyncInput(wrapper)
+  input.element.checked = checked
+  await input.trigger('input')
+}
+
 // Faux fetch aiguillé par route : planification, groupes instructeurs, et
 // succès par défaut pour le reste (test de connexion, sauvegardes)
 const mockFetchRoutes = ({ schedule = { success: true, enabled: false }, groups = [] } = {}) => {
@@ -479,7 +488,7 @@ describe('Auto-save', () => {
     })
     await flushPromises()
 
-    await wrapper.find('[data-test-id="auto-sync-toggle"]').setChecked(true)
+    await toggleAutoSync(wrapper, true)
     await flushPromises()
 
     expect(wrapper.emitted('save')).toBeTruthy()
@@ -937,7 +946,7 @@ describe('Auto-sync toggle', () => {
     })
     await flushPromises()
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    const checkbox = autoSyncInput(wrapper)
     expect(checkbox.attributes('disabled')).toBeUndefined()
   })
 
@@ -952,7 +961,7 @@ describe('Auto-sync toggle', () => {
     })
     await flushPromises()
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    const checkbox = autoSyncInput(wrapper)
     expect(checkbox.attributes('disabled')).toBeUndefined()
   })
 
@@ -973,7 +982,7 @@ describe('Auto-sync toggle', () => {
     expect(scheduleCall).toBeTruthy()
     expect(scheduleCall[0]).toBe('/api/schedule?otp_config_id=42')
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    const checkbox = autoSyncInput(wrapper)
     expect(checkbox.element.checked).toBe(true)
   })
 
@@ -988,8 +997,7 @@ describe('Auto-sync toggle', () => {
     })
     await flushPromises()
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
-    await checkbox.setChecked(true)
+    await toggleAutoSync(wrapper, true)
 
     const scheduleCalls = globalThis.fetch.mock.calls.filter(
       ([url]) => String(url).includes('/api/schedule')
@@ -1010,9 +1018,9 @@ describe('Auto-sync toggle', () => {
     })
     await flushPromises()
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
+    const checkbox = autoSyncInput(wrapper)
     expect(checkbox.element.checked).toBe(true)
-    await checkbox.setChecked(false)
+    await toggleAutoSync(wrapper, false)
 
     const scheduleCalls = globalThis.fetch.mock.calls.filter(
       ([url]) => String(url).includes('/api/schedule')
@@ -1034,7 +1042,7 @@ describe('Auto-sync toggle', () => {
 
     expect(wrapper.vm.scheduleEnabled).toBe(false)
 
-    await wrapper.find('[data-test-id="auto-sync-toggle"]').setChecked(true)
+    await toggleAutoSync(wrapper, true)
 
     expect(wrapper.vm.scheduleEnabled).toBe(true)
     expect(wrapper.vm.getData().auto_sync_enabled).toBe(true)
@@ -1063,11 +1071,10 @@ describe('Auto-sync toggle', () => {
     })
     await flushPromises()
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
 
     expect(wrapper.vm.isDirty).toBe(false)
 
-    await checkbox.setChecked(true)
+    await toggleAutoSync(wrapper, true)
     await flushPromises()
 
     expect(wrapper.vm.isDirty).toBe(true)
@@ -1154,8 +1161,7 @@ describe('Auto-sync badge in accordion title', () => {
     expect(wrapper.find('[data-test-id="schedule-badge"]').text()).toBe('Automatique')
     expect(wrapper.find('p.fr-hint-text').exists()).toBe(true)
 
-    const checkbox = wrapper.find('[data-test-id="auto-sync-toggle"]')
-    await checkbox.setChecked(false)
+    await toggleAutoSync(wrapper, false)
     await flushPromises()
 
     expect(wrapper.find('[data-test-id="schedule-badge"]').text()).toBe('Manuelle')

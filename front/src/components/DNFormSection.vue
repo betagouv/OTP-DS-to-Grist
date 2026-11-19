@@ -7,7 +7,8 @@ import {
   DsfrButton,
   DsfrButtonGroup,
   DsfrInputGroup,
-  DsfrInput
+  DsfrInput,
+  DsfrToggleSwitch
 } from '@gouvminint/vue-dsfr'
 
 import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
@@ -129,10 +130,10 @@ const handleDNFiltersChange = () => {
   debouncedAutoSave()
 }
 
-const handleAutoSyncToggle = (event) => {
+const handleAutoSyncToggle = (enabled) => {
   isDirty.value = true
-  scheduleToggle.value = event.target.checked
-  setScheduleEnabled(event.target.checked)
+  scheduleToggle.value = enabled
+  setScheduleEnabled(enabled)
   debouncedAutoSave()
 }
 
@@ -278,46 +279,22 @@ watch(() => props.existingConfig, async (config) => {
         @error-update="dnFiltersError = $event"
       />
 
-      <div class="fr-mt-4w">
-        <fieldset
-          class="fr-fieldset"
-          :aria-labelledby="`auto-sync-legend-${index}`"
-        >
-          <legend
-            :id="`auto-sync-legend-${index}`"
-            class="fr-fieldset__legend"
-          >
-            Synchronisation automatique
-          </legend>
+      <hr class="fr-hr fr-mt-3w">
 
-          <div class="fr-fieldset__content">
-            <div class="fr-checkbox-group">
-              <input
-                :id="`auto_sync_enabled-${index}`"
-                type="checkbox"
-                :name="`auto_sync_enabled-${index}`"
-                :checked="scheduleToggle"
-                :disabled="scheduleLoading"
-                data-test-id="auto-sync-toggle"
-                @change="handleAutoSyncToggle"
-              >
+      <h5 class="fr-mb-2w">Synchronisation automatique</h5>
 
-              <label
-                class="fr-label"
-                :for="`auto_sync_enabled-${index}`"
-              >
-                Activer la synchronisation automatique
-              </label>
-            </div>
-            <p
-              v-if="scheduleEnabled && nextRunLabel"
-              class="fr-hint-text fr-mt-1v"
-            >
-              Prochaine synchronisation : {{ nextRunLabel }}
-            </p>
-          </div>
-        </fieldset>
-      </div>
+      <DsfrToggleSwitch
+        :input-id="`auto_sync_enabled-${index}`"
+        :name="`auto_sync_enabled-${index}`"
+        :model-value="scheduleToggle"
+        :disabled="scheduleLoading"
+        label="Synchroniser automatiquement chaque nuit"
+        no-text
+        :hint="scheduleEnabled && nextRunLabel ? `Prochaine synchronisation : ${nextRunLabel}` : ''"
+        class="fr-mb-3w"
+        data-test-id="auto-sync-toggle"
+        @update:model-value="handleAutoSyncToggle"
+      />
 
       <DsfrButtonGroup
         inline-layout-when="always"
