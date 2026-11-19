@@ -304,8 +304,7 @@ def _report(
 ) -> list[str]:
     """Rapport complet, calculé dans une session en lecture seule."""
     engine = create_engine(database_url, connect_args=READ_ONLY_CONNECT_ARGS)
-    # Les colonnes DateTime sont en UTC naïf
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(timezone.utc)
     logs_title = _logs_title(arguments)
 
     try:
@@ -524,11 +523,11 @@ def _ips_table(
 def _last_seen(
     last_use: datetime | None, entries: Sequence[AccessLogEntry]
 ) -> datetime:
-    """Dernière trace de l'IP : utilisation (UTC naïf) ou requête (avec fuseau)."""
+    """Dernière trace de l'IP : utilisation ou requête."""
     moments = [entry.moment for entry in entries]
 
     if last_use is not None:
-        moments.append(last_use.replace(tzinfo=timezone.utc))
+        moments.append(last_use)
 
     return max(moments)
 
@@ -709,8 +708,8 @@ def _count(value: int | None) -> str:
 
 
 def _local_time(moment: datetime) -> str:
-    """Date UTC naïve de la base, affichée à l'heure locale."""
-    return moment.replace(tzinfo=timezone.utc).astimezone().strftime("%d/%m %H:%M")
+    """Date de la base, affichée à l'heure locale."""
+    return moment.astimezone().strftime("%d/%m %H:%M")
 
 
 def _optional_local_time(moment: datetime | None) -> str:

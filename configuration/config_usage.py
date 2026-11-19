@@ -66,8 +66,7 @@ class ConfigUsage:
 
     def _save(self, pairs: list[tuple[str, int]]) -> None:
         """Crée les couples absents, met à jour la date des autres."""
-        # Colonnes DateTime en UTC naïf, comme les autres tables
-        seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        seen_at = datetime.now(timezone.utc)
         statement = insert(OtpConfigIp).values(
             [
                 {"ip": ip, "otp_config_id": otp_config_id, "seen_at": seen_at}
