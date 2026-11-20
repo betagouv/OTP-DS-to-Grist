@@ -52,11 +52,16 @@ class InternalApi {
     })
   }
 
-  startSync(otpConfigId) {
+  // forceFullSync : synchro complète (tous les dossiers redemandés à DN) ;
+  // n'est envoyé que s'il est demandé, l'API le considérant faux par défaut
+  startSync(otpConfigId, { forceFullSync = false } = {}) {
     return request(ROUTES.START_SYNC, {
       method: 'POST',
       headers: JSON_HEADERS,
-      body: JSON.stringify({ otp_config_id: otpConfigId })
+      body: JSON.stringify({
+        otp_config_id: otpConfigId,
+        ...(forceFullSync && { force_full_sync: true })
+      })
     })
   }
 
