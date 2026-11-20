@@ -15,6 +15,7 @@ import DNFiltersSection from './DNFiltersSection.vue'
 import { api } from '../utils/InternalApi'
 import { useAutoSync } from '../composables/useAutoSync'
 import OtpAlert from './ui/OtpAlert.vue'
+import SplitButton from './ui/SplitButton.vue'
 import { debounce } from '../utils/debounce'
 
 const props = defineProps({
@@ -26,6 +27,13 @@ const props = defineProps({
   error: { type: String, default: null },
   index: { type: Number, required: true }
 })
+
+// Action secondaire du bouton de synchronisation : synchro complète, qui
+// redemande tous les dossiers à DN au lieu des seuls modifiés
+const FORCE_FULL_SYNC = 'force-full-sync'
+const SYNC_ACTIONS = [
+  { label: 'Synchronisation forcée', value: FORCE_FULL_SYNC, icon: 'fr-icon-restart-line' }
+]
 
 const HELP_LINKS = window.HELP_LINKS
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
@@ -81,6 +89,10 @@ const validateDSConnection = async () => {
 }
 
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error', 'title-loaded'])
+
+const handleSyncAction = (value) => {
+  if (value === FORCE_FULL_SYNC) emit('sync', props.index, { forceFullSync: true })
+}
 
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null
@@ -280,12 +292,14 @@ watch(() => props.existingConfig, async (config) => {
       </div>
 
       <DsfrButtonGroup inline-layout-when="always" size="large">
-        <DsfrButton
+        <SplitButton
           label="Lancer la synchronisation"
+          toggle-label="Autres options de synchronisation"
           data-test-id="sync-button"
-          primary
+          :actions="SYNC_ACTIONS"
           :disabled="!canSync || sectionEmpty || inFlight"
           @click="$emit('sync', index)"
+          @action="handleSyncAction"
         />
 
         <DsfrButton

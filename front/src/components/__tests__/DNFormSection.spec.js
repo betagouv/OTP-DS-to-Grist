@@ -571,6 +571,16 @@ describe('Sync button', () => {
 
     expect(wrapper.emitted('sync')).toBeFalsy()
   })
+
+  it('emits a forced sync from the secondary action', async () => {
+    await wrapper.setProps({ canSync: true })
+    await wrapper.find('[aria-controls]').trigger('click')
+    const forced = wrapper.findAll('button').find((b) => b.text() === 'Synchronisation forcée')
+
+    await forced.trigger('click')
+
+    expect(wrapper.emitted('sync')).toEqual([[0, { forceFullSync: true }]])
+  })
 })
 
 describe('sectionEmpty computed', () => {
