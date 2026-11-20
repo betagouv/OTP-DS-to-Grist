@@ -49,6 +49,9 @@ class TestNeedsFullSync:
 
         assert needs_full_sync(previous, DEMARCHE, FILTERS_KEY) is True
 
+    def test_forced_despite_previous_dates(self):
+        assert needs_full_sync(_previous(), DEMARCHE, FILTERS_KEY, forced=True) is True
+
     def test_missing_filters_hash(self):
         """Synchro enregistrée sans `filters_hash` : synchro complète ponctuelle."""
         assert (

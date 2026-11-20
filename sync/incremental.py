@@ -59,6 +59,7 @@ def needs_full_sync(
     previous: SyncLog | None,
     demarche_number: str,
     filters_key: str,
+    forced: bool = False,
 ) -> bool:
     """
     Vrai si la synchronisation en cours doit demander tous les dossiers à DN,
@@ -66,13 +67,15 @@ def needs_full_sync(
     None s'il n'y en a pas), la démarche de la configuration et l'empreinte des
     filtres actuels.
 
-    C'est le cas s'il n'y a pas de synchronisation précédente, si la démarche
+    C'est le cas si l'utilisateur l'a demandé (`forced`), s'il n'y a pas de
+    synchronisation précédente, si la démarche
     de la configuration a changé depuis, ou si les filtres ont changé : le
     delta `updatedSince` ne verrait alors que les dossiers modifiés et
     ignorerait ceux nouvellement éligibles/exclus par les nouveaux critères.
     """
     return (
-        previous is None
+        forced
+        or previous is None
         or str(previous.demarche_number) != str(demarche_number)
         or previous.filters_hash != filters_key
     )

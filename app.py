@@ -921,6 +921,14 @@ def api_start_sync():
             return jsonify(
                 {"success": False, "message": "ID de configuration requis"}
             ), 400
+        # Synchro complète demandée par l'utilisateur : booléen strict, pour
+        # qu'une valeur mal formée ne lance pas une synchro incrémentale
+        force_full_sync = data.get("force_full_sync", False)
+        if not isinstance(force_full_sync, bool):
+            return jsonify(
+                {"success": False, "message": "force_full_sync doit être un booléen"}
+            ), 400
+
         server_config = config_manager.load_config_by_id(otp_config_id)
 
         # Validation simple de la configuration serveur
@@ -936,7 +944,9 @@ def api_start_sync():
             ), 400
 
         # Démarrer la tâche avec la configuration serveur sécurisée
-        task_id = sync_manager.start_sync(server_config, auto=False)
+        task_id = sync_manager.start_sync(
+            server_config, auto=False, force_full_sync=force_full_sync
+        )
         _mark_configs_used([server_config["otp_config_id"]])
 
         return jsonify(
