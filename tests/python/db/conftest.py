@@ -52,19 +52,30 @@ def engine(database_url: str) -> Engine:
 
 @pytest.fixture
 def empty_database(engine: Engine) -> Engine:
-    """Base de test vidée des tables de l'application et de la version Alembic."""
+    """
+    Base de test vidée des tables de l'application et de la version Alembic,
+    revenue au fuseau par défaut du serveur.
+    """
     tables = ", ".join([*Base.metadata.tables, ALEMBIC_VERSION_TABLE])
+    database = engine.dialect.identifier_preparer.quote(engine.url.database)
 
     with engine.begin() as connection:
         connection.execute(text(f"DROP TABLE IF EXISTS {tables} CASCADE"))
+        connection.execute(text(f"ALTER DATABASE {database} RESET timezone"))
 
     return engine
 
 
 @pytest.fixture
 def initialized_database(empty_database: Engine, alembic_config: Config) -> Engine:
-    """Base de test au schéma créé par les migrations Alembic, sans données."""
+    """
+    Base de test au schéma créé par les migrations Alembic, sans données.
+
+    Les connexions du pool sont renouvelées : elles prennent le fuseau réglé
+    par les migrations, comme l'application après un déploiement.
+    """
     command.upgrade(alembic_config, "head")
+    empty_database.dispose()
 
     return empty_database
 

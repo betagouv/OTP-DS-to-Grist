@@ -9,7 +9,6 @@ import re
 import threading
 import time
 from collections.abc import Iterable
-from datetime import timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -279,7 +278,7 @@ def check_and_count_ip(response: Response) -> Response:
             )
             return _server_error_response()
 
-        banned_until_local = banned_until.replace(tzinfo=timezone.utc).astimezone()
+        banned_until_local = banned_until.astimezone()
 
         logger.warning(
             "IP bannie jusqu'au %s après %d hits dans la fenêtre : %s",

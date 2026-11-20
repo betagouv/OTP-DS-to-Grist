@@ -66,7 +66,7 @@ class FakeStore:
         ban_count = self.applied.count(ip)
         banned_until = moment + ban_duration(ban_count).total_seconds()
         self.banned_until[ip] = banned_until
-        return datetime.fromtimestamp(banned_until, timezone.utc).replace(tzinfo=None)
+        return datetime.fromtimestamp(banned_until, timezone.utc)
 
 
 def expire(store, ip):
@@ -220,7 +220,7 @@ class TestRequetesEnEchec:
 
     def test_heure_de_fin_de_ban_est_exacte(self, store, client, caplog):
         """
-        L'heure de fin de bannissement est stockée en UTC naïve.
+        L'heure de fin de bannissement est renvoyée en UTC.
 
         Le log doit la rendre avec son fuseau, sinon il affiche une heure
         antérieure à celle des lignes qui l'entourent, puisque celles-ci

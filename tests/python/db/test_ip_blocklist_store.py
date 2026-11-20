@@ -2,7 +2,7 @@ import time
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.pool import NullPool
 
 from database.models import IpBlocklist
@@ -43,6 +43,26 @@ class TestApplyBan:
         assert row.ban_count == 2
         assert row.banned_until == second_until
         assert second_until - first_until >= ban_duration(2) - ban_duration(1)
+
+
+class TestBanEnd:
+    """La fin de ban enregistrée désigne le bon instant"""
+
+    def test_stored_end_is_now_plus_ban_duration(self, store, db_session):
+        before = time.time()
+
+        store.apply_ban(IP)
+
+        # L'epoch calculé par PostgreSQL désigne l'instant, quel que soit le
+        # type de la colonne (avec ou sans fuseau)
+        banned_until = db_session.scalar(
+            select(func.extract("epoch", IpBlocklist.banned_until)).where(
+                IpBlocklist.ip == IP
+            )
+        )
+        duration = ban_duration(1).total_seconds()
+        after = time.time()
+        assert before + duration - 1 <= float(banned_until) <= after + duration + 1
 
 
 class TestBanExpiration:

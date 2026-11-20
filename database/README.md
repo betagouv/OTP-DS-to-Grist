@@ -21,3 +21,9 @@ au lancement de `poe dev`, jamais au démarrage de l'application.
 - `sync_logs` : Historique des executions de synchronisation
 - `ip_blocklist` : Bannissements d'IP en cours (nombre de bannissements, fin de ban)
 - `otp_config_ips` : Dernier passage de chaque IP sur chaque configuration (exploitation)
+
+## Dates
+
+Les colonnes de date sont en `timestamptz` : elles enregistrent un instant, et
+le code les écrit avec leur fuseau. La base est réglée sur le fuseau
+Europe/Paris (migration) : psql les affiche à l'heure de Paris.

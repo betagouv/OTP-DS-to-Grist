@@ -58,11 +58,6 @@ def test_to_local_iso_aware_utc():
     assert to_local_iso(value) == "2026-09-03T11:50:00"
 
 
-def test_to_local_iso_naif_traite_comme_utc():
-    value = datetime(2026, 9, 3, 9, 50)
-    assert to_local_iso(value) == "2026-09-03T11:50:00"
-
-
 def test_to_local_iso_none():
     assert to_local_iso(None) is None
 

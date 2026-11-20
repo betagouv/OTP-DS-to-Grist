@@ -69,7 +69,7 @@ class SyncLog(Base):
     status: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str | None] = mapped_column(Text)
     timestamp: Mapped[datetime | None] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=text("CURRENT_TIMESTAMP"),
     )
@@ -98,7 +98,7 @@ class IpBlocklist(Base):
     ban_count: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
-    banned_until: Mapped[datetime | None] = mapped_column(DateTime)
+    banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class OtpConfigIp(Base):
@@ -116,4 +116,4 @@ class OtpConfigIp(Base):
         ForeignKey("otp_configurations.id", ondelete="CASCADE"),
         index=True,
     )
-    seen_at: Mapped[datetime] = mapped_column(DateTime)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

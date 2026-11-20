@@ -54,16 +54,6 @@ class IpBlocklistStore:
         self._active_bans = None
         self._cache_loaded_at = None
 
-    @staticmethod
-    def _as_naive_utc(moment: datetime) -> datetime:
-        """
-        Normalise un datetime vers UTC naïve, convention des colonnes DateTime.
-        """
-        if moment.tzinfo is None:
-            return moment
-
-        return moment.astimezone(timezone.utc).replace(tzinfo=None)
-
     def is_banned(self, ip: str) -> bool:
         banned_until = self._get_active_bans().get(ip)
 
@@ -76,10 +66,7 @@ class IpBlocklistStore:
         Le compteur est lu puis incrémenté : la durée vient de `ban_duration`,
         jamais d'un calcul SQL, pour ne pas dupliquer la règle en base.
         """
-        moment = self._as_naive_utc(datetime.fromtimestamp(
-            time.time(),
-            timezone.utc
-        ))
+        moment = datetime.fromtimestamp(time.time(), timezone.utc)
 
         db = self._session_factory()
 

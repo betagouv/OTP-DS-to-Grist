@@ -25,8 +25,8 @@ def _frozen_time(moment):
         yield
 
 
-def _naive_utc(epoch):
-    return datetime.fromtimestamp(epoch, timezone.utc).replace(tzinfo=None)
+def _utc(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc)
 
 
 def _store_with_cache(active_bans, cache_ttl=60.0):
@@ -157,7 +157,7 @@ class TestApplyBan:
         with _frozen_time(0.0):
             banned_until = store.apply_ban("203.0.113.7")
 
-        assert banned_until - _naive_utc(0.0) == timedelta(hours=1)
+        assert banned_until == datetime(1970, 1, 1, 1, 0, 0, tzinfo=timezone.utc)
 
     def test_duree_croissant_avec_le_nombre_de_bannissements(self):
         durations = []
@@ -169,20 +169,10 @@ class TestApplyBan:
 
                 durations.append(store.apply_ban("203.0.113.7"))
 
-        base = _naive_utc(0.0)
+        base = _utc(0.0)
         assert durations[0] - base == timedelta(hours=1)
         assert durations[1] - base == timedelta(hours=4)
         assert durations[2] - base == timedelta(hours=16)
-
-    def test_banned_until_en_utc_naive(self):
-        db = _db_with_row(None)
-        store = _store_with_db(db)
-
-        with _frozen_time(0.0):
-            banned_until = store.apply_ban("203.0.113.7")
-
-        assert banned_until.tzinfo is None
-        assert banned_until == datetime(1970, 1, 1, 1, 0, 0)
 
     def test_ferme_la_session(self):
         db = _db_with_row(None)
