@@ -87,12 +87,18 @@ class SyncManager:
         if self.notify_callback:
             self.notify_callback(event_type, data)
 
-    def start_sync(self, server_config: dict[str, Any], auto: bool = False) -> str:
+    def start_sync(
+        self,
+        server_config: dict[str, Any],
+        auto: bool = False,
+        force_full_sync: bool = False,
+    ) -> str:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
         return self.start_task(
             self.run_synchronization_task,
             server_config,
             auto=auto,
+            force_full_sync=force_full_sync,
             config=server_config,
         )
 
@@ -167,6 +173,7 @@ class SyncManager:
         progress_callback: Callable[[float, str], None],
         log_callback: Callable[[str], None] | None = None,
         auto: bool = False,
+        force_full_sync: bool = False,
     ) -> dict[str, Any]:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
@@ -233,7 +240,10 @@ class SyncManager:
             filters_key = build_filters_cache_key(env_copy)
             previous = _last_sync_with_dates(config.get("otp_config_id"))
             full_sync = needs_full_sync(
-                previous, config["demarche_number"], filters_key
+                previous,
+                config["demarche_number"],
+                filters_key,
+                forced=force_full_sync,
             )
             dates = dates_to_request(previous, full_sync)
             env_copy = {**env_copy, **dates_to_env(dates)}

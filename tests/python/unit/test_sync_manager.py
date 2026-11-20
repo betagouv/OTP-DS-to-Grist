@@ -326,6 +326,7 @@ class TestSyncManager:
                 self.manager.run_synchronization_task,
                 server_config,
                 auto=False,
+                force_full_sync=False,
                 config=server_config,
             )
 
@@ -1057,6 +1058,40 @@ class TestSyncManager:
 
         self.manager.run_synchronization_task(
             config, progress_callback=_ignore_progress
+        )
+
+        env = mock_subprocess.call_args.kwargs["env"]
+        assert env["MODIFIED_DOSSIERS_SINCE"] == ""
+        assert env["DELETED_DOSSIERS_SINCE"] == ""
+        assert mock_db.add.call_args[0][0].force_full_sync is True
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_synchro_forcee_complete_malgre_les_dates(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Synchro complète demandée par l'utilisateur : le sous-processus ne
+        reçoit aucune date, même si la précédente en a laissé."""
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "otp_config_id": 1,
+        }
+        mock_subprocess.return_value = create_mock_process("Terminé")
+        mock_db = MagicMock()
+        mock_db.__enter__.return_value.scalars.return_value.first.return_value = (
+            SyncLog(
+                demarche_number="12345",
+                filters_hash=build_filters_cache_key({}),
+                modified_dossiers_since=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            )
+        )
+        mock_session_local.return_value = mock_db
+
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, force_full_sync=True
         )
 
         env = mock_subprocess.call_args.kwargs["env"]
