@@ -65,7 +65,7 @@
   <div class="schema-wrap fr-mb-4w">
     <svg viewBox="0 0 680 320" role="img" aria-labelledby="sc-title sc-desc">
       <title id="sc-title">Tables créées par OTP pour une démarche</title>
-      <desc id="sc-desc">Les tables dossiers, demandeurs, champs, annotations, avis et blocs répétables sont reliées par dossier_number. Annotations, avis et blocs répétables sont conditionnelles. Instructeurs et Sync_metadata sont au niveau démarche.</desc>
+      <desc id="sc-desc">Les tables dossiers, demandeurs, champs, annotations, avis et blocs répétables sont reliées par dossier_number. Annotations, avis et blocs répétables sont conditionnelles. Instructeurs est au niveau démarche.</desc>
 
       <g class="sc-lines">
         <line class="sc-line" x1="110" y1="74" x2="110" y2="104"/>
@@ -110,17 +110,12 @@
         <text class="sc-s" x="490" y="164" text-anchor="middle">si avis, 1 ligne par avis</text>
       </g>
 
-      <rect class="sc-zone" x="40" y="204" width="600" height="100" rx="6"/>
+      <rect class="sc-zone" x="40" y="204" width="260" height="100" rx="6"/>
       <text class="sc-s" x="56" y="224">Niveau démarche, sans dossier_number</text>
       <g onclick="show('instr')" tabindex="0" role="button" aria-label="Voir les colonnes de instructeurs" onkeydown="if(event.key==='Enter')show('instr')">
         <rect class="sc-box sc-grey" x="60" y="240" width="200" height="44" rx="4"/>
         <text class="sc-t sc-t-grey" x="160" y="258" text-anchor="middle">instructeurs</text>
         <text class="sc-s" x="160" y="274" text-anchor="middle">1 ligne par instructeur et groupe</text>
-      </g>
-      <g onclick="show('sync')" tabindex="0" role="button" aria-label="Voir les colonnes de Sync_metadata" onkeydown="if(event.key==='Enter')show('sync')">
-        <rect class="sc-box sc-grey" x="280" y="240" width="200" height="44" rx="4"/>
-        <text class="sc-t sc-t-grey" x="380" y="258" text-anchor="middle">Sync_metadata</text>
-        <text class="sc-s" x="380" y="274" text-anchor="middle">1 ligne par démarche</text>
       </g>
     </svg>
   </div>
@@ -314,21 +309,9 @@ instr: {n:'Instructeurs', t:P+'instructeurs · une ligne par instructeur dans un
   ['groupe_instructeur_label','Text','Nom du groupe'],
   ['instructeur_id','Text','Identifiant de l’instructeur dans DN'],
   ['instructeur_email','Text','E-mail de l’instructeur']]]],
- note:'Mise à jour à chaque synchro, y compris quand aucun dossier n’a bougé.'},
-
-sync: {n:'Sync_metadata', t:'Sync_metadata · table commune aux démarches du document', g:[
- ['Colonnes', [
-  ['demarche_number','Int','Numéro de la démarche'],
-  ['last_sync_at','Text','Date de la dernière synchro'],
-  ['updated_since_cursor','Text','Repère de la synchro incrémentale (updatedSince)'],
-  ['deleted_since_cursor','Text','Repère pour les dossiers supprimés'],
-  ['deleted_after_cursor','Text','Repère pour les dossiers supprimés'],
-  ['last_sync_status','Text','Statut de la dernière synchro'],
-  ['last_sync_duration','Numeric','Durée de la dernière synchro'],
-  ['force_full_sync','Bool','Force une synchro complète à la prochaine exécution'],
-  ['filters_hash','Text','Empreinte des filtres de synchro']]]], note:''}
+ note:'Mise à jour à chaque synchro, y compris quand aucun dossier n’a bougé.'}
 };
-var order = ['dossiers','dem_pm','dem_pp','champs','annotations','repet','avis','instr','sync'];
+var order = ['dossiers','dem_pm','dem_pp','champs','annotations','repet','avis','instr'];
 
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 

@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     UniqueConstraint,
     false,
     text,
@@ -59,6 +60,9 @@ class UserSchedule(Base):
 
 class SyncLog(Base):
     __tablename__: str = "sync_logs"
+    __table_args__ = (
+        Index("ix_sync_logs_otp_config_id_timestamp", "otp_config_id", "timestamp"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     grist_user_id: Mapped[str | None] = mapped_column(Text)
     grist_doc_id: Mapped[str | None] = mapped_column(Text)
@@ -89,6 +93,16 @@ class SyncLog(Base):
     # {"dossiers": [{"dossier", "timestamp", "message"}], "dossiers_total",
     #  "general": [{"timestamp", "message"}]}
     errors: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # Dates depuis lesquelles la synchronisation suivante demandera à DN les
+    # dossiers modifiés et supprimés (ticket 621, voir sync/incremental.py).
+    # NULL si la synchro n'en a pas laissé (sous-processus en échec, lignes
+    # historiques) : la suivante repart de la dernière ligne qui en a.
+    modified_dossiers_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    deleted_dossiers_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
 
 class IpBlocklist(Base):

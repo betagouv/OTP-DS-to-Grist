@@ -1,27 +1,29 @@
 import json
 from datetime import datetime, timezone
 
+from sync.incremental import SinceDates
 from utils.log import MAX_SYNC_ERRORS, log
 
-SYNC_METADATA_PREFIX = "SYNC_METADATA: "
+SYNC_LOG_VALUES_PREFIX = "SYNC_LOG_VALUES: "
 SYNC_ERRORS_PREFIX = "SYNC_ERRORS: "
 
 
-def emit_sync_metadata(
-    duration_seconds: float, force_full_sync: bool, filters_hash: str
-) -> None:
-    """Émet les métadonnées de fin de sync : durée, force_full_sync, filters_hash.
+def send_sync_log_values(duration_seconds: float, next_dates: SinceDates) -> None:
+    """Transmet au processus parent, sur la sortie standard, les valeurs de fin de
+    sync qu'il enregistre dans sync_logs : durée, et dates depuis lesquelles
+    la synchronisation suivante demandera à DN les dossiers modifiés et
+    supprimés.
 
     Ces valeurs alimentent sync_logs ; la ligne technique n'est pas destinée
     à l'utilisateur.
     """
     log(
-        SYNC_METADATA_PREFIX
+        SYNC_LOG_VALUES_PREFIX
         + json.dumps(
             {
                 "duration_seconds": duration_seconds,
-                "force_full_sync": force_full_sync,
-                "filters_hash": filters_hash,
+                "modified_dossiers_since": next_dates.modified_dossiers_since,
+                "deleted_dossiers_since": next_dates.deleted_dossiers_since,
             },
             sort_keys=True,
         ),
@@ -126,26 +128,27 @@ def _parse_error_count(line: str) -> int | None:
         return None
 
 
-class SyncMetadataParseError(Exception):
-    """Métadonnées de fin de sync présentes dans la sortie mais illisibles."""
+class SyncLogValuesParseError(Exception):
+    """Valeurs de fin de sync présentes dans la sortie mais illisibles."""
 
 
-def _parse_sync_metadata(line: str) -> dict | None:
-    """Extrait les métadonnées de fin de sync d'une ligne de sortie.
+def _parse_sync_log_values(line: str) -> dict | None:
+    """Extrait les valeurs de fin de sync d'une ligne de sortie.
 
-    Renvoie None si la ligne n'en porte pas ; lève SyncMetadataParseError
+    Renvoie None si la ligne n'en porte pas ; lève SyncLogValuesParseError
     si elles sont présentes mais illisibles.
     """
-    if not line.startswith(SYNC_METADATA_PREFIX):
+    if not line.startswith(SYNC_LOG_VALUES_PREFIX):
         return None
-    payload = line[len(SYNC_METADATA_PREFIX) :]
+    payload = line[len(SYNC_LOG_VALUES_PREFIX) :]
     try:
-        metadata = json.loads(payload)
+        values = json.loads(payload)
     except ValueError as e:
-        raise SyncMetadataParseError(f"JSON illisible: {payload!r}") from e
-    if not isinstance(metadata, dict):
-        raise SyncMetadataParseError(f"Contenu non-dict: {payload!r}")
-    return metadata
+        raise SyncLogValuesParseError(f"JSON illisible: {payload!r}") from e
+    if not isinstance(values, dict):
+        raise SyncLogValuesParseError(f"Contenu non-dict: {payload!r}")
+
+    return values
 
 
 def parse_output(output_lines: list[str]) -> dict:
@@ -165,9 +168,9 @@ def parse_output(output_lines: list[str]) -> dict:
 
     nb_deleted = 0
     duration_seconds = None
-    force_full_sync = None
-    filters_hash = None
-    sync_metadata_error = False
+    modified_dossiers_since = None
+    deleted_dossiers_since = None
+    sync_log_values_error = False
     # La ligne SYNC_ERRORS porte des messages libres : une phrase de bilan
     # qu'ils contiendraient ne doit pas fausser les statistiques
     output_lines = [
@@ -194,17 +197,17 @@ def parse_output(output_lines: list[str]) -> dict:
             except (ValueError, IndexError):
                 pass
 
-        # Métadonnées de fin de sync : si présentes mais illisibles, le flag
-        # sync_metadata_error le signale (compteurs préservés).
+        # Valeurs de fin de sync : si présentes mais illisibles, le flag
+        # sync_log_values_error le signale (compteurs préservés).
         try:
-            sync_metadata = _parse_sync_metadata(line)
-        except SyncMetadataParseError:
-            sync_metadata_error = True
+            sync_log_values = _parse_sync_log_values(line)
+        except SyncLogValuesParseError:
+            sync_log_values_error = True
         else:
-            if sync_metadata is not None:
-                duration_seconds = sync_metadata.get("duration_seconds")
-                force_full_sync = sync_metadata.get("force_full_sync")
-                filters_hash = sync_metadata.get("filters_hash")
+            if sync_log_values is not None:
+                duration_seconds = sync_log_values.get("duration_seconds")
+                modified_dossiers_since = sync_log_values.get("modified_dossiers_since")
+                deleted_dossiers_since = sync_log_values.get("deleted_dossiers_since")
 
         # Essayer de parser le nombre de dossiers supprimés côté DN
         if "Nombre de dossiers marqués supprimés dans Grist :" in line:
@@ -252,9 +255,9 @@ def parse_output(output_lines: list[str]) -> dict:
         "total_processed": total_processed,
         "deleted_dossiers_count": nb_deleted,
         "duration_seconds": duration_seconds,
-        "force_full_sync": force_full_sync,
-        "filters_hash": filters_hash,
-        "sync_metadata_error": sync_metadata_error,
+        "modified_dossiers_since": modified_dossiers_since,
+        "deleted_dossiers_since": deleted_dossiers_since,
+        "sync_log_values_error": sync_log_values_error,
         "errors": errors_list,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

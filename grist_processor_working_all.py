@@ -38,15 +38,14 @@ from schema_utils import (
     update_grist_tables_from_schema,
 )
 from sync.filters import (
-    build_filters_cache_key,
     build_server_filters,
     filter_dossiers,
     read_filters_from_env,
 )
-from sync.incremental import dates_to_request, needs_full_sync, next_dates_to_request
+from sync.incremental import dates_from_env, next_dates_to_request
 from sync.sync_result_parser import (
     emit_sync_errors,
-    emit_sync_metadata,
+    send_sync_log_values,
     timestamped_error,
 )
 from sync.tasks.deleted_dossiers import check_deleted_dossiers
@@ -429,7 +428,6 @@ def run_demarche_level_tasks(
     table_ids: dict[str, Any],
     demarche_number: int,
     updated_since_cursor: str | None = None,
-    force_full_sync: bool = False,
     deleted_since_cursor: str | None = None,
     schema_method_successful: bool = False,
     report_error: Callable[[str], None] = log_error,
@@ -461,10 +459,10 @@ def run_demarche_level_tasks(
         except Exception as e:
             report_error(f"Erreur synchronisation instructeurs: {e}")
 
-    # 2. Labels : uniquement en sync incrémentale.
+    # 2. Labels : uniquement en sync incrémentale (avec une date).
     #    En sync complète, tous les dossiers sont refetchés et leurs labels réécrits
     #    par le chemin principal — ce passage serait redondant.
-    if updated_since_cursor and not force_full_sync:
+    if updated_since_cursor:
         try:
             sync_labels_for_demarche(
                 client, table_ids["dossier_table_id"], demarche_number, log, log_error
@@ -782,18 +780,13 @@ def process_demarche_for_grist_optimized(
                 demarche_number, column_types
             )
 
-        # Charger les métadonnées de sync
-        sync_meta = client.get_sync_metadata(demarche_number)
-        current_filters_key = build_filters_cache_key()
-        force_full_sync = needs_full_sync(sync_meta, current_filters_key)
-        dates = dates_to_request(sync_meta, force_full_sync)
+        # Dates à demander à DN, décidées par le processus parent : aucune en
+        # synchronisation complète
+        dates = dates_from_env()
         updated_since_cursor = dates.modified_dossiers_since
         deleted_since_cursor = dates.deleted_dossiers_since
-        sync_meta_grist_id = sync_meta.get("grist_id") if sync_meta else None
 
-        if force_full_sync:
-            log("force_full_sync activé → sync complète forcée")
-        elif updated_since_cursor:
+        if updated_since_cursor:
             log(f"updatedSince cursor trouvé: {updated_since_cursor}")
         else:
             log("Pas de cursor updatedSince → sync complète")
@@ -1325,12 +1318,6 @@ def process_demarche_for_grist_optimized(
         minutes = int(elapsed_time // 60)
         seconds = elapsed_time % 60
 
-        # Métadonnées de fin de sync enregistrées dans sync_logs : durée,
-        # force_full_sync effectif, empreinte des filtres en vigueur.
-        emit_sync_metadata(
-            round(elapsed_time, 1), force_full_sync, current_filters_key
-        )
-
         # Calculer les nombres à partir des ensembles : un dossier écrit dans la
         # table dossiers mais en échec sur une autre table est compté en échec
         total_success = len(successful_dossiers.difference(failed_dossiers))
@@ -1383,7 +1370,6 @@ def process_demarche_for_grist_optimized(
             table_ids,
             demarche_number,
             updated_since_cursor=updated_since_cursor,
-            force_full_sync=force_full_sync,
             deleted_since_cursor=deleted_since_cursor,
             schema_method_successful=schema_method_successful,
             report_error=report_error,
@@ -1394,34 +1380,15 @@ def process_demarche_for_grist_optimized(
                 "deleted_since est conservé, elle sera reprise au prochain run"
             )
 
-        # Sauvegarder le curseur de sync
-        sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Valeurs de fin de sync enregistrées dans sync_logs par le
+        # processus parent : durée, dates de la synchronisation suivante
         next_dates = next_dates_to_request(
             dates,
             sync_start_time,
             dossiers_complete=not (pagination_error or failed_dossiers),
             deletions_checked=deletions_checked,
         )
-        try:
-            client.save_sync_metadata(
-                demarche_number,
-                {
-                    "last_sync_at": sync_end_time,
-                    "updated_since_cursor": next_dates.modified_dossiers_since,
-                    "deleted_since_cursor": next_dates.deleted_dossiers_since,
-                    "last_sync_status": (
-                        "partial" if (total_errors or pagination_error) else "success"
-                    ),
-                    "last_sync_duration": round(elapsed_time, 1),
-                    "force_full_sync": False,
-                    "filters_hash": current_filters_key,
-                },
-                existing_grist_id=sync_meta_grist_id,
-            )
-        except GristReadError:
-            raise
-        except Exception as e:
-            report_error(f"Erreur sauvegarde Sync_metadata: {e}")
+        send_sync_log_values(round(elapsed_time, 1), next_dates)
 
         return total_success > 0 or schema_method_successful or selected_count == 0
 
@@ -1529,8 +1496,8 @@ def main():
             max_workers=max_workers,
         )
     except GristReadError as e:
-        # Lecture en échec : on s'arrête sans enregistrer Sync_metadata, le
-        # repère de reprise n'avance pas et le prochain run rejoue le delta.
+        # Lecture en échec : on s'arrête sans émettre les dates de la synchro
+        # suivante, qui repartira des mêmes dates et rejouera le delta.
         log_error(
             f"{e}. Synchronisation interrompue pour ne pas créer de doublons ; "
             "elle reprendra au prochain lancement."

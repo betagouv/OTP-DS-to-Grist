@@ -119,6 +119,24 @@ Une tâche terminée est oubliée aussitôt, sauf dans une série : ses démarch
 terminées restent consultables jusqu'à la fin de la dernière. Tout est en
 mémoire : rien n'est repris après un redémarrage.
 
+## Synchronisation incrémentale
+
+Une synchronisation ne demande à DN que les dossiers modifiés et supprimés
+depuis des dates laissées par la précédente, ou tous les dossiers
+(synchronisation complète). `sync/incremental.py` porte ces règles :
+
+- le processus parent (`SyncManager`) décide, d'après la dernière synchro de la
+  configuration qui a laissé des dates dans `sync_logs` : synchro complète s'il
+  n'y en a pas, si la démarche de la configuration ou ses filtres ont changé
+  depuis ;
+- il transmet seulement les dates au sous-processus, par son environnement ;
+- le sous-processus renvoie, dans sa ligne `SYNC_LOG_VALUES`, les dates de la
+  synchro suivante : elles n'avancent que si tous les dossiers ont été traités
+  (et, pour les suppressions, si leur vérification a abouti) ;
+- le parent les enregistre dans la ligne `sync_logs` de la synchro. Une synchro
+  qui n'en a pas émis (sous-processus en échec) est ignorée par la suivante,
+  qui repart des mêmes dates.
+
 ## Historique des synchronisations
 
 Chaque synchronisation, automatique ou manuelle, est enregistrée dans la table

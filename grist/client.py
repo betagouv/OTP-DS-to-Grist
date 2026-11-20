@@ -29,9 +29,6 @@ GRIST_MAX_BODY_BYTES = 1024 * 1024
 # enregistrements sérialisés et de leur virgule séparatrice (2 octets chacun).
 _RECORDS_PAYLOAD_BASE_BYTES = 13
 
-SYNC_METADATA_TABLE_ID = "Sync_metadata"
-
-
 class GristReadError(Exception):
     """
     Lecture d'une table Grist en échec.
@@ -187,72 +184,6 @@ class GristClient:
         log(f"  Table '{table_id}': {len(dossier_dict)} enregistrements existants")
 
         return dossier_dict
-
-    def get_sync_metadata(self, demarche_number: int | str) -> dict[str, Any] | None:
-        """
-        Récupère les métadonnées de sync pour une démarche depuis Sync_metadata.
-        Retourne un dict ou None si pas encore de sync enregistrée.
-        """
-        for record in self._sync_metadata_records():
-            fields = record.get("fields", {})
-            if str(fields.get("demarche_number") or "") == str(demarche_number):
-                return {
-                    "grist_id": record.get("id"),
-                    "last_sync_at": fields.get("last_sync_at"),
-                    "updated_since_cursor": fields.get("updated_since_cursor"),
-                    "deleted_since_cursor": fields.get("deleted_since_cursor"),
-                    "deleted_after_cursor": fields.get("deleted_after_cursor"),
-                    "last_sync_status": fields.get("last_sync_status"),
-                    "last_sync_duration": fields.get("last_sync_duration"),
-                    "force_full_sync": fields.get("force_full_sync", False),
-                    "filters_hash": fields.get("filters_hash"),
-                }
-
-        return None  # première sync
-
-    def save_sync_metadata(
-        self,
-        demarche_number: int | str,
-        metadata: dict[str, Any],
-        existing_grist_id: int | None = None,
-    ) -> int | None:
-        """
-        Crée ou met à jour la ligne de métadonnées de sync pour une démarche.
-
-        Args:
-            demarche_number: Numéro de la démarche
-            metadata: dict avec les champs à sauvegarder
-            existing_grist_id: ID Grist de la ligne existante (None = créer)
-        """
-        url = f"{self.base_url}/docs/{self.doc_id}/tables/{SYNC_METADATA_TABLE_ID}/records"
-        fields = {"demarche_number": int(demarche_number), **metadata}
-
-        # Chercher si une ligne existe déjà pour cette démarche
-        existing_id = None
-        for record in self._sync_metadata_records():
-            if int(record.get("fields", {}).get("demarche_number") or 0) == int(
-                demarche_number
-            ):
-                existing_id = record.get("id")
-                break
-
-        if existing_id:
-            payload = {"records": [{"id": existing_id, "fields": fields}]}
-            response = self._get_session().patch(
-                url, headers=self.headers, json=payload
-            )
-        else:
-            payload = {"records": [{"fields": fields}]}
-            response = self._get_session().post(url, headers=self.headers, json=payload)
-
-        if response.status_code in [200, 201]:
-            log(f"  Sync_metadata sauvegardée pour démarche {demarche_number}")
-        else:
-            log_error(
-                f"  Erreur save_sync_metadata: {response.status_code} — {response.text[:200]}"
-            )
-
-        return existing_grist_id
 
     def list_documents(self) -> dict[str, Any]:
         url = f"{self.base_url}/docs"
@@ -787,21 +718,6 @@ class GristClient:
         return UpsertResult(ok=success, failed_dossiers=failed_dossiers)
 
     # --- Helpers privés ---
-
-    def _sync_metadata_records(self) -> list[dict[str, Any]]:
-        """
-        Lignes de la table Sync_metadata ; liste vide si la table n'existe pas
-        encore (404). Toute autre erreur lève GristReadError : la confondre
-        avec une table vide ferait repartir d'une synchro complète, ou créer
-        une seconde ligne pour la démarche.
-        """
-        response = self.get_records(SYNC_METADATA_TABLE_ID)
-        if response.status_code == 404:
-            return []
-        if response.status_code != 200:
-            raise GristReadError(SYNC_METADATA_TABLE_ID, response)
-
-        return response.json().get("records", [])
 
     def _untie_columns(self, table_id: str, col_ids: list[str]) -> None:
         """
