@@ -3,14 +3,15 @@ import pytest
 import json
 import re
 
+from sync.incremental import SinceDates
 from sync.sync_result_parser import (
     SYNC_ERRORS_PREFIX,
-    SyncMetadataParseError,
+    SyncLogValuesParseError,
     _parse_success_count,
     _parse_error_count,
-    _parse_sync_metadata,
+    _parse_sync_log_values,
     emit_sync_errors,
-    emit_sync_metadata,
+    send_sync_log_values,
     parse_output,
     read_sync_errors,
     timestamped_error,
@@ -111,73 +112,81 @@ class TestParseOutput:
         assert result["total_processed"] == 0
 
 
-class TestSyncMetadataContract:
-    """Contrat d'émission/parsing de la ligne SYNC_METADATA entre le pipeline
-    (sous-processus) et le parent : durée, force_full_sync et empreinte des
-    filtres. Absente → valeurs None. Présente mais illisible → SyncMetadataParseError
-    en interne, signalée par le flag sync_metadata_error sans impacter les compteurs."""
+class TestSyncLogValuesContract:
+    """Contrat d'émission/parsing de la ligne SYNC_LOG_VALUES entre le pipeline
+    (sous-processus) et le parent : durée et dates de la synchronisation
+    suivante. Absente → valeurs None. Présente mais illisible →
+    SyncLogValuesParseError en interne, signalée par le flag sync_log_values_error
+    sans impacter les compteurs."""
 
     def test_emit_est_parsee_par_parse_output(self, capsys):
-        emit_sync_metadata(12.5, True, '{"date_debut": "2024-01-01"}')
+        send_sync_log_values(
+            12.5,
+            SinceDates(
+                modified_dossiers_since="2024-02-01T00:00:00Z",
+                deleted_dossiers_since="2024-01-01T00:00:00Z",
+            ),
+        )
         captured = capsys.readouterr()
-        assert captured.out.startswith("SYNC_METADATA: ")
+        assert captured.out.startswith("SYNC_LOG_VALUES: ")
         result = parse_output(captured.out.splitlines())
         assert result["duration_seconds"] == 12.5
-        assert result["force_full_sync"] is True
-        assert result["filters_hash"] == '{"date_debut": "2024-01-01"}'
-        assert result["sync_metadata_error"] is False
+        assert result["modified_dossiers_since"] == "2024-02-01T00:00:00Z"
+        assert result["deleted_dossiers_since"] == "2024-01-01T00:00:00Z"
+        assert result["sync_log_values_error"] is False
 
-    def test_emit_force_full_sync_false(self, capsys):
-        emit_sync_metadata(3.0, False, "{}")
+    def test_emit_sans_dates(self, capsys):
+        send_sync_log_values(3.0, SinceDates())
         result = parse_output(capsys.readouterr().out.splitlines())
-        assert result["force_full_sync"] is False
+        assert result["modified_dossiers_since"] is None
+        assert result["deleted_dossiers_since"] is None
 
-    def test_metadata_absentes_sont_none(self):
+    def test_valeurs_absentes_sont_none(self):
         result = parse_output(["Dossiers traités avec succès: 10"])
         assert result["duration_seconds"] is None
-        assert result["force_full_sync"] is None
-        assert result["filters_hash"] is None
-        assert result["sync_metadata_error"] is False
+        assert result["modified_dossiers_since"] is None
+        assert result["deleted_dossiers_since"] is None
+        assert result["sync_log_values_error"] is False
 
-    def test_metadata_malformee_signalee_sans_casser_les_compteurs(self):
+    def test_valeurs_malformees_signalees_sans_casser_les_compteurs(self):
         lines = [
-            "SYNC_METADATA: {pas-du-json",
+            "SYNC_LOG_VALUES: {pas-du-json",
             "Dossiers traités avec succès: 10",
             "Dossiers en échec: 2",
         ]
         result = parse_output(lines)
         assert result["duration_seconds"] is None
-        assert result["force_full_sync"] is None
-        assert result["filters_hash"] is None
-        assert result["sync_metadata_error"] is True
+        assert result["modified_dossiers_since"] is None
+        assert result["deleted_dossiers_since"] is None
+        assert result["sync_log_values_error"] is True
         assert result["success_count"] == 10
         assert result["error_count"] == 2
 
-    def test_metadata_non_dict_signalee(self):
-        result = parse_output(["SYNC_METADATA: 42"])
+    def test_valeurs_non_dict_signalees(self):
+        result = parse_output(["SYNC_LOG_VALUES: 42"])
         assert result["duration_seconds"] is None
-        assert result["sync_metadata_error"] is True
+        assert result["sync_log_values_error"] is True
 
 
-class TestParseSyncMetadata:
-    """`_parse_sync_metadata` est le contrat : pas mon préfixe → None ; mon
-    préfixe mais illisible → SyncMetadataParseError (signal interne, attrapé
+class TestParseSyncLogValues:
+    """`_parse_sync_log_values` est le contrat : pas mon préfixe → None ; mon
+    préfixe mais illisible → SyncLogValuesParseError (signal interne, attrapé
     par parse_output)."""
 
     def test_ligne_sans_prefixe_retourne_none(self):
-        assert _parse_sync_metadata("Dossiers traités avec succès: 10") is None
+        assert _parse_sync_log_values("Dossiers traités avec succès: 10") is None
 
     def test_ligne_valide_retourne_le_dict(self):
-        metadata = _parse_sync_metadata('SYNC_METADATA: {"duration_seconds": 1.0}')
-        assert metadata == {"duration_seconds": 1.0}
+        values = _parse_sync_log_values('SYNC_LOG_VALUES: {"duration_seconds": 1.0}')
+        assert values == {"duration_seconds": 1.0}
 
     def test_json_illisible_leve(self):
-        with pytest.raises(SyncMetadataParseError):
-            _parse_sync_metadata("SYNC_METADATA: {pas-du-json")
+        with pytest.raises(SyncLogValuesParseError):
+            _parse_sync_log_values("SYNC_LOG_VALUES: {pas-du-json")
 
     def test_contenu_non_dict_leve(self):
-        with pytest.raises(SyncMetadataParseError):
-            _parse_sync_metadata("SYNC_METADATA: [1, 2]")
+        with pytest.raises(SyncLogValuesParseError):
+            _parse_sync_log_values("SYNC_LOG_VALUES: [1, 2]")
 
 
 class TestParseOutputWithDetailedErrorLogs:

@@ -3,16 +3,28 @@
 Décide si une synchronisation demande à DN tous les dossiers (synchronisation
 complète) ou seulement ceux modifiés (`updatedSince` de l'API DN) et supprimés
 depuis une date, et calcule ces dates pour la synchronisation suivante.
+
+Le processus parent prend la décision, d'après la dernière synchronisation
+enregistrée dans `sync_logs`, et transmet les dates au sous-processus par son
+environnement : ce module est le seul à connaître ces variables.
 """
 
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
 
-from utils.log import log
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from database.models import SyncLog
 
 # Format des dates transmises à l'API DN
 ISO_DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+# Variables d'environnement qui transmettent les dates au sous-processus
+MODIFIED_DOSSIERS_SINCE_ENV = "MODIFIED_DOSSIERS_SINCE"
+DELETED_DOSSIERS_SINCE_ENV = "DELETED_DOSSIERS_SINCE"
 
 
 @dataclass(frozen=True)
@@ -24,34 +36,49 @@ class SinceDates:
     deleted_dossiers_since: str | None = None
 
 
-def needs_full_sync(previous: dict[str, Any] | None, filters_key: str) -> bool:
+def last_sync_with_dates(db: Session, otp_config_id: int) -> SyncLog | None:
+    """
+    Dernière synchronisation de la configuration qui a laissé des dates à la
+    suivante ; None s'il n'y en a pas.
+
+    Une synchronisation dont le sous-processus a échoué n'en laisse pas : elle
+    est ignorée, et la suivante repart des mêmes dates que celle en échec.
+    """
+    return db.scalars(
+        select(SyncLog)
+        .where(
+            SyncLog.otp_config_id == otp_config_id,
+            SyncLog.modified_dossiers_since.is_not(None),
+        )
+        .order_by(SyncLog.timestamp.desc(), SyncLog.id.desc())
+        .limit(1)
+    ).first()
+
+
+def needs_full_sync(
+    previous: SyncLog | None,
+    demarche_number: str,
+    filters_key: str,
+) -> bool:
     """
     Vrai si la synchronisation en cours doit demander tous les dossiers à DN,
-    d'après l'état laissé par la précédente (`previous`, None s'il n'y en a
-    pas) et l'empreinte des filtres actuels.
+    d'après la dernière synchronisation qui a laissé des dates (`previous`,
+    None s'il n'y en a pas), la démarche de la configuration et l'empreinte des
+    filtres actuels.
 
-    C'est le cas s'il n'y a pas d'état précédent (première synchro ou table
-    Sync_metadata supprimée), si une synchro complète a été demandée, ou si les
-    filtres ont changé : le delta `updatedSince` ne verrait alors que les
-    dossiers modifiés et ignorerait ceux nouvellement éligibles/exclus par les
-    nouveaux critères.
+    C'est le cas s'il n'y a pas de synchronisation précédente, si la démarche
+    de la configuration a changé depuis, ou si les filtres ont changé : le
+    delta `updatedSince` ne verrait alors que les dossiers modifiés et
+    ignorerait ceux nouvellement éligibles/exclus par les nouveaux critères.
     """
-    if previous is None:
-        return True
-
-    full_sync = bool(previous.get("force_full_sync", False))
-    # `filters_hash` est `None` la première fois (créé par le déploiement
-    # précédent) → synchro complète ponctuelle, puis retour au delta normal.
-    if previous.get("filters_hash") != filters_key:
-        log(
-            "Changement de filtres détecté (filters_hash différent) → sync complète forcée"
-        )
-        full_sync = True
-
-    return full_sync
+    return (
+        previous is None
+        or str(previous.demarche_number) != str(demarche_number)
+        or previous.filters_hash != filters_key
+    )
 
 
-def dates_to_request(previous: dict[str, Any] | None, full_sync: bool) -> SinceDates:
+def dates_to_request(previous: SyncLog | None, full_sync: bool) -> SinceDates:
     """
     Dates depuis lesquelles la synchronisation en cours demande à DN les
     dossiers modifiés et supprimés : celles enregistrées par la précédente,
@@ -61,10 +88,8 @@ def dates_to_request(previous: dict[str, Any] | None, full_sync: bool) -> SinceD
         return SinceDates()
 
     return SinceDates(
-        modified_dossiers_since=_grist_date_to_iso(
-            previous.get("updated_since_cursor")
-        ),
-        deleted_dossiers_since=previous.get("deleted_since_cursor"),
+        modified_dossiers_since=_to_iso(previous.modified_dossiers_since),
+        deleted_dossiers_since=_to_iso(previous.deleted_dossiers_since),
     )
 
 
@@ -99,11 +124,27 @@ def next_dates_to_request(
     )
 
 
-# --- Helpers privés (module) ---
-def _grist_date_to_iso(value: Any) -> Any:
-    """Convertit un horodatage numérique (colonne Grist de type DateTime, #284)
-    en date transmise à DN ; toute autre valeur est rendue telle quelle."""
-    if value and isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value, tz=timezone.utc).strftime(ISO_DATE_FORMAT)
+def dates_to_env(dates: SinceDates) -> dict[str, str]:
+    """Variables d'environnement qui transmettent les dates au sous-processus
+    (vides si aucune date)."""
+    return {
+        MODIFIED_DOSSIERS_SINCE_ENV: dates.modified_dossiers_since or "",
+        DELETED_DOSSIERS_SINCE_ENV: dates.deleted_dossiers_since or "",
+    }
 
-    return value
+
+def dates_from_env(env: Mapping[str, str] = os.environ) -> SinceDates:
+    """Dates transmises par le processus parent (voir `dates_to_env`)."""
+    return SinceDates(
+        modified_dossiers_since=env.get(MODIFIED_DOSSIERS_SINCE_ENV) or None,
+        deleted_dossiers_since=env.get(DELETED_DOSSIERS_SINCE_ENV) or None,
+    )
+
+
+# --- Helpers privés (module) ---
+def _to_iso(value: datetime | None) -> str | None:
+    """Date enregistrée en base, au format transmis à DN."""
+    if value is None:
+        return None
+
+    return value.astimezone(timezone.utc).strftime(ISO_DATE_FORMAT)

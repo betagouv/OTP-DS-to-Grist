@@ -1,56 +1,64 @@
+from datetime import datetime, timedelta, timezone
+
+from database.models import SyncLog
 from sync.incremental import (
     SinceDates,
+    dates_from_env,
+    dates_to_env,
     dates_to_request,
     needs_full_sync,
     next_dates_to_request,
 )
 
 FILTERS_KEY = '{"date_debut": null}'
+DEMARCHE = "12345"
 DATE = "2024-01-01T00:00:00Z"
+DATE_UTC = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
 def _previous(**overrides):
-    """État laissé par une synchro précédente réussie, filtres inchangés."""
-    previous = {
-        "updated_since_cursor": DATE,
-        "deleted_since_cursor": DATE,
-        "force_full_sync": False,
+    """Synchro précédente de la même démarche, filtres inchangés, qui a laissé
+    des dates."""
+    fields = {
+        "demarche_number": DEMARCHE,
         "filters_hash": FILTERS_KEY,
+        "modified_dossiers_since": DATE_UTC,
+        "deleted_dossiers_since": DATE_UTC,
     }
-    previous.update(overrides)
-    return previous
+    fields.update(overrides)
+    return SyncLog(**fields)
 
 
 class TestNeedsFullSync:
-    def test_no_previous_state(self):
-        assert needs_full_sync(None, FILTERS_KEY) is True
+    def test_no_previous_sync(self):
+        assert needs_full_sync(None, DEMARCHE, FILTERS_KEY) is True
 
-    def test_unchanged_filters_is_incremental(self):
-        assert needs_full_sync(_previous(), FILTERS_KEY) is False
+    def test_same_demarche_and_filters_is_incremental(self):
+        assert needs_full_sync(_previous(), DEMARCHE, FILTERS_KEY) is False
 
-    def test_requested_full_sync(self):
-        assert needs_full_sync(_previous(force_full_sync=True), FILTERS_KEY) is True
+    def test_demarche_number_compared_as_text(self):
+        """`sync_logs.demarche_number` est du texte, la configuration peut
+        porter un entier."""
+        assert needs_full_sync(_previous(), int(DEMARCHE), FILTERS_KEY) is False
 
-    def test_changed_filters(self, capsys):
+    def test_changed_demarche(self):
+        assert needs_full_sync(_previous(), "67890", FILTERS_KEY) is True
+
+    def test_changed_filters(self):
         previous = _previous(filters_hash="anciens_filtres")
 
-        assert needs_full_sync(previous, FILTERS_KEY) is True
-        assert "Changement de filtres détecté" in capsys.readouterr().out
+        assert needs_full_sync(previous, DEMARCHE, FILTERS_KEY) is True
 
     def test_missing_filters_hash(self):
-        """État antérieur à `filters_hash` : synchro complète ponctuelle."""
-        assert needs_full_sync(_previous(filters_hash=None), FILTERS_KEY) is True
-
-    def test_missing_force_flag_is_incremental(self):
-        previous = _previous()
-        del previous["force_full_sync"]
-
-        assert needs_full_sync(previous, FILTERS_KEY) is False
+        """Synchro enregistrée sans `filters_hash` : synchro complète ponctuelle."""
+        assert (
+            needs_full_sync(_previous(filters_hash=None), DEMARCHE, FILTERS_KEY) is True
+        )
 
 
 class TestDatesToRequest:
     def test_incremental_sync_keeps_previous_dates(self):
-        previous = _previous(deleted_since_cursor="2023-12-31T00:00:00Z")
+        previous = _previous(deleted_dossiers_since=DATE_UTC - timedelta(days=1))
 
         assert dates_to_request(previous, full_sync=False) == SinceDates(
             modified_dossiers_since=DATE,
@@ -60,23 +68,46 @@ class TestDatesToRequest:
     def test_full_sync_has_no_dates(self):
         assert dates_to_request(_previous(), full_sync=True) == SinceDates()
 
-    def test_no_previous_state_has_no_dates(self):
+    def test_no_previous_sync_has_no_dates(self):
         assert dates_to_request(None, full_sync=False) == SinceDates()
 
-    def test_previous_state_without_dates(self):
-        """Sans date enregistrée, la synchro demande tous les dossiers sans être
-        déclarée complète (comportement existant)."""
-        previous = _previous(updated_since_cursor=None, deleted_since_cursor=None)
+    def test_missing_deleted_date(self):
+        """Vérification des suppressions jamais aboutie : pas de date pour elles."""
+        previous = _previous(deleted_dossiers_since=None)
 
-        assert dates_to_request(previous, full_sync=False) == SinceDates()
+        assert dates_to_request(previous, full_sync=False) == SinceDates(
+            modified_dossiers_since=DATE
+        )
 
-    def test_numeric_updated_since_is_converted(self):
-        """Colonne Grist en type DateTime : horodatage numérique (#284)."""
-        previous = _previous(updated_since_cursor=1704067200)
+    def test_date_converted_to_utc(self):
+        """Date relue à l'heure de Paris (fuseau de la base) : transmise en UTC."""
+        paris = timezone(timedelta(hours=1))
+        previous = _previous(
+            modified_dossiers_since=datetime(2024, 1, 1, 1, tzinfo=paris)
+        )
 
         assert (
             dates_to_request(previous, full_sync=False).modified_dossiers_since == DATE
         )
+
+
+class TestDatesEnvironment:
+    def test_round_trip(self):
+        dates = SinceDates(
+            modified_dossiers_since=DATE, deleted_dossiers_since="2023-12-31T00:00:00Z"
+        )
+
+        assert dates_from_env(dates_to_env(dates)) == dates
+
+    def test_no_dates_round_trip(self):
+        assert dates_to_env(SinceDates()) == {
+            "MODIFIED_DOSSIERS_SINCE": "",
+            "DELETED_DOSSIERS_SINCE": "",
+        }
+        assert dates_from_env(dates_to_env(SinceDates())) == SinceDates()
+
+    def test_missing_variables_mean_no_dates(self):
+        assert dates_from_env({}) == SinceDates()
 
 
 class TestNextDatesToRequest:

@@ -184,9 +184,9 @@ class TestBuildFiltersCacheKey:
         monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
         monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
         monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
-        key_vide = build_filters_cache_key()
+        key_vide = build_filters_cache_key(os.environ)
         monkeypatch.setenv("GROUPES_INSTRUCTEURS", "5")
-        key_avec_groupe = build_filters_cache_key()
+        key_avec_groupe = build_filters_cache_key(os.environ)
         assert key_vide != key_avec_groupe
 
     def test_legacy_env_statuts_change_key(self, monkeypatch):
@@ -194,9 +194,9 @@ class TestBuildFiltersCacheKey:
         monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
         monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
         monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
-        key_vide = build_filters_cache_key()
+        key_vide = build_filters_cache_key(os.environ)
         monkeypatch.setenv("STATUTS_DOSSIERS", "en_construction")
-        key_avec_statut = build_filters_cache_key()
+        key_avec_statut = build_filters_cache_key(os.environ)
         assert key_vide != key_avec_statut
 
     def test_legacy_env_dates_change_key(self, monkeypatch):
@@ -204,9 +204,9 @@ class TestBuildFiltersCacheKey:
         monkeypatch.delenv("STATUTS_DOSSIERS", raising=False)
         monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
         monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
-        key_vide = build_filters_cache_key()
+        key_vide = build_filters_cache_key(os.environ)
         monkeypatch.setenv("DATE_DEPOT_DEBUT", "2024-01-01")
-        key_avec_date = build_filters_cache_key()
+        key_avec_date = build_filters_cache_key(os.environ)
         assert key_vide != key_avec_date
 
     def test_legacy_env_list_order_normalized(self, monkeypatch):
@@ -215,10 +215,20 @@ class TestBuildFiltersCacheKey:
         monkeypatch.delenv("DATE_DEPOT_DEBUT", raising=False)
         monkeypatch.delenv("DATE_DEPOT_FIN", raising=False)
         monkeypatch.setenv("GROUPES_INSTRUCTEURS", "5,3")
-        a = build_filters_cache_key()
+        a = build_filters_cache_key(os.environ)
         monkeypatch.setenv("GROUPES_INSTRUCTEURS", "3,5")
-        b = build_filters_cache_key()
+        b = build_filters_cache_key(os.environ)
         assert a == b
+
+    def test_reads_given_environment_not_process_one(self, monkeypatch):
+        """Le parent calcule la clé sur l'environnement préparé pour le
+        sous-processus : les filtres du processus courant sont ignorés."""
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "5")
+
+        assert build_filters_cache_key({}) == build_filters_cache_key(
+            {"GROUPES_INSTRUCTEURS": ""}
+        )
+        assert '"5"' not in build_filters_cache_key({})
 
 
 def _filters(date_debut=None, date_fin=None, statuts=None, groupes=None):
