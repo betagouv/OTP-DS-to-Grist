@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
-import OtpAlert from '../OtpAlert.vue'
+import OtpAlert from '../ui/OtpAlert.vue'
 import { useSyncTask } from '../../composables/useSyncTask'
 
 describe('hasUnsavedSection computation', () => {
