@@ -8,9 +8,9 @@ import {
   DsfrInput
 } from '@gouvminint/vue-dsfr'
 
-import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import DsfrInfoIcon from './ui/icons/DsfrInfoIcon.vue'
 import { api } from '../utils/InternalApi'
-import OtpAlert from './OtpAlert.vue'
+import OtpAlert from './ui/OtpAlert.vue'
 import { debounce } from '../utils/debounce'
 
 const props = defineProps({

@@ -18,7 +18,8 @@ au lancement de `poe dev`, jamais au démarrage de l'application.
 
 - `otp_configurations` : Configuration de chaque utilisateur (tokens, filtres)
 - `user_schedules` : Planification des synchronisations automatiques
-- `sync_logs` : Historique des executions de synchronisation
+- `sync_logs` : Historique des executions de synchronisation, et dates de la
+  synchronisation incrémentale suivante (voir `sync/README.md`)
 - `ip_blocklist` : Bannissements d'IP en cours (nombre de bannissements, fin de ban)
 - `otp_config_ips` : Dernier passage de chaque IP sur chaque configuration (exploitation)
 

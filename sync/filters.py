@@ -3,8 +3,9 @@
 Ce module est le seul à connaître les variables d'environnement qui portent les
 filtres : `sync.environment_config.build_environment` les écrit à partir de la
 configuration de la démarche, puis elles sont relues ici pour sélectionner les
-dossiers à synchroniser et pour produire l'empreinte des filtres enregistrée dans
-`Sync_metadata.filters_hash` (qui détecte un changement de filtres et force une
+dossiers à synchroniser. Le processus parent produit aussi, à partir de
+l'environnement qu'il prépare, l'empreinte des filtres enregistrée dans
+`sync_logs.filters_hash` (qui détecte un changement de filtres et force une
 synchronisation complète).
 
 Les filtres sont appliqués en deux temps. DN applique d'abord ceux qu'il sait
@@ -17,6 +18,7 @@ en synchronisation incrémentale, la date de début.
 
 import json
 import os
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -144,11 +146,12 @@ def build_server_filters(
     }
 
 
-def build_filters_cache_key() -> str:
-    """Construit une clé canonique JSON déterministe des filtres actifs.
+def build_filters_cache_key(env: Mapping[str, str]) -> str:
+    """Construit une clé canonique JSON déterministe des filtres de `env`,
+    l'environnement préparé pour le sous-processus de synchronisation.
 
     Utilisée pour détecter un changement de filtres entre deux synchronisations :
-    si la clé stockée dans `Sync_metadata.filters_hash` diffère de la clé actuelle,
+    si la clé stockée dans `sync_logs.filters_hash` diffère de la clé actuelle,
     une synchro complète est forcée (le delta `updatedSince` ne couvrirait sinon
     pas les dossiers nouvellement éligibles/exclus par les nouveaux filtres).
 
@@ -156,17 +159,18 @@ def build_filters_cache_key() -> str:
     l'inspection des filtres stockés.
     """
     # Les filtres de la synchronisation sont ceux des variables d'environnement
-    # (front et scheduler les renseignent) : la clé doit refléter ces variables
+    # du sous-processus, construites à partir de la configuration, et non celles
+    # du processus courant : la clé doit refléter ces variables
     # pour détecter un changement de filtres (ex : un groupe instructeur
     # sélectionné côté front) et déclencher la synchro complète ; sinon
     # `filters_hash` resterait stable et les dossiers nouvellement
     # éligibles/exclus seraient ignorés par le delta.
     filters = {
-        "date_debut": os.getenv("DATE_DEPOT_DEBUT") or None,
-        "date_fin": os.getenv("DATE_DEPOT_FIN") or None,
-        "statuts": _normalize_list(_split_env_list(os.getenv("STATUTS_DOSSIERS"))),
+        "date_debut": env.get("DATE_DEPOT_DEBUT") or None,
+        "date_fin": env.get("DATE_DEPOT_FIN") or None,
+        "statuts": _normalize_list(_split_env_list(env.get("STATUTS_DOSSIERS"))),
         "groupes_instructeurs": _normalize_list(
-            _split_env_list(os.getenv("GROUPES_INSTRUCTEURS"))
+            _split_env_list(env.get("GROUPES_INSTRUCTEURS"))
         ),
     }
 

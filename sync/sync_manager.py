@@ -9,18 +9,26 @@ from typing import Callable, Any
 from datetime import datetime, timezone
 from sync.sync_result_parser import (
     SYNC_ERRORS_PREFIX,
-    SYNC_METADATA_PREFIX,
+    SYNC_LOG_VALUES_PREFIX,
     parse_output,
     read_sync_errors,
     timestamped_error,
 )
 from sync.environment_config import build_environment
+from sync.filters import build_filters_cache_key
+from sync.incremental import (
+    dates_to_env,
+    dates_to_request,
+    last_sync_with_dates,
+    needs_full_sync,
+)
 from sync.error_parser import (
     error_message,
     extract_error_parts,
     stderr_error_messages,
 )
 from sync.sequencer import STATUS_PENDING, STATUS_RUNNING, SyncSequencer
+
 from database.models import SyncLog
 from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
@@ -75,12 +83,18 @@ class SyncManager:
         if self.notify_callback:
             self.notify_callback(event_type, data)
 
-    def start_sync(self, server_config: dict[str, Any], auto: bool = False) -> str:
+    def start_sync(
+        self,
+        server_config: dict[str, Any],
+        auto: bool = False,
+        force_full_sync: bool = False,
+    ) -> str:
         """Démarre une nouvelle synchronisation avec la configuration donnée"""
         return self.start_task(
             self.run_synchronization_task,
             server_config,
             auto=auto,
+            force_full_sync=force_full_sync,
             config=server_config,
         )
 
@@ -155,6 +169,7 @@ class SyncManager:
         progress_callback: Callable[[float, str], None],
         log_callback: Callable[[str], None] | None = None,
         auto: bool = False,
+        force_full_sync: bool = False,
     ) -> dict[str, Any]:
         """
         Exécute la synchronisation avec callbacks pour le suivi en temps réel
@@ -168,6 +183,10 @@ class SyncManager:
 
         # Pré-définition en cas d'erreur
         result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
+        # Empreinte des filtres et décision de synchro complète, enregistrées
+        # dans sync_logs ; None si la synchro échoue avant leur calcul
+        filters_key: str | None = None
+        full_sync: bool | None = None
 
         try:
             # Refuser tôt une clé Grist qui ne peut pas écrire dans le document
@@ -202,6 +221,20 @@ class SyncManager:
 
             # Copie de l'environnement pour le sous-processus
             env_copy = build_environment(config)
+
+            # Synchro complète ou incrémentale : décidée ici, d'après la
+            # dernière synchro de la configuration qui a laissé des dates ; le
+            # sous-processus reçoit seulement les dates à demander à DN
+            filters_key = build_filters_cache_key(env_copy)
+            previous = _last_sync_with_dates(config.get("otp_config_id"))
+            full_sync = needs_full_sync(
+                previous,
+                config["demarche_number"],
+                filters_key,
+                forced=force_full_sync,
+            )
+            dates = dates_to_request(previous, full_sync)
+            env_copy = {**env_copy, **dates_to_env(dates)}
 
             # ✅ Afficher les filtres effectivement utilisés (après définition)
             if log_callback:
@@ -261,8 +294,9 @@ class SyncManager:
                 line = line.strip()
                 output_lines.append(line)
                 # Lignes techniques : ni erreurs à capturer, ni logs pour le client
-                if line.startswith((SYNC_METADATA_PREFIX, SYNC_ERRORS_PREFIX)):
+                if line.startswith((SYNC_LOG_VALUES_PREFIX, SYNC_ERRORS_PREFIX)):
                     continue
+
                 message = error_message(line)
                 if message is not None:
                     errors.append(_timestamped_error(message))
@@ -298,12 +332,12 @@ class SyncManager:
 
             result = parse_output(output_lines)
 
-            # Métadonnées de fin de sync illisibles : prévenir l'utilisateur
+            # Valeurs de fin de sync illisibles : prévenir l'utilisateur
             # sans faire échouer une sync dont les dossiers sont synchronisés.
-            if result.get("sync_metadata_error") and log_callback:
+            if result.get("sync_log_values_error") and log_callback:
                 log_callback(
-                    "Métadonnées de synchronisation (SYNC_METADATA) illisibles : "
-                    "durée et filtres non enregistrés"
+                    "Valeurs de fin de synchronisation (SYNC_LOG_VALUES) illisibles : "
+                    "durée et dates non enregistrées"
                 )
 
             progress_callback(99, "Finalisation...")
@@ -365,8 +399,14 @@ class SyncManager:
                 success_count=result.get("success_count", 0),
                 error_count=result.get("error_count", 0),
                 duration_seconds=result.get("duration_seconds"),
-                force_full_sync=result.get("force_full_sync"),
-                filters_hash=result.get("filters_hash"),
+                force_full_sync=full_sync,
+                filters_hash=filters_key,
+                modified_dossiers_since=_as_datetime(
+                    result.get("modified_dossiers_since")
+                ),
+                deleted_dossiers_since=_as_datetime(
+                    result.get("deleted_dossiers_since")
+                ),
                 errors=(
                     _sync_log_errors(output_lines, unemitted_errors)
                     if failed
@@ -563,6 +603,21 @@ def missing_sync_fields(config: dict[str, Any]) -> list[str]:
 
 
 # --- Helpers privés (module) ---
+
+
+def _last_sync_with_dates(otp_config_id: int | None) -> SyncLog | None:
+    """Dernière synchronisation de la configuration qui a laissé des dates à la
+    suivante ; None s'il n'y en a pas."""
+    if otp_config_id is None:
+        return None
+
+    with SessionLocal() as db:
+        return last_sync_with_dates(db, otp_config_id)
+
+
+def _as_datetime(value: str | None) -> datetime | None:
+    """Date émise par le sous-processus (ISO 8601, UTC), au format de la base."""
+    return datetime.fromisoformat(value) if value else None
 
 
 def _has_unfinished_steps(series: SyncSequencer) -> bool:

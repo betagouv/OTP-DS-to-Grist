@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 
 import { DsfrInput, DsfrInputGroup, DsfrCheckboxSet, DsfrMultiselect, DsfrButton } from '@gouvminint/vue-dsfr'
 
-import OtpAlert from './OtpAlert.vue'
+import OtpAlert from './ui/OtpAlert.vue'
 import { api } from '../utils/InternalApi'
 
 const props = defineProps({

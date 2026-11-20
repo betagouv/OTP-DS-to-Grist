@@ -14,12 +14,15 @@ import os
 import re
 import threading
 import time
+from datetime import datetime, timezone
 from io import StringIO
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 import sync.sync_manager as sync_manager_module
+from database.models import SyncLog
+from sync.filters import build_filters_cache_key
 from sync.sync_result_parser import SYNC_ERRORS_PREFIX
 from sync.sync_manager import (
     SyncManager,
@@ -318,6 +321,7 @@ class TestSyncManager:
                 self.manager.run_synchronization_task,
                 server_config,
                 auto=False,
+                force_full_sync=False,
                 config=server_config,
             )
 
@@ -825,15 +829,16 @@ class TestSyncManager:
 
     @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
-    def test_sync_metadata_line_filtered_from_log_callback(
+    def test_sync_log_values_line_filtered_from_log_callback(
         self, mock_subprocess, mock_session_local
     ):
-        """Les métadonnées de fin de sync alimentent parse_output mais ne
+        """Les valeurs de fin de sync alimentent parse_output mais ne
         doivent pas être re-loguées à l'utilisateur via log_callback."""
         mock_subprocess.return_value = create_mock_process(
             "Dossiers traités avec succès: 10\n"
-            'SYNC_METADATA: {"duration_seconds": 12.5, "force_full_sync": true, '
-            '"filters_hash": "{}"}\n'
+            'SYNC_LOG_VALUES: {"duration_seconds": 12.5, '
+            '"modified_dossiers_since": "2024-02-01T00:00:00Z", '
+            '"deleted_dossiers_since": null}\n'
         )
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -854,20 +859,19 @@ class TestSyncManager:
 
         assert result["success"] is True
         assert result["duration_seconds"] == 12.5
-        assert result["force_full_sync"] is True
-        assert result["filters_hash"] == "{}"
-        assert not any(message.startswith("SYNC_METADATA: ") for message in log_calls)
+        assert result["modified_dossiers_since"] == "2024-02-01T00:00:00Z"
+        assert not any(message.startswith("SYNC_LOG_VALUES: ") for message in log_calls)
 
     @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
-    def test_sync_metadata_malformee_alerte_sans_faire_echouer_la_sync(
+    def test_sync_log_values_malformee_alerte_sans_faire_echouer_la_sync(
         self, mock_subprocess, mock_session_local
     ):
-        """Des métadonnées de fin de sync illisibles sont signalées à
+        """Des valeurs de fin de sync illisibles sont signalées à
         l'utilisateur via log_callback, sans faire échouer une sync dont les
         dossiers sont synchronisés."""
         mock_subprocess.return_value = create_mock_process(
-            "Dossiers traités avec succès: 10\nSYNC_METADATA: {pas-du-json\n"
+            "Dossiers traités avec succès: 10\nSYNC_LOG_VALUES: {pas-du-json\n"
         )
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -888,27 +892,48 @@ class TestSyncManager:
 
         assert result["success"] is True
         assert result["duration_seconds"] is None
-        assert any("SYNC_METADATA" in message for message in log_calls)
-
-    def test_parent_ne_recalcule_jamais_les_filtres(self):
-        """Verrou chokepoint : `filters_hash` stocké dans `sync_logs` vient
-        exclusivement du sous-processus (ligne stdout parsée). Le parent ne
-        doit pas dépendre de `build_filters_cache_key` — les filtres vivent
-        dans l'environnement construit à partir de la config, propre au
-        sous-processus, et non dans l'environnement du parent."""
-        assert not hasattr(sync_manager_module, "build_filters_cache_key")
+        assert any("SYNC_LOG_VALUES" in message for message in log_calls)
 
     @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
-    def test_run_synchronization_task_persists_sync_metadata_on_success(
+    def test_filters_hash_calcule_sur_les_filtres_de_la_configuration(
+        self, mock_subprocess, mock_session_local, monkeypatch
+    ):
+        """`filters_hash` enregistré dans `sync_logs` est l'empreinte des
+        filtres de la configuration, transmis au sous-processus, et non de
+        ceux de l'environnement du processus parent."""
+        monkeypatch.setenv("GROUPES_INSTRUCTEURS", "99")
+        mock_subprocess.return_value = create_mock_process("Terminé")
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "filter_groups": "5",
+        }
+
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        filters_hash = json.loads(mock_db.add.call_args[0][0].filters_hash)
+        assert filters_hash["groupes_instructeurs"] == ["5"]
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_persists_sync_log_values_on_success(
         self, mock_subprocess, mock_session_local
     ):
-        """Les métadonnées émises par le pipeline (durée, force_full_sync,
-        hash de filtres) sont persistées dans le SyncLog en cas de succès."""
+        """Durée et dates émises par le pipeline, et décision de synchro
+        complète prise par le parent, sont persistées dans le SyncLog."""
         mock_subprocess.return_value = create_mock_process(
             "Dossiers traités avec succès: 10\n"
-            'SYNC_METADATA: {"duration_seconds": 12.5, "force_full_sync": true, '
-            '"filters_hash": "{}"}\n'
+            'SYNC_LOG_VALUES: {"duration_seconds": 12.5, '
+            '"modified_dossiers_since": "2024-02-01T00:00:00Z", '
+            '"deleted_dossiers_since": "2024-01-01T00:00:00Z"}\n'
         )
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -926,16 +951,23 @@ class TestSyncManager:
 
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.duration_seconds == 12.5
+        # Pas de synchro précédente : synchro complète
         assert sync_log.force_full_sync is True
-        assert sync_log.filters_hash == "{}"
+        assert sync_log.filters_hash == build_filters_cache_key({})
+        assert sync_log.modified_dossiers_since == datetime(
+            2024, 2, 1, tzinfo=timezone.utc
+        )
+        assert sync_log.deleted_dossiers_since == datetime(
+            2024, 1, 1, tzinfo=timezone.utc
+        )
 
     @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
-    def test_run_synchronization_task_persists_null_metadata_on_failure(
+    def test_run_synchronization_task_persists_null_sync_log_values_on_failure(
         self, mock_subprocess, mock_session_local
     ):
-        """Échec du sous-processus : les métadonnées restent NULL (le parsing
-        n'a pas lieu, la durée n'est pas intéressante en échec)."""
+        """Échec du sous-processus : durée et dates restent NULL (le parsing
+        n'a pas lieu) ; la synchro suivante repartira des dates précédentes."""
         mock_subprocess.return_value = create_mock_process("", returncode=1)
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -954,8 +986,113 @@ class TestSyncManager:
         assert result["success"] is False
         sync_log = mock_db.add.call_args[0][0]
         assert sync_log.duration_seconds is None
-        assert sync_log.force_full_sync is None
-        assert sync_log.filters_hash is None
+        assert sync_log.modified_dossiers_since is None
+        assert sync_log.deleted_dossiers_since is None
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_dates_de_la_synchro_precedente_transmises_au_sous_processus(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Même démarche et mêmes filtres que la dernière synchro qui a laissé
+        des dates : synchro incrémentale depuis ces dates."""
+        mock_subprocess.return_value = create_mock_process("Terminé")
+        mock_db = MagicMock()
+        mock_db.__enter__.return_value.scalars.return_value.first.return_value = (
+            SyncLog(
+                demarche_number="12345",
+                filters_hash=build_filters_cache_key({}),
+                modified_dossiers_since=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                deleted_dossiers_since=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            )
+        )
+        mock_session_local.return_value = mock_db
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "otp_config_id": 1,
+        }
+
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        env = mock_subprocess.call_args.kwargs["env"]
+        assert env["MODIFIED_DOSSIERS_SINCE"] == "2024-02-01T00:00:00Z"
+        assert env["DELETED_DOSSIERS_SINCE"] == "2024-01-01T00:00:00Z"
+        assert mock_db.add.call_args[0][0].force_full_sync is False
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_filtres_modifies_synchro_complete_sans_dates(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Filtres modifiés depuis la dernière synchro : synchro complète, le
+        sous-processus ne reçoit aucune date."""
+        mock_subprocess.return_value = create_mock_process("Terminé")
+        mock_db = MagicMock()
+        mock_db.__enter__.return_value.scalars.return_value.first.return_value = (
+            SyncLog(
+                demarche_number="12345",
+                filters_hash="anciens_filtres",
+                modified_dossiers_since=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            )
+        )
+        mock_session_local.return_value = mock_db
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "otp_config_id": 1,
+        }
+
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        env = mock_subprocess.call_args.kwargs["env"]
+        assert env["MODIFIED_DOSSIERS_SINCE"] == ""
+        assert env["DELETED_DOSSIERS_SINCE"] == ""
+        assert mock_db.add.call_args[0][0].force_full_sync is True
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_synchro_forcee_complete_malgre_les_dates(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Synchro complète demandée par l'utilisateur : le sous-processus ne
+        reçoit aucune date, même si la précédente en a laissé."""
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+            "otp_config_id": 1,
+        }
+        mock_subprocess.return_value = create_mock_process("Terminé")
+        mock_db = MagicMock()
+        mock_db.__enter__.return_value.scalars.return_value.first.return_value = (
+            SyncLog(
+                demarche_number="12345",
+                filters_hash=build_filters_cache_key({}),
+                modified_dossiers_since=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            )
+        )
+        mock_session_local.return_value = mock_db
+
+        self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress, force_full_sync=True
+        )
+
+        env = mock_subprocess.call_args.kwargs["env"]
+        assert env["MODIFIED_DOSSIERS_SINCE"] == ""
+        assert env["DELETED_DOSSIERS_SINCE"] == ""
+        assert mock_db.add.call_args[0][0].force_full_sync is True
 
     @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")

@@ -39,7 +39,7 @@ import grist_processor_working_all as gpa
 import schema_utils
 from grist.client import GristClient, GristReadError
 from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
-from sync.filters import build_filters_cache_key
+from sync.incremental import SinceDates, dates_to_env
 from sync.sync_result_parser import SYNC_ERRORS_PREFIX
 
 BASE_URL = "https://grist.test"
@@ -49,7 +49,7 @@ DOSSIERS_TABLE = "Demarche_12345_dossiers"
 CHAMPS_TABLE = "Demarche_12345_champs"
 ANNOTATIONS_TABLE = "Demarche_12345_annotations"
 AVIS_TABLE = "Demarche_12345_avis"
-SYNC_METADATA_TABLE = "Sync_metadata"
+SYNC_METADATA_TABLE = "Sync_metadata"  # table abandonnée (ticket 621)
 
 # `.env` est chargé au import de `dn.client` : les variables de filtre sont
 # neutralisées par défaut pour que le `.env` du poste n'altère pas les tests.
@@ -98,7 +98,7 @@ class FakeGristServer:
     été écrit (ou mis à jour) plutôt que de supposer que le code le fait.
 
     `initial_records` permet de pré-remplir une table (ex: un dossier déjà
-    synchronisé, une ligne Sync_metadata).
+    synchronisé).
     Format : {table_id: [{champ: valeur, ...}, ...]}
 
     `failing_reads` liste les tables dont la lecture des enregistrements échoue,
@@ -169,13 +169,6 @@ class FakeGristServer:
         return [
             fields[column_id] for fields in self.rows(table_id) if column_id in fields
         ]
-
-    def metadata(self, demarche_number):
-        """Ligne Sync_metadata d'une démarche, ou None si absente."""
-        for fields in self.rows(SYNC_METADATA_TABLE):
-            if str(fields.get("demarche_number")) == str(demarche_number):
-                return fields
-        return None
 
     def seed_view_field(self, field_id, col_id, table_id, section_id=1):
         """Enregistre un champ comme visible dans une section de vue."""
@@ -651,7 +644,12 @@ def grist_transport(server):
 
 
 def run_pipeline(
-    server, dn_server, filters=None, deletion_error=None, **pipeline_kwargs
+    server,
+    dn_server,
+    filters=None,
+    deletion_error=None,
+    dates=SinceDates(),
+    **pipeline_kwargs,
 ):
     """Exécute la pipeline contre `server` et renvoie `(résultat, mocks)`.
 
@@ -660,6 +658,10 @@ def run_pipeline(
 
     `filters` surcharge les variables de filtre neutralisées par défaut, afin
     que les tests n dépendent pas du `.env` du poste.
+
+    `dates` sont les dates transmises par le processus parent (aucune par
+    défaut : synchro complète). `mocks.next_dates` donne celles émises pour la
+    synchronisation suivante, None si elles ne l'ont pas été.
     """
     with ExitStack() as stack, grist_transport(server) as client:
         stack.enter_context(
@@ -676,7 +678,9 @@ def run_pipeline(
             )
         )
         stack.enter_context(
-            patch.dict(os.environ, {**EMPTY_FILTERS, **(filters or {})})
+            patch.dict(
+                os.environ, {**EMPTY_FILTERS, **(filters or {}), **dates_to_env(dates)}
+            )
         )
         stack.enter_context(
             patch.object(schema_utils, "detect_demandeur_type", return_value=None)
@@ -692,6 +696,9 @@ def run_pipeline(
             )
         )
         hiding = stack.enter_context(patch.object(gpa, "hide_columns_with_id"))
+        emit = stack.enter_context(
+            patch.object(gpa, "send_sync_log_values", wraps=gpa.send_sync_log_values)
+        )
 
         result = gpa.process_demarche_for_grist_optimized(
             client,
@@ -699,14 +706,15 @@ def run_pipeline(
             **pipeline_kwargs,
         )
 
-    mocks = SimpleNamespace(hiding=hiding)
+    next_dates = emit.call_args.args[1] if emit.called else None
+    mocks = SimpleNamespace(hiding=hiding, next_dates=next_dates)
     return result, mocks
 
 
 class TestSyncPipelineGrist:
     def test_process_demarche_pipeline_complete_writes_to_grist(self):
-        """Une sync complète écrit le dossier, ses champs, son annotation, son
-        avis et les métadonnées de sync, et crée les tables attendues.
+        """Une sync complète écrit le dossier, ses champs, son annotation et son
+        avis, crée les tables attendues et émet les dates de la synchro suivante.
         """
         server = FakeGristServer()
         dn_server = FakeDemarchesServer([make_dossier(1)])
@@ -721,8 +729,9 @@ class TestSyncPipelineGrist:
         assert ANNOTATIONS_TABLE in server.tables
         assert "Demarche_12345_demandeurs" in server.tables
         assert "Demarche_12345_instructeurs" in server.tables
-        assert SYNC_METADATA_TABLE in server.tables
         assert AVIS_TABLE in server.tables
+        # Les dates de la synchro incrémentale sont en base, plus dans Grist
+        assert SYNC_METADATA_TABLE not in server.tables
 
         # Colonnes ajoutées via add_columns (évolution de schéma + id d'annotation)
         assert "suivi_par" in server.tables[DOSSIERS_TABLE]
@@ -732,7 +741,7 @@ class TestSyncPipelineGrist:
 
         # Les colonnes créées par la sync sont déliées de leur libellé : celles
         # des tables créées (create_table) comme celles ajoutées (add_columns)
-        for table_id in (ANNOTATIONS_TABLE, AVIS_TABLE, SYNC_METADATA_TABLE):
+        for table_id in (ANNOTATIONS_TABLE, AVIS_TABLE):
             assert server.untied[table_id] == set(server.tables[table_id])
         assert {"suivi_par"} <= server.untied[DOSSIERS_TABLE]
         assert {"objet_de_la_demande"} <= server.untied[CHAMPS_TABLE]
@@ -763,21 +772,16 @@ class TestSyncPipelineGrist:
         assert avis[0]["question"] == "Question ?"
         assert avis[0]["expert_email"] == "expert@test.fr"
 
-        # Sync_metadata enregistrée en succès
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["demarche_number"] == DEMARCHE_NUMBER
-        assert metadata["last_sync_status"] == "success"
+        # Synchro réussie : les deux dates avancent
+        assert mocks.next_dates.modified_dossiers_since is not None
+        assert mocks.next_dates.deleted_dossiers_since is not None
 
         # Le masquage des colonnes `_id` est toujours exécuté en fin de sync
         mocks.hiding.assert_called_once()
 
-    def test_pipeline_emits_sync_metadata_line(self, capsys):
-        """Le pipeline émet une ligne SYNC_METADATA unique portant durée, flag et
-        hash de filtres — parsée côté parent par `parse_output`.
-
-        Sans métadonnées (première sync ou table `Sync_metadata` supprimée),
-        aucun curseur n'est disponible : la sync est complète et le flag est
-        déclaré `true`."""
+    def test_pipeline_sends_sync_log_values_line(self, capsys):
+        """Le pipeline émet une ligne SYNC_LOG_VALUES unique portant la durée et les
+        dates de la synchro suivante — parsée côté parent par `parse_output`."""
         server = FakeGristServer()
         dn_server = FakeDemarchesServer([make_dossier(1)])
 
@@ -788,40 +792,25 @@ class TestSyncPipelineGrist:
         lines = [
             line
             for line in captured.out.splitlines()
-            if line.startswith("SYNC_METADATA: ")
+            if line.startswith("SYNC_LOG_VALUES: ")
         ]
         assert len(lines) == 1
-        metadata = json.loads(lines[0][len("SYNC_METADATA: ") :])
-        assert metadata["force_full_sync"] is True
-        assert metadata["filters_hash"] == build_filters_cache_key()
-        assert metadata["duration_seconds"] >= 0
-
-    def test_filter_change_forces_full_sync(self, capsys):
-        """Un changement de filtres doit réintégrer dans le document les dossiers
-        que le repère de reprise aurait écartés.
-
-        Scénario : `Sync_metadata` porte un repère `updated_since` et un hash de
-        filtres obsolètes. Un dossier déposé avant ce repère n'est pas renvoyé
-        par le delta `updatedSince` : il ne doit pas pour autant manquer dans le
-        document, sous peine d'être ignoré à jamais.
-
-        Régression : sans détection du changement de filtres, le delta ne verrait
-        que le dossier modifié et l'autre resterait absent.
-        """
-        cursor_initial = "2024-06-01T00:00:00Z"
-        server = FakeGristServer(
-            initial_records={
-                SYNC_METADATA_TABLE: [
-                    {
-                        "demarche_number": DEMARCHE_NUMBER,
-                        "updated_since_cursor": cursor_initial,
-                        "deleted_since_cursor": cursor_initial,
-                        "filters_hash": "hash_anciens_filtres",
-                        "force_full_sync": False,
-                    }
-                ]
-            }
+        values = json.loads(lines[0][len("SYNC_LOG_VALUES: ") :])
+        assert values["duration_seconds"] >= 0
+        assert re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", values["modified_dossiers_since"]
         )
+        assert values["deleted_dossiers_since"] == values["modified_dossiers_since"]
+
+    def test_full_sync_requests_every_dossier(self):
+        """Sans date transmise par le parent (synchro complète : filtres
+        modifiés, démarche modifiée…), tous les dossiers sont demandés à DN,
+        y compris ceux modifiés avant la dernière synchro.
+
+        Régression : un delta `updatedSince` appliqué malgré tout, qui
+        ignorerait à jamais les dossiers nouvellement éligibles.
+        """
+        server = FakeGristServer()
         dn_server = FakeDemarchesServer(
             [
                 make_dossier(1, dateDerniereModification="2024-07-01T00:00:00Z"),
@@ -830,19 +819,10 @@ class TestSyncPipelineGrist:
         )
 
         result, _ = run_pipeline(server, dn_server, parallel=False)
-        captured = capsys.readouterr()
 
         assert result is True
         assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == [1, 2]
-        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
-        metadata_line = next(
-            line
-            for line in captured.out.splitlines()
-            if line.startswith("SYNC_METADATA: ")
-        )
-        assert json.loads(metadata_line[len("SYNC_METADATA: ") :])[
-            "force_full_sync"
-        ] is True
+        assert [v["updatedSince"] for v in dn_server.list_requests] == [None]
 
     def test_pipeline_updates_existing_dossier_without_duplicate(self):
         """Un dossier déjà présent dans le document est mis à jour, pas dupliqué."""
@@ -880,9 +860,10 @@ class TestSyncPipelineGrist:
         dn_server = FakeDemarchesServer(dossiers_de_test(201))
         server = FakeGristServer()
 
-        result, _ = run_pipeline(server, dn_server, parallel=False)
+        result, mocks = run_pipeline(server, dn_server, parallel=False)
 
         assert result is True
+        assert mocks.next_dates.modified_dossiers_since is not None
 
         # L'égalité des listes (et non des sets) garantit l'absence de doublon
         assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == numbers
@@ -890,7 +871,6 @@ class TestSyncPipelineGrist:
         assert set(server.column(ANNOTATIONS_TABLE, "dossier_number")) == set(numbers)
         assert set(server.column(AVIS_TABLE, "dossier_number")) == set(numbers)
         assert len(set(server.column(AVIS_TABLE, "avis_id"))) == len(numbers)
-        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
 
     def test_dn_filters_keep_expected_dossiers_across_pages(self):
         """Le filtrage de la production ne doit faire perdre aucun dossier
@@ -940,7 +920,7 @@ class TestSyncPipelineGrist:
         dn_server = FakeDemarchesServer(dossiers)
         server = FakeGristServer()
 
-        result, _ = run_pipeline(
+        result, mocks = run_pipeline(
             server,
             dn_server,
             filters={
@@ -954,7 +934,7 @@ class TestSyncPipelineGrist:
 
         assert result is True
         assert set(server.column(DOSSIERS_TABLE, "dossier_number")) == expected
-        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+        assert mocks.next_dates.modified_dossiers_since is not None
 
     def test_dn_applies_groupe_state_and_date_filters(self):
         """Les filtres de groupe, de statut et de date de début sont envoyés à
@@ -1023,7 +1003,7 @@ class TestSyncPipelineGrist:
         )
         server = FakeGristServer()
 
-        result, _ = run_pipeline(
+        result, mocks = run_pipeline(
             server,
             dn_server,
             filters={"GROUPES_INSTRUCTEURS": "99,1"},
@@ -1033,7 +1013,7 @@ class TestSyncPipelineGrist:
         assert result is True
         assert server.column(DOSSIERS_TABLE, "dossier_number") == [1]
         assert [v["groupeNumber"] for v in dn_server.list_requests] == [1]
-        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+        assert mocks.next_dates.modified_dossiers_since is not None
 
     def test_unreadable_groupes_keep_resume_marker(self):
         """Si la liste des groupes ne peut pas être lue, rien n'est écrit et le
@@ -1043,36 +1023,23 @@ class TestSyncPipelineGrist:
         avancer le repère sans avoir synchronisé les dossiers filtrés.
         """
         filters = {"GROUPES_INSTRUCTEURS": "1"}
-        with patch.dict(os.environ, {**EMPTY_FILTERS, **filters}):
-            filters_hash = build_filters_cache_key()
-
-        cursor_initial = "2023-01-01T00:00:00Z"
-        server = FakeGristServer(
-            initial_records={
-                SYNC_METADATA_TABLE: [
-                    {
-                        "demarche_number": DEMARCHE_NUMBER,
-                        "updated_since_cursor": cursor_initial,
-                        "deleted_since_cursor": cursor_initial,
-                        "filters_hash": filters_hash,
-                        "force_full_sync": False,
-                    }
-                ]
-            }
+        dates = SinceDates(
+            modified_dossiers_since="2023-01-01T00:00:00Z",
+            deleted_dossiers_since="2023-01-01T00:00:00Z",
         )
+        server = FakeGristServer()
         groupe_1 = {"id": "groupe_1", "number": 1, "label": "G1"}
         dn_server = FakeDemarchesServer(
             [make_dossier(1, groupeInstructeur=groupe_1)], groupes_in_error=True
         )
 
-        run_pipeline(server, dn_server, filters=filters, parallel=False)
+        _, mocks = run_pipeline(
+            server, dn_server, filters=filters, dates=dates, parallel=False
+        )
 
         assert server.column(DOSSIERS_TABLE, "dossier_number") == []
         assert dn_server.list_requests == []
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["last_sync_status"] == "partial"
-        assert metadata["updated_since_cursor"] == cursor_initial
-        assert metadata["deleted_since_cursor"] == cursor_initial
+        assert mocks.next_dates == dates
 
     def test_incremental_sync_filters_date_debut_after_reception(self):
         """En synchro incrémentale, la date de début n'est pas envoyée à DN (qui
@@ -1082,23 +1049,12 @@ class TestSyncPipelineGrist:
         réintégré dans le document.
         """
         filters = {"DATE_DEPOT_DEBUT": "2024-01-10"}
-        with patch.dict(os.environ, {**EMPTY_FILTERS, **filters}):
-            filters_hash = build_filters_cache_key()
-
         cursor_initial = "2024-01-15T00:00:00Z"
-        server = FakeGristServer(
-            initial_records={
-                SYNC_METADATA_TABLE: [
-                    {
-                        "demarche_number": DEMARCHE_NUMBER,
-                        "updated_since_cursor": cursor_initial,
-                        "deleted_since_cursor": cursor_initial,
-                        "filters_hash": filters_hash,
-                        "force_full_sync": False,
-                    }
-                ]
-            }
+        dates = SinceDates(
+            modified_dossiers_since=cursor_initial,
+            deleted_dossiers_since=cursor_initial,
         )
+        server = FakeGristServer()
         recent = "2024-02-01T00:00:00Z"
         dn_server = FakeDemarchesServer(
             [
@@ -1117,7 +1073,9 @@ class TestSyncPipelineGrist:
             ]
         )
 
-        result, _ = run_pipeline(server, dn_server, filters=filters, parallel=False)
+        result, _ = run_pipeline(
+            server, dn_server, filters=filters, dates=dates, parallel=False
+        )
 
         assert result is True
         assert server.column(DOSSIERS_TABLE, "dossier_number") == [2]
@@ -1130,42 +1088,25 @@ class TestSyncPipelineGrist:
 
         Scénario : 201 dossiers, l'API DN échoue sur la page 2. Les dossiers de la
         page 1 doivent être dans le document, ceux des pages suivantes absents, et
-        les deux repères de reprise (`updated_since`, `deleted_since`) inchangés,
-        la synchro étant marquée partielle.
+        les deux dates de la synchro suivante inchangées.
 
         Régression : un repère avancé malgré la page perdue, qui effacerait
         définitivement les dossiers non reçus de l'API.
         """
-        with patch.dict(os.environ, EMPTY_FILTERS):
-            hash_without_filter = build_filters_cache_key()
-
-        cursor_initial = "2023-01-01T00:00:00Z"
-        server = FakeGristServer(
-            initial_records={
-                SYNC_METADATA_TABLE: [
-                    {
-                        "demarche_number": DEMARCHE_NUMBER,
-                        "updated_since_cursor": cursor_initial,
-                        "deleted_since_cursor": cursor_initial,
-                        "filters_hash": hash_without_filter,
-                        "force_full_sync": False,
-                    }
-                ]
-            }
+        dates = SinceDates(
+            modified_dossiers_since="2023-01-01T00:00:00Z",
+            deleted_dossiers_since="2023-01-01T00:00:00Z",
         )
+        server = FakeGristServer()
         dn_server = FakeDemarchesServer(dossiers_de_test(201), page_in_error=2)
 
-        result, _ = run_pipeline(server, dn_server, parallel=False)
+        result, mocks = run_pipeline(server, dn_server, dates=dates, parallel=False)
 
         # Les pages lues sont écrites, la page perdue et les suivantes sont absentes
         assert result is True
         assert server.column(DOSSIERS_TABLE, "dossier_number") == list(range(1, 101))
         assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(range(1, 101))
-
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["last_sync_status"] == "partial"
-        assert metadata["updated_since_cursor"] == cursor_initial
-        assert metadata["deleted_since_cursor"] == cursor_initial
+        assert mocks.next_dates == dates
 
     def test_dossier_error_does_not_lose_other_dossiers(self):
         """Un dossier impossible à préparer ne doit pas faire perdre les autres.
@@ -1187,13 +1128,14 @@ class TestSyncPipelineGrist:
             "dossier_to_flat_data",
             side_effect=preparation_that_breaks_dossier_5,
         ):
-            result, _ = run_pipeline(server, dn_server, parallel=False)
+            result, mocks = run_pipeline(server, dn_server, parallel=False)
 
         assert result is True
         expected = [1, 2, 3, 4, 6, 7, 8, 9, 10]
         assert sorted(server.column(DOSSIERS_TABLE, "dossier_number")) == expected
         assert set(server.column(CHAMPS_TABLE, "dossier_number")) == set(expected)
-        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "partial"
+        # Dossier en échec : la synchro complète inachevée ne laisse pas de date
+        assert mocks.next_dates == SinceDates()
 
     def test_oversized_dossier_does_not_block_other_dossiers(self):
         """Un dossier dont la ligne dépasse à elle seule la limite de taille de
@@ -1211,7 +1153,7 @@ class TestSyncPipelineGrist:
         server = FakeGristServer()
         dn_server = FakeDemarchesServer(dossiers)
 
-        result, _ = run_pipeline(server, dn_server, parallel=False)
+        result, mocks = run_pipeline(server, dn_server, parallel=False)
 
         assert result is True
         assert server.column(DOSSIERS_TABLE, "dossier_number") == list(range(1, 22))
@@ -1221,9 +1163,9 @@ class TestSyncPipelineGrist:
             range(1, 22)
         )
         assert set(server.column(AVIS_TABLE, "dossier_number")) == set(range(1, 22))
-        # Refusé à chaque run, le dossier hors norme ne bloque pas le repère
-        # de reprise (il n'est pas compté en échec)
-        assert server.metadata(DEMARCHE_NUMBER)["last_sync_status"] == "success"
+        # Refusé à chaque run, le dossier hors norme ne bloque pas les dates de
+        # la synchro suivante (il n'est pas compté en échec)
+        assert mocks.next_dates.modified_dossiers_since is not None
 
     def test_page_over_the_size_limit_is_fully_written(self):
         """Une page dont les enregistrements dépassent la limite de taille de
@@ -1254,34 +1196,26 @@ class TestSyncPipelineGrist:
 
 
 class TestGristReadError:
-    """Lecture Grist en échec : aucune écriture en doublon, repère de reprise
-    inchangé, erreur remontée à l'appelant pour un code de sortie dédié."""
+    """Lecture Grist en échec : aucune écriture en doublon, aucune date émise
+    pour la synchro suivante (qui repartira des mêmes), erreur remontée à
+    l'appelant pour un code de sortie dédié."""
 
-    CURSOR = "2023-01-01T00:00:00Z"
+    DATES = SinceDates(
+        modified_dossiers_since="2023-01-01T00:00:00Z",
+        deleted_dossiers_since="2023-01-01T00:00:00Z",
+    )
 
     def _server(self, failing_reads):
-        with patch.dict(os.environ, EMPTY_FILTERS):
-            hash_without_filter = build_filters_cache_key()
         return FakeGristServer(
             initial_records={
                 DOSSIERS_TABLE: [
                     {"dossier_id": "dossier_1", "dossier_number": 1, "state": "en_instruction"}
                 ],
-                SYNC_METADATA_TABLE: [
-                    {
-                        "demarche_number": DEMARCHE_NUMBER,
-                        "updated_since_cursor": self.CURSOR,
-                        "deleted_since_cursor": self.CURSOR,
-                        "last_sync_status": "success",
-                        "filters_hash": hash_without_filter,
-                        "force_full_sync": False,
-                    }
-                ],
             },
             failing_reads=failing_reads,
         )
 
-    def test_preload_read_error_writes_nothing(self):
+    def test_preload_read_error_writes_nothing(self, capsys):
         """Constat 1 (doc ADN, 24-27/09) : la lecture de la table dossiers
         renvoie 400 alors que les écritures passent.
 
@@ -1292,130 +1226,103 @@ class TestGristReadError:
         dn_server = FakeDemarchesServer(dossiers_de_test(2))
 
         with pytest.raises(GristReadError) as error:
-            run_pipeline(server, dn_server, parallel=False)
+            run_pipeline(server, dn_server, dates=self.DATES, parallel=False)
 
         assert error.value.table_id == DOSSIERS_TABLE
         assert server.column(DOSSIERS_TABLE, "dossier_number") == [1]
         for table_id in (DOSSIERS_TABLE, CHAMPS_TABLE, ANNOTATIONS_TABLE):
             assert server.call_count("POST", f"tables/{table_id}/records") == 0
             assert server.call_count("PATCH", f"tables/{table_id}/records") == 0
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["updated_since_cursor"] == self.CURSOR
-        assert metadata["deleted_since_cursor"] == self.CURSOR
-        assert metadata["last_sync_status"] == "success"
+        assert "SYNC_LOG_VALUES: " not in capsys.readouterr().out
 
-    def test_read_error_during_run_is_not_swallowed(self):
+    def test_read_error_during_run_is_not_swallowed(self, capsys):
         """Lecture en échec en cours de run (avis) : l'erreur interrompt la
-        synchro au lieu d'être avalée, aucun avis créé, repère inchangé."""
+        synchro au lieu d'être avalée, aucun avis créé, aucune date émise."""
         server = self._server(failing_reads={AVIS_TABLE})
         dn_server = FakeDemarchesServer(dossiers_de_test(2))
 
         with pytest.raises(GristReadError) as error:
-            run_pipeline(server, dn_server, parallel=False)
+            run_pipeline(server, dn_server, dates=self.DATES, parallel=False)
 
         assert error.value.table_id == AVIS_TABLE
         assert server.rows(AVIS_TABLE) == []
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["updated_since_cursor"] == self.CURSOR
-        assert metadata["deleted_since_cursor"] == self.CURSOR
+        assert "SYNC_LOG_VALUES: " not in capsys.readouterr().out
 
 
 class TestResumeMarkerOnFailedDossiers:
-    """Un dossier en échec sur n'importe quelle table bloque les repères de
-    reprise, pour être redemandé à DN au run suivant ; une vérification des
-    suppressions en échec bloque le repère `deleted_since`."""
+    """Un dossier en échec sur n'importe quelle table bloque les dates de la
+    synchro suivante, pour être redemandé à DN au run suivant ; une
+    vérification des suppressions en échec bloque la date des suppressions."""
 
     CURSOR = "2023-01-01T00:00:00Z"
-
-    def _server(self, failing_writes):
-        with patch.dict(os.environ, EMPTY_FILTERS):
-            hash_without_filter = build_filters_cache_key()
-        return FakeGristServer(
-            initial_records={
-                SYNC_METADATA_TABLE: [
-                    {
-                        "demarche_number": DEMARCHE_NUMBER,
-                        "updated_since_cursor": self.CURSOR,
-                        "deleted_since_cursor": self.CURSOR,
-                        "filters_hash": hash_without_filter,
-                        "force_full_sync": False,
-                    }
-                ]
-            },
-            failing_writes=failing_writes,
-        )
+    DATES = SinceDates(modified_dossiers_since=CURSOR, deleted_dossiers_since=CURSOR)
 
     def test_champs_failure_keeps_marker_then_next_run_recovers(self):
-        """Échec d'écriture sur la table champs seule : synchro partielle,
-        repères inchangés ; au run suivant, les champs sont écrits.
+        """Échec d'écriture sur la table champs seule : dates inchangées ; au
+        run suivant, depuis ces dates, les champs sont écrits.
 
-        Régression : seul l'échec de la table dossiers était compté, le run
-        marqué `success` et le repère avancé, et les champs manquants n'étaient
-        plus jamais redemandés à DN.
+        Régression : seul l'échec de la table dossiers était compté, la date
+        avancée, et les champs manquants n'étaient plus jamais redemandés à DN.
         """
-        server = self._server(failing_writes={CHAMPS_TABLE})
+        server = FakeGristServer(failing_writes={CHAMPS_TABLE})
         dn_server = FakeDemarchesServer(dossiers_de_test(3))
 
-        run_pipeline(server, dn_server, parallel=False)
+        _, mocks = run_pipeline(server, dn_server, dates=self.DATES, parallel=False)
 
         assert server.column(DOSSIERS_TABLE, "dossier_number") == [1, 2, 3]
         assert server.rows(CHAMPS_TABLE) == []
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["last_sync_status"] == "partial"
-        assert metadata["updated_since_cursor"] == self.CURSOR
-        assert metadata["deleted_since_cursor"] == self.CURSOR
+        assert mocks.next_dates == self.DATES
 
         server.failing_writes.clear()
-        run_pipeline(server, dn_server, parallel=False)
+        _, mocks = run_pipeline(
+            server, dn_server, dates=mocks.next_dates, parallel=False
+        )
 
         assert server.column(DOSSIERS_TABLE, "dossier_number") == [1, 2, 3]
         assert sorted(server.column(CHAMPS_TABLE, "dossier_number")) == [1, 2, 3]
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["last_sync_status"] == "success"
-        assert metadata["updated_since_cursor"] != self.CURSOR
+        assert mocks.next_dates.modified_dossiers_since != self.CURSOR
 
     def test_deletion_check_failure_keeps_only_deleted_marker(self):
-        """Vérification des suppressions en échec : seul le repère
-        `deleted_since` est conservé, `updated_since` avance.
+        """Vérification des suppressions en échec : seule la date des
+        suppressions est conservée, celle des dossiers modifiés avance.
 
-        Régression : le repère `deleted_since` sauvegardé avant la
+        Régression : la date des suppressions enregistrée avant la
         vérification, qui avançait même quand elle échouait ; les suppressions
         de la fenêtre n'étaient plus jamais redemandées à DN.
         """
-        server = self._server(failing_writes=())
-
-        run_pipeline(
-            server,
+        _, mocks = run_pipeline(
+            FakeGristServer(),
             FakeDemarchesServer(dossiers_de_test(2)),
             deletion_error=RuntimeError("API DN indisponible"),
+            dates=self.DATES,
             parallel=False,
         )
 
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["deleted_since_cursor"] == self.CURSOR
-        assert metadata["updated_since_cursor"] != self.CURSOR
-        assert metadata["last_sync_status"] == "success"
+        assert mocks.next_dates.deleted_dossiers_since == self.CURSOR
+        assert mocks.next_dates.modified_dossiers_since != self.CURSOR
 
     def test_deletion_check_success_advances_both_markers(self):
-        """Vérification des suppressions réussie : les deux repères avancent."""
-        server = self._server(failing_writes=())
+        """Vérification des suppressions réussie : les deux dates avancent."""
+        _, mocks = run_pipeline(
+            FakeGristServer(),
+            FakeDemarchesServer(dossiers_de_test(2)),
+            dates=self.DATES,
+            parallel=False,
+        )
 
-        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(2)), parallel=False)
-
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["deleted_since_cursor"] != self.CURSOR
-        assert metadata["updated_since_cursor"] != self.CURSOR
+        assert mocks.next_dates.deleted_dossiers_since != self.CURSOR
+        assert mocks.next_dates.modified_dossiers_since != self.CURSOR
 
     def test_annotations_failure_keeps_marker(self):
-        """Échec d'écriture sur la table annotations : repères inchangés."""
-        server = self._server(failing_writes={ANNOTATIONS_TABLE})
+        """Échec d'écriture sur la table annotations : dates inchangées."""
+        _, mocks = run_pipeline(
+            FakeGristServer(failing_writes={ANNOTATIONS_TABLE}),
+            FakeDemarchesServer(dossiers_de_test(2)),
+            dates=self.DATES,
+            parallel=False,
+        )
 
-        run_pipeline(server, FakeDemarchesServer(dossiers_de_test(2)), parallel=False)
-
-        metadata = server.metadata(DEMARCHE_NUMBER)
-        assert metadata["last_sync_status"] == "partial"
-        assert metadata["updated_since_cursor"] == self.CURSOR
-        assert metadata["deleted_since_cursor"] == self.CURSOR
+        assert mocks.next_dates == self.DATES
 
 
 class TestSyncErrorsEmitted:

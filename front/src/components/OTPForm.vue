@@ -5,7 +5,7 @@ import { DsfrButton, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
-import OtpAlert from './OtpAlert.vue'
+import OtpAlert from './ui/OtpAlert.vue'
 
 import { useSyncTask } from '../composables/useSyncTask'
 import { api } from '../utils/InternalApi'
@@ -184,13 +184,13 @@ const handleDelete = async (index) => {
   }
 }
 
-const handleSync = async (index) => {
+const handleSync = async (index, { forceFullSync = false } = {}) => {
   if (props.syncRunning) return
   const otpConfigIdToSync = configs.value[index]?.otp_config_id
   if (!otpConfigIdToSync) return
   actionErrors.value[index] = null
   try {
-    const result = await api.startSync(otpConfigIdToSync)
+    const result = await api.startSync(otpConfigIdToSync, { forceFullSync })
     setCurrentTaskId(result.task_id, configs.value[index].demarche_number)
     activeDnAccordion.value = -1
   } catch (e) {
