@@ -5,7 +5,7 @@ import { DsfrButton, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
-import OtpAlert from './OtpAlert.vue'
+import OtpAlert from './ui/OtpAlert.vue'
 
 import { useSyncTask } from '../composables/useSyncTask'
 import { api } from '../utils/InternalApi'
