@@ -40,6 +40,7 @@ from sync.filters import (
     filter_dossiers,
     read_filters_from_env,
 )
+from sync.incremental import dates_to_request, needs_full_sync, next_dates_to_request
 from sync.sync_result_parser import (
     emit_sync_errors,
     emit_sync_metadata,
@@ -435,39 +436,12 @@ def process_demarche_for_grist_optimized(
 
         # Charger les métadonnées de sync
         sync_meta = client.get_sync_metadata(demarche_number)
-        # Pas de métadonnées (première sync ou table Sync_metadata supprimée) :
-        # aucun curseur disponible, la sync sera complète → déclarée
-        # force_full_sync.
-        force_full_sync = (
-            sync_meta.get("force_full_sync", False) if sync_meta else True
-        )
         current_filters_key = build_filters_cache_key()
-
-        # Détecter un changement de filtres entre deux synchronisations : le delta
-        # `updatedSince` ne verrait alors que les dossiers modifiés et ignorerait
-        # les dossiers nouvellement éligibles/exclus par les nouveaux critères.
-        # `filters_hash` est `None` la première fois (créé par le déploiement précédent)
-        # → déclenche une synchro complète ponctuelle, puis retour au delta normal.
-        if sync_meta is not None and sync_meta.get("filters_hash") != current_filters_key:
-            log(
-                "Changement de filtres détecté (filters_hash différent) → sync complète forcée"
-            )
-            force_full_sync = True
-        updated_since_cursor = (
-            None
-            if force_full_sync
-            else (sync_meta.get("updated_since_cursor") if sync_meta else None)
-        )
-        if updated_since_cursor and isinstance(updated_since_cursor, (int, float)):
-            updated_since_cursor = datetime.fromtimestamp(
-                updated_since_cursor, tz=timezone.utc
-            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        force_full_sync = needs_full_sync(sync_meta, current_filters_key)
+        dates = dates_to_request(sync_meta, force_full_sync)
+        updated_since_cursor = dates.modified_dossiers_since
+        deleted_since_cursor = dates.deleted_dossiers_since
         sync_meta_grist_id = sync_meta.get("grist_id") if sync_meta else None
-        deleted_since_cursor = (
-            None
-            if force_full_sync
-            else (sync_meta.get("deleted_since_cursor") if sync_meta else None)
-        )
 
         if force_full_sync:
             log("force_full_sync activé → sync complète forcée")
@@ -1069,22 +1043,19 @@ def process_demarche_for_grist_optimized(
 
         # Sauvegarder le curseur de sync
         sync_end_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        keep_resume_marker = pagination_error or bool(failed_dossiers)
-        updated_since_resume = (
-            updated_since_cursor if keep_resume_marker else sync_start_time
-        )
-        deleted_since_resume = (
-            deleted_since_cursor
-            if keep_resume_marker or not deletions_checked
-            else sync_start_time
+        next_dates = next_dates_to_request(
+            dates,
+            sync_start_time,
+            dossiers_complete=not (pagination_error or failed_dossiers),
+            deletions_checked=deletions_checked,
         )
         try:
             client.save_sync_metadata(
                 demarche_number,
                 {
                     "last_sync_at": sync_end_time,
-                    "updated_since_cursor": updated_since_resume,
-                    "deleted_since_cursor": deleted_since_resume,
+                    "updated_since_cursor": next_dates.modified_dossiers_since,
+                    "deleted_since_cursor": next_dates.deleted_dossiers_since,
                     "last_sync_status": (
                         "partial" if (total_errors or pagination_error) else "success"
                     ),
