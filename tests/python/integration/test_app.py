@@ -1957,7 +1957,7 @@ class TestWidgetAuth:
             get_document_info.return_value = document_info
         grist_client = MagicMock()
         grist_client.return_value.get_document_info = get_document_info
-        monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+        monkeypatch.setattr("grist.utils.GristClient", grist_client)
 
     @staticmethod
     def _http_error(status_code):
@@ -2022,15 +2022,18 @@ class TestWidgetAuth:
         data = json.loads(response.data)
         assert "propriétaire" in data["message"]
 
-    def test_unspecified_access_key_allows_save(self, client, monkeypatch):
-        """Grist n'expose pas le niveau d'accès : la clé est acceptée."""
+    def test_missing_access_key_returns_403(self, client, monkeypatch):
+        """Réponse de Grist sans niveau d'accès : la clé n'est pas propriétaire."""
         self._stub_document_access(monkeypatch, document_info={"name": "Doc"})
-        monkeypatch.setattr("app.config_manager.save_config", lambda config: True)
+        save_config = MagicMock(return_value=True)
+        monkeypatch.setattr("app.config_manager.save_config", save_config)
         response = client.post(
             "/api/config",
             json={"otp_config_id": 1, "grist_api_key": "some-key"},
         )
-        assert response.status_code == 200
+        assert response.status_code == 403
+        assert "propriétaire" in json.loads(response.data)["message"]
+        save_config.assert_not_called()
 
     def test_service_account_key_allows_save(self, client, monkeypatch):
         """La clé d'un compte de service doit pouvoir être enregistrée.
@@ -2043,7 +2046,7 @@ class TestWidgetAuth:
         grist_client.return_value.get_profile.return_value = {
             "id": "service-account-42"
         }
-        monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+        monkeypatch.setattr("grist.utils.GristClient", grist_client)
         monkeypatch.setattr("app.config_manager.save_config", lambda config: True)
         response = client.post(
             "/api/config",
@@ -2283,7 +2286,7 @@ class TestGristKeyAccessField:
             grist_client.return_value.get_document_info.side_effect = error
         else:
             grist_client.return_value.get_document_info.return_value = document_info
-        monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+        monkeypatch.setattr("grist.utils.GristClient", grist_client)
         return grist_client
 
     def test_grist_key_access_reports_owners(self, client):
@@ -2302,6 +2305,18 @@ class TestGristKeyAccessField:
         response = client.get("/api/config")
 
         assert self._config_from_response(response)["grist_key_access"] == "viewers"
+
+    def test_grist_key_access_reports_no_access(self, client, monkeypatch):
+        """Une clé qui ne voit plus le document (404) apparaît comme sans accès."""
+        not_found = requests.Response()
+        not_found.status_code = 404
+        self._stub_document_access(
+            monkeypatch, error=requests.exceptions.HTTPError(response=not_found)
+        )
+
+        response = client.get("/api/config")
+
+        assert self._config_from_response(response)["grist_key_access"] == "no-access"
 
     def test_grist_key_access_absent_without_key(self, client, monkeypatch):
         """Sans clé enregistrée, le champ n'est pas produit (rien à vérifier)."""

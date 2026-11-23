@@ -20,6 +20,11 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import sync.sync_manager as sync_manager_module
+from grist.utils import (
+    GristKeyInsufficientAccessError,
+    GristKeyNoAccessError,
+    GristUnavailableError,
+)
 from sync.sync_result_parser import SYNC_ERRORS_PREFIX
 from sync.sync_manager import (
     SyncManager,
@@ -60,7 +65,7 @@ class TestSyncManager:
         # Par défaut, la clé Grist est propriétaire : le contrôle d'accès
         # préalable ne doit pas déclencher de vrai appel réseau.
         self._access_patcher = patch(
-            "sync.sync_manager.grist_doc_access_level", return_value="owners"
+            "sync.sync_manager.require_owner_access", return_value={"access": "owners"}
         )
         self.grist_access_mock = self._access_patcher.start()
 
@@ -1251,7 +1256,7 @@ class TestSyncManager:
         self, mock_subprocess, mock_session_local
     ):
         """Une clé en lecture seule bloque la synchro avant le sous-processus"""
-        self.grist_access_mock.return_value = "viewers"
+        self.grist_access_mock.side_effect = GristKeyInsufficientAccessError("viewers")
 
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -1289,7 +1294,7 @@ class TestSyncManager:
         self, mock_subprocess, mock_session_local
     ):
         """Une clé éditeur (non propriétaire) bloque la synchro avant le sous-processus"""
-        self.grist_access_mock.return_value = "editors"
+        self.grist_access_mock.side_effect = GristKeyInsufficientAccessError("editors")
 
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -1316,7 +1321,7 @@ class TestSyncManager:
         self, mock_subprocess, mock_session_local
     ):
         """Une clé sans accès au document bloque la synchro"""
-        self.grist_access_mock.return_value = "no-access"
+        self.grist_access_mock.side_effect = GristKeyNoAccessError()
 
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -1339,12 +1344,13 @@ class TestSyncManager:
 
     @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
-    def test_run_synchronization_task_unavailable_access_starts_subprocess(
+    def test_run_synchronization_task_refuses_when_grist_unavailable(
         self, mock_subprocess, mock_session_local
     ):
-        """Grist indisponible (None) ne bloque pas : le sous-processus prend le relais"""
-        self.grist_access_mock.return_value = None
-
+        """Grist injoignable : la synchro est refusée, sans désactiver le planning"""
+        self.grist_access_mock.side_effect = GristUnavailableError()
+        # Sortie simulée : si la synchro passait quand même, le test échouerait
+        # sur les assertions au lieu de bloquer sur la lecture du sous-processus
         mock_subprocess.return_value = create_mock_process(
             "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
         )
@@ -1363,8 +1369,10 @@ class TestSyncManager:
             config, progress_callback=_ignore_progress
         )
 
-        assert result["success"] is True
-        mock_subprocess.assert_called_once()
+        assert result["success"] is False
+        assert result["error_code"] == 3
+        assert "Grist indisponible" in result["message"]
+        mock_subprocess.assert_not_called()
 
     @patch("sync.sync_manager.SessionLocal")
     @patch("subprocess.Popen")
@@ -1785,7 +1793,7 @@ class TestSyncErrors:
     def setup_method(self):
         self.manager = SyncManager()
         self._patchers = [
-            patch("sync.sync_manager.grist_doc_access_level", return_value="owners"),
+            patch("sync.sync_manager.require_owner_access", return_value={"access": "owners"}),
             patch("sync.sync_manager.SessionLocal"),
             patch("sync.sync_manager.ConfigManager"),
         ]
@@ -1886,7 +1894,7 @@ class TestSyncErrors:
 
     def test_cle_refusee_logue_le_refus(self, capsys):
         """Clé Grist sans droits propriétaire : le refus est logué comme erreur"""
-        self.grist_access_mock.return_value = "viewers"
+        self.grist_access_mock.side_effect = GristKeyInsufficientAccessError("viewers")
 
         result, messages = self._run(capsys, "")
 
@@ -1938,7 +1946,7 @@ class TestSyncErrors:
 
     def test_sync_log_cle_refusee_dans_general(self, capsys):
         """Clé refusée, script non lancé : le refus est la seule erreur générale"""
-        self.grist_access_mock.return_value = "viewers"
+        self.grist_access_mock.side_effect = GristKeyInsufficientAccessError("viewers")
 
         result, _ = self._run(capsys, "")
 

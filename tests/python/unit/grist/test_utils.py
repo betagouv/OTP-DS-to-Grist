@@ -1,4 +1,18 @@
-from grist.utils import normalize_column_name
+from unittest.mock import MagicMock
+
+import pytest
+import requests
+
+from grist.base_url import GristBaseUrlNotAllowedError
+from grist.utils import (
+    GristKeyInsufficientAccessError,
+    GristKeyNoAccessError,
+    GristUnavailableError,
+    normalize_column_name,
+    require_owner_access,
+)
+
+BASE_URL = "https://grist.example.com/api"
 
 
 class TestNormalizeColumnName:
@@ -86,3 +100,104 @@ class TestNormalizeColumnName:
         assert len(a) == 150
         assert a == normalize_column_name("x" * 200 + "a")
         assert a != b
+
+
+def _http_error(status_code: int) -> requests.exceptions.HTTPError:
+    response = requests.Response()
+    response.status_code = status_code
+
+    return requests.exceptions.HTTPError(response=response)
+
+
+def _patch_grist_client(
+    monkeypatch,
+    *,
+    document_info: object = None,
+    error: Exception | None = None,
+):
+    """Remplace GristClient dans grist.utils par un faux client."""
+    get_document_info = MagicMock()
+    if error is not None:
+        get_document_info.side_effect = error
+    else:
+        get_document_info.return_value = document_info
+    client_instance = MagicMock()
+    client_instance.get_document_info = get_document_info
+    client_cls = MagicMock(return_value=client_instance)
+    monkeypatch.setattr("grist.utils.GristClient", client_cls)
+
+    return client_cls
+
+
+class TestRequireOwnerAccess:
+    """Seule une clé propriétaire du document est acceptée, tout le reste échoue."""
+
+    def test_owner_key_returns_document_info(self, monkeypatch):
+        document_info = {"name": "Doc", "access": "owners"}
+        client_cls = _patch_grist_client(monkeypatch, document_info=document_info)
+
+        assert require_owner_access(BASE_URL, "key", "docA") == document_info
+        client_cls.assert_called_once_with(BASE_URL, "key", "docA")
+
+    @pytest.mark.parametrize("access_level", ["editors", "viewers", "guests"])
+    def test_other_level_is_insufficient(self, monkeypatch, access_level):
+        _patch_grist_client(monkeypatch, document_info={"access": access_level})
+
+        with pytest.raises(GristKeyInsufficientAccessError) as raised:
+            require_owner_access(BASE_URL, "key", "docA")
+
+        assert raised.value.access_level == access_level
+        assert str(raised.value) == "Accès propriétaire requis sur le document Grist"
+
+    def test_missing_access_is_insufficient(self, monkeypatch):
+        """Réponse hors spécification de Grist (`access` obligatoire) : échec."""
+        _patch_grist_client(monkeypatch, document_info={"name": "Doc"})
+
+        with pytest.raises(GristKeyInsufficientAccessError):
+            require_owner_access(BASE_URL, "key", "docA")
+
+    @pytest.mark.parametrize("status_code", [401, 403, 404])
+    def test_key_without_document_access(self, monkeypatch, status_code):
+        _patch_grist_client(monkeypatch, error=_http_error(status_code))
+
+        with pytest.raises(GristKeyNoAccessError) as raised:
+            require_owner_access(BASE_URL, "key", "docA")
+
+        assert str(raised.value) == "Clé API sans accès au document Grist"
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            _http_error(500),
+            _http_error(502),
+            _http_error(503),
+            requests.exceptions.ConnectionError(),
+            requests.exceptions.Timeout(),
+            requests.exceptions.JSONDecodeError("illisible", "", 0),
+            ValueError("Document ID is required"),
+        ],
+    )
+    def test_unanswered_check_is_unavailable(self, monkeypatch, error):
+        _patch_grist_client(monkeypatch, error=error)
+
+        with pytest.raises(GristUnavailableError) as raised:
+            require_owner_access(BASE_URL, "key", "docA")
+
+        assert str(raised.value) == "Grist indisponible"
+
+    def test_unreadable_document_info_is_unavailable(self, monkeypatch):
+        """Réponse 200 qui n'est pas un document : illisible, donc échec."""
+        _patch_grist_client(monkeypatch, document_info=["pas", "un", "document"])
+
+        with pytest.raises(GristUnavailableError):
+            require_owner_access(BASE_URL, "key", "docA")
+
+    def test_base_url_outside_whitelist_is_not_masked(self, monkeypatch):
+        """Le refus de la liste blanche garde son propre message."""
+        monkeypatch.setattr(
+            "grist.utils.GristClient",
+            MagicMock(side_effect=GristBaseUrlNotAllowedError("hors liste")),
+        )
+
+        with pytest.raises(GristBaseUrlNotAllowedError):
+            require_owner_access(BASE_URL, "key", "docA")
