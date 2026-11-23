@@ -114,8 +114,7 @@ onUnmounted(() => {
 
 .progress-bar {
   height: 100%;
-  /* Même bleu que le pourcentage du badge « info » */
-  background: var(--background-action-high-info);
+  background: var(--background-action-high-blue-france);
   transition: width 0.3s ease;
 }
 
