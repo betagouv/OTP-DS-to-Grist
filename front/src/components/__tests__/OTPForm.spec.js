@@ -1597,3 +1597,51 @@ describe('No saved demarche text', () => {
     expect(noDemarcheText(wrapper).exists()).toBe(false)
   })
 })
+
+describe('Demarche section title', () => {
+  const mountWithConfigs = async (configs) => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+      docId: 'doc-123'
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    return wrapper
+  }
+
+  const title = (wrapper) => wrapper.find('[data-test-id="demarche-section-title"]').text()
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('counts the saved demarches', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, { otp_config_id: 2 }])
+
+    expect(title(wrapper)).toBe('2. Démarche numérique (2)')
+  })
+
+  it('does not count an unsaved section', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+
+    wrapper.vm.serverConfigs.push(null)
+    await wrapper.vm.$nextTick()
+
+    expect(title(wrapper)).toBe('2. Démarche numérique (1)')
+  })
+
+  it('shows zero when no demarche is saved', async () => {
+    const wrapper = await mountWithConfigs([])
+
+    expect(title(wrapper)).toBe('2. Démarche numérique (0)')
+  })
+})

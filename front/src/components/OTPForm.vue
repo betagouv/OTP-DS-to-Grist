@@ -75,7 +75,9 @@ const configs = computed(() => {
 
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
-const hasSavedConfig = computed(() => configs.value.some(config => config?.otp_config_id))
+const savedConfigCount = computed(() => configs.value.filter(config => config?.otp_config_id).length)
+
+const hasSavedConfig = computed(() => savedConfigCount.value > 0)
 
 const showNoDemarcheText = computed(() => loaded.value && !loadFailed.value && !hasSavedConfig.value)
 
@@ -245,7 +247,12 @@ const handleAddDemarche = async () => {
     @error-update="gristError = $event"
   />
 
-  <h6 class="fr-mt-4w fr-mb-3w">2. Démarche numérique</h6>
+  <h6
+    class="fr-mt-4w fr-mb-3w"
+    data-test-id="demarche-section-title"
+  >
+    2. Démarche numérique ({{ savedConfigCount }})
+  </h6>
 
   <p
     v-if="showNoDemarcheText"
