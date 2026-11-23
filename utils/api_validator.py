@@ -9,7 +9,11 @@ import logging
 
 from .constants import DEMARCHES_API_URL
 from grist.base_url import GristBaseUrlNotAllowedError
-from grist.client import GristClient
+from grist.utils import (
+    GristKeyAccessError,
+    GristUnavailableError,
+    require_owner_access,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +114,8 @@ def test_demarches_api(
 
 def test_grist_api(base_url: str, api_key: str, doc_id: str) -> tuple[bool, str]:
     """
-    Teste la connexion à l'API Grist
+    Teste la connexion à l'API Grist : seule une clé propriétaire du document
+    réussit (règle commune de `grist.utils.require_owner_access`).
 
     Args:
         base_url: URL de base de l'API Grist
@@ -121,38 +126,23 @@ def test_grist_api(base_url: str, api_key: str, doc_id: str) -> tuple[bool, str]
         tuple: (success: bool, message: str)
     """
     try:
-        client = GristClient(base_url, api_key, doc_id)
-        doc_info = client.get_document_info()
-        doc_name = (
-            doc_info.get("name", doc_id) if isinstance(doc_info, dict) else doc_id
-        )
+        doc_info = require_owner_access(base_url, api_key, doc_id)
 
-        return True, f"Connexion à Grist réussie! Document: {doc_name}"
+        return True, f"Connexion à Grist réussie! Document: {doc_info.get('name', doc_id)}"
 
     except GristBaseUrlNotAllowedError as error:
         # Instance hors liste blanche : aucune requête n'a été émise. Le message
         # est renvoyé tel quel à l'appelant, qui répond en 200 avec success=false.
         return False, str(error)
 
-    except requests.exceptions.JSONDecodeError:
-        # Réponse 200 mais corps illisible : la connectivité est établie.
-        return True, f"Connexion à Grist réussie! Document ID: {doc_id}"
-
-    except requests.exceptions.HTTPError as error:
-        response = error.response
-        if response is None:
-            return False, f"Erreur de connexion à Grist: {error}"
-        return (
-            False,
-            f"Erreur de connexion à Grist: {response.status_code} - {response.text}",
+    except GristUnavailableError as error:
+        logger.error(
+            f"Test de l'API Grist impossible : {error.__cause__ or error}"
         )
+        return False, str(error)
 
-    except requests.exceptions.Timeout:
-        return False, "Timeout: L'API Grist met trop de temps à répondre"
-
-    except Exception:
-        logger.exception("Erreur inattendue lors du test de l'API Grist")
-        return False, "Erreur de connexion à l'API Grist"
+    except GristKeyAccessError as error:
+        return False, str(error)
 
 
 def verify_api_connections(

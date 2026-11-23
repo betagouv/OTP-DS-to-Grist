@@ -37,17 +37,6 @@ const savingIndices = ref(new Set())
 const serverConfigs = ref([])
 const activeDnAccordion = ref(-1)
 
-// Niveaux d'accès de la clé Grist qui ne permettent pas d'écrire dans le
-// document : une synchro échouerait, il faut prévenir l'utilisateur.
-const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'editors', 'no-access']
-const gristKeyWarningDismissed = ref(false)
-
-const gristKeyAccessWarning = computed(() =>
-  serverConfigs.value.some(config =>
-    config && GRIST_KEY_INSUFFICIENT_ACCESS.includes(config.grist_key_access)
-  )
-)
-
 // Chargement initial : tout doit rester fermé. `loaded` devient vrai à la fin de
 // la 1re requête, même en échec ; l'ouverture d'une section sauvegardée est
 // gérée dans handleSave. Le bloc Grist n'est monté qu'ensuite.
@@ -235,17 +224,6 @@ const handleAddDemarche = async () => {
     class="fr-mb-4w"
     @close="configError = null"
   />
-
-  <OtpAlert
-    v-if="gristKeyAccessWarning && !gristKeyWarningDismissed"
-    type="warning"
-    title="Clé API Grist insuffisante"
-    closeable
-    class="fr-mb-4w"
-    @close="gristKeyWarningDismissed = true"
-  >
-    La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document.
-  </OtpAlert>
 
   <p class="fr-mb-4w">Les champs suivis d'un astérisque (*) sont obligatoires.</p>
 

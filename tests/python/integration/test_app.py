@@ -10,6 +10,7 @@ import app as app_module
 from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
+from grist.client import GristClient
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 from sync.sync_manager import SyncSeriesAlreadyRunningError
@@ -860,8 +861,11 @@ class TestErrorHandling:
             "https://grist.server.com", "server-key", "docA"
         )
 
-    def test_api_test_connection_grist_base_url_hors_liste(self, client):
+    def test_api_test_connection_grist_base_url_hors_liste(self, client, monkeypatch):
         """URL de base hors liste blanche → 200 success:false, aucune requête émise"""
+        # Le vrai client Grist, que le client de test simule : c'est lui qui
+        # applique la liste blanche, avant toute requête
+        monkeypatch.setattr("grist.utils.GristClient", GristClient)
         response = client.post(
             "/api/test-connection",
             data=json.dumps(

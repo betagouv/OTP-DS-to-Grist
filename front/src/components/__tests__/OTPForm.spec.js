@@ -1508,70 +1508,27 @@ describe('Accordion DN state', () => {
   })
 })
 
-describe('Grist key access warning', () => {
-  const mockContext = {
-    params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
-    docId: 'doc-123'
-  }
-
-  const mountWithAccess = async (gristKeyAccess) => {
-    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
-    const config = { otp_config_id: 1 }
-    if (gristKeyAccess !== undefined) config.grist_key_access = gristKeyAccess
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ configs: [config] })
-    })
-    const wrapper = mount(OTPForm, {
-      global: { stubs: { GristFormSection: true, DNFormSection: true } }
-    })
-    await new Promise(process.nextTick)
-    await wrapper.vm.$nextTick()
-
-    return wrapper
-  }
-
+describe('Grist key access', () => {
   afterEach(() => {
     delete globalThis.getGristContext
     vi.restoreAllMocks()
   })
 
-  it.each(['viewers', 'editors', 'no-access'])(
-    'alerts when stored key access is %s',
-    async (access) => {
-      const wrapper = await mountWithAccess(access)
-
-      expect(wrapper.vm.gristKeyAccessWarning).toBe(true)
-      const alert = wrapper.findComponent(OtpAlert)
-      expect(alert.exists()).toBe(true)
-      expect(alert.props('type')).toBe('warning')
-      expect(alert.text()).toContain(
-        "La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document."
-      )
-    }
-  )
-
-  it.each(['owners', 'unavailable'])(
-    'stays silent when stored key access is %s',
-    async (access) => {
-      const wrapper = await mountWithAccess(access)
-
-      expect(wrapper.vm.gristKeyAccessWarning).toBe(false)
-      expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
-    }
-  )
-
-  it('stays silent when no access level is reported', async () => {
-    const wrapper = await mountWithAccess(undefined)
-
-    expect(wrapper.vm.gristKeyAccessWarning).toBe(false)
-    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
-  })
-
-  it('hides the warning once dismissed', async () => {
-    const wrapper = await mountWithAccess('viewers')
-
-    wrapper.findComponent(OtpAlert).vm.$emit('close')
+  // Le refus d'une clé non propriétaire s'affiche sous la clé (test de connexion
+  // du bloc Grist), pas dans une alerte globale du formulaire
+  it('shows no global alert for a stored key without owner access', async () => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+      docId: 'doc-123'
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs: [{ otp_config_id: 1, grist_key_access: 'editors' }] })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
     expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
