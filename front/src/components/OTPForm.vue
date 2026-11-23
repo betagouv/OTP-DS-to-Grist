@@ -157,8 +157,8 @@ const handleSave = async (index) => {
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
-  } catch {
-    actionErrors.value[index] = 'Erreur lors de la sauvegarde'
+  } catch (e) {
+    actionErrors.value[index] = e.serverMessage ?? 'Erreur lors de la sauvegarde'
   } finally {
     savingIndices.value.delete(index)
   }

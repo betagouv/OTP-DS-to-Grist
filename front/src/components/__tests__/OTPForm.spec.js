@@ -649,6 +649,36 @@ describe('Save with existing config (UPDATE)', () => {
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la sauvegarde')
   })
+
+  it('shows the server message when handleSave is refused', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({
+        success: false,
+        message: 'Accès propriétaire requis sur le document Grist'
+      })
+    })
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('Accès propriétaire requis sur le document Grist')
+  })
 })
 
 describe('Multi-section save', () => {
