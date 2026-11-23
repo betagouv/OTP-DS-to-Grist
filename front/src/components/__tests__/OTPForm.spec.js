@@ -1534,3 +1534,66 @@ describe('Grist key access', () => {
     expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
   })
 })
+
+describe('No saved demarche text', () => {
+  const NO_DEMARCHE_TEXT = 'Aucune démarche. Ajoutez-les une par une avec leur numéro, '
+    + 'les dossiers seront importés dans votre document Grist.'
+
+  const mountWithConfigs = async (configs) => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+      docId: 'doc-123'
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    return wrapper
+  }
+
+  const noDemarcheText = (wrapper) => wrapper.find('[data-test-id="no-demarche-text"]')
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('shows the text when no demarche is saved', async () => {
+    const wrapper = await mountWithConfigs([])
+
+    expect(noDemarcheText(wrapper).text()).toBe(NO_DEMARCHE_TEXT)
+  })
+
+  it('hides the text once a demarche is saved', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+
+    expect(noDemarcheText(wrapper).exists()).toBe(false)
+  })
+
+  it('hides the text while the configuration is loading', () => {
+    globalThis.getGristContext = vi.fn(() => new Promise(() => {}))
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+
+    expect(noDemarcheText(wrapper).exists()).toBe(false)
+  })
+
+  it('hides the text when the configuration failed to load', async () => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({ params: '' })
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(noDemarcheText(wrapper).exists()).toBe(false)
+  })
+})

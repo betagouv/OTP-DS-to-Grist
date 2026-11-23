@@ -41,6 +41,8 @@ const activeDnAccordion = ref(-1)
 // la 1re requête, même en échec ; l'ouverture d'une section sauvegardée est
 // gérée dans handleSave. Le bloc Grist n'est monté qu'ensuite.
 const loaded = ref(false)
+// Dernier chargement en échec : la liste des démarches est inconnue, et non vide
+const loadFailed = ref(false)
 
 // Après une sauvegarde, la section à rouvrir est cherchée par otp_config_id
 // dans la liste rechargée : son index peut changer après le tri décroissant.
@@ -55,8 +57,10 @@ const loadConfig = async () => {
     const context = await getGristContext()
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
+    loadFailed.value = false
     emit('config-loaded')
   } catch {
+    loadFailed.value = true
     configError.value = 'Erreur lors du chargement de la configuration'
   } finally {
     loaded.value = true
@@ -72,6 +76,8 @@ const configs = computed(() => {
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
 const hasSavedConfig = computed(() => configs.value.some(config => config?.otp_config_id))
+
+const showNoDemarcheText = computed(() => loaded.value && !loadFailed.value && !hasSavedConfig.value)
 
 // Clé de remontage du DsfrAccordionsGroup : il indexe ses enfants par un
 // compteur interne monotone qui se désynchronise des index du v-for après
@@ -240,6 +246,14 @@ const handleAddDemarche = async () => {
   />
 
   <h6 class="fr-mt-4w fr-mb-3w">2. Démarche numérique</h6>
+
+  <p
+    v-if="showNoDemarcheText"
+    class="fr-text--sm fr-mb-3w"
+    data-test-id="no-demarche-text"
+  >
+    Aucune démarche. Ajoutez-les une par une avec leur numéro, les dossiers seront importés dans votre document Grist.
+  </p>
 
   <DsfrAccordionsGroup
     :key="accordionGroupKey"
