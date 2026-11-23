@@ -206,8 +206,17 @@
         text-align: center;
       }
 
-      .fr-notice--info .fr-notice__body:before {
+      /* Icône DSFR remplacée par celle du paragraphe ci-dessous : selon la
+         version du DSFR, elle est sur le corps (1.11, CDN du legacy) ou sur
+         le titre (1.15, bundle de front/) */
+      .fr-notice--info .fr-notice__body:before,
+      .fr-notice--info .fr-notice__title:before {
         display: none;
+      }
+
+      /* DSFR 1.15 : corps en flex (space-between), text-align ne centre plus */
+      .fr-notice--info .fr-notice__body {
+        justify-content: center;
       }
 
       .fr-notice--info .fr-notice__body p:before {
