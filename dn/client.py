@@ -734,48 +734,6 @@ def get_demarche_groupe_numbers(
     return {groupe["number"] for groupe in demarche["groupeInstructeurs"]}
 
 
-def get_demarche_dossiers_labels_only(demarche_number: int) -> List[Dict[str, Any]]:
-    """
-    Récupère uniquement le numéro et les labels de TOUS les dossiers d'une démarche.
-
-    Requête volontairement minimaliste (number + labels) : elle sert au rafraîchissement
-    des labels, car l'ajout ou le retrait d'un label ne met pas à jour
-    `dateDerniereModification` et échappe donc au filtre `updatedSince`.
-
-    Returns:
-        list[dict]: [{"number": int, "labels": [{"id", "name", "color"}, ...]}, ...]
-    """
-    query = """
-    query getDemarcheLabels($demarcheNumber: Int!, $after: String) {
-        demarche(number: $demarcheNumber) {
-            dossiers(first: 100, after: $after) {
-                pageInfo {
-                    hasNextPage
-                    endCursor
-                }
-                nodes {
-                    number
-                    labels {
-                        id
-                        name
-                        color
-                    }
-                }
-            }
-        }
-    }
-    """
-
-    pages = list(
-        _iter_connection_pages(query, {"demarcheNumber": demarche_number}, "dossiers")
-    )
-    dossiers = [dossier for page in pages for dossier in page]
-
-    print(f"[LABELS] {len(dossiers)} dossiers récupérés en {len(pages)} page(s)")
-
-    return dossiers
-
-
 def get_deleted_dossiers(
     demarche_number: int, deleted_since: str = None
 ) -> List[Dict[str, Any]]:

@@ -50,7 +50,6 @@ from sync.sync_result_parser import (
 )
 from sync.tasks.deleted_dossiers import check_deleted_dossiers
 from sync.tasks.instructeurs import sync_instructeurs
-from sync.tasks.labels import sync_labels_for_demarche
 from utils.api_validator import verify_api_connections
 from utils.constants import (
     EXIT_CODE_EXTERNAL_API_ERROR,
@@ -427,8 +426,6 @@ def run_demarche_level_tasks(
     client: GristClient,
     table_ids: dict[str, Any],
     demarche_number: int,
-    updated_since_cursor: str | None = None,
-    force_full_sync: bool = False,
     deleted_since_cursor: str | None = None,
     schema_method_successful: bool = False,
     report_error: Callable[[str], None] = log_error,
@@ -440,9 +437,9 @@ def run_demarche_level_tasks(
     `log_error`) : ils ne concernent aucun dossier en particulier.
 
     À appeler depuis les deux `return` de `process_demarche_for_grist_optimized` :
-    celui de fin de fonction et celui du cas `total_dossiers == 0`. Poser une
-    étiquette, ajouter un instructeur ou supprimer un dossier ne met à jour aucun
-    dossier au sens d'`updatedSince` : sans le second appel, ces changements ne
+    celui de fin de fonction et celui du cas `total_dossiers == 0`. Ajouter un
+    instructeur ou supprimer un dossier ne met à jour aucun dossier au sens
+    d'`updatedSince` : sans le second appel, ces changements ne
     remonteraient dans Grist que si un dossier avait bougé par ailleurs.
 
     Chaque tâche est isolée dans son propre try/except : un échec n'empêche pas
@@ -460,20 +457,10 @@ def run_demarche_level_tasks(
         except Exception as e:
             report_error(f"Erreur synchronisation instructeurs: {e}")
 
-    # 2. Labels : uniquement en sync incrémentale.
-    #    En sync complète, tous les dossiers sont refetchés et leurs labels réécrits
-    #    par le chemin principal — ce passage serait redondant.
-    if updated_since_cursor and not force_full_sync:
-        try:
-            sync_labels_for_demarche(
-                client, table_ids["dossier_table_id"], demarche_number, log, log_error
-            )
-        except Exception as e:
-            report_error(f"Erreur rafraîchissement des labels: {e}")
-    else:
-        log("Sync complète — rafraîchissement des labels ignoré (déjà à jour).")
+    # Les labels n'ont pas de tâche dédiée : DN met à jour `dateDerniereModification`
+    # à chaque ajout ou retrait, le chemin principal les récupère via `updatedSince`.
 
-    # 3. Dossiers supprimés (API DN, curseur dédié)
+    # 2. Dossiers supprimés (API DN, curseur dédié)
     deletions_checked = False
     try:
         deletion_result = check_deleted_dossiers(
@@ -490,7 +477,7 @@ def run_demarche_level_tasks(
     except Exception as e:
         report_error(f"Erreur vérification dossiers supprimés : {e}")
 
-    # 4. Masquage des colonnes _id (toujours en dernier)
+    # 3. Masquage des colonnes _id (toujours en dernier)
     if schema_method_successful:
         try:
             hide_columns_with_id(client)
@@ -1408,8 +1395,6 @@ def process_demarche_for_grist_optimized(
             client,
             table_ids,
             demarche_number,
-            updated_since_cursor=updated_since_cursor,
-            force_full_sync=force_full_sync,
             deleted_since_cursor=deleted_since_cursor,
             schema_method_successful=schema_method_successful,
             report_error=report_error,
