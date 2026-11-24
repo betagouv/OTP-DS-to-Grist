@@ -259,7 +259,8 @@ const handleAddDemarche = async () => {
     class="fr-text--sm fr-mb-3w"
     data-test-id="no-demarche-text"
   >
-    Aucune démarche. Ajoutez-les une par une avec leur numéro, les dossiers seront importés dans votre document Grist.
+    Aucune démarche n’est encore configurée.
+    Pour commencer, ajoutez le jeton API et le numéro de la Démarche Numérique à synchroniser avec Grist.
   </p>
 
   <DsfrAccordionsGroup

@@ -1536,8 +1536,8 @@ describe('Grist key access', () => {
 })
 
 describe('No saved demarche text', () => {
-  const NO_DEMARCHE_TEXT = 'Aucune démarche. Ajoutez-les une par une avec leur numéro, '
-    + 'les dossiers seront importés dans votre document Grist.'
+  const NO_DEMARCHE_TEXT = 'Aucune démarche n’est encore configurée.'
+    + ' Pour commencer, ajoutez le jeton API et le numéro de la Démarche Numérique à synchroniser avec Grist.'
 
   const mountWithConfigs = async (configs) => {
     globalThis.getGristContext = vi.fn().mockResolvedValue({
