@@ -20,6 +20,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import sync.sync_manager as sync_manager_module
+from dn.client import DemarcheNoAccessError, DnUnavailableError
 from grist.utils import (
     GristKeyInsufficientAccessError,
     GristKeyNoAccessError,
@@ -68,10 +69,16 @@ class TestSyncManager:
             "sync.sync_manager.require_owner_access", return_value={"access": "owners"}
         )
         self.grist_access_mock = self._access_patcher.start()
+        # Idem pour le jeton DN, qui a accès à la démarche
+        self._demarche_access_patcher = patch(
+            "sync.sync_manager.require_demarche_access"
+        )
+        self.demarche_access_mock = self._demarche_access_patcher.start()
 
     def teardown_method(self):
         """Nettoyage après chaque test"""
         self._access_patcher.stop()
+        self._demarche_access_patcher.stop()
 
     def test_initialization_without_callback(self):
         """Test l'initialisation sans callback de notification"""
@@ -1257,6 +1264,11 @@ class TestSyncManager:
     ):
         """Une clé en lecture seule bloque la synchro avant le sous-processus"""
         self.grist_access_mock.side_effect = GristKeyInsufficientAccessError("viewers")
+        # Sortie simulée : si la synchro passait quand même, le test échouerait
+        # sur les assertions au lieu de bloquer sur la lecture du sous-processus
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
 
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -1295,6 +1307,11 @@ class TestSyncManager:
     ):
         """Une clé éditeur (non propriétaire) bloque la synchro avant le sous-processus"""
         self.grist_access_mock.side_effect = GristKeyInsufficientAccessError("editors")
+        # Sortie simulée : si la synchro passait quand même, le test échouerait
+        # sur les assertions au lieu de bloquer sur la lecture du sous-processus
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
 
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -1322,6 +1339,11 @@ class TestSyncManager:
     ):
         """Une clé sans accès au document bloque la synchro"""
         self.grist_access_mock.side_effect = GristKeyNoAccessError()
+        # Sortie simulée : si la synchro passait quand même, le test échouerait
+        # sur les assertions au lieu de bloquer sur la lecture du sous-processus
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
 
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -1400,6 +1422,223 @@ class TestSyncManager:
 
         assert result["success"] is True
         self.grist_access_mock.assert_not_called()
+        mock_subprocess.assert_called_once()
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_logs_successful_access_check(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Accès vérifiés : la vérification et son succès sont dans les logs de la tâche"""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+        mock_session_local.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_base_url": "https://test.grist.com",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        log_calls = []
+        self.manager.run_synchronization_task(
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
+        )
+
+        check = log_calls.index("Vérification des connexions aux APIs...")
+        assert log_calls[check + 1] == "✓ Connexions aux APIs vérifiées avec succès"
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_shows_access_check_phase(
+        self, mock_subprocess, mock_session_local
+    ):
+        """La vérification des accès est une phase affichée, avant le lancement du script"""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+        mock_session_local.return_value = MagicMock()
+        progress_callback = MagicMock()
+
+        self.manager.run_synchronization_task(
+            {
+                "ds_api_token": "test_token",
+                "demarche_number": "12345",
+                "grist_api_key": "test_key",
+                "grist_doc_id": "test_doc",
+            },
+            progress_callback=progress_callback,
+        )
+
+        phases = [call.args for call in progress_callback.call_args_list]
+        assert phases[:2] == [
+            (1, "Vérification des connexions aux APIs..."),
+            (1, "Lancement du script de synchronisation..."),
+        ]
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_logs_incomplete_access_check(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Champ manquant : le log signale que les connexions n'ont pas toutes été testées"""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+        mock_session_local.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "",
+            "demarche_number": "12345",
+            "grist_base_url": "https://test.grist.com",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        log_calls = []
+        self.manager.run_synchronization_task(
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
+        )
+
+        assert (
+            "⚠ Configuration incomplète pour tester les connexions API "
+            "(certaines variables sont manquantes)"
+        ) in log_calls
+        assert "✓ Connexions aux APIs vérifiées avec succès" not in log_calls
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_refuses_token_without_access(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Un jeton DN refusé bloque la synchro et désactive le planning"""
+        self.demarche_access_mock.side_effect = DemarcheNoAccessError("Token expiré")
+        # Sortie simulée : si la synchro passait quand même, le test échouerait
+        # sur les assertions au lieu de bloquer sur la lecture du sous-processus
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
+
+        config = {
+            "ds_api_token": "expired_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        log_calls = []
+        result = self.manager.run_synchronization_task(
+            config,
+            progress_callback=_ignore_progress,
+            log_callback=log_calls.append,
+        )
+
+        assert result["success"] is False
+        assert result["error_code"] == 2
+        assert "Token expiré" in result["message"]
+        self.demarche_access_mock.assert_called_once_with("expired_token", "12345")
+        mock_subprocess.assert_not_called()
+
+        sync_log = mock_db.add.call_args[0][0]
+        assert sync_log.status == "error"
+        assert sync_log.message == result["message"]
+
+        assert any("ERREUR" in line for line in log_calls)
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_refuses_when_dn_unavailable(
+        self, mock_subprocess, mock_session_local
+    ):
+        """DN injoignable : la synchro est refusée, sans désactiver le planning"""
+        self.demarche_access_mock.side_effect = DnUnavailableError(
+            "Erreur de connexion à l'API: 503"
+        )
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+
+        mock_session_local.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        assert result["success"] is False
+        assert result["error_code"] == 4
+        assert "503" in result["message"]
+        mock_subprocess.assert_not_called()
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_checks_grist_before_dn(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Clé Grist refusée : le jeton DN n'est pas interrogé"""
+        self.grist_access_mock.side_effect = GristKeyNoAccessError()
+        mock_session_local.return_value = MagicMock()
+        # Sortie simulée : si la synchro passait quand même, le test échouerait
+        # sur les assertions au lieu de bloquer sur la lecture du sous-processus
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+
+        config = {
+            "ds_api_token": "test_token",
+            "demarche_number": "12345",
+            "grist_api_key": "foreign_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        assert result["error_code"] == 2
+        self.demarche_access_mock.assert_not_called()
+        mock_subprocess.assert_not_called()
+
+    @patch("sync.sync_manager.SessionLocal")
+    @patch("subprocess.Popen")
+    def test_run_synchronization_task_empty_token_skips_dn_check(
+        self, mock_subprocess, mock_session_local
+    ):
+        """Un jeton DN vide n'appelle pas le contrôle d'accès DN"""
+        mock_subprocess.return_value = create_mock_process(
+            "Dossiers traités avec succès: 1\nTotal dossiers traités: 1\n"
+        )
+        mock_session_local.return_value = MagicMock()
+
+        config = {
+            "ds_api_token": "",
+            "demarche_number": "12345",
+            "grist_api_key": "test_key",
+            "grist_doc_id": "test_doc",
+        }
+
+        result = self.manager.run_synchronization_task(
+            config, progress_callback=_ignore_progress
+        )
+
+        assert result["success"] is True
+        self.demarche_access_mock.assert_not_called()
         mock_subprocess.assert_called_once()
 
 
@@ -1796,10 +2035,12 @@ class TestSyncErrors:
             patch("sync.sync_manager.require_owner_access", return_value={"access": "owners"}),
             patch("sync.sync_manager.SessionLocal"),
             patch("sync.sync_manager.ConfigManager"),
+            patch("sync.sync_manager.require_demarche_access"),
         ]
         self.grist_access_mock = self._patchers[0].start()
         self.session_local_mock = self._patchers[1].start()
         self._patchers[2].start()
+        self._patchers[3].start()
 
     def teardown_method(self):
         for patcher in self._patchers:

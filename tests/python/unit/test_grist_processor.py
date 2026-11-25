@@ -232,8 +232,6 @@ class TestMainGristReadError:
         error = GristReadError("Demarche_128651_dossiers", self._response())
 
         with patch.object(
-            gpa, "verify_api_connections", return_value=(True, [])
-        ), patch.object(
             gpa, "process_demarche_for_grist_optimized", side_effect=error
         ):
             exit_code = gpa.main()

@@ -75,6 +75,7 @@ def _run_sync_and_capture_child_env(manager: SyncManager, config: dict) -> dict:
         patch(
             "sync.sync_manager.require_owner_access", return_value={"access": "owners"}
         ),
+        patch("sync.sync_manager.require_demarche_access"),
         patch("sync.sync_manager.SessionLocal"),
         patch("sync.sync_manager.ConfigManager"),
     ):

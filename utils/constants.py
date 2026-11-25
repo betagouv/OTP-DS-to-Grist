@@ -45,6 +45,10 @@ GRIST_KEY_ACCESS_CACHE_TTL_SECONDS: float = 60.0
 # la synchro planifiée n'est pas désactivée et reprendra au prochain run.
 EXIT_CODE_GRIST_READ_ERROR: int = 3
 
+# Démarche Numérique injoignable (délai, connexion, 5xx, 429) : erreur
+# transitoire, la synchro planifiée n'est pas désactivée.
+EXIT_CODE_DN_UNAVAILABLE: int = 4
+
 # Durée de validité du cache des bannissements d'IP, en secondes.
 IP_BLOCKLIST_CACHE_TTL_SECONDS: float = float(
     os.getenv("IP_BLOCKLIST_CACHE_TTL_SECONDS", "60")

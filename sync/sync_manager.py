@@ -23,6 +23,7 @@ from sync.sequencer import STATUS_PENDING, STATUS_RUNNING, SyncSequencer
 from database.models import SyncLog
 from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
+from dn.client import DemarcheAccessError, DnUnavailableError, require_demarche_access
 from grist.utils import (
     GristKeyAccessError,
     GristUnavailableError,
@@ -30,6 +31,7 @@ from grist.utils import (
 )
 from utils.constants import (
     DATABASE_URL,
+    EXIT_CODE_DN_UNAVAILABLE,
     EXIT_CODE_EXTERNAL_API_ERROR,
     EXIT_CODE_GRIST_READ_ERROR,
 )
@@ -50,6 +52,15 @@ REQUIRED_SYNC_FIELDS = [
     "grist_api_key",
     "grist_doc_id",
     "grist_user_id",
+]
+
+# Champs de configuration nécessaires pour tester les deux connexions API
+ACCESS_CHECK_FIELDS = [
+    "ds_api_token",
+    "demarche_number",
+    "grist_base_url",
+    "grist_api_key",
+    "grist_doc_id",
 ]
 
 
@@ -174,43 +185,35 @@ class SyncManager:
         result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
 
         try:
-            # Refuser tôt une clé Grist qui ne permet pas de synchroniser le
-            # document : le sous-processus ne ferait que récolter des refus
-            # d'écriture. Grist injoignable est aussi un refus, mais transitoire :
-            # son code d'erreur ne désactive pas la synchro planifiée.
-            grist_api_key = config.get("grist_api_key")
-            if grist_api_key:
-                try:
-                    require_owner_access(
-                        config.get("grist_base_url") or "",
-                        grist_api_key,
-                        str(config.get("grist_doc_id") or ""),
-                    )
-                except GristKeyAccessError as error:
-                    if isinstance(error, GristUnavailableError):
-                        message = (
-                            f"{error} : l'accès de la clé API Grist au document "
-                            "n'a pas pu être vérifié."
-                        )
-                        error_code = EXIT_CODE_GRIST_READ_ERROR
-                    else:
-                        message = (
-                            "La clé API Grist enregistrée n'a pas les droits "
-                            "de propriétaire sur le document Grist."
-                        )
-                        error_code = EXIT_CODE_EXTERNAL_API_ERROR
-                    if log_callback:
-                        log_callback(f"ERREUR: {message}")
-                    errors.append(_timestamped_error(message))
-                    unemitted_errors.append(errors[-1])
-                    result = {
-                        "success": False,
-                        "message": message,
-                        "success_count": 0,
-                        "error_count": 0,
-                        "error_code": error_code,
-                    }
-                    return result
+            # Même valeur que le lancement du script, qui suit : 1 %
+            progress_callback(1, "Vérification des connexions aux APIs...")
+            access_check_complete = all(
+                config.get(field) for field in ACCESS_CHECK_FIELDS
+            )
+            if log_callback:
+                log_callback(
+                    "Vérification des connexions aux APIs..."
+                    if access_check_complete
+                    else "⚠ Configuration incomplète pour tester les connexions "
+                    "API (certaines variables sont manquantes)"
+                )
+            refusal = _access_refusal(config)
+            if refusal:
+                message, error_code = refusal
+                if log_callback:
+                    log_callback(f"ERREUR: {message}")
+                errors.append(_timestamped_error(message))
+                unemitted_errors.append(errors[-1])
+                result = {
+                    "success": False,
+                    "message": message,
+                    "success_count": 0,
+                    "error_count": 0,
+                    "error_code": error_code,
+                }
+                return result
+            if log_callback and access_check_complete:
+                log_callback("✓ Connexions aux APIs vérifiées avec succès")
 
             # Copie de l'environnement pour le sous-processus
             env_copy = build_environment(config)
@@ -575,6 +578,56 @@ def missing_sync_fields(config: dict[str, Any]) -> list[str]:
 
 
 # --- Helpers privés (module) ---
+
+
+def _access_refusal(config: dict[str, Any]) -> tuple[str, int] | None:
+    """
+    Message et code d'erreur si la clé Grist ou le jeton DN ne permettent pas
+    de synchroniser ; None sinon.
+
+    Refuser tôt évite un sous-processus qui ne ferait que récolter des refus.
+    Un service injoignable est aussi un refus, mais transitoire : son code
+    d'erreur ne désactive pas la synchro planifiée.
+    """
+    grist_api_key = config.get("grist_api_key")
+    if grist_api_key:
+        try:
+            require_owner_access(
+                config.get("grist_base_url") or "",
+                grist_api_key,
+                str(config.get("grist_doc_id") or ""),
+            )
+        except GristKeyAccessError as error:
+            if isinstance(error, GristUnavailableError):
+                return (
+                    f"{error} : l'accès de la clé API Grist au document "
+                    "n'a pas pu être vérifié.",
+                    EXIT_CODE_GRIST_READ_ERROR,
+                )
+            return (
+                "La clé API Grist enregistrée n'a pas les droits "
+                "de propriétaire sur le document Grist.",
+                EXIT_CODE_EXTERNAL_API_ERROR,
+            )
+
+    ds_api_token = config.get("ds_api_token")
+    if ds_api_token:
+        try:
+            require_demarche_access(ds_api_token, config.get("demarche_number") or "")
+        except DemarcheAccessError as error:
+            if isinstance(error, DnUnavailableError):
+                return (
+                    f"Démarche Numérique indisponible ({error}) : l'accès du "
+                    "jeton API à la démarche n'a pas pu être vérifié.",
+                    EXIT_CODE_DN_UNAVAILABLE,
+                )
+            return (
+                "Le jeton API Démarche Numérique enregistré ne permet pas "
+                f"d'accéder à la démarche : {error}",
+                EXIT_CODE_EXTERNAL_API_ERROR,
+            )
+
+    return None
 
 
 def _has_unfinished_steps(series: SyncSequencer) -> bool:
