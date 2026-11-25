@@ -39,7 +39,15 @@ import grist_processor_working_all as gpa
 import schema_utils
 from grist.client import GristClient, GristReadError
 from grist.columns import VIEW_FIELDS_TABLE, hide_columns_with_id
-from grist.pages import PAGES_TABLE, TABLES_TABLE, VIEWS_TABLE
+from grist.pages import (
+    COLUMNS_TABLE,
+    HTML_WIDGET_ID,
+    PAGES_TABLE,
+    PARENT_HTML_COLUMN,
+    SECTIONS_TABLE,
+    TABLES_TABLE,
+    VIEWS_TABLE,
+)
 from sync.filters import build_filters_cache_key
 from sync.sync_result_parser import SYNC_ERRORS_PREFIX
 
@@ -220,14 +228,46 @@ class FakeGristServer:
             for page in pages
         ]
 
-    def _add_table_meta(self, table_id):
-        """Vue, page en bas à la racine et lien table → vue, comme `AddTable`."""
+    def _add_table_meta(self, table_id, col_ids):
+        """Vue, page en bas à la racine, lien table → vue, section de la page
+        et colonnes, comme `AddTable`."""
         view_id = self._insert(VIEWS_TABLE, {"name": table_id})
         self._insert(
             PAGES_TABLE,
             {"viewRef": view_id, "indentation": 0, "pagePos": self._next_page_pos()},
         )
-        self._insert(TABLES_TABLE, {"tableId": table_id, "primaryViewId": view_id})
+        table_ref = self._insert(
+            TABLES_TABLE, {"tableId": table_id, "primaryViewId": view_id}
+        )
+        self._insert(
+            SECTIONS_TABLE,
+            {"parentId": view_id, "tableRef": table_ref, "parentKey": "record"},
+        )
+        for col_id in col_ids:
+            self._insert(COLUMNS_TABLE, {"parentId": table_ref, "colId": col_id})
+
+    def page_section(self, table_id):
+        """Section affichée par la page de la table."""
+        tables = self.store.get(TABLES_TABLE, {})
+        table_ref, table = next(
+            (ref, t) for ref, t in tables.items() if t["tableId"] == table_id
+        )
+        return next(
+            section
+            for section in self.store.get(SECTIONS_TABLE, {}).values()
+            if section["parentId"] == table["primaryViewId"]
+            and section["tableRef"] == table_ref
+        )
+
+    def column_ref(self, table_id, col_id):
+        """Identifiant interne (`colRef`) d'une colonne."""
+        tables = self.store.get(TABLES_TABLE, {})
+        table_ref = next(ref for ref, t in tables.items() if t["tableId"] == table_id)
+        return next(
+            ref
+            for ref, column in self.store.get(COLUMNS_TABLE, {}).items()
+            if column["parentId"] == table_ref and column["colId"] == col_id
+        )
 
     def _next_page_pos(self):
         positions = [p["pagePos"] for p in self.store.get(PAGES_TABLE, {}).values()]
@@ -276,7 +316,9 @@ class FakeGristServer:
                         col["id"]: col.get("type", "Text")
                         for col in table["columns"]
                     }
-                    self._add_table_meta(table["id"])
+                    self._add_table_meta(
+                        table["id"], [col["id"] for col in table["columns"]]
+                    )
                     self.created_tables.append(table["id"])
                 return build_response(
                     {"tables": [{"id": t["id"]} for t in payload["tables"]]}
@@ -1690,6 +1732,26 @@ class TestPageTree:
             (SYNC_METADATA_TABLE, 0, False),
         ]
         assert "Demarche_12345" in server.tables
+
+    def test_parent_page_shows_html_widget(self):
+        """page parente : une ligne de HTML, affichée par le widget « HTML
+        viewer » relié à sa colonne Html (le contenu n'est pas vérifié)"""
+        server = FakeGristServer(with_demarche_tables=False)
+
+        result, _ = run_pipeline(
+            server, FakeDemarchesServer([make_dossier(1)]), parallel=False
+        )
+
+        assert result is True
+        [row] = server.rows("Demarche_12345")
+        assert row[PARENT_HTML_COLUMN]
+        section = server.page_section("Demarche_12345")
+        assert section["parentKey"] == "custom"
+        custom_view = json.loads(json.loads(section["options"])["customView"])
+        assert custom_view["widgetId"] == HTML_WIDGET_ID
+        assert custom_view["columnsMapping"] == {
+            PARENT_HTML_COLUMN: server.column_ref("Demarche_12345", PARENT_HTML_COLUMN)
+        }
 
     def test_repetable_block_page_filed_under_parent(self):
         """la table d'un bloc répétable est rangée comme les autres"""

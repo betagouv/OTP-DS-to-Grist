@@ -8,12 +8,16 @@ import requests
 
 from grist.base_url import assert_base_url_allowed
 from grist.pages import (
+    COLUMNS_TABLE,
     PAGES_TABLE,
     PARENT_TABLE_COLUMNS,
+    SECTIONS_TABLE,
     TABLES_TABLE,
     get_folded_page_actions,
+    get_html_widget_actions,
     is_demarche_table,
     get_page_attachment_actions,
+    get_parent_page_html,
     get_parent_page_name,
     get_parent_table_id,
 )
@@ -337,7 +341,8 @@ class GristClient:
         Crée une table de la démarche et range sa page sous la page parente
         « N° <numéro> ».
 
-        La page parente est créée, pliée, avec la première table d'une démarche.
+        La page parente est créée, pliée et avec son contenu HTML, avec la
+        première table d'une démarche.
         Une démarche synchronisée avant l'arborescence n'en a pas : ses pages
         restent à la racine. Un rangement en échec est journalisé sans être
         levé : la page reste à la racine et la synchronisation continue.
@@ -751,20 +756,36 @@ class GristClient:
         )
 
     def _create_parent_page(self, demarche_number: int | str) -> None:
-        """Crée la table vide de la page parente, puis plie et renomme sa page."""
+        """
+        Crée la table de la page parente, puis, en un seul envoi, plie et
+        renomme sa page et y affiche le contenu HTML.
+        """
         result = self.create_table(
             get_parent_table_id(demarche_number), PARENT_TABLE_COLUMNS
         )
         created_table_id = result["tables"][0]["id"]
 
         pages, tables = self._get_page_tree()
-        actions = get_folded_page_actions(
+        folded_actions = get_folded_page_actions(
             pages, tables, created_table_id, get_parent_page_name(demarche_number)
         )
-        if not actions:
+
+        if not folded_actions:
             raise RuntimeError(f"page de la table {created_table_id} introuvable")
 
-        self._apply_or_raise(actions)
+        widget_actions = get_html_widget_actions(
+            tables,
+            self._get_meta_records(SECTIONS_TABLE),
+            self._get_meta_records(COLUMNS_TABLE),
+            created_table_id,
+            get_parent_page_html(),
+        )
+        if not widget_actions:
+            raise RuntimeError(
+                f"section ou colonne Html de la table {created_table_id} introuvable"
+            )
+
+        self._apply_or_raise(folded_actions + widget_actions)
         log(f"Page parente « {get_parent_page_name(demarche_number)} » créée")
 
     def _get_page_tree(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

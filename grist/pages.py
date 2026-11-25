@@ -1,6 +1,7 @@
 """
 Arborescence des pages Grist : les pages des tables d'une démarche sont
-rangées sous une page parente « N° <numéro> », pliée à sa création.
+rangées sous une page parente « N° <numéro> », pliée à sa création, qui
+affiche un contenu HTML (`parent_page.html`).
 
 Grist n'offre pas d'API pour les pages : l'arbre se lit et s'écrit dans ses
 méta-tables. `_grist_Pages` porte l'ordre (`pagePos`) et la profondeur
@@ -14,25 +15,41 @@ Ce module ne fait que des calculs : il produit les actions à envoyer par
 """
 
 import json
+from pathlib import Path
 from typing import Any
 
 PAGES_TABLE = "_grist_Pages"
 TABLES_TABLE = "_grist_Tables"
 VIEWS_TABLE = "_grist_Views"
+SECTIONS_TABLE = "_grist_Views_section"
+COLUMNS_TABLE = "_grist_Tables_column"
 
-# Colonnes de la table parente : son contenu est sans importance, mais
-# `POST /tables` refuse une table sans colonne.
-PARENT_TABLE_COLUMNS = [{"id": "A", "type": "Text"}]
+# Widget « HTML viewer » de la galerie Grist : affiche, rendu, le HTML de la
+# colonne qui lui est reliée, pour la ligne sélectionnée.
+HTML_WIDGET_ID = "@gristlabs/widget-renderhtml"
+HTML_WIDGET_URL = "https://gristlabs.github.io/grist-widget/renderhtml/index.html"
+HTML_WIDGET_ACCESS = "read table"
+
+# Colonne de la table parente qui porte le HTML de la page parente
+PARENT_HTML_COLUMN = "Html"
+PARENT_TABLE_COLUMNS = [{"id": PARENT_HTML_COLUMN, "type": "Text"}]
+
+_PARENT_PAGE_TEMPLATE = Path(__file__).with_name("parent_page.html")
 
 
 def get_parent_table_id(demarche_number: int | str) -> str:
-    """Table vide portée par la page parente d'une démarche."""
+    """Table portée par la page parente d'une démarche, qui contient son HTML."""
     return f"Demarche_{demarche_number}"
 
 
 def get_parent_page_name(demarche_number: int | str) -> str:
     """Nom affiché de la page parente d'une démarche."""
     return f"N° {demarche_number}"
+
+
+def get_parent_page_html() -> str:
+    """Contenu HTML affiché par la page parente d'une démarche."""
+    return _PARENT_PAGE_TEMPLATE.read_text(encoding="utf-8")
 
 
 def is_demarche_table(table_id: str, demarche_number: int | str) -> bool:
@@ -75,6 +92,86 @@ def get_folded_page_actions(
             },
         ],
         ["UpdateRecord", VIEWS_TABLE, view_ref, {"name": page_name}],
+    ]
+
+
+def get_html_widget_actions(
+    tables: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    columns: list[dict[str, Any]],
+    table_id: str,
+    html: str,
+) -> list[list[Any]]:
+    """
+    Actions qui écrivent `html` dans une ligne de la table et le font
+    afficher, dans la page de la table, par le widget « HTML viewer » relié à
+    sa colonne `Html`.
+
+    La section affichée par la page devient un widget personnalisé : sa
+    configuration (`customView`), y compris l'accès en lecture, est celle
+    qu'écrit Grist quand on choisit le widget dans la galerie, ce qui évite
+    toute demande d'autorisation. Aucune action si la page ou la colonne est
+    introuvable.
+    """
+    table = next(
+        (table for table in tables if table["fields"].get("tableId") == table_id), None
+    )
+    if table is None:
+        return []
+
+    view_ref = table["fields"].get("primaryViewId")
+    section = next(
+        (
+            section
+            for section in sections
+            if section["fields"].get("parentId") == view_ref
+            and section["fields"].get("tableRef") == table["id"]
+        ),
+        None,
+    )
+    column = next(
+        (
+            column
+            for column in columns
+            if column["fields"].get("parentId") == table["id"]
+            and column["fields"].get("colId") == PARENT_HTML_COLUMN
+        ),
+        None,
+    )
+    if not view_ref or section is None or column is None:
+        return []
+
+    widget = {
+        "name": "HTML viewer",
+        "url": HTML_WIDGET_URL,
+        "widgetId": HTML_WIDGET_ID,
+        "accessLevel": HTML_WIDGET_ACCESS,
+        "columns": [PARENT_HTML_COLUMN],
+        "renderAfterReady": True,
+    }
+    custom_view = {
+        "mode": "url",
+        "url": HTML_WIDGET_URL,
+        "widgetId": HTML_WIDGET_ID,
+        "pluginId": "",
+        "sectionId": "",
+        "access": HTML_WIDGET_ACCESS,
+        "renderAfterReady": True,
+        "columnsMapping": {PARENT_HTML_COLUMN: column["id"]},
+        "widgetDef": widget,
+    }
+
+    return [
+        ["AddRecord", table_id, None, {PARENT_HTML_COLUMN: html}],
+        [
+            "UpdateRecord",
+            SECTIONS_TABLE,
+            section["id"],
+            {
+                "parentKey": "custom",
+                "options": json.dumps({"customView": json.dumps(custom_view)}),
+            },
+        ],
     ]
 
 

@@ -1,7 +1,10 @@
 import json
 
 from grist.pages import (
+    HTML_WIDGET_ID,
+    HTML_WIDGET_URL,
     get_folded_page_actions,
+    get_html_widget_actions,
     is_demarche_table,
     get_page_attachment_actions,
     get_parent_page_name,
@@ -26,6 +29,14 @@ def table(table_id, primary_view_id):
         "id": primary_view_id,
         "fields": {"tableId": table_id, "primaryViewId": primary_view_id},
     }
+
+
+def section(section_id, parent_id, table_ref):
+    return {"id": section_id, "fields": {"parentId": parent_id, "tableRef": table_ref}}
+
+
+def column(col_ref, parent_id, col_id):
+    return {"id": col_ref, "fields": {"parentId": parent_id, "colId": col_id}}
 
 
 def tree_after(actions):
@@ -95,6 +106,51 @@ class TestFoldedPageActions:
 
         assert get_folded_page_actions(pages, tables, "Demarche_5", "N° 5") == []
         assert get_folded_page_actions(pages, tables, "Inconnue", "N° 5") == []
+
+
+class TestHtmlWidgetActions:
+    TABLES = [table("Autre", 10), table("Demarche_5", 20)]
+
+    def test_writes_html_and_turns_page_section_into_widget(self):
+        """ligne de HTML ajoutée ; la section de la page (pas la section brute,
+        hors vue) devient le widget, relié à la colonne Html de la table"""
+        sections = [section(1, 0, 20), section(2, 20, 20), section(3, 10, 10)]
+        columns = [column(7, 10, "Html"), column(8, 20, "Html")]
+
+        actions = get_html_widget_actions(
+            self.TABLES, sections, columns, "Demarche_5", "<p>contenu</p>"
+        )
+
+        [add_row, update_section] = actions
+        assert add_row == ["AddRecord", "Demarche_5", None, {"Html": "<p>contenu</p>"}]
+        assert update_section[:3] == ["UpdateRecord", "_grist_Views_section", 2]
+        fields = update_section[3]
+        assert fields["parentKey"] == "custom"
+        custom_view = json.loads(json.loads(fields["options"])["customView"])
+        assert custom_view["mode"] == "url"
+        assert custom_view["url"] == HTML_WIDGET_URL
+        assert custom_view["widgetId"] == HTML_WIDGET_ID
+        assert custom_view["access"] == "read table"
+        assert custom_view["columnsMapping"] == {"Html": 8}
+
+    def test_missing_page_section_or_column(self):
+        """table inconnue, sans section de page ou sans colonne Html -> rien"""
+        sections = [section(2, 20, 20)]
+        columns = [column(8, 20, "Html")]
+
+        assert get_html_widget_actions(self.TABLES, sections, columns, "X", "") == []
+        assert (
+            get_html_widget_actions(
+                self.TABLES, [section(1, 0, 20)], columns, "Demarche_5", ""
+            )
+            == []
+        )
+        assert (
+            get_html_widget_actions(
+                self.TABLES, sections, [column(8, 20, "A")], "Demarche_5", ""
+            )
+            == []
+        )
 
 
 class TestPageAttachmentActions:

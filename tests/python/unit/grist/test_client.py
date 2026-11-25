@@ -634,16 +634,23 @@ class TestCreateDemarcheTable:
         {"id": 1, "fields": {"tableId": PARENT, "primaryViewId": 1}},
         {"id": 2, "fields": {"tableId": CHILD, "primaryViewId": 2}},
     ]
+    SECTIONS = [{"id": 1, "fields": {"parentId": 1, "tableRef": 1}}]
+    COLUMNS = [{"id": 1, "fields": {"parentId": 1, "colId": "Html"}}]
 
     def setup_method(self):
         self.client = GristClient(
             "https://grist.example.com", "test_key", doc_id="doc123"
         )
 
-    def _run(self, existing_tables, apply_status=200):
+    def _run(self, existing_tables, apply_status=200, columns=None):
         """Crée la table enfant ; `existing_tables` est la liste relue après
         création. Renvoie (résultat, mocks)."""
-        records = {"_grist_Pages": self.PAGES, "_grist_Tables": self.TABLES}
+        records = {
+            "_grist_Pages": self.PAGES,
+            "_grist_Tables": self.TABLES,
+            "_grist_Views_section": self.SECTIONS,
+            "_grist_Tables_column": self.COLUMNS if columns is None else columns,
+        }
         with (
             patch.object(
                 self.client,
@@ -676,8 +683,8 @@ class TestCreateDemarcheTable:
         )
 
     def test_first_table_creates_folded_parent(self):
-        """première table de la démarche -> table parente vide, page pliée,
-        puis page enfant rangée dessous"""
+        """première table de la démarche -> table parente, page pliée avec son
+        widget HTML, puis page enfant rangée dessous"""
         result, mocks = self._run([self.CHILD, "Sync_metadata"])
 
         assert result == {"tables": [{"id": self.CHILD}]}
@@ -685,15 +692,26 @@ class TestCreateDemarcheTable:
             (self.CHILD, [{"id": "a", "type": "Text"}]),
             (self.PARENT, PARENT_TABLE_COLUMNS),
         ]
-        fold, attach = [c.args[0] for c in mocks.apply.call_args_list]
-        assert [action[0] for action in fold] == [
-            "RemoveRecord",
-            "AddRecord",
-            "UpdateRecord",
+        parent, attach = [c.args[0] for c in mocks.apply.call_args_list]
+        assert [action[:2] for action in parent] == [
+            ["RemoveRecord", "_grist_Pages"],
+            ["AddRecord", "_grist_Pages"],
+            ["UpdateRecord", "_grist_Views"],
+            ["AddRecord", self.PARENT],
+            ["UpdateRecord", "_grist_Views_section"],
         ]
-        assert fold[2][3] == {"name": "N° 5"}
+        assert parent[2][3] == {"name": "N° 5"}
         assert attach[0][0] == "BulkUpdateRecord"
         mocks.log_error.assert_not_called()
+
+    def test_widget_impossible_parent_page_not_folded(self):
+        """colonne Html introuvable -> erreur journalisée, rien n'est envoyé :
+        la page parente n'est ni pliée ni à moitié configurée"""
+        result, mocks = self._run([self.CHILD], columns=[])
+
+        assert result == {"tables": [{"id": self.CHILD}]}
+        mocks.apply.assert_not_called()
+        assert "colonne Html" in mocks.log_error.call_args.args[0]
 
     def test_parent_exists_attaches_page(self):
         """table parente présente -> page rangée dessous, sans nouvelle parente"""
