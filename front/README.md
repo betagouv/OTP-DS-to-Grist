@@ -4,11 +4,8 @@ Ce dossier contient la nouvelle application frontend développée avec Vue.js (V
 
 ## Rôle
 
-C'est la cible pour toutes les nouvelles fonctionnalités UI (ex: gestion multi-démarches).
-Cette application est en cours de développement et n'est pas encore accessible aux utilisateurs.
-Elle coexiste avec le front legacy situé dans `templates/` et `static/js/`.
-
-Une partie du code partagé entre les deux frontends se trouve dans `static/js/`.
+C'est l'interface de l'application : Flask la sert sur `/`, dans la coquille Jinja de
+`templates/`. Toutes les fonctionnalités UI y sont développées.
 
 ## Installation
 

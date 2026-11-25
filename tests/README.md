@@ -45,18 +45,19 @@ pytest -k "nom_du_test"  # Lancer un test spécifique
 
 ## JavaScript
 
-Ces tests utilisent Jest. Il n y a que des tests unitaires.
+Tests du front Vue (`front/`), avec Vitest. Il n'y a que des tests unitaires, placés
+dans un dossier `__tests__/` à côté du code testé.
 
 ### Commandes
 
 ```sh
-npm test # Lancer tout les tests
-npm test -- --watch # Même chose mais avec réexécution automatique à chanque modification de fichier
+npm run test:vue # Lancer tous les tests, avec réexécution automatique à chaque modification de fichier
+cd front && npx vitest run # Lancer tous les tests une seule fois
 ```
 
 ### Conventions
 
-- Une suite de tests doit être suffixée par `.test.js`
-- Un fichier de suite de tests pour un fichier javascript testé : config.js → config.test.js
+- Une suite de tests doit être suffixée par `.spec.js`
+- Un fichier de suite de tests pour un fichier javascript testé : dates.js → dates.spec.js
 - Utiliser describe() pour grouper les tests liés, par exemple par fonction testée
 - Vérifier les cas nominaux ET les erreurs

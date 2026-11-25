@@ -1,15 +1,10 @@
-# Templates — Front legacy
+# Templates
 
-Ce dossier contient les templates HTML Jinja2 pour l'interface web Flask.
+Ce dossier contient la coquille HTML Jinja2 de l'interface : le layout commun (bandeau,
+en-tête, navigation, pied de page) et la page qui charge l'application Vue de `front/`.
 
 ## Contexte
 
-Ce dossier fait partie du **front legacy** qui coexiste avec le nouveau frontend Vue.js
-en cours de développement dans `front/`. Les nouvelles fonctionnalités UI sont destinées
-à `front/`. Les modifications ici se limitent aux corrections de bugs ou au portage vers
-`front/`.
-
-## Structure
-
-Les pages étendent le layout de base. Les templates peuvent contenir du JavaScript inline
-pour les interactions client.
+L'interface elle-même est dans `front/`. Ce dossier ne porte que ce que Flask rend autour
+d'elle (version, liens d'aide, environnement). Son passage en Vue est une tâche à venir :
+pas de nouvelle logique ici.
