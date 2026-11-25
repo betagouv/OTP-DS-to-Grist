@@ -9,6 +9,10 @@ un message explicite. Une clé non propriétaire ou sans accès donne un code
 d'erreur API externe, qui désactive le planning en cas de synchro planifiée ;
 Grist injoignable donne un code d'erreur transitoire, qui le laisse actif.
 
+Une fois lancé, le sous-processus vérifie à son tour que les deux APIs
+(Démarche Numérique et Grist) répondent (`preflight.py`) avant de synchroniser :
+un échec arrête la synchro avec un code d'erreur API externe.
+
 En cas d'échec du sous-processus, le message présenté à l'utilisateur est
 volontairement court : les tracebacks Python et le stderr complet sont filtrés
 du résumé (et bornés en longueur), le détail restant dans les logs de la tâche.

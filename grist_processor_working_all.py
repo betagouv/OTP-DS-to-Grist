@@ -51,7 +51,7 @@ from sync.sync_result_parser import (
 from sync.tasks.deleted_dossiers import check_deleted_dossiers
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
-from utils.api_validator import verify_api_connections
+from sync.preflight import verify_api_connections
 from utils.constants import (
     EXIT_CODE_EXTERNAL_API_ERROR,
     EXIT_CODE_GRIST_READ_ERROR,
