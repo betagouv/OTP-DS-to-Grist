@@ -14,8 +14,6 @@ jobs:
             - uses: actions/setup-node@v4
               with:
                 node-version: '24'
-            - run: npm ci --ignore-scripts
-            - run: npm test
             - run: cd front && npm ci --ignore-scripts
             - run: npm run test:vue
             # Toute alerte du lint (règles en warn) fait échouer la CI

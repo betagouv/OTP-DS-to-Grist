@@ -21,16 +21,10 @@
     "node": "24.x"
   },
   "scripts": {
-    "test": "jest",
     "test:vue": "cd front && npm run test",
     "lint": "cd front && npm run lint",
     "lint:fix": "cd front && npm run lint:fix",
     "dev": "cd front && npm run dev",
     "build": "cd front && npm ci --include=dev && npm run build"
-  },
-  "devDependencies": {
-    "baseline-browser-mapping": "^2.11.32",
-    "jest": "^30.5.2",
-    "jest-environment-jsdom": "^30.5.2"
   }
 }
