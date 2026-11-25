@@ -1,10 +1,16 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import OTPForm from './components/OTPForm.vue'
 import SyncProgress from './components/SyncProgress.vue'
 import SyncSeriesTable from './components/SyncSeriesTable.vue'
 import { useSyncHistory } from './composables/useSyncHistory'
 import NotificationToast from './components/NotificationToast.vue'
+import OtpAlert from './components/OtpAlert.vue'
+import { isWidgetReadOnly } from './utils/gristContext'
+
+// Accès au document : `null` tant qu'il est inconnu. En lecture seule, aucun
+// composant n'est monté : un seul message, pas de 403 en cascade
+const readOnly = ref(null)
 
 const syncRunning = ref(false)
 const syncHistory = ref([])
@@ -23,11 +29,24 @@ const handleConfigLoaded = () => {
 const handleTitleLoaded = (demarcheNumber, title) => {
   demarcheTitles.value = { ...demarcheTitles.value, [demarcheNumber]: title }
 }
+
+onMounted(async () => {
+  readOnly.value = await isWidgetReadOnly()
+})
 </script>
 
 <template>
   <NotificationToast />
-  <header>
+
+  <OtpAlert
+    v-if="readOnly"
+    type="error"
+    title="Accès éditeur requis"
+  >
+    Ce document est en lecture seule.
+  </OtpAlert>
+
+  <header v-else-if="readOnly === false">
     <div class="wrapper">
       <!-- Tableau et barre accolés : la marge basse est portée par le groupe -->
       <div class="sync-status">
