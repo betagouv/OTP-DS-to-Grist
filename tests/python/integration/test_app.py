@@ -501,114 +501,21 @@ class TestEndpoints:
         assert "Erreur" in data["message"]
         assert data["title"] is None
 
+    @pytest.mark.parametrize("body", [{}, {"type": "autre"}])
     @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_missing_ds_token(self, mock_load, client):
-        """Test sans paramètres - token DS manquant dans le body"""
-        test_data = {
-            "grist_api_key": "key",
-            "grist_base_url": "https://grist.example.com",
-            "grist_doc_id": "doc123",
-        }
-
-        mock_load.return_value = test_data
-
+    def test_api_test_connection_unknown_type(self, mock_load, client, body):
+        """Sans type, ou avec un type inconnu → 400, sans charger de configuration"""
         response = client.post(
             "/api/test-connection",
-            data=json.dumps(test_data),
+            data=json.dumps(body),
             content_type="application/json",
         )
 
         assert response.status_code == 400
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Token API Démarches Simplifiées non configuré" in data["message"]
-
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_missing_grist_config(
-        self, mock_load, client
-    ):
-        """Test sans paramètres - config Grist incomplète dans le body"""
-        test_data = {"ds_api_token": "valid-token", "demarche_number": "123"}
-
-        mock_load.return_value = test_data
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 400
-        data = json.loads(response.data)
-        assert data["success"] is False
-        assert "Configuration Grist incomplète" in data["message"]
-
-    @patch("utils.api_validator.test_demarches_api")
-    @patch("utils.api_validator.test_grist_api")
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_success(
-        self, mock_load, mock_grist, mock_demarches, client
-    ):
-        """Test sans paramètres - succès des deux connexions"""
-        test_data = {
-            "ds_api_token": "valid-token",
-            "demarche_number": "123",
-            "grist_api_key": "valid-key",
-            "grist_base_url": "https://grist.example.com",
-            "grist_doc_id": "doc123",
-        }
-
-        mock_load.return_value = test_data
-        mock_demarches.return_value = (True, "DS OK", "Titre démarche")
-        mock_grist.return_value = (True, "Grist OK")
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["message"] == "2/2 tests réussis"
-        assert len(data["results"]) == 2
-        assert data["results"][0]["type"] == "demarches"
-        assert data["results"][0]["success"] is True
-        assert data["results"][1]["type"] == "grist"
-        assert data["results"][1]["success"] is True
-
-    @patch("utils.api_validator.test_demarches_api")
-    @patch("utils.api_validator.test_grist_api")
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_partial_failure(
-        self, mock_load, mock_grist, mock_demarches, client
-    ):
-        """Test sans paramètres - échec partiel"""
-        test_data = {
-            "ds_api_token": "valid-token",
-            "demarche_number": "123",
-            "grist_api_key": "valid-key",
-            "grist_base_url": "https://grist.example.com",
-            "grist_doc_id": "doc123",
-        }
-
-        mock_load.return_value = test_data
-        mock_demarches.return_value = (True, "DS OK", "Titre démarche")
-        mock_grist.return_value = (False, "Grist Error")
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data["success"] is False
-        assert data["message"] == "1/2 tests réussis"
-        assert data["results"][0]["success"] is True
-        assert data["results"][1]["success"] is False
+        assert data["message"] == "Type de connexion inconnu"
+        mock_load.assert_not_called()
 
     @patch.object(ConfigManager, "load_config_by_id")
     @patch("app.get_groups")
@@ -991,24 +898,6 @@ class TestErrorHandling:
                     "otp_config_id": 999,
                 }
             ),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 404
-        data = json.loads(response.data)
-        assert data["success"] is False
-        assert data["message"] == "Configuration non trouvée (id=999)"
-
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_type_config_not_found(
-        self, mock_load, client
-    ):
-        """Sans type, config absente → 404 (auparavant une 500 brute)"""
-        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps({"otp_config_id": 999}),
             content_type="application/json",
         )
 

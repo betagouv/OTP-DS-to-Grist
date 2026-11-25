@@ -68,7 +68,6 @@ from utils.formatter import to_local_iso
 from utils.api_validator import (
     test_demarches_api,
     test_grist_api,
-    verify_api_connections,
 )
 from utils.constants import (
     CHANGELOG_PATH,
@@ -316,58 +315,6 @@ if not scheduler.running:
 
 
 # Routes Flask
-
-def test_current_config_connections(otp_config_id):
-    """
-    Teste les connexions DS et Grist avec les paramètres fournis dans le body
-    """
-    config = config_manager.load_config_by_id(otp_config_id)
-
-    # Vérifier que les paramètres requis sont présents
-    ds_api_token = config.get("ds_api_token")
-    demarche_number = config.get("demarche_number")
-    grist_base_url = config.get("grist_base_url")
-    grist_api_key = config.get("grist_api_key")
-    grist_doc_id = config.get("grist_doc_id")
-
-    if not ds_api_token:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Token API Démarches Simplifiées non configuré",
-            }
-        ), 400
-
-    if not grist_api_key or not grist_base_url or not grist_doc_id:
-        return jsonify(
-            {"success": False, "message": "Configuration Grist incomplète"}
-        ), 400
-
-    try:
-        # Utiliser la fonction centralisée pour tester les connexions
-        all_success, results = verify_api_connections(
-            ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id
-        )
-
-        success_count = sum(1 for r in results if r["success"])
-
-        return jsonify(
-            {
-                "success": all_success,
-                "message": f"{success_count}/{len(results)} tests réussis",
-                "results": results,
-            }
-        )
-
-    except Exception:
-        logger.exception("Erreur lors du test des connexions")
-        return jsonify(
-            {
-                "success": False,
-                "message": "Une erreur interne est survenue lors du test des connexions",
-            }
-        ), 500
-
 
 @app.context_processor
 def inject_version_info():
@@ -680,7 +627,6 @@ def api_test_connection():
     """
     Route pour tester les connexions vers les autres API
 
-    Sans paramètres : teste toutes les APIs de la configuration courante
     Avec type='demarches' ou 'grist' : teste uniquement l'API spécifiée
     """
     data = request.get_json() or {}
@@ -741,7 +687,9 @@ def api_test_connection():
         success, message = test_grist_api(base_url, api_key, doc_id)
         title = None
     else:
-        return test_current_config_connections(data.get("otp_config_id"))
+        return jsonify(
+            {"success": False, "message": "Type de connexion inconnu"}
+        ), 400
 
     return jsonify({"success": success, "message": message, "title": title})
 
