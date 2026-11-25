@@ -1,144 +1,17 @@
 {% extends "base.html" %}
-
-{% block title %}Accueil - 🦄 One Trick Pony DN to Grist{% endblock %}
-
+{% block dsfr_css %}{% endblock %}
+{% block dsfr_js %}{% endblock %}
 {% block content %}
-<form id="config-form">
-  {% include 'configuration.html' %}
-  {% include 'execution.html' %}
-</form>
-{% endblock %}
+  <script>
+    window.HELP_LINKS = {{ help_links | tojson }}
+  </script>
+  <div id="app"></div>
+  {% if config.DEBUG %}
+    <script type="module" src="{{ vite_asset('@vite/client').js }}"></script>
+  {% else %}
+      <link href="{{ vite_asset().css }}" rel="stylesheet">
+  {% endif %}
 
-{% block scripts %}
-<script>
-// ===== INITIALISATIONS GLOBALES =====
-let logsVisible = false
-let currentTaskId = null
-window.saveTimeout = null
+  <script type="module" src="{{ vite_asset().js }}"></script>
 
-// ===== SOCKET.IO =====
-const socket = io()
-
-socket.on('connect_error', function(error) {
-    console.error('Erreur de connexion Socket.IO:', error)
-    showNotification('Erreur de connexion en temps réel', 'error')
-})
-
-socket.on('connect', function() {
-    console.log('Connecté au serveur via Socket.IO')
-})
-
-// Gestion des mises à jour en temps réel
-socket.on('task_update', function(data) {
-  if (data.task_id === currentTaskId) {
-    updateTaskProgress(data.task)
-    if (data.task.status === 'completed' || data.task.status === 'error') {
-      currentTaskId = null
-    }
-  }
-})
-
-// ===== INITIALISATION DE LA PAGE =====
-document.addEventListener('DOMContentLoaded', async () => {
-  // En lecture seule, aucun appel API : un seul message explicite, pas de 403 en cascade
-  if (await isWidgetReadOnly()) {
-    showNotification('Accès éditeur requis : ce document est en lecture seule', 'error')
-    return
-  }
-
-  // Vérifier la configuration dès le démarrage (en cas de token périmé)
-  const checkedConfig = await checkConfiguration(true)
-  window.otp_config_id = checkedConfig?.otp_config_id
-
-  if (checkedConfig?.otp_config_id) {
-    // Charger l'état de la synchronisation automatique
-    await loadAutoSyncState()
-    await loadGroupes(window.otp_config_id)
-    await displaySyncStatus(checkedConfig.otp_config_id)
-  } else {
-    await displaySyncStatus()
-  }
-
-
-  await loadConfiguration()
-
-  // Mettre à jour le bouton de suppression
-  updateDeleteButton(checkedConfig?.otp_config_id)
-
-  // Focus sur le premier champ si vide
-  if (!window.otp_config_id) {
-    setTimeout(() => {
-      document.getElementById('ds_api_token').focus()
-    }, 500)
-  }
-})
-
-// ===== ACTIONS DE SYNCHRONISATION =====
-const startSyncAction = async () => currentTaskId = await startSync(window.otp_config_id)
-
-// ===== ACTIONS DE SAUVEGARDE =====
-const saveConfigAction = async () => {
-  setButtonsDisabled(true)
-  clearTimeout(saveTimeout)
-  saveTimeout = setTimeout(
-     async () => {
-       try {
-         const dsToken = document.getElementById('ds_api_token').value
-         const dsNumber = document.getElementById('demarche_number').value
-         const gristKey = document.getElementById('grist_api_key').value
-
-         const configs = await getConfiguration()
-         const config = configs[0]
-
-         if ((!dsToken || !config.has_ds_token) && !dsNumber) {
-           console.log('Pas de sauvegarde sans token DN ni numéro de démarche')
-           return setButtonsDisabled(false)
-         }
-
-         // Vérification spécifique pour ds_api_token : obligatoire si pas en base
-         if (!dsToken && !config.has_ds_token) {
-           showNotification('Le champ "Token API Démarches Simplifiées" est requis', 'error')
-           return setButtonsDisabled(false)
-         }
-
-         if (!await testDemarchesConnection(true))
-           return setButtonsDisabled(false)
-
-         // Création : la clé Grist est requise côté serveur. On attend qu'elle
-         // soit saisie plutôt que de tenter une sauvegarde vouée à l'échec,
-         // qui rechargerait le formulaire et effacerait les champs saisis.
-         if (!gristKey && !config.has_grist_key) {
-           console.log('Sauvegarde en attente de la clé API Grist')
-           return setButtonsDisabled(false)
-         }
-
-         if (!await testGristConnection(true))
-           return setButtonsDisabled(false)
-
-         // Ne pas recharger le formulaire si rien n'a été enregistré :
-         // loadConfiguration() viderait les champs saisis
-         if (!await saveConfiguration())
-           return
-
-         const checkedConfig = await checkConfiguration()
-         window.otp_config_id = checkedConfig.otp_config_id
-
-         await loadGroupes(window.otp_config_id)
-         await loadConfiguration()
-
-       } finally {
-         setButtonsDisabled(false)
-       }
-     }
-    , 1500
-  )
-}
-
-// ===== ACTIONS DE SAUVEGARDE AUTO =====
-const form = document.querySelector('form')
-form.addEventListener('input', () => {
-  updateButtonsState()
-  saveConfigAction()
-})
-</script>
 {% endblock %}

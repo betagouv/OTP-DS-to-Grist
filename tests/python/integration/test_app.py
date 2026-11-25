@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -14,6 +15,7 @@ from grist.client import GristClient
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 from sync.sync_manager import SyncSeriesAlreadyRunningError
+from tests.python.integration.conftest import FAKE_VITE_JS
 
 
 def _inline_enqueue(otp_config_id, grist_doc_id, fn):
@@ -30,6 +32,34 @@ class TestEndpoints:
         response = client.get("/")
         assert response.status_code == 200
         assert b"One Trick Pony" in response.data
+
+    def test_index_route_serves_vue_front(self, client):
+        """L'accueil sert le front Vue : point de montage et bundle Vite"""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert '<div id="app"></div>' in html
+        assert FAKE_VITE_JS in html
+
+    def test_index_route_is_public(self, client):
+        """L'accueil se charge sans jeton widget : le front Vue l'obtient ensuite"""
+        client.anonymous = True
+        response = client.get("/")
+        assert response.status_code == 200
+
+    def test_wip_route_redirects_to_index(self, client):
+        """L'ancienne adresse du front Vue redirige temporairement vers l'accueil"""
+        client.anonymous = True
+        response = client.get("/wip")
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/"
+
+    def test_wip_route_logs_redirect(self, client, caplog):
+        """Chaque passage par /wip laisse un log repérable en production"""
+        with caplog.at_level(logging.WARNING):
+            client.get("/wip")
+        assert any(
+            "[REDIRECTION /wip]" in record.getMessage() for record in caplog.records
+        )
 
     def test_execution_route_is_gone(self, client):
         """La route /execution n'existe plus : la page ne doit pas être visitable directement"""

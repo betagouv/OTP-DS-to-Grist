@@ -18,6 +18,7 @@ from flask import (
     abort,
     g,
     jsonify,
+    redirect,
     render_template,
     request,
     url_for,
@@ -425,8 +426,10 @@ def index():
 
 
 @app.route("/wip")
-def wip():
-    return render_template("wip.html")
+def wip() -> Response:
+    """Ancienne adresse du front Vue, redirigée temporairement vers l'accueil."""
+    logger.warning("[REDIRECTION /wip] Accès à /wip, redirigé vers /")
+    return redirect(url_for("index"))
 
 
 @app.errorhandler(ConfigNotFoundError)
