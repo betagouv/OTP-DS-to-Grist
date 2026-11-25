@@ -5,6 +5,11 @@ import { h } from 'vue'
 import { DsfrInput, DsfrInputGroup, DsfrMultiselect } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
 
+// Chaque test pose son formatage de date simulé sur `globalThis.formatDate`
+vi.mock('../../utils/dates', () => ({
+  formatDate: (...args) => globalThis.formatDate(...args)
+}))
+
 // Requêtes transmises telles quelles au `fetch` simulé par le test : le jeton
 // widget est vérifié par les tests d'apiClient
 vi.mock('../../utils/apiClient', () => ({

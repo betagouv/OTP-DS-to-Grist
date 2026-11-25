@@ -5,6 +5,7 @@ import { DsfrInput, DsfrInputGroup, DsfrCheckboxSet, DsfrMultiselect, DsfrButton
 
 import OtpAlert from './OtpAlert.vue'
 import { api } from '../utils/InternalApi'
+import { formatDate } from '../utils/dates'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }
