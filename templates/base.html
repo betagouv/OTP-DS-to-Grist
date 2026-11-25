@@ -206,8 +206,17 @@
         text-align: center;
       }
 
-      .fr-notice--info .fr-notice__body:before {
+      /* Icône DSFR remplacée par celle du paragraphe ci-dessous : selon la
+         version du DSFR, elle est sur le corps (1.11, CDN du legacy) ou sur
+         le titre (1.15, bundle de front/) */
+      .fr-notice--info .fr-notice__body:before,
+      .fr-notice--info .fr-notice__title:before {
         display: none;
+      }
+
+      /* DSFR 1.15 : corps en flex (space-between), text-align ne centre plus */
+      .fr-notice--info .fr-notice__body {
+        justify-content: center;
       }
 
       .fr-notice--info .fr-notice__body p:before {
@@ -343,7 +352,7 @@
             <li
               class="fr-nav-custom__item {% if request.path == '/' %}active{% endif %}"
             >
-              <a class="fr-link" href="/">Synchroniser</a>
+              <a class="fr-link" href="/">Accueil</a>
             </li>
             {% if not 'prod' in env_name|lower %}
             <li
@@ -359,8 +368,9 @@
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Aide (nouvelle fenêtre)"
-                >Aide</a
               >
+                Ressources
+              </a>
             </li>
           </ul>
         </div>

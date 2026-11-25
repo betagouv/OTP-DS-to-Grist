@@ -18,6 +18,8 @@ jobs:
             - run: npm test
             - run: cd front && npm ci --ignore-scripts
             - run: npm run test:vue
+            # Toute alerte du lint (règles en warn) fait échouer la CI
+            - run: cd front && npm run lint -- --max-warnings 0
     test-python:
          runs-on: ubuntu-latest
          steps:

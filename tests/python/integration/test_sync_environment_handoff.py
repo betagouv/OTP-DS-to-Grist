@@ -73,7 +73,7 @@ def _run_sync_and_capture_child_env(manager: SyncManager, config: dict) -> dict:
     with (
         patch("subprocess.Popen", side_effect=echo_popen),
         patch(
-            "sync.sync_manager.grist_doc_access_level", return_value="owners"
+            "sync.sync_manager.require_owner_access", return_value={"access": "owners"}
         ),
         patch("sync.sync_manager.SessionLocal"),
         patch("sync.sync_manager.ConfigManager"),

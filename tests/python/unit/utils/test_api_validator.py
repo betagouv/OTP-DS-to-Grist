@@ -2,6 +2,7 @@
 Tests unitaires pour api_validator.py
 """
 
+import pytest
 import requests
 from unittest.mock import patch, MagicMock
 
@@ -100,14 +101,17 @@ class TestTestDemarchesApi:
 
 
 class TestTestGristApi:
-    """Tests pour test_grist_api"""
+    """Tests pour test_grist_api : seule une clé propriétaire réussit le test"""
 
     def test_success(self):
         """Test réussi"""
         mock_client = MagicMock()
-        mock_client.get_document_info.return_value = {"name": "Mon Document"}
+        mock_client.get_document_info.return_value = {
+            "name": "Mon Document",
+            "access": "owners",
+        }
 
-        with patch("utils.api_validator.GristClient", return_value=mock_client):
+        with patch("grist.utils.GristClient", return_value=mock_client):
             success, message = grist_api_tester(
                 "https://grist.example.com", "api-key", "doc123"
             )
@@ -119,9 +123,9 @@ class TestTestGristApi:
     def test_success_without_name(self):
         """Test réussi sans nom de document"""
         mock_client = MagicMock()
-        mock_client.get_document_info.return_value = {}
+        mock_client.get_document_info.return_value = {"access": "owners"}
 
-        with patch("utils.api_validator.GristClient", return_value=mock_client):
+        with patch("grist.utils.GristClient", return_value=mock_client):
             success, message = grist_api_tester(
                 "https://grist.example.com", "api-key", "doc123"
             )
@@ -129,20 +133,53 @@ class TestTestGristApi:
         assert success is True
         assert "doc123" in message
 
-    def test_http_error(self):
-        """Test avec erreur HTTP"""
+    @pytest.mark.parametrize("document_info", [
+        {"name": "Doc", "access": "editors"},
+        {"name": "Doc", "access": "viewers"},
+        {"name": "Doc"},
+    ])
+    def test_key_not_owner_fails(self, document_info):
+        """Clé non propriétaire (ou niveau absent) → échec, message en français"""
         mock_client = MagicMock()
-        mock_client.get_document_info.side_effect = requests.exceptions.HTTPError(
-            response=MagicMock(status_code=404, text="Not Found")
-        )
+        mock_client.get_document_info.return_value = document_info
 
-        with patch("utils.api_validator.GristClient", return_value=mock_client):
+        with patch("grist.utils.GristClient", return_value=mock_client):
             success, message = grist_api_tester(
                 "https://grist.example.com", "api-key", "doc123"
             )
 
         assert success is False
-        assert "404" in message
+        assert message == "Accès propriétaire requis sur le document Grist"
+
+    def test_http_error(self):
+        """Document invisible pour la clé → message en français, sans le texte de Grist"""
+        mock_client = MagicMock()
+        mock_client.get_document_info.side_effect = requests.exceptions.HTTPError(
+            response=MagicMock(status_code=404, text='{"error":"Not Found"}')
+        )
+
+        with patch("grist.utils.GristClient", return_value=mock_client):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "api-key", "doc123"
+            )
+
+        assert success is False
+        assert message == "Clé API sans accès au document Grist"
+
+    def test_server_error(self):
+        """Erreur serveur de Grist → indisponible, sans le texte de Grist"""
+        mock_client = MagicMock()
+        mock_client.get_document_info.side_effect = requests.exceptions.HTTPError(
+            response=MagicMock(status_code=500, text="Internal Server Error")
+        )
+
+        with patch("grist.utils.GristClient", return_value=mock_client):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "api-key", "doc123"
+            )
+
+        assert success is False
+        assert message == "Grist indisponible"
 
     def test_timeout(self):
         """Test avec timeout"""
@@ -151,18 +188,21 @@ class TestTestGristApi:
             "Connection timed out"
         )
 
-        with patch("utils.api_validator.GristClient", return_value=mock_client):
+        with patch("grist.utils.GristClient", return_value=mock_client):
             success, message = grist_api_tester(
                 "https://grist.example.com", "api-key", "doc123"
             )
 
         assert success is False
-        assert "Timeout" in message
+        assert message == "Grist indisponible"
 
     def test_client_built_with_parameters(self):
         """GristClient reçoit base_url, api_key et doc_id"""
-        with patch("utils.api_validator.GristClient") as mock_class:
-            mock_class.return_value.get_document_info.return_value = {"name": "Doc"}
+        with patch("grist.utils.GristClient") as mock_class:
+            mock_class.return_value.get_document_info.return_value = {
+                "name": "Doc",
+                "access": "owners",
+            }
             grist_api_tester("https://grist.example.com", "api-key", "doc123")
 
         mock_class.assert_called_once_with(
@@ -177,7 +217,7 @@ class TestTestGristApi:
         )
         mock_class = MagicMock(side_effect=refusal)
 
-        with patch("utils.api_validator.GristClient", mock_class):
+        with patch("grist.utils.GristClient", mock_class):
             success, message = grist_api_tester(
                 "https://grist.evil.example", "api-key", "doc123"
             )
@@ -188,20 +228,20 @@ class TestTestGristApi:
             "https://grist.evil.example", "api-key", "doc123"
         )
 
-    def test_unparseable_json_returns_success(self):
-        """Réponse 200 illisible en JSON → succès avec l'ID du document"""
+    def test_unparseable_json_fails(self):
+        """Réponse 200 illisible en JSON → accès non vérifié, échec"""
         mock_client = MagicMock()
         mock_client.get_document_info.side_effect = (
             requests.exceptions.JSONDecodeError("Expecting value", "doc", 0)
         )
 
-        with patch("utils.api_validator.GristClient", return_value=mock_client):
+        with patch("grist.utils.GristClient", return_value=mock_client):
             success, message = grist_api_tester(
                 "https://grist.example.com", "api-key", "doc123"
             )
 
-        assert success is True
-        assert "doc123" in message
+        assert success is False
+        assert message == "Grist indisponible"
 
 
 class TestVerifyApiConnections:

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 
-import { DsfrButton, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
+import { DsfrButton, DsfrButtonGroup, DsfrAccordionsGroup } from '@gouvminint/vue-dsfr'
 
 import GristFormSection from './GristFormSection.vue'
 import DNFormSection from './DNFormSection.vue'
@@ -37,20 +37,12 @@ const savingIndices = ref(new Set())
 const serverConfigs = ref([])
 const activeDnAccordion = ref(-1)
 
-// Niveaux d'accès de la clé Grist qui ne permettent pas d'écrire dans le
-// document : une synchro échouerait, il faut prévenir l'utilisateur.
-const GRIST_KEY_INSUFFICIENT_ACCESS = ['viewers', 'editors', 'no-access']
-const gristKeyWarningDismissed = ref(false)
-
-const gristKeyAccessWarning = computed(() =>
-  serverConfigs.value.some(config =>
-    config && GRIST_KEY_INSUFFICIENT_ACCESS.includes(config.grist_key_access)
-  )
-)
-
-// Chargement initial : tout doit rester fermé. `loaded` devient vrai à la 1re
-// requête ; l'ouverture d'une section sauvegardée est gérée dans handleSave.
-let loaded = false
+// Chargement initial : tout doit rester fermé. `loaded` devient vrai à la fin de
+// la 1re requête, même en échec ; l'ouverture d'une section sauvegardée est
+// gérée dans handleSave. Le bloc Grist n'est monté qu'ensuite.
+const loaded = ref(false)
+// Dernier chargement en échec : la liste des démarches est inconnue, et non vide
+const loadFailed = ref(false)
 
 // Après une sauvegarde, la section à rouvrir est cherchée par otp_config_id
 // dans la liste rechargée : son index peut changer après le tri décroissant.
@@ -65,21 +57,29 @@ const loadConfig = async () => {
     const context = await getGristContext()
     const data = await api.getConfig(context.params)
     serverConfigs.value = data.configs || []
-    loaded = true
+    loadFailed.value = false
     emit('config-loaded')
-  } catch (e) {
+  } catch {
+    loadFailed.value = true
     configError.value = 'Erreur lors du chargement de la configuration'
+  } finally {
+    loaded.value = true
   }
 }
 
 const configs = computed(() => {
   if (serverConfigs.value.length === 0) return [null]
+
   return sortConfigs(serverConfigs.value)
 })
 
 const hasUnsavedSection = computed(() => configs.value.some(config => !config || !config.otp_config_id))
 
-const hasSavedConfig = computed(() => configs.value.some(config => config?.otp_config_id))
+const savedConfigCount = computed(() => configs.value.filter(config => config?.otp_config_id).length)
+
+const hasSavedConfig = computed(() => savedConfigCount.value > 0)
+
+const showNoDemarcheText = computed(() => loaded.value && !loadFailed.value && !hasSavedConfig.value)
 
 // Clé de remontage du DsfrAccordionsGroup : il indexe ses enfants par un
 // compteur interne monotone qui se désynchronise des index du v-for après
@@ -94,10 +94,11 @@ watch(configs, (sections) => {
     const target = sections.findIndex(config => config?.otp_config_id === pendingOpenId)
     activeDnAccordion.value = target >= 0 ? target : -1
     pendingOpenId = null
+
     return
   }
   const emptyIndex = sections.findIndex(config => !config || !config.otp_config_id)
-  activeDnAccordion.value = loaded ? emptyIndex : -1
+  activeDnAccordion.value = loaded.value ? emptyIndex : -1
 }, { immediate: true })
 
 onMounted(loadConfig)
@@ -154,7 +155,7 @@ const handleSave = async (index) => {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }
   } catch (e) {
-    actionErrors.value[index] = 'Erreur lors de la sauvegarde'
+    actionErrors.value[index] = e.serverMessage ?? 'Erreur lors de la sauvegarde'
   } finally {
     savingIndices.value.delete(index)
   }
@@ -179,7 +180,7 @@ const handleDelete = async (index) => {
 
     await loadConfig()
     notify('Configuration supprimée', 'success')
-  } catch (e) {
+  } catch {
     actionErrors.value[index] = 'Erreur lors de la suppression'
   }
 }
@@ -193,7 +194,7 @@ const handleSync = async (index) => {
     const result = await api.startSync(otpConfigIdToSync)
     setCurrentTaskId(result.task_id, configs.value[index].demarche_number)
     activeDnAccordion.value = -1
-  } catch (e) {
+  } catch {
     actionErrors.value[index] = 'Erreur lors de la synchronisation'
   }
 }
@@ -223,92 +224,96 @@ const handleAddDemarche = async () => {
 </script>
 
 <template>
-    <OtpAlert
-      v-if="configError"
-      type="error"
-      :title="configError"
-      closeable
-      @close="configError = null"
-      class="fr-mb-4w"
+  <OtpAlert
+    v-if="configError"
+    type="error"
+    :title="configError"
+    closeable
+    class="fr-mb-4w"
+    @close="configError = null"
+  />
+
+  <p class="fr-mb-4w">Les champs suivis d'un astérisque (*) sont obligatoires.</p>
+
+  <h6 class="fr-mb-3w">1. Grist</h6>
+
+  <!-- Bloc Grist unique et partagé par toutes les sections DN :
+       on l'initialise volontairement avec la première configuration renvoyée
+       par le serveur (serverConfigs[0]), pas avec la liste triée `configs`. -->
+  <GristFormSection
+    v-if="loaded"
+    ref="gristSectionRef"
+    :existing-config="serverConfigs[0] || null"
+    @error-update="gristError = $event"
+  />
+
+  <h6
+    class="fr-mt-4w fr-mb-3w"
+    data-test-id="demarche-section-title"
+  >
+    2. Démarche numérique ({{ savedConfigCount }})
+  </h6>
+
+  <p
+    v-if="showNoDemarcheText"
+    class="fr-text--sm fr-mb-3w"
+    data-test-id="no-demarche-text"
+  >
+    Aucune démarche n’est encore configurée.
+    Pour commencer, ajoutez le jeton API et le numéro de la Démarche Numérique à synchroniser avec Grist.
+  </p>
+
+  <DsfrAccordionsGroup
+    :key="accordionGroupKey"
+    v-model="activeDnAccordion"
+  >
+    <DNFormSection
+      v-for="(config, index) in configs"
+      :key="config?.otp_config_id || 'new'"
+      :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
+      :index="index"
+      :grist-error="gristError"
+      :can-delete="canDelete(config)"
+      :can-sync="canSync(config)"
+      :in-flight="savingIndices.has(index)"
+      :existing-config="config"
+      :error="actionErrors[index] || null"
+      @save="handleSave"
+      @delete="handleDelete"
+      @sync="handleSync"
+      @title-loaded="(demarcheNumber, title) => emit('title-loaded', demarcheNumber, title)"
+      @clear-error="actionErrors[index] = null"
     />
+  </DsfrAccordionsGroup>
 
-    <OtpAlert
-      v-if="gristKeyAccessWarning && !gristKeyWarningDismissed"
-      type="warning"
-      title="Clé API Grist insuffisante"
-      closeable
-      @close="gristKeyWarningDismissed = true"
-      class="fr-mb-4w"
-    >
-      La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document.
-    </OtpAlert>
+  <OtpAlert
+    v-if="syncAllError"
+    type="error"
+    :title="syncAllError"
+    closeable
+    class="fr-mt-4w"
+    @close="syncAllError = null"
+  />
 
-    <p class="fr-mb-4w">Les champs suivis d'un astérisque (*) sont obligatoires.</p>
-
-    <h6 class="fr-mb-3w">1. Grist</h6>
-
-    <!-- Bloc Grist unique et partagé par toutes les sections DN :
-         on l'initialise volontairement avec la première configuration renvoyée
-         par le serveur (serverConfigs[0]), pas avec la liste triée `configs`. -->
-    <GristFormSection
-      @error-update="gristError = $event"
-      :existing-config="serverConfigs[0] || null"
-      ref="gristSectionRef"
+  <!-- fr-btns-group--icon-left : sans elle, le DSFR réduit à leur icône les boutons qui en ont une -->
+  <DsfrButtonGroup
+    class="fr-btns-group--icon-left fr-mt-4w"
+    inline-layout-when="always"
+  >
+    <DsfrButton
+      label="Ajouter une démarche numérique"
+      icon="fr-icon-add-circle-line"
+      data-test-id="add-dn-section-button"
+      secondary
+      :disabled="hasUnsavedSection"
+      @click="handleAddDemarche"
     />
-
-    <div class="fr-grid-row fr-grid-row--gutters fr-mt-4w fr-mb-1w">
-      <div class="fr-col-6">
-        <h6 class="fr-mb-3w">2. Démarche numérique</h6>
-      </div>
-
-      <div class="fr-col-6" style="text-align: right">
-        <DsfrButton
-          label="Ajouter une démarche numérique"
-          icon="fr-icon-add-circle-line"
-          data-test-id="add-dn-section-button"
-          secondary
-          @click="handleAddDemarche"
-          :disabled="hasUnsavedSection"
-        />
-      </div>
-    </div>
-
-    <DsfrAccordionsGroup v-model="activeDnAccordion" :key="accordionGroupKey">
-      <DNFormSection 
-        :index="index"
-        @save="handleSave"
-        @delete="handleDelete"
-        @sync="handleSync"
-        @title-loaded="(demarcheNumber, title) => emit('title-loaded', demarcheNumber, title)"
-        :grist-error="gristError"
-        :can-delete="canDelete(config)"
-        :can-sync="canSync(config)"
-        :in-flight="savingIndices.has(index)"
-        :existing-config="config"
-        :error="actionErrors[index] || null"
-        @clear-error="actionErrors[index] = null"
-        v-for="(config, index) in configs"
-        :key="config?.otp_config_id || 'new'"
-        :ref="(dnComponent) => dnComponent && (dnSectionRefs[index] = dnComponent)"
-      />
-    </DsfrAccordionsGroup>
-
-    <OtpAlert
-      v-if="syncAllError"
-      type="error"
-      :title="syncAllError"
-      closeable
-      @close="syncAllError = null"
-      class="fr-mt-4w"
+    <DsfrButton
+      label="Tout synchroniser"
+      icon="fr-icon-refresh-line"
+      data-test-id="sync-all-button"
+      :disabled="syncRunning || syncAllPending || !hasSavedConfig"
+      @click="handleSyncAll"
     />
-
-    <div class="fr-mt-4w" style="text-align: right">
-      <DsfrButton
-        label="Tout synchroniser"
-        icon="fr-icon-refresh-line"
-        data-test-id="sync-all-button"
-        @click="handleSyncAll"
-        :disabled="syncRunning || syncAllPending || !hasSavedConfig"
-      />
-    </div>
+  </DsfrButtonGroup>
 </template>

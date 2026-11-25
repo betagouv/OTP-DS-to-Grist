@@ -334,6 +334,26 @@ describe('Config loading on mount', () => {
     expect(wrapper.getComponent(DNFormSection).props('existingConfig')).toBeNull()
   })
 
+  it('renders the Grist section only once the config is loaded', async () => {
+    globalThis.getGristContext.mockResolvedValue(mockContext)
+    let resolveConfig
+    globalThis.fetch.mockReturnValue(new Promise((resolve) => { resolveConfig = resolve }))
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+
+    // Pas de null provisoire transmis au bloc Grist pendant le chargement
+    expect(wrapper.findComponent(GristFormSection).exists()).toBe(false)
+
+    resolveConfig({ json: () => Promise.resolve({ configs: [] }) })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.getComponent(GristFormSection).props('existingConfig')).toBeNull()
+  })
+
   it('handles getGristContext error gracefully', async () => {
     globalThis.getGristContext.mockRejectedValue(new Error('context error'))
 
@@ -628,6 +648,36 @@ describe('Save with existing config (UPDATE)', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.actionErrors[0]).toBe('Erreur lors de la sauvegarde')
+  })
+
+  it('shows the server message when handleSave is refused', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({
+        success: false,
+        message: 'Accès propriétaire requis sur le document Grist'
+      })
+    })
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      userId: '5',
+      docId: 'doc-123',
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token', demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.actionErrors[0]).toBe('Accès propriétaire requis sur le document Grist')
   })
 })
 
@@ -1042,7 +1092,7 @@ describe('Sync action', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
-  it("does not call sync API route when syncRunning is true", async () => {
+  it('does not call sync API route when syncRunning is true', async () => {
     globalThis.getGristContext.mockResolvedValue({
       params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi'
     })
@@ -1337,6 +1387,7 @@ describe('Accordion DN state', () => {
     })
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
+
     return wrapper
   }
 
@@ -1401,7 +1452,10 @@ describe('Accordion DN state', () => {
     globalThis.fetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] })
+      })
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     const dnSections = wrapper.findAllComponents(DNFormSection)
@@ -1431,7 +1485,10 @@ describe('Accordion DN state', () => {
     globalThis.fetch
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, otp_config_id: 1 }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true }) })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ configs: [{ otp_config_id: 6 }, { otp_config_id: 1 }] })
+      })
 
     wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
     const dnSections = wrapper.findAllComponents(DNFormSection)
@@ -1451,71 +1508,140 @@ describe('Accordion DN state', () => {
   })
 })
 
-describe('Grist key access warning', () => {
-  const mockContext = {
-    params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
-    docId: 'doc-123'
-  }
+describe('Grist key access', () => {
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
 
-  const mountWithAccess = async (gristKeyAccess) => {
-    globalThis.getGristContext = vi.fn().mockResolvedValue(mockContext)
-    const config = { otp_config_id: 1 }
-    if (gristKeyAccess !== undefined) config.grist_key_access = gristKeyAccess
+  // Le refus d'une clé non propriétaire s'affiche sous la clé (test de connexion
+  // du bloc Grist), pas dans une alerte globale du formulaire
+  it('shows no global alert for a stored key without owner access', async () => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+      docId: 'doc-123'
+    })
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ configs: [config] })
+      json: () => Promise.resolve({ configs: [{ otp_config_id: 1, grist_key_access: 'editors' }] })
     })
     const wrapper = mount(OTPForm, {
       global: { stubs: { GristFormSection: true, DNFormSection: true } }
     })
     await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
+
+    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
+  })
+})
+
+describe('No saved demarche text', () => {
+  const NO_DEMARCHE_TEXT = 'Aucune démarche n’est encore configurée.'
+    + ' Pour commencer, ajoutez le jeton API et le numéro de la Démarche Numérique à synchroniser avec Grist.'
+
+  const mountWithConfigs = async (configs) => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+      docId: 'doc-123'
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
     return wrapper
   }
+
+  const noDemarcheText = (wrapper) => wrapper.find('[data-test-id="no-demarche-text"]')
 
   afterEach(() => {
     delete globalThis.getGristContext
     vi.restoreAllMocks()
   })
 
-  it.each(['viewers', 'editors', 'no-access'])(
-    'alerts when stored key access is %s',
-    async (access) => {
-      const wrapper = await mountWithAccess(access)
+  it('shows the text when no demarche is saved', async () => {
+    const wrapper = await mountWithConfigs([])
 
-      expect(wrapper.vm.gristKeyAccessWarning).toBe(true)
-      const alert = wrapper.findComponent(OtpAlert)
-      expect(alert.exists()).toBe(true)
-      expect(alert.props('type')).toBe('warning')
-      expect(alert.text()).toContain(
-        "La clé API Grist enregistrée n'a pas les droits de propriétaire sur ce document."
-      )
-    }
-  )
-
-  it.each(['owners', 'unavailable'])(
-    'stays silent when stored key access is %s',
-    async (access) => {
-      const wrapper = await mountWithAccess(access)
-
-      expect(wrapper.vm.gristKeyAccessWarning).toBe(false)
-      expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
-    }
-  )
-
-  it('stays silent when no access level is reported', async () => {
-    const wrapper = await mountWithAccess(undefined)
-
-    expect(wrapper.vm.gristKeyAccessWarning).toBe(false)
-    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
+    expect(noDemarcheText(wrapper).text()).toBe(NO_DEMARCHE_TEXT)
   })
 
-  it('hides the warning once dismissed', async () => {
-    const wrapper = await mountWithAccess('viewers')
+  it('hides the text once a demarche is saved', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
 
-    wrapper.findComponent(OtpAlert).vm.$emit('close')
+    expect(noDemarcheText(wrapper).exists()).toBe(false)
+  })
+
+  it('hides the text while the configuration is loading', () => {
+    globalThis.getGristContext = vi.fn(() => new Promise(() => {}))
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+
+    expect(noDemarcheText(wrapper).exists()).toBe(false)
+  })
+
+  it('hides the text when the configuration failed to load', async () => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({ params: '' })
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.findComponent(OtpAlert).exists()).toBe(false)
+    expect(noDemarcheText(wrapper).exists()).toBe(false)
+  })
+})
+
+describe('Demarche section title', () => {
+  const mountWithConfigs = async (configs) => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+      docId: 'doc-123'
+    })
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ configs })
+    })
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    return wrapper
+  }
+
+  const title = (wrapper) => wrapper.find('[data-test-id="demarche-section-title"]').text()
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('counts the saved demarches', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }, { otp_config_id: 2 }])
+
+    expect(title(wrapper)).toBe('2. Démarche numérique (2)')
+  })
+
+  it('does not count an unsaved section', async () => {
+    const wrapper = await mountWithConfigs([{ otp_config_id: 1 }])
+
+    wrapper.vm.serverConfigs.push(null)
+    await wrapper.vm.$nextTick()
+
+    expect(title(wrapper)).toBe('2. Démarche numérique (1)')
+  })
+
+  it('shows zero when no demarche is saved', async () => {
+    const wrapper = await mountWithConfigs([])
+
+    expect(title(wrapper)).toBe('2. Démarche numérique (0)')
   })
 })

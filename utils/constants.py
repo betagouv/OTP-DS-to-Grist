@@ -50,10 +50,10 @@ IP_BLOCKLIST_CACHE_TTL_SECONDS: float = float(
     os.getenv("IP_BLOCKLIST_CACHE_TTL_SECONDS", "60")
 )
 
-# Nombre de 404 par IP, sur la fenêtre glissante, au-delà duquel l'IP est bannie.
+# Nombre de 4xx par IP sur la fenêtre glissante à partir duquel l'IP est bannie
 IP_BLOCKLIST_THRESHOLD: int = int(os.getenv("IP_BLOCKLIST_THRESHOLD", "3"))
 
-# Longueur de la fenêtre glissante de comptage des 404, en secondes.
+# Longueur de la fenêtre glissante de comptage des réponses 4xx, en secondes.
 IP_BLOCKLIST_WINDOW_SECONDS: float = float(
     os.getenv("IP_BLOCKLIST_WINDOW_SECONDS", "10")
 )

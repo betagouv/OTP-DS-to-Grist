@@ -268,6 +268,46 @@ describe('Grist form section', () => {
     expect(wrapper.vm.activeAccordion).toBe(-1)
   })
 
+  it('opens the accordion when mounted without any config (new user)', async () => {
+    const wrapper = mount(GristFormSection, {
+      props: { existingConfig: null },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.activeAccordion).toBe(0)
+    expect(wrapper.emitted('error-update')).toEqual([[null]])
+  })
+
+  it('applies a saved config received at mount after the Grist context', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true })
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(GristFormSection, {
+      props: {
+        existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+      },
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    await flushPromises()
+
+    // Le baseUrl de la config n'est pas écrasé par celui du contexte,
+    // et le test de connexion part avec le docId du contexte
+    expect(wrapper.vm.baseUrl).toBe('https://grist.example.com')
+    expect(wrapper.vm.activeAccordion).toBe(-1)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
+      type: 'grist',
+      base_url: 'https://grist.example.com',
+      api_key: '',
+      doc_id: 'doc-xyz789',
+      otp_config_id: 42
+    })
+  })
+
   it('opens the accordion when the config is not saved', async () => {
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
@@ -295,5 +335,110 @@ describe('Grist form section', () => {
     await flushPromises()
 
     expect(wrapper.vm.gristFetchError).toBe('Erreur lors du test de connexion Grist')
+  })
+})
+
+describe('Verified badge', () => {
+  const mountSection = () => mount(GristFormSection, {
+    global: { components: { DsfrInput, DsfrInputGroup } }
+  })
+
+  const mockConnection = (success) => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(success ? { success: true } : { success: false, message: 'Token invalide' })
+    })
+  }
+
+  const badge = (wrapper) => wrapper.find('[data-test-id="verified-badge"]')
+
+  it('is hidden before any connection test', () => {
+    const wrapper = mountSection()
+
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  it('appears when the connection test succeeds', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+
+    await wrapper.find('[data-test-id="grist-token"]').setValue('bon-token')
+    await flushPromises()
+
+    expect(badge(wrapper).text()).toBe('Vérifié')
+  })
+
+  it('stays hidden when the connection test fails', async () => {
+    mockConnection(false)
+    const wrapper = mountSection()
+
+    await wrapper.find('[data-test-id="grist-token"]').setValue('mauvais-token')
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  it('disappears as soon as the key is edited again', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+    const tokenInput = wrapper.find('[data-test-id="grist-token"]')
+
+    await tokenInput.setValue('bon-token')
+    await flushPromises()
+
+    // Nouveau test en cours, jamais résolu : seul l'effet de la saisie compte
+    globalThis.fetch = vi.fn(() => new Promise(() => {}))
+    await tokenInput.setValue('autre-token')
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  it('appears for a saved config once its stored key is tested', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+
+    await wrapper.setProps({
+      existingConfig: { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+    })
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(true)
+  })
+
+  it('disappears and blocks auto-save when a later test fails on network after a success', async () => {
+    mockConnection(true)
+    const wrapper = mountSection()
+    const savedConfig = { otp_config_id: 42, grist_base_url: 'https://grist.example.com', has_grist_key: true }
+
+    await wrapper.setProps({ existingConfig: savedConfig })
+    await flushPromises()
+    expect(badge(wrapper).exists()).toBe(true)
+
+    // Rechargement de la config (ex: après une sauvegarde) : le nouveau test échoue sur le réseau
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'))
+    await wrapper.setProps({ existingConfig: { ...savedConfig } })
+    await flushPromises()
+
+    expect(badge(wrapper).exists()).toBe(false)
+    // Une erreur non vide bloque l'auto-save côté DN (configValid)
+    expect(wrapper.emitted('error-update').at(-1)).toEqual(['Erreur lors du test de connexion Grist'])
+    // Message affiché dans l'alerte uniquement, pas en double sous le champ
+    expect(wrapper.find('.fr-error-text').exists()).toBe(false)
+  })
+})
+
+describe('Accessible label', () => {
+  it('links a visible French label to the Grist key input', () => {
+    const wrapper = mount(GristFormSection, {
+      global: { components: { DsfrInput, DsfrInputGroup } }
+    })
+    const input = wrapper.find('[data-test-id="grist-token"]')
+    const label = wrapper.find(`label[for="${input.attributes('id')}"]`)
+
+    expect(label.exists()).toBe(true)
+    expect(label.classes()).not.toContain('invisible')
+    // Texte exact : pas d'astérisque DSFR en double de celui du libellé
+    expect(label.text()).toBe('Clé API Grist *')
   })
 })

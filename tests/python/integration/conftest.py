@@ -57,7 +57,7 @@ class AuthenticatedClient(FlaskClient):
 
 @pytest.fixture
 def client(monkeypatch):
-    """Client authentifié : Grist est simulé côté widget_auth.
+    """Client authentifié : Grist est simulé.
 
     La validation du jeton widget et la consultation du document visé par
     la clé API (niveau d'accès `owners`) retournent sans appel réseau.
@@ -75,7 +75,7 @@ def client(monkeypatch):
     monkeypatch.setattr("security.widget_auth.validate_widget_token", fake_validate)
     grist_client = MagicMock()
     grist_client.return_value.get_document_info.return_value = {"access": "owners"}
-    monkeypatch.setattr("security.widget_auth.GristClient", grist_client)
+    monkeypatch.setattr("grist.utils.GristClient", grist_client)
 
     with test_client:
         yield test_client

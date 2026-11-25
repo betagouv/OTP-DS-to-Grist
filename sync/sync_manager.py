@@ -1,7 +1,6 @@
 import time
 import threading
 import os
-from dotenv import load_dotenv
 import subprocess
 import sys
 import traceback
@@ -24,12 +23,17 @@ from sync.sequencer import STATUS_PENDING, STATUS_RUNNING, SyncSequencer
 from database.models import SyncLog
 from database.session import SessionLocal
 from configuration.config_manager import ConfigManager
-from security.widget_auth import grist_doc_access_level, is_key_write_allowed
+from grist.utils import (
+    GristKeyAccessError,
+    GristUnavailableError,
+    require_owner_access,
+)
+from utils.constants import (
+    DATABASE_URL,
+    EXIT_CODE_EXTERNAL_API_ERROR,
+    EXIT_CODE_GRIST_READ_ERROR,
+)
 from utils.log import log_sync_errors
-
-load_dotenv()
-
-from utils.constants import DATABASE_URL, EXIT_CODE_EXTERNAL_API_ERROR
 
 # Nombre maximal de logs retenus par tâche en mémoire serveur
 MAX_LOGS_PER_TASK = 2000
@@ -170,23 +174,31 @@ class SyncManager:
         result = {"success": False, "message": "", "success_count": 0, "error_count": 0}
 
         try:
-            # Refuser tôt une clé Grist qui ne peut pas écrire dans le document
-            # (lecture seule ou sans accès) : le sous-processus ne ferait que
-            # récolter des refus d'écriture. Grist indisponible (None) n'est pas
-            # bloquant ici : la vérification des connexions du sous-processus
-            # prend le relais.
+            # Refuser tôt une clé Grist qui ne permet pas de synchroniser le
+            # document : le sous-processus ne ferait que récolter des refus
+            # d'écriture. Grist injoignable est aussi un refus, mais transitoire :
+            # son code d'erreur ne désactive pas la synchro planifiée.
             grist_api_key = config.get("grist_api_key")
             if grist_api_key:
-                access_level = grist_doc_access_level(
-                    config.get("grist_base_url") or "",
-                    grist_api_key,
-                    str(config.get("grist_doc_id") or ""),
-                )
-                if access_level is not None and not is_key_write_allowed(access_level):
-                    message = (
-                        "La clé API Grist enregistrée n'a pas les droits "
-                        "de propriétaire sur le document Grist."
+                try:
+                    require_owner_access(
+                        config.get("grist_base_url") or "",
+                        grist_api_key,
+                        str(config.get("grist_doc_id") or ""),
                     )
+                except GristKeyAccessError as error:
+                    if isinstance(error, GristUnavailableError):
+                        message = (
+                            f"{error} : l'accès de la clé API Grist au document "
+                            "n'a pas pu être vérifié."
+                        )
+                        error_code = EXIT_CODE_GRIST_READ_ERROR
+                    else:
+                        message = (
+                            "La clé API Grist enregistrée n'a pas les droits "
+                            "de propriétaire sur le document Grist."
+                        )
+                        error_code = EXIT_CODE_EXTERNAL_API_ERROR
                     if log_callback:
                         log_callback(f"ERREUR: {message}")
                     errors.append(_timestamped_error(message))
@@ -196,7 +208,7 @@ class SyncManager:
                         "message": message,
                         "success_count": 0,
                         "error_count": 0,
-                        "error_code": EXIT_CODE_EXTERNAL_API_ERROR,
+                        "error_code": error_code,
                     }
                     return result
 

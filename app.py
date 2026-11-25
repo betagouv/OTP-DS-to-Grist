@@ -40,6 +40,7 @@ from grist.base_url import (
     GristBaseUrlImmutableError,
     GristBaseUrlNotAllowedError
 )
+from grist.utils import key_access_level
 from security.ip_blocklist import (
     is_whitelisted,
     parse_whitelist,
@@ -49,11 +50,7 @@ from security.ip_blocklist import (
     should_ignore_path,
 )
 from security.ip_blocklist_store import IpBlocklistStore
-from security.widget_auth import (
-    GRIST_KEY_ACCESS_UNAVAILABLE,
-    authorize_request,
-    grist_doc_access_level,
-)
+from security.widget_auth import authorize_request
 from sync.scheduled_sync import (
     DAILY_SYNC_JOB_ID,
     register_daily_sync_job,
@@ -137,12 +134,12 @@ def _cached_grist_key_access(base_url: str, api_key: str, doc_id: str) -> str:
     if cached and time.monotonic() - cached[0] < GRIST_KEY_ACCESS_CACHE_TTL_SECONDS:
         return cached[1]
 
-    access_level = grist_doc_access_level(base_url, api_key, doc_id)
-    level = access_level or GRIST_KEY_ACCESS_UNAVAILABLE
+    level = key_access_level(base_url, api_key, doc_id)
 
     if len(_grist_key_access_cache) >= _GRIST_KEY_ACCESS_CACHE_MAX_ENTRIES:
         _grist_key_access_cache.clear()
     _grist_key_access_cache[cache_key] = (time.monotonic(), level)
+
     return level
 
 

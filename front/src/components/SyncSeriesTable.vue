@@ -1,7 +1,7 @@
 <script setup>
 import { DsfrBadge, DsfrButton } from '@gouvminint/vue-dsfr'
 
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useSyncTask } from '../composables/useSyncTask'
 import { useNotification } from '../composables/useNotification'
@@ -15,6 +15,7 @@ const props = defineProps({
 
 const { seriesTasks } = useSyncTask()
 const { notify } = useNotification()
+const tableEl = ref(null)
 
 // Synchros lancées depuis la page ; à défaut, dernières synchros lues en base
 const isLive = computed(() => seriesTasks.value.length > 0)
@@ -22,6 +23,14 @@ const rows = computed(() => (isLive.value
   ? seriesTasks.value.map(task => ({ ...task, key: task.taskId }))
   : props.history
 ))
+
+// Nouveau lancement (une démarche ou une série) ou reprise à la réouverture de la
+// page : la liste des synchros suivies est remplacée, son premier taskId change.
+// Le passage à la démarche suivante d'une série ne la remplace pas.
+// flush 'post' : le tableau est rendu avant le scroll, même s'il vient d'apparaître.
+watch(() => seriesTasks.value[0]?.taskId, (taskId) => {
+  if (taskId) tableEl.value?.scrollIntoView({ behavior: 'smooth' })
+}, { flush: 'post' })
 
 const formatDemarche = (task) => {
   const title = props.titles[task.demarcheNumber]
@@ -69,7 +78,12 @@ const copyLogs = (task) => {
 </script>
 
 <template>
-  <div v-if="rows.length" class="fr-table fr-mb-4w">
+  <!-- Sans marge basse : la barre de progression s'y colle ; App.vue porte l'espacement -->
+  <div
+    v-if="rows.length"
+    ref="tableEl"
+    class="fr-table fr-mb-0"
+  >
     <table data-test-id="sync-series-table">
       <!-- Largeurs fixes : le contenu, qui change à chaque événement, ne redimensionne plus les colonnes -->
       <colgroup>
@@ -77,7 +91,10 @@ const copyLogs = (task) => {
         <col>
         <col class="col-status">
         <!-- Logs en mémoire seulement : pas de colonne pour les synchros lues en base -->
-        <col v-if="isLive" class="col-logs">
+        <col
+          v-if="isLive"
+          class="col-logs"
+        >
       </colgroup>
       <thead>
         <tr>
@@ -85,9 +102,22 @@ const copyLogs = (task) => {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="task in rows" :key="task.key">
-          <td class="ellipsis" :title="formatDemarche(task)">{{ formatDemarche(task) }}</td>
-          <td class="ellipsis" :title="formatMessage(task)">{{ formatMessage(task) }}</td>
+        <tr
+          v-for="task in rows"
+          :key="task.key"
+        >
+          <td
+            class="ellipsis"
+            :title="formatDemarche(task)"
+          >
+            {{ formatDemarche(task) }}
+          </td>
+          <td
+            class="ellipsis"
+            :title="formatMessage(task)"
+          >
+            {{ formatMessage(task) }}
+          </td>
           <td class="nowrap">
             <span class="badges">
               <DsfrBadge
@@ -104,7 +134,10 @@ const copyLogs = (task) => {
               />
             </span>
           </td>
-          <td v-if="isLive" class="nowrap">
+          <td
+            v-if="isLive"
+            class="nowrap"
+          >
             <DsfrButton
               label="Copier les logs"
               tertiary
