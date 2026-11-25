@@ -300,6 +300,11 @@ defineExpose({
 </style>
 
 <style scoped>
+/* Menu du multiselect collé au champ, sans l'écart que lui donne vue-dsfr */
+:deep(.fr-collapse) {
+  margin: 0 !important;
+}
+
 /* Sous les cases, la marge de la dernière ligne (1rem) s'ajoute à l'écart
    entre filtres. -1rem sur le fieldset, combiné à la marge haute du filtre
    suivant, ramène cet écart à celui des autres filtres, comme le DSFR le

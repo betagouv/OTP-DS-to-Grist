@@ -192,3 +192,11 @@ defineExpose({
     </DsfrAccordionsGroup>
   </div>
 </template>
+
+<style scoped>
+/* Panneau de l'accordéon aligné sur son titre : sans les marges négatives
+   que le DSFR lui donne à partir de md */
+.fr-accordion > :deep(.fr-collapse) {
+  margin: 0 !important;
+}
+</style>
