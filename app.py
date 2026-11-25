@@ -36,7 +36,12 @@ from configuration.config_manager import (
 from configuration.config_usage import ConfigUsage
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from database.session import SessionLocal
-from dn.client import get_groups
+from dn.client import (
+    DemarcheAccessError,
+    DnUnavailableError,
+    get_groups,
+    require_demarche_access,
+)
 from grist.base_url import (
     GristBaseUrlImmutableError,
     GristBaseUrlNotAllowedError
@@ -65,10 +70,7 @@ from sync.sync_manager import (
     missing_sync_fields,
 )
 from utils.formatter import to_local_iso
-from utils.api_validator import (
-    test_demarches_api,
-    test_grist_api,
-)
+from utils.api_validator import test_grist_api
 from utils.constants import (
     CHANGELOG_PATH,
     GITHUB_CHANGELOG_BASE_URL,
@@ -656,7 +658,17 @@ def api_test_connection():
                     {"success": False, "message": "Token API non fourni"}
                 ), 400
 
-        success, message, title = test_demarches_api(api_token, demarche_number)
+        try:
+            demarche = require_demarche_access(api_token, demarche_number)
+        except DemarcheAccessError as error:
+            if isinstance(error, DnUnavailableError):
+                logger.error(
+                    f"Test de l'API Démarche Numérique impossible : {error.__cause__ or error}"
+                )
+            success, message, title = False, str(error), None
+        else:
+            title = demarche.get("title") or "Sans titre"
+            success, message = True, f"Connexion réussie! Démarche trouvée: {title}"
     elif connection_type == "grist":
         api_key = data.get("api_key")
         base_url = data.get("base_url")

@@ -10,6 +10,7 @@ import requests
 import app as app_module
 from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
+from dn.client import DemarcheNoAccessError, DnUnavailableError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from grist.client import GristClient
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
@@ -341,10 +342,10 @@ class TestEndpoints:
         assert data["success"] is False
         assert "grist.hors-liste.example" in data["message"]
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches(self, mock_test, client):
         """Test du endpoint de test de connexion Démarches"""
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         test_data = {
             "type": "demarches",
@@ -361,11 +362,11 @@ class TestEndpoints:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is True
-        assert data["message"] == "Connexion réussie"
+        assert data["message"] == "Connexion réussie! Démarche trouvée: Titre démarche"
         assert data["title"] == "Titre démarche"
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_with_otp_config_id(
         self, mock_test, mock_load, client
     ):
@@ -376,7 +377,7 @@ class TestEndpoints:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",
@@ -398,7 +399,7 @@ class TestEndpoints:
         mock_test.assert_called_once_with("server-token", "123")
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_with_both_token_and_otp_id(
         self, mock_test, mock_load, client
     ):
@@ -409,7 +410,7 @@ class TestEndpoints:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",
@@ -429,7 +430,7 @@ class TestEndpoints:
         mock_test.assert_called_once_with("explicit-token", "123")
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_with_otp_config_id_empty_token(
         self, mock_test, mock_load, client
     ):
@@ -642,13 +643,11 @@ class TestEndpoints:
 class TestErrorHandling:
     """Tests d'intégration pour la gestion d'erreurs"""
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_timeout(self, mock_test, client):
         """Test timeout API Démarches"""
-        mock_test.return_value = (
-            False,
-            "Timeout: L'API met trop de temps à répondre",
-            None,
+        mock_test.side_effect = DnUnavailableError(
+            "Timeout: L'API met trop de temps à répondre"
         )
 
         test_data = {
@@ -669,10 +668,10 @@ class TestErrorHandling:
         assert "Timeout" in data["message"]
         assert data["title"] is None
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_invalid_token(self, mock_test, client):
         """Test token invalide Démarches"""
-        mock_test.return_value = (False, "Erreur API: Unauthorized", None)
+        mock_test.side_effect = DemarcheNoAccessError("Erreur API: Unauthorized")
 
         test_data = {
             "type": "demarches",
@@ -1851,7 +1850,7 @@ class TestWidgetAuth:
         assert response.status_code == 500
         assert response.get_json()["message"] == "Configuration indisponible"
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_new_user_demarches_test_with_base_url_header(
         self, mock_test, client, monkeypatch
     ):
@@ -1866,7 +1865,7 @@ class TestWidgetAuth:
             or {"userId": "newU", "docId": "newDoc", "readOnly": False},
         )
         client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",
@@ -1885,7 +1884,7 @@ class TestWidgetAuth:
         assert validated_base_urls == ["https://grist.example.com/api"]
         mock_test.assert_called_once_with("token", "123")
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_body_base_url_serves_new_user(self, mock_test, client, monkeypatch):
         """L'URL fournie dans le corps reste une source valide pour un nouvel utilisateur."""
         monkeypatch.setattr(
@@ -1898,7 +1897,7 @@ class TestWidgetAuth:
             or {"userId": "newU", "docId": "newDoc", "readOnly": False},
         )
         client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",
