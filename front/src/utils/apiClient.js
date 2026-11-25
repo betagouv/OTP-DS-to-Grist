@@ -1,21 +1,13 @@
-const WIDGET_TOKEN_HEADER = 'X-Grist-Widget-Token'
+import { clearWidgetToken, getApiBaseUrlFromDocBaseUrl, getWidgetToken } from './gristContext'
+
+export const WIDGET_TOKEN_HEADER = 'X-Grist-Widget-Token'
 const GRIST_BASE_URL_HEADER = 'X-Grist-Base-Url'
-
-const gristContext = (typeof module !== 'undefined' && module.exports)
-  ? require('./gristContext.js')
-  : null
-
-const getToken = () => (gristContext ? gristContext.getWidgetToken() : getWidgetToken())
 
 const deriveBaseUrl = (docBaseUrl) => {
   if (!docBaseUrl) return null
-  const derived = gristContext
-    ? gristContext.getApiBaseUrlFromDocBaseUrl(docBaseUrl)
-    : getApiBaseUrlFromDocBaseUrl(docBaseUrl)
-  return derived || null
-}
 
-const clearToken = () => (gristContext ? gristContext.clearWidgetToken() : clearWidgetToken())
+  return getApiBaseUrlFromDocBaseUrl(docBaseUrl) || null
+}
 
 const buildRequestWithToken = (input, init, token, baseUrl) => {
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
@@ -40,8 +32,8 @@ const buildReadOnlyResponse = () => new Response(
   { status: 403, headers: { 'Content-Type': 'application/json' } }
 )
 
-const apiFetch = async (input, init) => {
-  const tokenInfo = await getToken()
+export const apiFetch = async (input, init) => {
+  const tokenInfo = await getWidgetToken()
   if (!tokenInfo)
     return fetch(input, init)
 
@@ -53,8 +45,8 @@ const apiFetch = async (input, init) => {
   let response = await fetch(firstAttempt.input, firstAttempt.init)
 
   if (response.status === 401) {
-    clearToken()
-    const refreshedToken = await getToken()
+    clearWidgetToken()
+    const refreshedToken = await getWidgetToken()
     if (refreshedToken) {
       const secondAttempt = buildRequestWithToken(
         input, init, refreshedToken.token, deriveBaseUrl(refreshedToken.baseUrl)
@@ -64,12 +56,4 @@ const apiFetch = async (input, init) => {
   }
 
   return response
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    apiFetch,
-    WIDGET_TOKEN_HEADER,
-    GRIST_BASE_URL_HEADER
-  }
 }

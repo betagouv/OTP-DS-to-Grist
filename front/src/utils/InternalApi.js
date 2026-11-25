@@ -1,3 +1,5 @@
+import { apiFetch } from './apiClient'
+
 const ROUTES = {
   CONFIG: '/api/config',
   GROUPS: '/api/groups',
@@ -22,8 +24,7 @@ const readServerMessage = async (response) => {
 }
 
 const request = async (url, options) => {
-  const doFetch = typeof apiFetch !== 'undefined' ? apiFetch : fetch
-  const response = options === undefined ? await doFetch(url) : await doFetch(url, options)
+  const response = options === undefined ? await apiFetch(url) : await apiFetch(url, options)
   if (!response.ok) {
     throw Object.assign(new Error(`Erreur HTTP ${response.status}`), {
       serverMessage: await readServerMessage(response)

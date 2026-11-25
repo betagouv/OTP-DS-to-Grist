@@ -9,6 +9,7 @@ import OtpAlert from './OtpAlert.vue'
 
 import { useSyncTask } from '../composables/useSyncTask'
 import { api } from '../utils/InternalApi'
+import { getGristContext } from '../utils/gristContext'
 import { useNotification } from '../composables/useNotification'
 import { sortConfigs, canDeleteConfig, canSyncConfig } from '../utils/configUtils'
 

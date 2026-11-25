@@ -17,9 +17,7 @@ export default [
       globals: {
         ...globals.browser,
         // Fonctions injectées par les pages Flask (static/js), hors bundle
-        getGristContext: 'readonly',
-        formatDate: 'readonly',
-        apiFetch: 'readonly'
+        formatDate: 'readonly'
       }
     },
     rules: {

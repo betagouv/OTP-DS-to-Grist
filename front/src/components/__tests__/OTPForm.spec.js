@@ -7,6 +7,17 @@ import DNFormSection from '../DNFormSection.vue'
 import OtpAlert from '../OtpAlert.vue'
 import { useSyncTask } from '../../composables/useSyncTask'
 
+// Requêtes transmises telles quelles au `fetch` simulé par le test : le jeton
+// widget est vérifié par les tests d'apiClient
+vi.mock('../../utils/apiClient', () => ({
+  apiFetch: (...args) => globalThis.fetch(...args)
+}))
+
+// Chaque test pose son contexte Grist simulé sur `globalThis.getGristContext`
+vi.mock('../../utils/gristContext', () => ({
+  getGristContext: (...args) => globalThis.getGristContext(...args)
+}))
+
 describe('hasUnsavedSection computation', () => {
   const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
 

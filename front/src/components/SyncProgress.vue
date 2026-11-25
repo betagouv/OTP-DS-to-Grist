@@ -5,6 +5,7 @@ import { io } from 'socket.io-client'
 import { DsfrBadge } from '@gouvminint/vue-dsfr'
 
 import { useSyncTask } from '../composables/useSyncTask'
+import { getGristContext } from '../utils/gristContext'
 
 const {
   currentTaskId,

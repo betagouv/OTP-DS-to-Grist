@@ -11,6 +11,11 @@ const mockEmit = vi.fn()
 const mockDisconnect = vi.fn()
 const mockSocket = { on: mockOn, emit: mockEmit, disconnect: mockDisconnect }
 
+// Chaque test pose son contexte Grist simulé sur `globalThis.getGristContext`
+vi.mock('../../utils/gristContext', () => ({
+  getGristContext: (...args) => globalThis.getGristContext(...args)
+}))
+
 vi.mock('socket.io-client', () => ({
   io: vi.fn(() => mockSocket)
 }))

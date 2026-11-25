@@ -1,5 +1,10 @@
 import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
 import { api } from '../InternalApi'
+import { apiFetch } from '../apiClient'
+
+vi.mock('../apiClient', () => ({
+  apiFetch: vi.fn((...args) => globalThis.fetch(...args))
+}))
 
 describe('InternalApi', () => {
   beforeEach(() => {
@@ -8,6 +13,16 @@ describe('InternalApi', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  describe('widget token', () => {
+    it('sends requests through apiFetch, which carries the widget token', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
+
+      await api.getLatestSyncsByDemarche()
+
+      expect(apiFetch).toHaveBeenCalledWith('/api/sync-log/latest-by-demarche')
+    })
   })
 
   describe('error responses', () => {

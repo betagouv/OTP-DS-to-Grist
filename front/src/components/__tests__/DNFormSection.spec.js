@@ -5,6 +5,12 @@ import { h } from 'vue'
 import { DsfrInput, DsfrInputGroup, DsfrMultiselect } from '@gouvminint/vue-dsfr'
 import DNFormSection from '../DNFormSection.vue'
 
+// Requêtes transmises telles quelles au `fetch` simulé par le test : le jeton
+// widget est vérifié par les tests d'apiClient
+vi.mock('../../utils/apiClient', () => ({
+  apiFetch: (...args) => globalThis.fetch(...args)
+}))
+
 // Microtask pour que le v-model ait le temps de setter les refs avant validation
 vi.mock(
   '../../utils/debounce',

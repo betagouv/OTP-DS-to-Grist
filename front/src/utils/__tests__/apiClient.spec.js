@@ -1,10 +1,18 @@
-const { apiFetch, WIDGET_TOKEN_HEADER } = require('../../static/js/apiClient.js')
-const { clearWidgetToken } = require('../../static/js/gristContext.js')
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
+import { apiFetch, WIDGET_TOKEN_HEADER } from '../apiClient'
+import { clearWidgetToken } from '../gristContext'
+
+// jsdom ne charge pas les scripts externes : l'API Grist « chargée » est le
+// global `grist` posé par le test, absente sinon (page hors widget Grist)
+vi.mock('../gristPluginApi', () => ({
+  loadGristPluginApi: async () => globalThis.grist ?? null
+}))
 
 const originalFetch = global.fetch
 
 const createTokenWithExp = (expInSecondsFromNow, userId = '1', docId = 'd') => {
   const payload = { userId, docId, exp: Math.floor(Date.now() / 1000) + expInSecondsFromNow }
+
   return `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
 }
 
@@ -12,7 +20,7 @@ describe('apiFetch', () => {
   beforeEach(() => {
     clearWidgetToken()
     delete global.grist
-    global.fetch = jest.fn().mockResolvedValue({ status: 200 })
+    global.fetch = vi.fn().mockResolvedValue({ status: 200 })
   })
 
   afterEach(() => {
@@ -28,8 +36,8 @@ describe('apiFetch', () => {
   it('attaches the widget token header when a token is available', async () => {
     const token = createTokenWithExp(900)
     global.grist = {
-      ready: jest.fn(),
-      docApi: { getAccessToken: jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
+      ready: vi.fn(),
+      docApi: { getAccessToken: vi.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
     }
 
     await apiFetch('/api/config')
@@ -41,9 +49,9 @@ describe('apiFetch', () => {
   it('attaches the Grist base URL header derived from the widget context', async () => {
     const token = createTokenWithExp(900)
     global.grist = {
-      ready: jest.fn(),
+      ready: vi.fn(),
       docApi: {
-        getAccessToken: jest.fn().mockResolvedValue({
+        getAccessToken: vi.fn().mockResolvedValue({
           token,
           baseUrl: 'http://x/api/docs/abc',
           ttlMsecs: 900000
@@ -61,12 +69,12 @@ describe('apiFetch', () => {
     global.fetch
       .mockResolvedValueOnce({ status: 401 })
       .mockResolvedValueOnce({ status: 200 })
-    const getAccessToken = jest.fn().mockResolvedValue({
+    const getAccessToken = vi.fn().mockResolvedValue({
       token: createTokenWithExp(900),
       baseUrl: 'http://x/api',
       ttlMsecs: 900000
     })
-    global.grist = { ready: jest.fn(), docApi: { getAccessToken } }
+    global.grist = { ready: vi.fn(), docApi: { getAccessToken } }
 
     const response = await apiFetch('/api/start-sync', { method: 'POST' })
 
@@ -79,8 +87,8 @@ describe('apiFetch', () => {
     const payload = { userId: '1', docId: 'd', readOnly: true, exp: Math.floor(Date.now() / 1000) + 900 }
     const token = `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
     global.grist = {
-      ready: jest.fn(),
-      docApi: { getAccessToken: jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
+      ready: vi.fn(),
+      docApi: { getAccessToken: vi.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
     }
 
     const response = await apiFetch('/api/config')

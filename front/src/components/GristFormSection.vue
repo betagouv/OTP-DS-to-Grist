@@ -13,6 +13,7 @@ import FieldLabel from './FieldLabel.vue'
 import { useConnectionCheck, CONNECTION_STATUS } from '../composables/useConnectionCheck'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
+import { getGristContext } from '../utils/gristContext'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }

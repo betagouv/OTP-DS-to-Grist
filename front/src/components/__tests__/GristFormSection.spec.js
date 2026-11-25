@@ -4,6 +4,17 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { DsfrInput, DsfrInputGroup } from '@gouvminint/vue-dsfr'
 import GristFormSection from '../GristFormSection.vue'
 
+// Requêtes transmises telles quelles au `fetch` simulé par le test : le jeton
+// widget est vérifié par les tests d'apiClient
+vi.mock('../../utils/apiClient', () => ({
+  apiFetch: (...args) => globalThis.fetch(...args)
+}))
+
+// Chaque test pose son contexte Grist simulé sur `globalThis.getGristContext`
+vi.mock('../../utils/gristContext', () => ({
+  getGristContext: (...args) => globalThis.getGristContext(...args)
+}))
+
 // Microtask pour que le v-model ait le temps de setter les refs avant validation
 vi.mock(
   '../../utils/debounce',
@@ -16,7 +27,7 @@ beforeEach(() => {
     grist_api_key: 'https://fake-url.example.com/grist-api-key',
     faq: 'https://fake-url.example.com/faq'
   }
-  window.getGristContext = vi.fn().mockResolvedValue({
+  globalThis.getGristContext = vi.fn().mockResolvedValue({
     userId: 'user-abc123',
     docId: 'doc-xyz789',
     baseUrl: 'https://example.com/api'
@@ -31,7 +42,7 @@ describe('Grist form section', () => {
       }
     })
 
-    expect(window.getGristContext).toHaveBeenCalled()
+    expect(globalThis.getGristContext).toHaveBeenCalled()
 
     await wrapper.vm.$nextTick() // Vue réagit, le DOM est mis à jour
 
@@ -206,7 +217,7 @@ describe('Grist form section', () => {
   })
 
   it('sets gristFetchError when getGristContext fails on mount', async () => {
-    window.getGristContext = vi.fn().mockRejectedValue(new Error('context error'))
+    globalThis.getGristContext = vi.fn().mockRejectedValue(new Error('context error'))
 
     const wrapper = mount(GristFormSection, {
       global: { components: { DsfrInput, DsfrInputGroup } }
