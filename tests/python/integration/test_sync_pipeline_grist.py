@@ -16,8 +16,8 @@ la vraie pagination DS est donc traversée. Ce faux serveur sert un dossier
 abandonnerait les détails se verrait dans l'état final Grist.
 
 Sont mockés, pour isoler le périmètre : `get_optimized_schema` (schéma DS),
-`sync_instructeurs`, `sync_labels_for_demarche`, `check_deleted_dossiers`,
-`detect_demandeur_type` et `hide_columns_with_id` (dernière tâche de niveau
+`sync_instructeurs`, `check_deleted_dossiers`, `detect_demandeur_type` et
+`hide_columns_with_id` (dernière tâche de niveau
 démarche, dont on vérifie seulement qu'elle est exécutée).
 
 Aucun service externe (DN, Grist, DB) n'est requis.
@@ -682,7 +682,6 @@ def run_pipeline(
             patch.object(schema_utils, "detect_demandeur_type", return_value=None)
         )
         stack.enter_context(patch.object(gpa, "sync_instructeurs"))
-        stack.enter_context(patch.object(gpa, "sync_labels_for_demarche"))
         stack.enter_context(
             patch.object(
                 gpa,

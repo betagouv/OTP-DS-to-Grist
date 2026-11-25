@@ -221,15 +221,12 @@ def parse_output(output_lines: list[str]) -> dict:
     if total_processed == 0:
         total_processed = success_count + error_count
 
-    # Détecter si Grist était déjà à jour. La ligne de rafraîchissement des
-    # labels contient « déjà à jour » sans rien dire de l'état des dossiers :
-    # elle est exclue pour ne pas classer à tort un sync à 0 dossier.
+    # Détecter si Grist était déjà à jour
     already_up_to_date = (
         success_count == 0
         and error_count == 0
         and any(
-            ("déjà à jour" in line or "Aucun dossier modifié" in line)
-            and "labels" not in line.lower()
+            "déjà à jour" in line or "Aucun dossier modifié" in line
             for line in output_lines
         )
     )

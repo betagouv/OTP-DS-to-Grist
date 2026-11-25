@@ -262,7 +262,6 @@ class TestRunDemarcheLevelTasks:
             patch.object(
                 gpa, "sync_instructeurs", side_effect=RuntimeError("DN indisponible")
             ),
-            patch.object(gpa, "sync_labels_for_demarche") as sync_labels,
             patch.object(
                 gpa, "check_deleted_dossiers", return_value={"newly_marked": 0}
             ) as check_deleted,
@@ -271,10 +270,8 @@ class TestRunDemarcheLevelTasks:
                 MagicMock(),
                 table_ids,
                 123,
-                updated_since_cursor="2024-01-01T00:00:00Z",
             )
 
-        sync_labels.assert_called_once()
         check_deleted.assert_called_once()
         assert deletions_checked is True
         assert (

@@ -8,7 +8,6 @@ from dn.client import (
     DEMARCHES_MAX_429_RETRIES,
     DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
     get_deleted_dossiers,
-    get_demarche_dossiers_labels_only,
     get_demarche_groupe_numbers,
     get_demarche_instructeurs,
     get_groups,
@@ -513,124 +512,6 @@ class TestGetSessionWithRetries:
             fallback_delay=DEMARCHES_FALLBACK_429_DELAY,
             max_random_delay=DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
         )
-
-
-class TestGetDemarcheDossiersLabelsOnly:
-    """Tests pour get_demarche_dossiers_labels_only"""
-
-    @patch("dn.client.API_TOKEN", "")
-    def test_missing_token_raises_value_error(self):
-        """Token API non configuré → ValueError"""
-        with pytest.raises(ValueError):
-            get_demarche_dossiers_labels_only(7)
-
-    @patch("dn.client.get_session_with_retries")
-    @patch("dn.client.API_TOKEN", "test-token")
-    def test_pagination_concatenates_pages(self, mock_session_factory):
-        """Multi-pages → liste des dossiers concaténée"""
-        page1 = {
-            "data": {
-                "demarche": {
-                    "dossiers": {
-                        "pageInfo": {"hasNextPage": True, "endCursor": "cur1"},
-                        "nodes": [{"number": 1, "labels": [{"id": "l1", "name": "À suivre", "color": "green"}]}],
-                    }
-                }
-            }
-        }
-        page2 = {
-            "data": {
-                "demarche": {
-                    "dossiers": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": "cur2"},
-                        "nodes": [{"number": 2, "labels": []}],
-                    }
-                }
-            }
-        }
-        mock_session = MagicMock()
-        mock_session.post.side_effect = [
-            _mock_response(json_data=page1),
-            _mock_response(json_data=page2),
-        ]
-        mock_session_factory.return_value = mock_session
-
-        result = get_demarche_dossiers_labels_only(7)
-
-        assert [d["number"] for d in result] == [1, 2]
-        assert result[0]["labels"][0]["name"] == "À suivre"
-        assert mock_session.post.call_count == 2
-
-    @patch("dn.client.get_session_with_retries")
-    @patch("dn.client.API_TOKEN", "test-token")
-    def test_http_failure_raises(self, mock_session_factory):
-        """Une erreur HTTP remonte à l'appelant."""
-        session = MagicMock()
-        session.post.return_value = _http_failure_response()
-        mock_session_factory.return_value = session
-
-        with pytest.raises(requests.HTTPError):
-            get_demarche_dossiers_labels_only(7)
-
-    @patch("dn.client.get_session_with_retries")
-    @patch("dn.client.API_TOKEN", "test-token")
-    def test_graphql_errors_raise(self, mock_session_factory):
-        """Une erreur GraphQL remonte à l'appelant, avec son message."""
-        session = MagicMock()
-        session.post.return_value = _graphql_failure_response()
-        mock_session_factory.return_value = session
-
-        with pytest.raises(Exception, match="Erreur interne"):
-            get_demarche_dossiers_labels_only(7)
-
-    @staticmethod
-    def _two_pages_session():
-        def page(numbers, has_next_page, end_cursor):
-            return _mock_response(
-                json_data={
-                    "data": {
-                        "demarche": {
-                            "dossiers": {
-                                "pageInfo": {
-                                    "hasNextPage": has_next_page,
-                                    "endCursor": end_cursor,
-                                },
-                                "nodes": [{"number": n, "labels": []} for n in numbers],
-                            }
-                        }
-                    }
-                }
-            )
-
-        session = MagicMock()
-        session.post.side_effect = [page([1], True, "cur1"), page([2, 3], False, None)]
-        return session
-
-    @patch("dn.client.get_session_with_retries")
-    @patch("dn.client.API_TOKEN", "test-token")
-    def test_cursor_is_sent_from_page_to_page(self, mock_session_factory):
-        """Chaque page est demandée à partir du curseur de la précédente."""
-        session = self._two_pages_session()
-        mock_session_factory.return_value = session
-
-        get_demarche_dossiers_labels_only(7)
-
-        assert [
-            appel.kwargs["json"]["variables"] for appel in session.post.call_args_list
-        ] == [
-            {"demarcheNumber": 7, "after": None},
-            {"demarcheNumber": 7, "after": "cur1"},
-        ]
-
-    @patch("dn.client.get_session_with_retries")
-    @patch("dn.client.API_TOKEN", "test-token")
-    def test_log_reports_dossiers_and_pages(self, mock_session_factory, capsys):
-        """Le log indique le nombre de dossiers et de pages récupérés."""
-        mock_session_factory.return_value = self._two_pages_session()
-
-        get_demarche_dossiers_labels_only(7)
-
-        assert "[LABELS] 3 dossiers récupérés en 2 page(s)" in capsys.readouterr().out
 
 
 class TestGetDeletedDossiers:
