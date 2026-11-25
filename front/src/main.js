@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import '@gouvfr/dsfr/dist/dsfr.min.css'
-// Classes utilitaires du DSFR, dont les icônes fr-icon-* (aussi utilisées par base.html)
+// Classes utilitaires du DSFR, dont les icônes fr-icon-*
 import '@gouvfr/dsfr/dist/utility/utility.min.css'
 import '@gouvminint/vue-dsfr/styles'
 import VueDsfr from '@gouvminint/vue-dsfr'

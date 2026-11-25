@@ -103,11 +103,6 @@
         margin-bottom: 2rem;
       }
 
-      /* Fix pour la navigation active */
-      .fr-nav__link[aria-current='page'] {
-        font-weight: bold;
-      }
-
       .fr-notice--error {
         background-color: #ce0500;
         color: white;
@@ -321,42 +316,6 @@
           </ul>
         </div>
       </nav>
-
-      <!-- Navigation -->
-      <div
-        style="display: none"
-        class="fr-header__menu fr-modal"
-        id="modal-menu"
-        aria-labelledby="modal-menu"
-      >
-        <div class="fr-container">
-          <button
-            class="fr-btn--close fr-btn"
-            aria-controls="modal-menu"
-            title="Fermer"
-          >
-            Fermer
-          </button>
-          <nav class="fr-nav" role="navigation" aria-label="Menu principal">
-            <ul class="fr-nav__list">
-              <li class="fr-nav__item">
-                <a class="fr-nav__link" href="/"> Synchroniser </a>
-              </li>
-              <li class="fr-nav__item">
-                <a
-                  class="fr-nav__link fr-link--icon-left fr-icon-external-link-line"
-                  href="{{ help_links.faq }}"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Aide (nouvelle fenêtre)"
-                >
-                  Aide
-                </a>
-              </li>
-            </ul>
-          </nav>
-        </div>
-      </div>
     </header>
 
     <!-- Contenu principal -->
