@@ -514,6 +514,7 @@ def api_config():
 
             # Une clé d'utilisateur est remplacée par la clé d'un compte de
             # service créé pour l'occasion et rattaché au document en propriétaire.
+            grist_user_email = None
             if grist_api_key:
                 base_url = (
                     grist_base_url
@@ -524,8 +525,13 @@ def api_config():
                     base_url, grist_api_key, grist_doc_id or ""
                 )
                 submitted_config["grist_api_key"] = resolved_key.api_key
+                # Conserver l'email du propriétaire de la clé d'origine, pas
+                # celui du compte de service.
+                grist_user_email = resolved_key.owner_email
 
-            saved_id = config_manager.save_config(submitted_config)
+            saved_id = config_manager.save_config(
+                submitted_config, grist_user_email=grist_user_email
+            )
             if otp_config_id:
                 message = "Configuration mise à jour avec succès"
             else:

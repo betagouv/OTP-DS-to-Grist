@@ -180,6 +180,19 @@ class ConfigManager:
         if not email:
             return None
 
+        if not self._store_grist_user_email(otp_config_id, email):
+            return None
+
+        return email
+
+    def _store_grist_user_email(self, otp_config_id, email: str) -> bool:
+        """
+        Écrit l'email Grist en base, retourne True si l'écriture a réussi.
+        Non-bloquant : un échec est journalisé sans lever.
+
+        Reçoit un email déjà connu, par exemple celui de l'utilisateur dont la clé
+        a été remplacée par celle d'un compte de service.
+        """
         conn = DatabaseManager.get_connection(self.database_url)
 
         try:
@@ -191,13 +204,12 @@ class ConfigManager:
                 conn.commit()
         except Exception as e:
             logger.warning(f"Impossible de stocker l'email Grist: {e}")
-
-            return None
+            return False
         finally:
             if conn:
                 conn.close()
 
-        return email
+        return True
 
     def load_config(self, grist_user_id, grist_doc_id):
         """Charge la configuration depuis la base de données - retourne une liste"""
@@ -285,8 +297,11 @@ class ConfigManager:
         finally:
             conn.close()
 
-    def save_config(self, config: dict) -> int:
+    def save_config(self, config: dict, grist_user_email: str | None = None) -> int:
         """Sauvegarde la configuration et retourne son id.
+
+        Un `grist_user_email` déjà connu est écrit tel quel, sans interroger
+        Grist avec la clé. Sinon, l'email est relu via la clé sauvegardée.
 
         Lève ConfigIncompleteError quand un champ requis est absent : la
         validation des créations précède toute connexion à la base.
@@ -459,7 +474,11 @@ class ConfigManager:
 
                 conn.commit()
 
-                if grist_api_key_encrypted:
+                if grist_user_email:
+                    # Email déjà connu (ex. propriétaire d'une clé remplacée par
+                    # celle d'un compte de service) : écrit tel quel.
+                    self._store_grist_user_email(otp_config_id, grist_user_email)
+                elif grist_api_key_encrypted:
                     grist_api_key_decrypted = ConfigManager.decrypt_value(
                         grist_api_key_encrypted
                     )

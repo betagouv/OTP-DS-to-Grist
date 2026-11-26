@@ -733,6 +733,8 @@ class TestApiConfigResolveGristKey:
             "https://grist.test.com/api", "user-key", "docA"
         )
         assert mock_save.call_args[0][0]["grist_api_key"] == "sa-key"
+        # L'email du propriétaire de la clé d'origine est conservé
+        assert mock_save.call_args.kwargs["grist_user_email"] == "user@example.com"
 
     @patch.object(ConfigManager, "save_config")
     def test_service_accounts_not_enabled_returns_400(self, mock_save, client):
@@ -779,6 +781,7 @@ class TestApiConfigResolveGristKey:
         assert response.status_code == 200
         mock_resolve.assert_not_called()
         assert mock_save.call_args[0][0]["grist_api_key"] == ""
+        assert mock_save.call_args.kwargs["grist_user_email"] is None
 
 
 class TestErrorHandling:
@@ -2130,7 +2133,9 @@ class TestWidgetAuth:
             "id": "service-account-42"
         }
         monkeypatch.setattr("grist.utils.GristClient", grist_client)
-        monkeypatch.setattr("app.config_manager.save_config", lambda config: True)
+        monkeypatch.setattr(
+            "app.config_manager.save_config", lambda config, grist_user_email=None: True
+        )
         response = client.post(
             "/api/config",
             json={"otp_config_id": 1, "grist_api_key": "sa-key"},
@@ -2141,7 +2146,7 @@ class TestWidgetAuth:
         saved = {}
         monkeypatch.setattr(
             "app.config_manager.save_config",
-            lambda config: saved.update(config) or True,
+            lambda config, grist_user_email=None: saved.update(config) or True,
         )
         mock_db = MagicMock()
         mock_db.query.return_value.filter_by.return_value.first.return_value = MagicMock(
