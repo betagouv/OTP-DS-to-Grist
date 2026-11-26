@@ -1,7 +1,8 @@
 """
 Arborescence des pages Grist : les pages des tables d'une démarche sont
 rangées sous une page parente « N° <numéro> », pliée à sa création, qui
-affiche un contenu HTML (`parent_page.html`).
+affiche un contenu HTML (`parent_page.html`, où `${demarche_number}` est
+remplacé par le numéro de la démarche).
 
 Grist n'offre pas d'API pour les pages : l'arbre se lit et s'écrit dans ses
 méta-tables. `_grist_Pages` porte l'ordre (`pagePos`) et la profondeur
@@ -16,6 +17,7 @@ Ce module ne fait que des calculs : il produit les actions à envoyer par
 
 import json
 from pathlib import Path
+from string import Template
 from typing import Any
 
 PAGES_TABLE = "_grist_Pages"
@@ -47,9 +49,11 @@ def get_parent_page_name(demarche_number: int | str) -> str:
     return f"N° {demarche_number}"
 
 
-def get_parent_page_html() -> str:
+def get_parent_page_html(demarche_number: int | str) -> str:
     """Contenu HTML affiché par la page parente d'une démarche."""
-    return _PARENT_PAGE_TEMPLATE.read_text(encoding="utf-8")
+    template = Template(_PARENT_PAGE_TEMPLATE.read_text(encoding="utf-8"))
+
+    return template.substitute(demarche_number=demarche_number)
 
 
 def is_demarche_table(table_id: str, demarche_number: int | str) -> bool:

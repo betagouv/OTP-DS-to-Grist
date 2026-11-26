@@ -778,7 +778,7 @@ class GristClient:
             self._get_meta_records(SECTIONS_TABLE),
             self._get_meta_records(COLUMNS_TABLE),
             created_table_id,
-            get_parent_page_html(),
+            get_parent_page_html(demarche_number),
         )
         if not widget_actions:
             raise RuntimeError(
