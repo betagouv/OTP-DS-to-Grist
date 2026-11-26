@@ -6,6 +6,7 @@ et les accès posés sur le document sont conservés, l'état final est donc
 observable (même convention que `FakeGristServer` du pipeline de sync).
 """
 
+import datetime as dt
 import json
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -15,6 +16,10 @@ import pytest
 import requests
 
 from grist.client import GristClient
+from grist.service_account import (
+    ServiceAccountsNotEnabledError,
+    resolve_grist_api_key,
+)
 
 BASE_URL = "https://grist.test"
 DOC_ID = "doc123"
@@ -148,3 +153,51 @@ class TestUpdateDocAccess:
             client.update_doc_access({"sa-1@serviceaccounts.invalid": "owners"})
 
         assert server.doc_access[DOC_ID] == {"sa-1@serviceaccounts.invalid": "owners"}
+
+
+class TestResolveGristApiKey:
+    """`resolve_grist_api_key` de bout en bout contre le faux serveur Grist."""
+
+    def test_user_key_creates_service_account_attached_as_owner(self):
+        """Clé utilisateur -> compte de service créé, attaché en owners au doc."""
+        server = FakeGristApi(email="user@example.com")
+        with grist_transport(server):
+            result = resolve_grist_api_key(BASE_URL, "user-key", DOC_ID)
+
+        assert result.service_account_created
+        assert result.api_key == "key-sa-1"
+        assert result.owner_email == "user@example.com"
+
+        created = server.service_accounts[1]
+        assert created["label"] == "OTP-DS-to-Grist — user@example.com"
+        assert DOC_ID in created["description"]
+        today = dt.date.today()
+        expires = dt.date.fromisoformat(created["expiresAt"][:10])
+        assert (expires.day, expires.month, expires.year) == (
+            1,
+            today.month,
+            today.year + 1,
+        )
+        assert server.doc_access[DOC_ID] == {created["login"]: "owners"}
+
+    def test_service_account_key_used_as_is(self):
+        """Clé de compte de service -> telle quelle, rien n'est créé ni modifié."""
+        server = FakeGristApi(email="sa-9@serviceaccounts.invalid")
+        with grist_transport(server):
+            result = resolve_grist_api_key(BASE_URL, "sa-key", DOC_ID)
+
+        assert result.api_key == "sa-key"
+        assert not result.service_account_created
+        assert result.owner_email == "sa-9@serviceaccounts.invalid"
+        assert server.service_accounts == {}
+        assert server.doc_access == {}
+
+    def test_service_accounts_not_enabled_raises_clear_error(self):
+        """Instance sans comptes de service -> erreur explicite, rien de créé."""
+        server = FakeGristApi(email="user@example.com", service_accounts_enabled=False)
+        with grist_transport(server):
+            with pytest.raises(ServiceAccountsNotEnabledError):
+                resolve_grist_api_key(BASE_URL, "user-key", DOC_ID)
+
+        assert server.service_accounts == {}
+        assert server.doc_access == {}
