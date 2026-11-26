@@ -14,13 +14,7 @@ export default [
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
-      globals: {
-        ...globals.browser,
-        // Fonctions injectées par les pages Flask (static/js), hors bundle
-        getGristContext: 'readonly',
-        formatDate: 'readonly',
-        apiFetch: 'readonly'
-      }
+      globals: globals.browser
     },
     rules: {
       // Correction

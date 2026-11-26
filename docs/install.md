@@ -130,8 +130,8 @@ puis lance le serveur : les tables sont créées au premier lancement. Voir
 # Tests Python
 poe test
 
-# Tests JavaScript
-npm run test
+# Tests JavaScript (front Vue)
+npm run test:vue
 ```
 
 Voir [tests/README.md](../tests/README.md) pour les commandes et conventions.
@@ -182,8 +182,8 @@ docker-compose down
 # Tests Python
 docker-compose run --rm app poe test
 
-# Tests JavaScript
-docker-compose run --rm app npm run test
+# Tests JavaScript (front Vue)
+docker-compose run --rm app npm run test:vue
 ```
 
 Voir [tests/README.md](../tests/README.md) pour les commandes et conventions.

@@ -5,6 +5,17 @@ import DNFiltersSection from '../DNFiltersSection.vue'
 import OtpAlert from '../OtpAlert.vue'
 import { DsfrMultiselect } from '@gouvminint/vue-dsfr'
 
+// Chaque test pose son formatage de date simulé sur `globalThis.formatDate`
+vi.mock('../../utils/dates', () => ({
+  formatDate: (...args) => globalThis.formatDate(...args)
+}))
+
+// Requêtes transmises telles quelles au `fetch` simulé par le test : le jeton
+// widget est vérifié par les tests d'apiClient
+vi.mock('../../utils/apiClient', () => ({
+  apiFetch: (...args) => globalThis.fetch(...args)
+}))
+
 beforeEach(() => {
   globalThis.formatDate = (dateString) => dateString.split('-').reverse()
     .join('/')

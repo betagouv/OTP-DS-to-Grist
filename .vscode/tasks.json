@@ -30,7 +30,7 @@
     {
       "label": "🧪 Tests JS",
       "type": "shell",
-      "command": "npm test",
+      "command": "npm run test:vue",
       "group": "test",
       "presentation": {
         "echo": true,

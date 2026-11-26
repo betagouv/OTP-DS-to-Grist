@@ -325,6 +325,12 @@ watch(() => props.existingConfig, async (config) => {
 </template>
 
 <style scoped>
+/* Panneau de l'accordéon aligné sur son titre : sans les marges négatives
+   que le DSFR lui donne à partir de md */
+.fr-accordion > :deep(.fr-collapse) {
+  margin: 0 !important;
+}
+
 .otp-accordion-title-row {
   display: flex;
   align-items: center;

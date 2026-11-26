@@ -42,21 +42,13 @@ Ce fichier contient les directives pour les agents IA travaillant sur ce projet.
 
 ### Frontend
 
-Le projet contient deux frontends coexistants :
-
-- **front/ (*nouveau*)** — Application Vue.js (Vite). C'est la cible pour toutes les
-  nouvelles fonctionnalités (ex: gestion multi-démarches).
-- **templates/ + static/js/ (*legacy*)** — Ancien frontend Flask/Jinja. À conserver
-  jusqu'à migration complète. S'inspirer de son fonctionnement pour les fonctionnalités
-  manquantes dans front/.
+L'interface est une application Vue.js (Vite), dans `front/`, servie par Flask sur `/`.
+`templates/` ne contient plus que la coquille Jinja de la page (bandeau, en-tête, pied de
+page), qui charge l'application ; son passage en Vue est une tâche à venir.
 
 **Règles :**
-- Les nouvelles fonctionnalités UI vont dans `front/` (Vue.js)
-- Les modifications du front legacy se limitent au correctif ou au portage vers `front/`
-- Le code partagé entre les deux (dans `static/js/`) doit être maintenu et testé via les
-  tests unitaires existants
-- Toujours vérifier si une fonctionnalité demandée existe déjà dans le legacy avant de la
-  coder from scratch
+- Les fonctionnalités UI vont dans `front/` (Vue.js)
+- `templates/` se limite à la coquille de la page : pas de nouvelle logique côté Jinja
 
 ### Environnements d'exécution
 
@@ -75,10 +67,8 @@ L'application gère initialement une synchronisation unique (une démarche DS ve
 L'évolution en cours consiste à supporter la **gestion multi-configurations** : plusieurs
 configurations Démarches numériques (une par démarche) pour un utilisateur, qui partagent
 toujours les **mêmes informations Grist** (un seul document Grist, une même clé API). Le
-backend supporte déjà le multi-config (`otp_configurations`, `ConfigManager`) ; le front-end est
-encore en phase de migration : le legacy (templates/) reste single-config, le nouveau front
-(`front/`) vise le multi-config et est en cours de développement. Toute intervention doit
-considérer cette trajectoire.
+backend (`otp_configurations`, `ConfigManager`) et le front (`front/`) supportent le
+multi-config. Toute intervention doit considérer cette trajectoire.
 
 Côté backend, un ensemble de scripts legacy à la racine du projet (traitements Grist,
 extraction de démarches, utils divers) attend son intégration dans les modules du projet,

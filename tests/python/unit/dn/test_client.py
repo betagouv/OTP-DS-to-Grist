@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import requests
 from unittest.mock import MagicMock, patch
@@ -7,6 +9,8 @@ from dn.client import (
     DEMARCHES_FALLBACK_429_DELAY,
     DEMARCHES_MAX_429_RETRIES,
     DEMARCHES_MAX_RANDOM_DELAY_SECONDS,
+    DemarcheNoAccessError,
+    DnUnavailableError,
     get_deleted_dossiers,
     get_demarche_dossiers_labels_only,
     get_demarche_groupe_numbers,
@@ -16,6 +20,7 @@ from dn.client import (
     get_session_with_retries,
     iter_demarche_dossier_pages,
     iter_filtered_dossier_pages,
+    require_demarche_access,
 )
 
 
@@ -41,6 +46,107 @@ def _http_failure_response():
 
 def _graphql_failure_response():
     return _mock_response(json_data={"errors": [{"message": "Erreur interne"}]})
+
+
+def _http_response(status_code: int, body: dict | str) -> requests.Response:
+    """Réponse HTTP réelle : raise_for_status et json() se comportent comme en production."""
+    response = requests.Response()
+    response.status_code = status_code
+    response._content = (body if isinstance(body, str) else json.dumps(body)).encode()
+    return response
+
+
+class TestRequireDemarcheAccess:
+    """Règle d'accès d'un jeton à une démarche : refus ou indisponibilité de DN"""
+
+    @staticmethod
+    def _access(post_result, api_token="token", demarche_number="123"):
+        with patch("dn.client.requests.Session") as session_class:
+            post = session_class.return_value.__enter__.return_value.post
+            if isinstance(post_result, Exception):
+                post.side_effect = post_result
+            else:
+                post.return_value = post_result
+            return require_demarche_access(api_token, demarche_number), post
+
+    def test_returns_the_demarche(self):
+        demarche = {"id": "RD", "number": 123, "title": "Ma démarche"}
+
+        result, post = self._access(
+            _http_response(200, {"data": {"demarche": demarche}})
+        )
+
+        assert result == demarche
+        assert post.call_args.kwargs["json"]["variables"] == {"demarcheNumber": 123}
+        assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer token"
+
+    @pytest.mark.parametrize(
+        "response,message",
+        [
+            (
+                _http_response(200, {"data": {"demarche": None}}),
+                "Démarche 123 non trouvée.",
+            ),
+            (
+                _http_response(200, {"errors": [{"message": "Unauthorized"}]}),
+                "Erreur API: Unauthorized",
+            ),
+            (
+                _http_response(401, {"errors": [{"message": "Token expired"}]}),
+                "Token expiré",
+            ),
+            (
+                _http_response(403, {"errors": [{"message": "Forbidden"}]}),
+                "Erreur de connexion à l'API: 403 - Forbidden",
+            ),
+            (_http_response(404, "<html>"), "Erreur de connexion à l'API: 404"),
+        ],
+    )
+    def test_refusals_are_no_access(self, response, message):
+        with pytest.raises(DemarcheNoAccessError, match=f"^{message}$"):
+            self._access(response)
+
+    @pytest.mark.parametrize(
+        "post_result,message",
+        [
+            (
+                requests.Timeout(),
+                "Timeout: L'API met trop de temps à répondre",
+            ),
+            (
+                requests.ConnectionError(),
+                "Erreur de connexion à l'API Démarches Simplifiées",
+            ),
+            (_http_response(503, "<html>"), "Erreur de connexion à l'API: 503"),
+            (_http_response(429, "<html>"), "Erreur de connexion à l'API: 429"),
+            (
+                _http_response(200, "<html>"),
+                "Erreur de connexion à l'API Démarches Simplifiées",
+            ),
+            (_http_response(200, {}), "Réponse API inattendue."),
+        ],
+    )
+    def test_dn_failures_are_unavailable(self, post_result, message):
+        with pytest.raises(DnUnavailableError, match=f"^{message}$"):
+            self._access(post_result)
+
+    @pytest.mark.parametrize(
+        "api_token,demarche_number,message",
+        [
+            ("token", "", "demarche_number manquant"),
+            ("token", "abc", "Numéro de démarche invalide : abc"),
+            ("", "123", "Token API non fourni"),
+        ],
+    )
+    def test_incomplete_input_sends_no_request(
+        self, api_token, demarche_number, message
+    ):
+        """Sans jeton, pas de repli sur celui de l'environnement"""
+        with patch("dn.client.requests.Session") as session_class:
+            with pytest.raises(DemarcheNoAccessError, match=f"^{message}$"):
+                require_demarche_access(api_token, demarche_number)
+
+        session_class.assert_not_called()
 
 
 class TestGetGroups:

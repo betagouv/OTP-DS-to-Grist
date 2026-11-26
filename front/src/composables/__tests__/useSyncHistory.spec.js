@@ -1,6 +1,12 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { useSyncHistory } from '../useSyncHistory'
 
+// Requêtes transmises telles quelles au `fetch` simulé par le test : le jeton
+// widget est vérifié par les tests d'apiClient
+vi.mock('../../utils/apiClient', () => ({
+  apiFetch: (...args) => globalThis.fetch(...args)
+}))
+
 const mockSyncs = (syncs) => {
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: true,

@@ -1,10 +1,12 @@
+import { loadGristPluginApi } from './gristPluginApi'
+
 const TOKEN_ACQUISITION_TIMEOUT_MS = 2000
 const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000
 
 let tokenState = null
 let readyRequested = false
 
-const decodeWidgetTokenIdentity = (token) => {
+export const decodeWidgetTokenIdentity = (token) => {
   try {
     return JSON.parse(atob(token.split('.')[1]))
   } catch {
@@ -25,7 +27,7 @@ const resolveTokenExpiresAt = (tokenInfo, identity) => {
 const isCurrentTokenUsable = () =>
   tokenState !== null && Date.now() < tokenState.expiresAt - TOKEN_EXPIRY_MARGIN_MS
 
-const clearWidgetToken = () => {
+export const clearWidgetToken = () => {
   tokenState = null
 }
 
@@ -43,22 +45,23 @@ const withAcquisitionTimeout = (promise) => new Promise((resolve) => {
   )
 })
 
-const requestGristReady = () => {
+const requestGristReady = (grist) => {
   if (readyRequested) return
 
   readyRequested = true
-  if (typeof grist !== 'undefined' && typeof grist.ready === 'function')
+  if (typeof grist.ready === 'function')
     grist.ready({ requiredAccess: 'full' })
 }
 
-const getWidgetToken = async () => {
+export const getWidgetToken = async () => {
   if (isCurrentTokenUsable()) return tokenState
 
-  if (typeof grist === 'undefined' || typeof grist.docApi === 'undefined')
+  const grist = await loadGristPluginApi()
+  if (!grist || typeof grist.docApi === 'undefined')
     return null
 
   try {
-    requestGristReady()
+    requestGristReady(grist)
     const tokenInfo = await withAcquisitionTimeout(grist.docApi.getAccessToken({ readOnly: false }))
     if (!tokenInfo || !tokenInfo.token) return null
 
@@ -74,19 +77,20 @@ const getWidgetToken = async () => {
     return tokenState
   } catch (error) {
     console.warn('Jeton widget Grist indisponible :', error)
+
     return null
   }
 }
 
-const isWidgetReadOnly = async () => {
+export const isWidgetReadOnly = async () => {
   const tokenInfo = await getWidgetToken()
   if (!tokenInfo) return false
 
   return tokenInfo.readOnly === true
 }
 
-const getGristContext = async () => {
-  if (typeof grist === 'undefined')
+export const getGristContext = async () => {
+  if (!(await loadGristPluginApi()))
     throw new Error('grist not available')
 
   try {
@@ -105,19 +109,8 @@ const getGristContext = async () => {
     return { params, userId, docId, baseUrl }
   } catch (error) {
     console.warn('Contexte Grist non disponible ou erreur :', error)
-    throw new Error('Veuillez donner au widget l’accès complet au document')
+    throw new Error('Veuillez donner au widget l’accès complet au document', { cause: error })
   }
 }
 
-const getApiBaseUrlFromDocBaseUrl = (docBaseUrl) => docBaseUrl.match(/^(.+?\/api)/)?.[1]
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    getGristContext,
-    getApiBaseUrlFromDocBaseUrl,
-    getWidgetToken,
-    clearWidgetToken,
-    decodeWidgetTokenIdentity,
-    isWidgetReadOnly
-  }
-}
+export const getApiBaseUrlFromDocBaseUrl = (docBaseUrl) => docBaseUrl.match(/^(.+?\/api)/)?.[1]

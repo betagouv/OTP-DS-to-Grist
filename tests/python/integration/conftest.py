@@ -11,6 +11,8 @@ from configuration.config_manager import ConfigManager
 
 WIDGET_HEADER = "X-Grist-Widget-Token"
 
+FAKE_VITE_JS = "/static/dist/assets/main-test.js"
+
 DEFAULT_IDENTITY = {"userId": "userA", "docId": "docA", "readOnly": False}
 
 STORED_CONFIG = {
@@ -79,6 +81,19 @@ def client(monkeypatch):
 
     with test_client:
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+def vite_build(monkeypatch):
+    """Le front Vue est construit : la page d'accueil s'affiche sans manifest Vite.
+
+    Le manifest (`static/dist`) n'est produit que par le build du front,
+    absent de la CI Python.
+    """
+    monkeypatch.setattr(
+        "app.vite_asset",
+        lambda entry="src/main.js": {"js": FAKE_VITE_JS, "css": None},
+    )
 
 
 @pytest.fixture(autouse=True)

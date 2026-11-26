@@ -18,6 +18,7 @@ from flask import (
     abort,
     g,
     jsonify,
+    redirect,
     render_template,
     request,
     url_for,
@@ -35,12 +36,22 @@ from configuration.config_manager import (
 from configuration.config_usage import ConfigUsage
 from database.models import OtpConfiguration, SyncLog, UserSchedule
 from database.session import SessionLocal
-from dn.client import get_groups
+from dn.client import (
+    DemarcheAccessError,
+    DnUnavailableError,
+    get_groups,
+    require_demarche_access,
+)
 from grist.base_url import (
     GristBaseUrlImmutableError,
     GristBaseUrlNotAllowedError
 )
-from grist.utils import key_access_level
+from grist.utils import (
+    GristKeyAccessError,
+    GristUnavailableError,
+    key_access_level,
+    require_owner_access,
+)
 from security.ip_blocklist import (
     is_whitelisted,
     parse_whitelist,
@@ -64,11 +75,6 @@ from sync.sync_manager import (
     missing_sync_fields,
 )
 from utils.formatter import to_local_iso
-from utils.api_validator import (
-    test_demarches_api,
-    test_grist_api,
-    verify_api_connections,
-)
 from utils.constants import (
     CHANGELOG_PATH,
     GITHUB_CHANGELOG_BASE_URL,
@@ -316,58 +322,6 @@ if not scheduler.running:
 
 # Routes Flask
 
-def test_current_config_connections(otp_config_id):
-    """
-    Teste les connexions DS et Grist avec les paramètres fournis dans le body
-    """
-    config = config_manager.load_config_by_id(otp_config_id)
-
-    # Vérifier que les paramètres requis sont présents
-    ds_api_token = config.get("ds_api_token")
-    demarche_number = config.get("demarche_number")
-    grist_base_url = config.get("grist_base_url")
-    grist_api_key = config.get("grist_api_key")
-    grist_doc_id = config.get("grist_doc_id")
-
-    if not ds_api_token:
-        return jsonify(
-            {
-                "success": False,
-                "message": "Token API Démarches Simplifiées non configuré",
-            }
-        ), 400
-
-    if not grist_api_key or not grist_base_url or not grist_doc_id:
-        return jsonify(
-            {"success": False, "message": "Configuration Grist incomplète"}
-        ), 400
-
-    try:
-        # Utiliser la fonction centralisée pour tester les connexions
-        all_success, results = verify_api_connections(
-            ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id
-        )
-
-        success_count = sum(1 for r in results if r["success"])
-
-        return jsonify(
-            {
-                "success": all_success,
-                "message": f"{success_count}/{len(results)} tests réussis",
-                "results": results,
-            }
-        )
-
-    except Exception:
-        logger.exception("Erreur lors du test des connexions")
-        return jsonify(
-            {
-                "success": False,
-                "message": "Une erreur interne est survenue lors du test des connexions",
-            }
-        ), 500
-
-
 @app.context_processor
 def inject_version_info():
     version = os.getenv("APP_VERSION")
@@ -425,8 +379,10 @@ def index():
 
 
 @app.route("/wip")
-def wip():
-    return render_template("wip.html")
+def wip() -> Response:
+    """Ancienne adresse du front Vue, redirigée temporairement vers l'accueil."""
+    logger.warning("[REDIRECTION /wip] Accès à /wip, redirigé vers /")
+    return redirect(url_for("index"))
 
 
 @app.errorhandler(ConfigNotFoundError)
@@ -677,7 +633,6 @@ def api_test_connection():
     """
     Route pour tester les connexions vers les autres API
 
-    Sans paramètres : teste toutes les APIs de la configuration courante
     Avec type='demarches' ou 'grist' : teste uniquement l'API spécifiée
     """
     data = request.get_json() or {}
@@ -707,7 +662,17 @@ def api_test_connection():
                     {"success": False, "message": "Token API non fourni"}
                 ), 400
 
-        success, message, title = test_demarches_api(api_token, demarche_number)
+        try:
+            demarche = require_demarche_access(api_token, demarche_number)
+        except DemarcheAccessError as error:
+            if isinstance(error, DnUnavailableError):
+                logger.error(
+                    f"Test de l'API Démarche Numérique impossible : {error.__cause__ or error}"
+                )
+            success, message, title = False, str(error), None
+        else:
+            title = demarche.get("title") or "Sans titre"
+            success, message = True, f"Connexion réussie! Démarche trouvée: {title}"
     elif connection_type == "grist":
         api_key = data.get("api_key")
         base_url = data.get("base_url")
@@ -735,10 +700,25 @@ def api_test_connection():
                     {"success": False, "message": "Clé API Grist non fourni"}
                 ), 400
 
-        success, message = test_grist_api(base_url, api_key, doc_id)
         title = None
+        try:
+            doc_info = require_owner_access(base_url, api_key, doc_id)
+        except GristBaseUrlNotAllowedError as error:
+            # Instance hors liste blanche : aucune requête n'a été émise
+            success, message = False, str(error)
+        except GristKeyAccessError as error:
+            if isinstance(error, GristUnavailableError):
+                logger.error(
+                    f"Test de l'API Grist impossible : {error.__cause__ or error}"
+                )
+            success, message = False, str(error)
+        else:
+            success = True
+            message = f"Connexion à Grist réussie! Document: {doc_info.get('name', doc_id)}"
     else:
-        return test_current_config_connections(data.get("otp_config_id"))
+        return jsonify(
+            {"success": False, "message": "Type de connexion inconnu"}
+        ), 400
 
     return jsonify({"success": success, "message": message, "title": title})
 
@@ -763,84 +743,6 @@ def api_groups():
         return error_response(
             "Erreur lors de la récupération des groupes", 400
         )
-
-
-@app.route("/api/sync-log/latest", methods=["GET"])
-def api_sync_log_latest():
-    """Route pour récupérer les dernières synchronisations (auto et manuelle)"""
-    otp_config_id = request.args.get("otp_config_id")
-
-    db = SessionLocal()
-
-    def format_sync(sync):
-        return (
-            {
-                "timestamp": to_local_iso(sync.timestamp),
-                "status": sync.status,
-                "success_count": sync.success_count,
-                "error_count": sync.error_count,
-                "message": sync.message,
-            }
-            if sync
-            else None
-        )
-
-    try:
-        if otp_config_id:
-            otp_config = db.query(OtpConfiguration).filter_by(id=otp_config_id).first()
-            if not otp_config:
-                return config_not_found_response(otp_config_id)
-
-            grist_user_id = otp_config.grist_user_id
-            grist_doc_id = otp_config.grist_doc_id
-        else:
-            # Rapport par document : le doc vient de l'identité du jeton widget,
-            # même si l'utilisateur n'a pas de configuration enregistrée.
-            identity = g.get("widget_identity") or {}
-            grist_doc_id = str(identity.get("docId") or "")
-            if not grist_doc_id:
-                return jsonify(
-                    {"success": False, "message": "otp_config_id is required"}
-                ), 400
-            grist_user_id = None
-
-        auto_filters = {"grist_doc_id": grist_doc_id, "auto": True}
-        manual_filters = {"grist_doc_id": grist_doc_id, "auto": False}
-        if grist_user_id is not None:
-            auto_filters["grist_user_id"] = grist_user_id
-            manual_filters["grist_user_id"] = grist_user_id
-
-        latest_auto = (
-            db.query(SyncLog)
-            .filter_by(**auto_filters)
-            .order_by(SyncLog.timestamp.desc())
-            .first()
-        )
-
-        latest_manual = (
-            db.query(SyncLog)
-            .filter_by(**manual_filters)
-            .order_by(SyncLog.timestamp.desc())
-            .first()
-        )
-
-        return jsonify(
-            {
-                "success": True,
-                "auto": format_sync(latest_auto),
-                "manual": format_sync(latest_manual),
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Erreur récupération dernier sync log: {str(e)}")
-        return jsonify(
-            {
-                "error": "Une erreur interne est survenue lors de la récupération du dernier sync log."
-            }
-        ), 500
-    finally:
-        db.close()
 
 
 @app.route("/api/sync-log/latest-by-demarche", methods=["GET"])

@@ -51,11 +51,7 @@ from sync.sync_result_parser import (
 from sync.tasks.deleted_dossiers import check_deleted_dossiers
 from sync.tasks.instructeurs import sync_instructeurs
 from sync.tasks.labels import sync_labels_for_demarche
-from utils.api_validator import verify_api_connections
-from utils.constants import (
-    EXIT_CODE_EXTERNAL_API_ERROR,
-    EXIT_CODE_GRIST_READ_ERROR,
-)
+from utils.constants import EXIT_CODE_GRIST_READ_ERROR
 from utils.log import format_numbers, log, log_verbose, log_error, log_progress
 
 
@@ -1472,7 +1468,6 @@ def main():
     load_dotenv()
 
     # Récupérer les variables d'environnement
-    ds_api_token = os.getenv("DEMARCHES_API_TOKEN")
     demarche_number = os.getenv("DEMARCHE_NUMBER")
     grist_base_url = os.getenv("GRIST_BASE_URL")
     grist_api_key = os.getenv("GRIST_API_KEY")
@@ -1500,38 +1495,6 @@ def main():
         log_error("DEMARCHE_NUMBER non défini")
         return 1
 
-    # Vérifier les connexions aux APIs avant de commencer
-    if all(
-        [ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id]
-    ):
-        log("Vérification des connexions aux APIs...")
-        log_progress.log("Vérification des connexions aux APIs")
-        success, results = verify_api_connections(
-            ds_api_token, demarche_number, grist_base_url, grist_api_key, grist_doc_id
-        )
-
-        if not success:
-            log_error("Échec de la vérification des connexions API:")
-
-            for r in results:
-                status = "✓" if r["success"] else "✗"
-                log_error(f"  {r['type']}: {status} {r['message']}")
-
-            emit_sync_errors(
-                {},
-                [
-                    timestamped_error(f"{r['type']} : {r['message']}")
-                    for r in results
-                    if not r["success"]
-                ],
-            )
-            return EXIT_CODE_EXTERNAL_API_ERROR
-        else:
-            log("✓ Connexions aux APIs vérifiées avec succès")
-    else:
-        log(
-            "⚠ Configuration incomplète pour tester les connexions API (certaines variables sont manquantes)"
-        )
     try:
         # Convertir le numéro de démarche en entier
         demarche_number = int(demarche_number)

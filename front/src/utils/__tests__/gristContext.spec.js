@@ -1,17 +1,26 @@
-const {
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest'
+import {
   getGristContext,
   getApiBaseUrlFromDocBaseUrl,
   getWidgetToken,
   clearWidgetToken,
   decodeWidgetTokenIdentity,
   isWidgetReadOnly
-} = require('../../static/js/gristContext.js')
+} from '../gristContext'
+
+// jsdom ne charge pas les scripts externes : l'API Grist « chargée » est le
+// global `grist` posé par le test, absente sinon (page hors widget Grist)
+vi.mock('../gristPluginApi', () => ({
+  loadGristPluginApi: async () => globalThis.grist ?? null
+}))
+
+let consoleWarnSpy
 
 beforeEach(() => {
-  consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {}) // Supprime console.warn
+  consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {}) // Supprime console.warn
 })
 
- afterEach(() => {
+afterEach(() => {
   consoleWarnSpy.mockRestore() // Restaure console.warn
 })
 
@@ -25,8 +34,8 @@ it(
 it(
   'should throw error if docId or userId is missing',
   async () => {
-    global.grist = { ready: jest.fn(), docApi: { getAccessToken: jest.fn() } }
-    grist.docApi.getAccessToken.mockResolvedValue({
+    global.grist = { ready: vi.fn(), docApi: { getAccessToken: vi.fn() } }
+    globalThis.grist.docApi.getAccessToken.mockResolvedValue({
       token: 'header.eyJ1c2VySWQiOiIxMjMifQ.signature',
       baseUrl: '/'
     })
@@ -39,6 +48,7 @@ it(
 const createMockToken = (userId, docId) => {
   const payload = { userId, docId }
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64')
+
   return `header.${encodedPayload}.signature`
 }
 
@@ -46,7 +56,7 @@ it(
   'should return all needed data',
   async () => {
     const mockToken = createMockToken('123', '456')
-    grist.docApi.getAccessToken.mockResolvedValue({
+    globalThis.grist.docApi.getAccessToken.mockResolvedValue({
       token: mockToken,
       baseUrl: 'http://0.0.0.0:8484/o/docs/api/docs/aD23FiUYPFeo'
     })
@@ -66,7 +76,7 @@ it(
 it(
   'should return params without throwing when baseUrl cannot be derived',
   async () => {
-    grist.docApi.getAccessToken.mockResolvedValue({
+    globalThis.grist.docApi.getAccessToken.mockResolvedValue({
       token: createMockToken('123', '456'),
       baseUrl: 'https://grist.example.com'
     })
@@ -96,6 +106,7 @@ it(
 
 const createTokenWithExp = (expInSecondsFromNow, userId = '1', docId = 'd') => {
   const payload = { userId, docId, exp: Math.floor(Date.now() / 1000) + expInSecondsFromNow }
+
   return `header.${Buffer.from(JSON.stringify(payload)).toString('base64')}.signature`
 }
 
@@ -116,8 +127,8 @@ describe('getWidgetToken', () => {
 
   it('mints a token once and serves it from cache', async () => {
     const token = createTokenWithExp(900)
-    const getAccessToken = jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 })
-    global.grist = { ready: jest.fn(), docApi: { getAccessToken } }
+    const getAccessToken = vi.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 })
+    global.grist = { ready: vi.fn(), docApi: { getAccessToken } }
 
     const first = await getWidgetToken()
     const second = await getWidgetToken()
@@ -128,10 +139,10 @@ describe('getWidgetToken', () => {
   })
 
   it('re-mints when the cached token is close to expiry', async () => {
-    const getAccessToken = jest.fn()
+    const getAccessToken = vi.fn()
       .mockResolvedValueOnce({ token: createTokenWithExp(30), baseUrl: 'http://x/api', ttlMsecs: 900000 })
       .mockResolvedValueOnce({ token: createTokenWithExp(900), baseUrl: 'http://x/api', ttlMsecs: 900000 })
-    global.grist = { ready: jest.fn(), docApi: { getAccessToken } }
+    global.grist = { ready: vi.fn(), docApi: { getAccessToken } }
 
     const first = await getWidgetToken()
     const second = await getWidgetToken()
@@ -152,8 +163,8 @@ describe('isWidgetReadOnly', () => {
 
   const mockGristWithToken = (token) => {
     global.grist = {
-      ready: jest.fn(),
-      docApi: { getAccessToken: jest.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
+      ready: vi.fn(),
+      docApi: { getAccessToken: vi.fn().mockResolvedValue({ token, baseUrl: 'http://x/api', ttlMsecs: 900000 }) }
     }
   }
 

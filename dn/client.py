@@ -500,6 +500,26 @@ DEMARCHES_MAX_RANDOM_DELAY_SECONDS = int(
 DISPLAY_CHAMP_TYPES = ("HeaderSectionChamp", "ExplicationChamp")
 
 
+class DemarcheAccessError(Exception):
+    """Le jeton DN ne permet pas de lire la démarche."""
+
+
+class DemarcheNoAccessError(DemarcheAccessError):
+    """DN refuse l'accès : jeton invalide ou expiré, démarche introuvable."""
+
+
+class DnUnavailableError(DemarcheAccessError):
+    """DN sans réponse exploitable : délai dépassé, connexion impossible, 5xx, 429."""
+
+
+class DnGraphQLError(Exception):
+    """Réponse de DN porteuse d'erreurs GraphQL."""
+
+    def __init__(self, messages: list[str]):
+        self.messages = messages
+        super().__init__(f"GraphQL errors: {', '.join(messages)}")
+
+
 def get_session_with_retries() -> RateLimitedSession:
     """
     Retourne une session HTTP avec retry (singleton).
@@ -868,6 +888,69 @@ def get_groups(
         return []
 
 
+def require_demarche_access(
+    api_token: str, demarche_number: str | int
+) -> dict[str, Any]:
+    """
+    Démarche (identifiant, numéro, titre), si le jeton y a accès.
+
+    Un refus de DN lève DemarcheNoAccessError ; DN sans réponse exploitable
+    lève DnUnavailableError. Requête unique, sans relance : l'appelant attend
+    la réponse.
+    """
+    if not demarche_number:
+        raise DemarcheNoAccessError("demarche_number manquant")
+    if not api_token:
+        raise DemarcheNoAccessError("Token API non fourni")
+    try:
+        number = int(demarche_number)
+    except (TypeError, ValueError):
+        raise DemarcheNoAccessError(
+            f"Numéro de démarche invalide : {demarche_number}"
+        ) from None
+
+    query = """
+    query getDemarche($demarcheNumber: Int!) {
+        demarche(number: $demarcheNumber) {
+            id
+            number
+            title
+        }
+    }
+    """
+    try:
+        with requests.Session() as session:
+            result = _post_graphql(
+                query,
+                {"demarcheNumber": number},
+                session=session,
+                token=api_token,
+                timeout=10,
+            )
+    except requests.Timeout as error:
+        raise DnUnavailableError(
+            "Timeout: L'API met trop de temps à répondre"
+        ) from error
+    except requests.HTTPError as error:
+        raise _http_access_error(error) from error
+    except DnGraphQLError as error:
+        raise DemarcheNoAccessError(
+            f"Erreur API: {'; '.join(error.messages)}"
+        ) from error
+    except requests.RequestException as error:
+        raise DnUnavailableError(
+            "Erreur de connexion à l'API Démarches Simplifiées"
+        ) from error
+
+    data = result.get("data") if isinstance(result, dict) else None
+    if not isinstance(data, dict) or "demarche" not in data:
+        raise DnUnavailableError("Réponse API inattendue.")
+    if not data["demarche"]:
+        raise DemarcheNoAccessError(f"Démarche {demarche_number} non trouvée.")
+
+    return data["demarche"]
+
+
 def get_demarche_instructeurs(demarche_number: int) -> list[dict[str, Any]]:
     """
     Récupère tous les instructeurs de la démarche organisés par groupe
@@ -1112,7 +1195,7 @@ def _post_graphql(
             messages = [message for message in messages if "permissions" not in message]
             if not messages:
                 return result
-        raise Exception(f"GraphQL errors: {', '.join(messages)}")
+        raise DnGraphQLError(messages)
 
     return result
 
@@ -1180,3 +1263,37 @@ def _pagination_scope(groupe_number: int | None, state: str | None) -> str:
     if state:
         criteria.append(state)
     return f" ({', '.join(criteria)})" if criteria else ""
+
+
+def _http_access_error(error: requests.HTTPError) -> DemarcheAccessError:
+    """Refus pour une 4xx ; indisponibilité pour une 5xx ou une limitation de débit (429)."""
+    response = error.response
+    status_code = response.status_code if response is not None else None
+    messages = _graphql_error_messages(response)
+
+    if any("expired" in message.lower() for message in messages):
+        return DemarcheNoAccessError("Token expiré")
+
+    detail = f" - {'; '.join(messages)}" if messages else ""
+    message = f"Erreur de connexion à l'API: {status_code}{detail}"
+    if status_code is None or status_code >= 500 or status_code == 429:
+        return DnUnavailableError(message)
+
+    return DemarcheNoAccessError(message)
+
+
+def _graphql_error_messages(response: requests.Response | None) -> list[str]:
+    """Messages d'erreur GraphQL d'une réponse, vide si elle n'en porte pas."""
+    if response is None:
+        return []
+    try:
+        body = response.json()
+    except ValueError:
+        return []
+    errors = body.get("errors") if isinstance(body, dict) else None
+
+    return [
+        error.get("message", "Erreur inconnue")
+        for error in errors or []
+        if isinstance(error, dict)
+    ]

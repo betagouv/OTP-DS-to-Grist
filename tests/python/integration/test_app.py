@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -9,11 +10,18 @@ import requests
 import app as app_module
 from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
+from dn.client import DemarcheNoAccessError, DnUnavailableError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from grist.client import GristClient
+from grist.utils import (
+    GristKeyInsufficientAccessError,
+    GristKeyNoAccessError,
+    GristUnavailableError,
+)
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 from sync.sync_manager import SyncSeriesAlreadyRunningError
+from tests.python.integration.conftest import FAKE_VITE_JS
 
 
 def _inline_enqueue(otp_config_id, grist_doc_id, fn):
@@ -30,6 +38,34 @@ class TestEndpoints:
         response = client.get("/")
         assert response.status_code == 200
         assert b"One Trick Pony" in response.data
+
+    def test_index_route_serves_vue_front(self, client):
+        """L'accueil sert le front Vue : point de montage et bundle Vite"""
+        response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert '<div id="app"></div>' in html
+        assert FAKE_VITE_JS in html
+
+    def test_index_route_is_public(self, client):
+        """L'accueil se charge sans jeton widget : le front Vue l'obtient ensuite"""
+        client.anonymous = True
+        response = client.get("/")
+        assert response.status_code == 200
+
+    def test_wip_route_redirects_to_index(self, client):
+        """L'ancienne adresse du front Vue redirige temporairement vers l'accueil"""
+        client.anonymous = True
+        response = client.get("/wip")
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/"
+
+    def test_wip_route_logs_redirect(self, client, caplog):
+        """Chaque passage par /wip laisse un log repérable en production"""
+        with caplog.at_level(logging.WARNING):
+            client.get("/wip")
+        assert any(
+            "[REDIRECTION /wip]" in record.getMessage() for record in caplog.records
+        )
 
     def test_execution_route_is_gone(self, client):
         """La route /execution n'existe plus : la page ne doit pas être visitable directement"""
@@ -311,10 +347,10 @@ class TestEndpoints:
         assert data["success"] is False
         assert "grist.hors-liste.example" in data["message"]
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches(self, mock_test, client):
         """Test du endpoint de test de connexion Démarches"""
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         test_data = {
             "type": "demarches",
@@ -331,11 +367,11 @@ class TestEndpoints:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is True
-        assert data["message"] == "Connexion réussie"
+        assert data["message"] == "Connexion réussie! Démarche trouvée: Titre démarche"
         assert data["title"] == "Titre démarche"
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_with_otp_config_id(
         self, mock_test, mock_load, client
     ):
@@ -346,7 +382,7 @@ class TestEndpoints:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",
@@ -368,7 +404,7 @@ class TestEndpoints:
         mock_test.assert_called_once_with("server-token", "123")
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_with_both_token_and_otp_id(
         self, mock_test, mock_load, client
     ):
@@ -379,7 +415,7 @@ class TestEndpoints:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",
@@ -399,7 +435,7 @@ class TestEndpoints:
         mock_test.assert_called_once_with("explicit-token", "123")
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_with_otp_config_id_empty_token(
         self, mock_test, mock_load, client
     ):
@@ -447,10 +483,45 @@ class TestEndpoints:
         assert data["success"] is False
         assert "non fourni" in data["message"]
 
-    @patch("app.test_grist_api")
-    def test_api_test_connection_grist(self, mock_test, client):
-        """Test du endpoint de test de connexion Grist"""
-        mock_test.return_value = (False, "Erreur de connexion")
+    @pytest.mark.parametrize(
+        "doc_info, expected_message",
+        [
+            ({"name": "Mon Document", "access": "owners"},
+             "Connexion à Grist réussie! Document: Mon Document"),
+            ({"access": "owners"}, "Connexion à Grist réussie! Document: doc123"),
+        ],
+    )
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist_success(
+        self, mock_access, client, doc_info, expected_message
+    ):
+        """Clé propriétaire → succès, avec le nom du document ou à défaut son id"""
+        mock_access.return_value = doc_info
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "grist",
+                    "base_url": "https://grist.test.com",
+                    "api_key": "key",
+                    "doc_id": "doc123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["message"] == expected_message
+        assert data["title"] is None
+        mock_access.assert_called_once_with("https://grist.test.com", "key", "doc123")
+
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist(self, mock_access, client):
+        """Clé non propriétaire → 200 success:false avec le message de la règle"""
+        mock_access.side_effect = GristKeyInsufficientAccessError("editors")
 
         test_data = {
             "type": "grist",
@@ -468,117 +539,24 @@ class TestEndpoints:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Erreur" in data["message"]
+        assert data["message"] == "Accès propriétaire requis sur le document Grist"
         assert data["title"] is None
 
+    @pytest.mark.parametrize("body", [{}, {"type": "autre"}])
     @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_missing_ds_token(self, mock_load, client):
-        """Test sans paramètres - token DS manquant dans le body"""
-        test_data = {
-            "grist_api_key": "key",
-            "grist_base_url": "https://grist.example.com",
-            "grist_doc_id": "doc123",
-        }
-
-        mock_load.return_value = test_data
-
+    def test_api_test_connection_unknown_type(self, mock_load, client, body):
+        """Sans type, ou avec un type inconnu → 400, sans charger de configuration"""
         response = client.post(
             "/api/test-connection",
-            data=json.dumps(test_data),
+            data=json.dumps(body),
             content_type="application/json",
         )
 
         assert response.status_code == 400
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Token API Démarches Simplifiées non configuré" in data["message"]
-
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_missing_grist_config(
-        self, mock_load, client
-    ):
-        """Test sans paramètres - config Grist incomplète dans le body"""
-        test_data = {"ds_api_token": "valid-token", "demarche_number": "123"}
-
-        mock_load.return_value = test_data
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 400
-        data = json.loads(response.data)
-        assert data["success"] is False
-        assert "Configuration Grist incomplète" in data["message"]
-
-    @patch("utils.api_validator.test_demarches_api")
-    @patch("utils.api_validator.test_grist_api")
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_success(
-        self, mock_load, mock_grist, mock_demarches, client
-    ):
-        """Test sans paramètres - succès des deux connexions"""
-        test_data = {
-            "ds_api_token": "valid-token",
-            "demarche_number": "123",
-            "grist_api_key": "valid-key",
-            "grist_base_url": "https://grist.example.com",
-            "grist_doc_id": "doc123",
-        }
-
-        mock_load.return_value = test_data
-        mock_demarches.return_value = (True, "DS OK", "Titre démarche")
-        mock_grist.return_value = (True, "Grist OK")
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["message"] == "2/2 tests réussis"
-        assert len(data["results"]) == 2
-        assert data["results"][0]["type"] == "demarches"
-        assert data["results"][0]["success"] is True
-        assert data["results"][1]["type"] == "grist"
-        assert data["results"][1]["success"] is True
-
-    @patch("utils.api_validator.test_demarches_api")
-    @patch("utils.api_validator.test_grist_api")
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_params_partial_failure(
-        self, mock_load, mock_grist, mock_demarches, client
-    ):
-        """Test sans paramètres - échec partiel"""
-        test_data = {
-            "ds_api_token": "valid-token",
-            "demarche_number": "123",
-            "grist_api_key": "valid-key",
-            "grist_base_url": "https://grist.example.com",
-            "grist_doc_id": "doc123",
-        }
-
-        mock_load.return_value = test_data
-        mock_demarches.return_value = (True, "DS OK", "Titre démarche")
-        mock_grist.return_value = (False, "Grist Error")
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data["success"] is False
-        assert data["message"] == "1/2 tests réussis"
-        assert data["results"][0]["success"] is True
-        assert data["results"][1]["success"] is False
+        assert data["message"] == "Type de connexion inconnu"
+        mock_load.assert_not_called()
 
     @patch.object(ConfigManager, "load_config_by_id")
     @patch("app.get_groups")
@@ -705,13 +683,11 @@ class TestEndpoints:
 class TestErrorHandling:
     """Tests d'intégration pour la gestion d'erreurs"""
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_timeout(self, mock_test, client):
         """Test timeout API Démarches"""
-        mock_test.return_value = (
-            False,
-            "Timeout: L'API met trop de temps à répondre",
-            None,
+        mock_test.side_effect = DnUnavailableError(
+            "Timeout: L'API met trop de temps à répondre"
         )
 
         test_data = {
@@ -732,10 +708,10 @@ class TestErrorHandling:
         assert "Timeout" in data["message"]
         assert data["title"] is None
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_api_test_connection_demarches_invalid_token(self, mock_test, client):
         """Test token invalide Démarches"""
-        mock_test.return_value = (False, "Erreur API: Unauthorized", None)
+        mock_test.side_effect = DemarcheNoAccessError("Erreur API: Unauthorized")
 
         test_data = {
             "type": "demarches",
@@ -778,10 +754,14 @@ class TestErrorHandling:
         assert data["success"] is False
         assert data["message"] == "Configuration non trouvée (id=999)"
 
-    @patch("app.test_grist_api")
-    def test_api_test_connection_grist_network_error(self, mock_test, client):
-        """Test erreur réseau Grist"""
-        mock_test.return_value = (False, "Erreur de connexion: Network is unreachable")
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist_network_error(self, mock_access, client, caplog):
+        """Erreur réseau Grist → Grist indisponible, cause journalisée en ERROR"""
+        unavailable = GristUnavailableError()
+        unavailable.__cause__ = requests.exceptions.ConnectionError(
+            "Network is unreachable"
+        )
+        mock_access.side_effect = unavailable
 
         test_data = {
             "type": "grist",
@@ -790,24 +770,28 @@ class TestErrorHandling:
             "doc_id": "doc123",
         }
 
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
+        with caplog.at_level(logging.ERROR):
+            response = client.post(
+                "/api/test-connection",
+                data=json.dumps(test_data),
+                content_type="application/json",
+            )
 
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Network" in data["message"]
-
-    @patch("app.test_grist_api")
-    def test_api_test_connection_grist_invalid_key(self, mock_test, client):
-        """Test clé API invalide Grist"""
-        mock_test.return_value = (
-            False,
-            "Erreur de connexion à Grist: 401 - Unauthorized",
+        assert data["message"] == "Grist indisponible"
+        assert any(
+            record.levelno == logging.ERROR
+            and "Test de l'API Grist impossible : Network is unreachable"
+            in record.getMessage()
+            for record in caplog.records
         )
+
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist_invalid_key(self, mock_access, client):
+        """Clé API sans accès au document → 200 success:false"""
+        mock_access.side_effect = GristKeyNoAccessError()
 
         test_data = {
             "type": "grist",
@@ -825,10 +809,10 @@ class TestErrorHandling:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "401" in data["message"]
+        assert data["message"] == "Clé API sans accès au document Grist"
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_grist_api")
+    @patch("app.require_owner_access")
     def test_api_test_connection_grist_with_otp_config_id(
         self, mock_test, mock_load, client
     ):
@@ -839,7 +823,7 @@ class TestErrorHandling:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie")
+        mock_test.return_value = {"name": "Doc A", "access": "owners"}
 
         response = client.post(
             "/api/test-connection",
@@ -885,7 +869,7 @@ class TestErrorHandling:
         assert "grist.hors-liste.example" in data["message"]
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_grist_api")
+    @patch("app.require_owner_access")
     def test_api_test_connection_grist_with_both_key_and_otp_id(
         self, mock_test, mock_load, client
     ):
@@ -896,7 +880,7 @@ class TestErrorHandling:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie")
+        mock_test.return_value = {"name": "Doc A", "access": "owners"}
 
         response = client.post(
             "/api/test-connection",
@@ -961,24 +945,6 @@ class TestErrorHandling:
                     "otp_config_id": 999,
                 }
             ),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 404
-        data = json.loads(response.data)
-        assert data["success"] is False
-        assert data["message"] == "Configuration non trouvée (id=999)"
-
-    @patch.object(ConfigManager, "load_config_by_id")
-    def test_api_test_connection_no_type_config_not_found(
-        self, mock_load, client
-    ):
-        """Sans type, config absente → 404 (auparavant une 500 brute)"""
-        mock_load.side_effect = ConfigNotFoundError("Configuration non trouvée (id=999)")
-
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps({"otp_config_id": 999}),
             content_type="application/json",
         )
 
@@ -1584,265 +1550,6 @@ class OtpConfigMock:
         self.grist_doc_id = grist_doc_id
 
 
-class TestApiSyncLogLatestWithOTPConfigId:
-    """Tests pour la route /api/sync-log/latest utilisant otp_config_id"""
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_success_with_both(self, mock_session, client):
-        """Test retour avec auto et manual sync"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-
-        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
-        mock_sync_auto = SyncLogMock(
-            "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
-        )
-        mock_sync_manual = SyncLogMock(
-            "2026-04-20T14:30:00+00:00", "success", 5, 1, "Sync manuelle réussie"
-        )
-
-        query_calls = []
-
-        def query_side_effect(model):
-            query_calls.append(model)
-            mock_result = MagicMock()
-            mock_filter = MagicMock()
-            mock_order = MagicMock()
-
-            if model.__name__ == "OtpConfiguration":
-                mock_filter.order_by.return_value.first.return_value = mock_otp_config
-            elif query_calls.count(model) == 1:
-                mock_filter.order_by.return_value.first.return_value = mock_sync_auto
-            else:
-                mock_filter.order_by.return_value.first.return_value = mock_sync_manual
-
-            mock_result.filter_by.return_value = mock_filter
-            mock_order.first.return_value = None
-            return mock_result
-
-        mock_db.query.side_effect = query_side_effect
-
-        response = client.get("/api/sync-log/latest?otp_config_id=1")
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["auto"] is not None
-        assert data["auto"]["status"] == "success"
-        assert data["auto"]["success_count"] == 10
-        assert data["manual"] is not None
-        assert data["manual"]["status"] == "success"
-        assert data["manual"]["success_count"] == 5
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_auto_only(self, mock_session, client):
-        """Test retour avec seulement sync auto"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-
-        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
-        mock_sync_auto = SyncLogMock(
-            "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
-        )
-
-        query_count = [0]
-
-        def query_side_effect(model):
-            query_count[0] += 1
-            mock_result = MagicMock()
-            mock_filter = MagicMock()
-
-            if model.__name__ == "OtpConfiguration":
-                mock_filter.order_by.return_value.first.return_value = mock_otp_config
-            elif query_count[0] == 2:
-                mock_filter.order_by.return_value.first.return_value = mock_sync_auto
-            else:
-                mock_filter.order_by.return_value.first.return_value = None
-
-            mock_result.filter_by.return_value = mock_filter
-            return mock_result
-
-        mock_db.query.side_effect = query_side_effect
-
-        response = client.get("/api/sync-log/latest?otp_config_id=1")
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["auto"] is not None
-        assert data["manual"] is None
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_no_sync(self, mock_session, client):
-        """Test retour sans aucune sync (null)"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-
-        mock_otp_config = OtpConfigMock(1, "user123", "doc456")
-
-        query_count = [0]
-
-        def query_side_effect(model):
-            query_count[0] += 1
-            mock_result = MagicMock()
-            mock_filter = MagicMock()
-            mock_order = MagicMock()
-            if model.__name__ == "OtpConfiguration":
-                mock_order.first.return_value = mock_otp_config
-            else:
-                mock_order.first.return_value = None
-            mock_filter.order_by.return_value = mock_order
-            mock_result.filter_by.return_value = mock_filter
-            return mock_result
-
-        mock_db.query.side_effect = query_side_effect
-
-        response = client.get("/api/sync-log/latest?otp_config_id=1")
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["auto"] is None
-        assert data["manual"] is None
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_missing_config(self, mock_session, client):
-        """Test avec config inexistante - 404"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-        mock_db.query.return_value.filter_by.return_value.first.return_value = None
-
-        response = client.get("/api/sync-log/latest?otp_config_id=999")
-        assert response.status_code == 404
-
-        data = json.loads(response.data)
-        assert data["success"] is False
-
-class TestApiSyncLogLatestWithGristDocId:
-    """Tests pour le rapport de sync par document du jeton, sans configuration."""
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_success_with_both(self, mock_session, client):
-        """Test retour avec auto et manual sync"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-
-        mock_sync_auto = SyncLogMock(
-            "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
-        )
-        mock_sync_manual = SyncLogMock(
-            "2026-04-20T14:30:00+00:00", "success", 5, 1, "Sync manuelle réussie"
-        )
-
-        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
-            mock_sync_auto,
-            mock_sync_manual,
-        ]
-
-        response = client.get("/api/sync-log/latest")
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["auto"] is not None
-        assert data["auto"]["status"] == "success"
-        assert data["auto"]["success_count"] == 10
-        assert data["manual"] is not None
-        assert data["manual"]["success_count"] == 5
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_auto_only(self, mock_session, client):
-        """Test retour avec seulement sync auto"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-
-        mock_sync_auto = SyncLogMock(
-            "2026-04-20T10:00:00+00:00", "success", 10, 0, "Sync auto réussie"
-        )
-
-        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
-            mock_sync_auto,
-            None,
-        ]
-
-        response = client.get("/api/sync-log/latest")
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["auto"] is not None
-        assert data["manual"] is None
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_no_sync(self, mock_session, client):
-        """Test retour sans aucune sync (null)"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
-            None,
-            None,
-        ]
-
-        response = client.get("/api/sync-log/latest")
-
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["auto"] is None
-        assert data["manual"] is None
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_no_sync_for_grist_doc(self, mock_session, client):
-        """Document sans historique → rapport vide, sans configuration enregistrée"""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
-            None,
-            None,
-        ]
-
-        client.identity = {"userId": "newU", "docId": "docZ", "readOnly": False}
-
-        response = client.get("/api/sync-log/latest")
-        assert response.status_code == 200
-
-        data = json.loads(response.data)
-        assert data["success"] is True
-        assert data["auto"] is None
-        assert data["manual"] is None
-
-    @patch("app.SessionLocal")
-    def test_api_sync_log_latest_uses_doc_from_identity(self, mock_session, client):
-        """Le document du rapport est celui du jeton, jamais un paramètre de requête."""
-        mock_db = MagicMock()
-        mock_session.return_value = mock_db
-        mock_db.query.return_value.filter_by.return_value.order_by.return_value.first.side_effect = [
-            None,
-            None,
-        ]
-
-        client.identity = {"userId": "userA", "docId": "docB", "readOnly": False}
-
-        response = client.get("/api/sync-log/latest?grist_doc_id=999")
-        assert response.status_code == 200
-
-        filter_calls = mock_db.query.return_value.filter_by.call_args_list
-        assert all(call.kwargs["grist_doc_id"] == "docB" for call in filter_calls)
-        assert all("grist_user_id" not in call.kwargs for call in filter_calls)
-
-    def test_api_sync_log_latest_requires_doc(self, client):
-        """Sans otp_config_id ni document d'identité → 400"""
-        client.identity = {"userId": "userA", "docId": None, "readOnly": False}
-
-        response = client.get(
-            "/api/sync-log/latest?grist_base_url=https://grist.example.com/api"
-        )
-        assert response.status_code == 400
-
-        data = json.loads(response.data)
-        assert data["success"] is False
-        assert "otp_config_id" in data["message"]
-
-
 WIDGET_TEST_CONFIG = {
     "otp_config_id": 7,
     "ds_api_token": "ds-token",
@@ -1867,7 +1574,6 @@ class TestWidgetAuth:
         ("post", "/api/start-sync"),
         ("post", "/api/test-connection"),
         ("get", "/api/groups?otp_config_id=7"),
-        ("get", "/api/sync-log/latest?otp_config_id=7"),
     ]
 
     @pytest.mark.parametrize("method,path", PROTECTED)
@@ -1948,7 +1654,7 @@ class TestWidgetAuth:
     def test_readonly_token_rejected_on_read_returns_403(self, client, monkeypatch):
         self._stub_owned_config(monkeypatch, WIDGET_TEST_CONFIG)
         client.identity = {"userId": "userA", "docId": "docA", "readOnly": True}
-        response = client.get("/api/sync-log/latest?otp_config_id=7")
+        response = client.get("/api/schedule?otp_config_id=7")
         assert response.status_code == 403
 
     @staticmethod
@@ -2126,7 +1832,7 @@ class TestWidgetAuth:
 
         monkeypatch.setattr("app.config_manager.load_config_by_id", explode)
 
-        response = client.get("/api/sync-log/latest?otp_config_id=7")
+        response = client.get("/api/schedule?otp_config_id=7")
 
         assert response.status_code == 500
         assert response.get_json()["message"] == "Configuration indisponible"
@@ -2192,7 +1898,7 @@ class TestWidgetAuth:
         assert response.status_code == 500
         assert response.get_json()["message"] == "Configuration indisponible"
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_new_user_demarches_test_with_base_url_header(
         self, mock_test, client, monkeypatch
     ):
@@ -2207,7 +1913,7 @@ class TestWidgetAuth:
             or {"userId": "newU", "docId": "newDoc", "readOnly": False},
         )
         client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",
@@ -2226,7 +1932,7 @@ class TestWidgetAuth:
         assert validated_base_urls == ["https://grist.example.com/api"]
         mock_test.assert_called_once_with("token", "123")
 
-    @patch("app.test_demarches_api")
+    @patch("app.require_demarche_access")
     def test_body_base_url_serves_new_user(self, mock_test, client, monkeypatch):
         """L'URL fournie dans le corps reste une source valide pour un nouvel utilisateur."""
         monkeypatch.setattr(
@@ -2239,7 +1945,7 @@ class TestWidgetAuth:
             or {"userId": "newU", "docId": "newDoc", "readOnly": False},
         )
         client.identity = {"userId": "newU", "docId": "newDoc", "readOnly": False}
-        mock_test.return_value = (True, "Connexion réussie", "Titre démarche")
+        mock_test.return_value = {"number": 123, "title": "Titre démarche"}
 
         response = client.post(
             "/api/test-connection",

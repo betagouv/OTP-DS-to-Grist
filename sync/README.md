@@ -2,12 +2,14 @@
 
 Rassemble les fonctionnalités de synchronisation, incluant la planification.
 
-Avant de lancer le sous-processus, `SyncManager` vérifie que la clé API Grist
-configurée dispose d'un accès propriétaire sur le document (règle commune de
-`grist/utils.py`) : toute autre issue fait échouer la tâche immédiatement, avec
-un message explicite. Une clé non propriétaire ou sans accès donne un code
-d'erreur API externe, qui désactive le planning en cas de synchro planifiée ;
-Grist injoignable donne un code d'erreur transitoire, qui le laisse actif.
+Avant de lancer le sous-processus, `SyncManager` vérifie les accès configurés,
+Grist d'abord, puis Démarche Numérique : la clé API Grist doit être
+propriétaire du document (règle de `grist/utils.py`), le jeton DN doit voir la
+démarche (règle de `dn/client.py`). Toute autre issue fait échouer la tâche
+immédiatement, avec un message explicite. Un refus (clé non propriétaire,
+jeton refusé, démarche introuvable) donne un code d'erreur API externe, qui
+désactive le planning en cas de synchro planifiée ; un service injoignable
+donne un code d'erreur transitoire, qui le laisse actif.
 
 En cas d'échec du sous-processus, le message présenté à l'utilisateur est
 volontairement court : les tracebacks Python et le stderr complet sont filtrés
@@ -126,9 +128,7 @@ Chaque synchronisation, automatique ou manuelle, est enregistrée dans la table
 `sync_logs` à sa fin. Les routes de `app.py` relisent cet historique pour
 l'affichage : `GET /api/sync-log/latest-by-demarche` renvoie la dernière
 synchronisation de chaque démarche sauvegardée (front Vue, tableau affiché au
-chargement). La
-route `GET /api/sync-log/latest`, qui donne la dernière synchro automatique et
-la dernière manuelle du document, ne sert plus qu'au front legacy.
+chargement).
 
 ## tasks/
 

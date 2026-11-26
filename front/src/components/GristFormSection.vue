@@ -13,6 +13,7 @@ import FieldLabel from './FieldLabel.vue'
 import { useConnectionCheck, CONNECTION_STATUS } from '../composables/useConnectionCheck'
 import OtpAlert from './OtpAlert.vue'
 import { debounce } from '../utils/debounce'
+import { getGristContext } from '../utils/gristContext'
 
 const props = defineProps({
   existingConfig: { type: Object, default: null }
@@ -191,3 +192,11 @@ defineExpose({
     </DsfrAccordionsGroup>
   </div>
 </template>
+
+<style scoped>
+/* Panneau de l'accordéon aligné sur son titre : sans les marges négatives
+   que le DSFR lui donne à partir de md */
+.fr-accordion > :deep(.fr-collapse) {
+  margin: 0 !important;
+}
+</style>
