@@ -19,6 +19,8 @@ npm install
 npm run dev
 ```
 
+Le serveur de dev exige `VITE_DEV_ORIGIN` dans le `.env` racine (voir `.env.example`).
+
 ### Préparer la production
 
 ```sh
