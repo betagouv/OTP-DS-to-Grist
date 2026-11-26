@@ -13,6 +13,11 @@ from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundEr
 from dn.client import DemarcheNoAccessError, DnUnavailableError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from grist.client import GristClient
+from grist.utils import (
+    GristKeyInsufficientAccessError,
+    GristKeyNoAccessError,
+    GristUnavailableError,
+)
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 from sync.sync_manager import SyncSeriesAlreadyRunningError
@@ -478,10 +483,45 @@ class TestEndpoints:
         assert data["success"] is False
         assert "non fourni" in data["message"]
 
-    @patch("app.test_grist_api")
-    def test_api_test_connection_grist(self, mock_test, client):
-        """Test du endpoint de test de connexion Grist"""
-        mock_test.return_value = (False, "Erreur de connexion")
+    @pytest.mark.parametrize(
+        "doc_info, expected_message",
+        [
+            ({"name": "Mon Document", "access": "owners"},
+             "Connexion à Grist réussie! Document: Mon Document"),
+            ({"access": "owners"}, "Connexion à Grist réussie! Document: doc123"),
+        ],
+    )
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist_success(
+        self, mock_access, client, doc_info, expected_message
+    ):
+        """Clé propriétaire → succès, avec le nom du document ou à défaut son id"""
+        mock_access.return_value = doc_info
+
+        response = client.post(
+            "/api/test-connection",
+            data=json.dumps(
+                {
+                    "type": "grist",
+                    "base_url": "https://grist.test.com",
+                    "api_key": "key",
+                    "doc_id": "doc123",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is True
+        assert data["message"] == expected_message
+        assert data["title"] is None
+        mock_access.assert_called_once_with("https://grist.test.com", "key", "doc123")
+
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist(self, mock_access, client):
+        """Clé non propriétaire → 200 success:false avec le message de la règle"""
+        mock_access.side_effect = GristKeyInsufficientAccessError("editors")
 
         test_data = {
             "type": "grist",
@@ -499,7 +539,7 @@ class TestEndpoints:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Erreur" in data["message"]
+        assert data["message"] == "Accès propriétaire requis sur le document Grist"
         assert data["title"] is None
 
     @pytest.mark.parametrize("body", [{}, {"type": "autre"}])
@@ -714,10 +754,14 @@ class TestErrorHandling:
         assert data["success"] is False
         assert data["message"] == "Configuration non trouvée (id=999)"
 
-    @patch("app.test_grist_api")
-    def test_api_test_connection_grist_network_error(self, mock_test, client):
-        """Test erreur réseau Grist"""
-        mock_test.return_value = (False, "Erreur de connexion: Network is unreachable")
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist_network_error(self, mock_access, client, caplog):
+        """Erreur réseau Grist → Grist indisponible, cause journalisée en ERROR"""
+        unavailable = GristUnavailableError()
+        unavailable.__cause__ = requests.exceptions.ConnectionError(
+            "Network is unreachable"
+        )
+        mock_access.side_effect = unavailable
 
         test_data = {
             "type": "grist",
@@ -726,24 +770,28 @@ class TestErrorHandling:
             "doc_id": "doc123",
         }
 
-        response = client.post(
-            "/api/test-connection",
-            data=json.dumps(test_data),
-            content_type="application/json",
-        )
+        with caplog.at_level(logging.ERROR):
+            response = client.post(
+                "/api/test-connection",
+                data=json.dumps(test_data),
+                content_type="application/json",
+            )
 
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "Network" in data["message"]
-
-    @patch("app.test_grist_api")
-    def test_api_test_connection_grist_invalid_key(self, mock_test, client):
-        """Test clé API invalide Grist"""
-        mock_test.return_value = (
-            False,
-            "Erreur de connexion à Grist: 401 - Unauthorized",
+        assert data["message"] == "Grist indisponible"
+        assert any(
+            record.levelno == logging.ERROR
+            and "Test de l'API Grist impossible : Network is unreachable"
+            in record.getMessage()
+            for record in caplog.records
         )
+
+    @patch("app.require_owner_access")
+    def test_api_test_connection_grist_invalid_key(self, mock_access, client):
+        """Clé API sans accès au document → 200 success:false"""
+        mock_access.side_effect = GristKeyNoAccessError()
 
         test_data = {
             "type": "grist",
@@ -761,10 +809,10 @@ class TestErrorHandling:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["success"] is False
-        assert "401" in data["message"]
+        assert data["message"] == "Clé API sans accès au document Grist"
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_grist_api")
+    @patch("app.require_owner_access")
     def test_api_test_connection_grist_with_otp_config_id(
         self, mock_test, mock_load, client
     ):
@@ -775,7 +823,7 @@ class TestErrorHandling:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie")
+        mock_test.return_value = {"name": "Doc A", "access": "owners"}
 
         response = client.post(
             "/api/test-connection",
@@ -821,7 +869,7 @@ class TestErrorHandling:
         assert "grist.hors-liste.example" in data["message"]
 
     @patch.object(ConfigManager, "load_config_by_id")
-    @patch("app.test_grist_api")
+    @patch("app.require_owner_access")
     def test_api_test_connection_grist_with_both_key_and_otp_id(
         self, mock_test, mock_load, client
     ):
@@ -832,7 +880,7 @@ class TestErrorHandling:
             "grist_doc_id": "docA",
             "grist_user_id": "userA",
         }
-        mock_test.return_value = (True, "Connexion réussie")
+        mock_test.return_value = {"name": "Doc A", "access": "owners"}
 
         response = client.post(
             "/api/test-connection",

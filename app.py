@@ -46,7 +46,12 @@ from grist.base_url import (
     GristBaseUrlImmutableError,
     GristBaseUrlNotAllowedError
 )
-from grist.utils import key_access_level
+from grist.utils import (
+    GristKeyAccessError,
+    GristUnavailableError,
+    key_access_level,
+    require_owner_access,
+)
 from security.ip_blocklist import (
     is_whitelisted,
     parse_whitelist,
@@ -70,7 +75,6 @@ from sync.sync_manager import (
     missing_sync_fields,
 )
 from utils.formatter import to_local_iso
-from utils.api_validator import test_grist_api
 from utils.constants import (
     CHANGELOG_PATH,
     GITHUB_CHANGELOG_BASE_URL,
@@ -696,8 +700,21 @@ def api_test_connection():
                     {"success": False, "message": "Clé API Grist non fourni"}
                 ), 400
 
-        success, message = test_grist_api(base_url, api_key, doc_id)
         title = None
+        try:
+            doc_info = require_owner_access(base_url, api_key, doc_id)
+        except GristBaseUrlNotAllowedError as error:
+            # Instance hors liste blanche : aucune requête n'a été émise
+            success, message = False, str(error)
+        except GristKeyAccessError as error:
+            if isinstance(error, GristUnavailableError):
+                logger.error(
+                    f"Test de l'API Grist impossible : {error.__cause__ or error}"
+                )
+            success, message = False, str(error)
+        else:
+            success = True
+            message = f"Connexion à Grist réussie! Document: {doc_info.get('name', doc_id)}"
     else:
         return jsonify(
             {"success": False, "message": "Type de connexion inconnu"}
