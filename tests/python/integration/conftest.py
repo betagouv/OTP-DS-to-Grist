@@ -8,6 +8,7 @@ from flask.testing import FlaskClient
 
 from app import _grist_key_access_cache, app
 from configuration.config_manager import ConfigManager
+from grist.service_account import ResolvedGristKey
 
 WIDGET_HEADER = "X-Grist-Widget-Token"
 
@@ -76,6 +77,12 @@ def client(monkeypatch):
     grist_client = MagicMock()
     grist_client.return_value.get_document_info.return_value = {"access": "owners"}
     monkeypatch.setattr("grist.utils.GristClient", grist_client)
+
+    def fake_resolve_grist_api_key(base_url, api_key, doc_id):
+        """Par défaut, la clé fournie est utilisée telle quelle."""
+        return ResolvedGristKey(api_key, "user@example.com", False)
+
+    monkeypatch.setattr("app.resolve_grist_api_key", fake_resolve_grist_api_key)
 
     with test_client:
         yield test_client

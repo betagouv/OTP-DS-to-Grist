@@ -11,6 +11,8 @@ from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from grist.client import GristClient
+from grist.service_account import ResolvedGristKey, ServiceAccountsNotEnabledError
+from grist.utils import GristKeyInsufficientAccessError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 from sync.sync_manager import SyncSeriesAlreadyRunningError
@@ -700,6 +702,83 @@ class TestEndpoints:
         data = json.loads(response.data)
         assert data["success"] is False
         assert "manquants" in data["message"]
+
+
+class TestApiConfigResolveGristKey:
+    """POST /api/config : une clé d'utilisateur est remplacée par la clé d'un
+    compte de service ; les erreurs de résolution remontent en 400 explicites."""
+
+    def _payload(self, **overrides):
+        payload = {
+            "ds_api_token": "token123",
+            "demarche_number": "12345",
+            "grist_base_url": "https://grist.test.com/api",
+            "grist_api_key": "user-key",
+        }
+        payload.update(overrides)
+        return payload
+
+    @patch.object(ConfigManager, "save_config")
+    def test_user_key_replaced_by_service_account_key(self, mock_save, client):
+        """La clé stockée est celle du compte de service créé."""
+        mock_save.return_value = 42
+        with patch(
+            "app.resolve_grist_api_key",
+            return_value=ResolvedGristKey("sa-key", "user@example.com", True),
+        ) as mock_resolve:
+            response = client.post("/api/config", json=self._payload())
+
+        assert response.status_code == 200
+        mock_resolve.assert_called_once_with(
+            "https://grist.test.com/api", "user-key", "docA"
+        )
+        assert mock_save.call_args[0][0]["grist_api_key"] == "sa-key"
+
+    @patch.object(ConfigManager, "save_config")
+    def test_service_accounts_not_enabled_returns_400(self, mock_save, client):
+        """Comptes de service non activés -> 400 explicite, rien n'est sauvegardé."""
+        with patch(
+            "app.resolve_grist_api_key",
+            side_effect=ServiceAccountsNotEnabledError(
+                "Les comptes de service ne sont pas activés sur cette instance "
+                "Grist : activez GRIST_ENABLE_SERVICE_ACCOUNTS côté serveur."
+            ),
+        ):
+            response = client.post("/api/config", json=self._payload())
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "GRIST_ENABLE_SERVICE_ACCOUNTS" in data["message"]
+        mock_save.assert_not_called()
+
+    @patch.object(ConfigManager, "save_config")
+    def test_insufficient_access_returns_400(self, mock_save, client):
+        """Clé utilisateur non propriétaire du document -> 400 explicite."""
+        with patch(
+            "app.resolve_grist_api_key",
+            side_effect=GristKeyInsufficientAccessError("editors"),
+        ):
+            response = client.post("/api/config", json=self._payload())
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "propriétaire" in data["message"]
+        mock_save.assert_not_called()
+
+    @patch.object(ConfigManager, "save_config")
+    def test_update_without_key_does_not_resolve(self, mock_save, client):
+        """Update sans clé fournie -> pas de résolution, la clé en base est gardée."""
+        mock_save.return_value = 7
+        with patch("app.resolve_grist_api_key") as mock_resolve:
+            response = client.post(
+                "/api/config", json=self._payload(otp_config_id=7, grist_api_key="")
+            )
+
+        assert response.status_code == 200
+        mock_resolve.assert_not_called()
+        assert mock_save.call_args[0][0]["grist_api_key"] == ""
 
 
 class TestErrorHandling:
