@@ -32,6 +32,13 @@ SERVICE_ACCOUNTS_DISABLED_MESSAGE = (
     "GRIST_ENABLE_SERVICE_ACCOUNTS côté serveur."
 )
 
+# Message affiché quand la clé est celle d'un compte de service expiré
+# (Grist répond 401 « Service Account has expired »).
+SERVICE_ACCOUNT_EXPIRED_MESSAGE = (
+    "Le compte de service Grist a expiré (péremption atteinte) : "
+    "créez-en un nouveau ou renouvelez son expiration."
+)
+
 
 class ServiceAccountsNotEnabledError(Exception):
     """L'instance Grist cible n'a pas activé les comptes de service."""
@@ -60,6 +67,13 @@ def service_account_expires_at(today: dt.date | None = None) -> str:
     expiry = dt.date(today.year + 1, today.month, 1)
 
     return f"{expiry.isoformat()}T00:00:00.000Z"
+
+
+def is_service_account_key(base_url: str, api_key: str) -> bool:
+    """Si la clé API appartient à un compte de service (email du profil)."""
+    return is_service_account_email(
+        GristClient(base_url, api_key).get_grist_user_email()
+    )
 
 
 def service_accounts_usable(base_url: str, api_key: str) -> bool:

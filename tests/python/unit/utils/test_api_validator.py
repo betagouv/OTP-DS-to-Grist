@@ -164,13 +164,36 @@ class TestTestGristApi:
             response=MagicMock(status_code=404, text='{"error":"Not Found"}')
         )
 
-        with patch("grist.utils.GristClient", return_value=mock_client):
+        with (
+            patch("grist.utils.GristClient", return_value=mock_client),
+            patch("utils.api_validator.is_service_account_key", return_value=False),
+        ):
             success, message = grist_api_tester(
                 "https://grist.example.com", "api-key", "doc123"
             )
 
         assert success is False
         assert message == "Clé API sans accès au document Grist"
+
+    def test_expired_service_account_key_fails_explicitly(self):
+        """Clé de compte de service expirée (401) -> message de péremption explicite"""
+        mock_client = MagicMock()
+        mock_client.get_document_info.side_effect = requests.exceptions.HTTPError(
+            response=MagicMock(
+                status_code=401, text='{"error":"Service Account has expired"}'
+            )
+        )
+
+        with (
+            patch("grist.utils.GristClient", return_value=mock_client),
+            patch("utils.api_validator.is_service_account_key", return_value=True),
+        ):
+            success, message = grist_api_tester(
+                "https://grist.example.com", "sa-key", "doc123"
+            )
+
+        assert success is False
+        assert "expiré" in message
 
     def test_server_error(self):
         """Erreur serveur de Grist → indisponible, sans le texte de Grist"""

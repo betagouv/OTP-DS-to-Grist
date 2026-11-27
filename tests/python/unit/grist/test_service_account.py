@@ -8,6 +8,7 @@ from grist.service_account import (
     ResolvedGristKey,
     ServiceAccountsNotEnabledError,
     is_service_account_email,
+    is_service_account_key,
     resolve_grist_api_key,
     service_account_expires_at,
     service_accounts_usable,
@@ -64,6 +65,22 @@ def _http_error(status: int) -> requests.HTTPError:
     response = requests.Response()
     response.status_code = status
     return requests.HTTPError(response=response)
+
+
+class TestIsServiceAccountKey:
+    """Tests unitaires pour is_service_account_key"""
+
+    def test_service_account_email(self):
+        client = MagicMock()
+        client.get_grist_user_email.return_value = "sa-1@serviceaccounts.invalid"
+        with patch("grist.service_account.GristClient", return_value=client):
+            assert is_service_account_key("https://grist.test", "sa-key") is True
+
+    def test_user_email(self):
+        client = MagicMock()
+        client.get_grist_user_email.return_value = "user@example.com"
+        with patch("grist.service_account.GristClient", return_value=client):
+            assert is_service_account_key("https://grist.test", "user-key") is False
 
 
 class TestServiceAccountsUsable:

@@ -11,10 +11,13 @@ from .constants import DEMARCHES_API_URL
 from grist.base_url import GristBaseUrlNotAllowedError
 from grist.service_account import (
     SERVICE_ACCOUNTS_DISABLED_MESSAGE,
+    SERVICE_ACCOUNT_EXPIRED_MESSAGE,
+    is_service_account_key,
     service_accounts_usable,
 )
 from grist.utils import (
     GristKeyAccessError,
+    GristKeyNoAccessError,
     GristUnavailableError,
     require_owner_access,
 )
@@ -140,6 +143,13 @@ def test_grist_api(base_url: str, api_key: str, doc_id: str) -> tuple[bool, str]
             f"Test de l'API Grist impossible : {error.__cause__ or error}"
         )
         return False, str(error)
+    except GristKeyNoAccessError:
+        # Un compte de service expiré répond 401 : le distinguer d'un simple
+        # refus d'accès pour signaler la péremption.
+        if is_service_account_key(base_url, api_key):
+            return False, SERVICE_ACCOUNT_EXPIRED_MESSAGE
+
+        return False, "Clé API sans accès au document Grist"
     except GristKeyAccessError as error:
         return False, str(error)
 

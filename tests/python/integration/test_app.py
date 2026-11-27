@@ -496,6 +496,34 @@ class TestEndpoints:
         assert data["success"] is False
         assert "GRIST_ENABLE_SERVICE_ACCOUNTS" in data["message"]
 
+    def test_api_test_connection_grist_expired_service_account(
+        self, client, monkeypatch
+    ):
+        """Clé de compte de service expirée (401) -> message de péremption explicite"""
+        grist_client = MagicMock()
+        grist_client.return_value.get_document_info.side_effect = (
+            requests.exceptions.HTTPError(response=MagicMock(status_code=401))
+        )
+        monkeypatch.setattr("grist.utils.GristClient", grist_client)
+        monkeypatch.setattr(
+            "utils.api_validator.is_service_account_key", lambda base_url, key: True
+        )
+
+        response = client.post(
+            "/api/test-connection",
+            json={
+                "type": "grist",
+                "base_url": "https://grist.example.com/api",
+                "api_key": "sa-key",
+                "doc_id": "docA",
+            },
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "expiré" in data["message"]
+
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_test_connection_no_params_missing_ds_token(self, mock_load, client):
         """Test sans paramètres - token DS manquant dans le body"""
