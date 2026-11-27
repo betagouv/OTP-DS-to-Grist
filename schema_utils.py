@@ -17,8 +17,10 @@ import requests
 
 from dn.client import get_demarche_descriptors, get_pj_ocr_columns
 from dn.extract import pj_ocr_sub_label
+from grist.client import SYNC_METADATA_TABLE_ID, GristClient
 from grist.utils import normalize_column_name
 from utils.constants import DEMARCHES_API_URL
+from utils.log import log, log_error, log_verbose
 
 API_TOKEN = os.getenv("DEMARCHES_API_TOKEN")
 API_URL = DEMARCHES_API_URL
@@ -43,6 +45,31 @@ PJ_OCR_RIB_FALLBACK = [
     ("BIC", "TextColumn"),
     ("Nom de la Banque", "TextColumn"),
 ]
+
+# Colonnes de la table Sync_metadata, partagée par toutes les démarches
+SYNC_METADATA_COLUMNS = [
+    {"id": "demarche_number", "type": "Int"},
+    {"id": "last_sync_at", "type": "Text"},
+    {"id": "updated_since_cursor", "type": "Text"},
+    {"id": "deleted_since_cursor", "type": "Text"},
+    {"id": "deleted_after_cursor", "type": "Text"},
+    {"id": "last_sync_status", "type": "Text"},
+    {"id": "last_sync_duration", "type": "Numeric"},
+    {
+        "id": "force_full_sync",
+        "type": "Bool",
+        "fields": {"type": "Bool", "isFormula": False, "formula": ""},
+    },
+    {"id": "filters_hash", "type": "Text"},
+]
+
+# Colonnes posées à la création des tables champs et annotations : les
+# colonnes du schéma, sans type obligatoire, sont ajoutées ensuite.
+CHAMPS_CREATION_COLUMNS = [
+    {"id": "dossier_number", "type": "Int"},
+    {"id": "champ_id", "type": "Text"},
+]
+ANNOTATIONS_CREATION_COLUMNS = [{"id": "dossier_number", "type": "Int"}]
 
 # ========================================
 # DÉTECTION DU TYPE DE DEMANDEUR
@@ -274,19 +301,12 @@ def create_avis_columns():
 # ========================================
 
 
-def get_demarche_schema(demarche_number):
+def get_demarche_schema(demarche_number: int | str) -> dict[str, Any]:
     """
-    Récupère le schéma complet d'une démarche,
-    avec tous ses descripteurs de champs,
-    sans dépendre des dossiers existants.
-
-    FONCTION EXISTANTE - GARDÉE POUR COMPATIBILITÉ
-
-    Args:
-        demarche_number: Numéro de la démarche
-
-    Returns:
-        dict: Structure complète des descripteurs de champs et d'annotations
+    Schéma d'une démarche, sans dépendre des dossiers existants : ses
+    descripteurs de champs et d'annotations, sans les champs qui ne portent
+    pas de données (titres de section, explications). Les ids de ces champs
+    retirés sont fournis dans `metadata["problematic_ids"]`.
     """
     demarche = get_demarche_descriptors(demarche_number)
 
@@ -295,7 +315,20 @@ def get_demarche_schema(demarche_number):
     if _has_piece_justificative(demarche["activeRevision"]):
         demarche["pj_ocr_columns"] = get_pj_ocr_columns(demarche_number)
 
-    return demarche
+    # Ids relevés avant le nettoyage, qui retire ces champs du schéma
+    problematic_ids = get_problematic_descriptor_ids_from_schema(demarche)
+    schema = auto_clean_schema_descriptors(demarche)
+    schema["metadata"] = {"problematic_ids": problematic_ids}
+
+    active_revision = schema["activeRevision"]
+    log(
+        f"Schéma récupéré (révision {active_revision.get('id')}) : "
+        f"{len(active_revision.get('champDescriptors', []))} champs, "
+        f"{len(active_revision.get('annotationDescriptors', []))} annotations, "
+        f"{len(problematic_ids)} champs sans données retirés"
+    )
+
+    return schema
 
 
 def get_problematic_descriptor_ids_from_schema(demarche_schema):
@@ -868,352 +901,114 @@ def create_columns_from_schema(demarche_schema, demarche_number=None):
     return result, problematic_ids
 
 
-def update_grist_tables_from_schema(
-    client, demarche_number, column_types, problematic_ids=None
-):
+def ensure_sync_table_structure(
+    client: GristClient, demarche_number: int | str, column_types: dict[str, Any]
+) -> dict[str, Any]:
     """
-    Met à jour les tables Grist existantes en fonction du schéma actuel de la démarche,
-    en ajoutant les nouvelles colonnes sans supprimer les données existantes.
+    Tables dans lesquelles écrit la synchronisation d'une démarche : chacune
+    est créée si elle manque, sinon complétée des colonnes ajoutées au
+    schéma, sans toucher aux données. Renvoie l'id de chaque table.
 
-     NOUVEAU : Crée une table séparée pour chaque bloc répétable
-
-    Args:
-        client: Instance GristClient
-        demarche_number: Numéro de la démarche
-        column_types: Définitions des colonnes depuis create_columns_from_schema
-        problematic_ids: IDs des descripteurs problématiques (optionnel)
-
-    Returns:
-        dict: IDs des tables créées/mises à jour
+    La table des annotations n'est créée que si la démarche en a, la table
+    des avis seulement au premier avis (`create_avis_table`).
     """
-    from utils.log import log, log_error
+    log(
+        f"Mise à jour des tables Grist pour la démarche {demarche_number} d'après le schéma..."
+    )
+    existing_ids = _get_existing_table_ids(client)
+    prefix = f"Demarche_{demarche_number}"
 
-    try:
-        log(
-            f"Mise à jour des tables Grist pour la démarche {demarche_number} d'après le schéma..."
+    result: dict[str, Any] = {
+        "dossiers": _ensure_table_structure(
+            client,
+            existing_ids,
+            f"{prefix}_dossiers",
+            column_types["dossier"],
+            demarche_number=demarche_number,
+        ),
+        "champs": _ensure_table_structure(
+            client,
+            existing_ids,
+            f"{prefix}_champs",
+            column_types["champs"],
+            demarche_number=demarche_number,
+            creation_columns=CHAMPS_CREATION_COLUMNS,
+        ),
+    }
+
+    annotations_table_id = f"{prefix}_annotations"
+    # dossier_number est toujours présente : au-delà, la démarche a des annotations
+    if (
+        annotations_table_id.lower() in existing_ids
+        or len(column_types["annotations"]) > 1
+    ):
+        result["annotations"] = _ensure_table_structure(
+            client,
+            existing_ids,
+            annotations_table_id,
+            column_types["annotations"],
+            demarche_number=demarche_number,
+            creation_columns=ANNOTATIONS_CREATION_COLUMNS,
         )
+    else:
+        log(f"Aucune annotation - table {annotations_table_id} non créée")
 
-        # Noms des tables
-        dossier_table_id = f"Demarche_{demarche_number}_dossiers"
-        champ_table_id = f"Demarche_{demarche_number}_champs"
-        annotation_table_id = f"Demarche_{demarche_number}_annotations"
-        has_repetable_blocks = column_types.get("has_repetable_blocks", False)
-
-        # Récupérer toutes les tables existantes
-        tables = client.list_tables()
-
-        #  CORRECTION : Extraire la liste des tables
-        if isinstance(tables, dict) and "tables" in tables:
-            tables = tables["tables"]
-
-        # Trouver les tables existantes
-        dossier_table = None
-        champ_table = None
-        annotation_table = None
-
-        for table in tables:
-            table_id = table.get("id", "").lower()
-            if table_id == dossier_table_id.lower():
-                dossier_table = table
-                dossier_table_id = table.get("id")
-                log(f"Table dossiers existante trouvée avec l'ID {dossier_table_id}")
-            elif table_id == champ_table_id.lower():
-                champ_table = table
-                champ_table_id = table.get("id")
-                log(f"Table champs existante trouvée avec l'ID {champ_table_id}")
-            elif table_id == annotation_table_id.lower():
-                annotation_table = table
-                annotation_table_id = table.get("id")
-                log(
-                    f"Table annotations existante trouvée avec l'ID {annotation_table_id}"
-                )
-
-        # Fonction pour ajouter les colonnes manquantes à une table
-        def add_missing_columns(table_id, all_columns):
-            if not table_id:
-                return
-
-            # Récupérer les colonnes existantes
-            existing_columns = client.get_columns(table_id)
-
-            if not existing_columns:
-                log_error(
-                    f"Erreur lors de la récupération des colonnes pour la table {table_id}"
-                )
-                return
-
-            # Trouver les colonnes manquantes
-            missing_columns = []
-            for col in all_columns:
-                if col["id"] not in existing_columns:
-                    missing_columns.append(col)
-
-            # Ajouter les colonnes manquantes
-            if missing_columns:
-                log(
-                    f"Ajout de {len(missing_columns)} colonnes manquantes à la table {table_id}"
-                )
-                add_response = client.add_columns(table_id, missing_columns)
-
-                if add_response.status_code == 200:
-                    log("Colonnes ajoutées avec succès")
-                else:
-                    log_error(
-                        f"Erreur lors de l'ajout des colonnes: {add_response.status_code}"
-                    )
-
-        # Créer ou mettre à jour la table des dossiers
-        if not dossier_table:
-            dossier_table_result = client.create_table(
-                dossier_table_id, column_types["dossier"]
+    if column_types.get("has_repetable_blocks", False):
+        result["repetable_blocks"] = {
+            block_key: _ensure_table_structure(
+                client,
+                existing_ids,
+                f"{prefix}_repetable_{block_key}",
+                block_info["columns"],
+                demarche_number=demarche_number,
             )
-            dossier_table = dossier_table_result["tables"][0]
-            dossier_table_id = dossier_table.get("id")
-        else:
-            add_missing_columns(dossier_table_id, column_types["dossier"])
-
-        # Créer ou mettre à jour la table des champs
-        if not champ_table:
-            base_columns = [
-                {"id": "dossier_number", "type": "Int"},
-                {"id": "champ_id", "type": "Text"},
-            ]
-            champ_table_result = client.create_table(champ_table_id, base_columns)
-            champ_table = champ_table_result["tables"][0]
-            champ_table_id = champ_table.get("id")
-
-            # Ajouter toutes les colonnes spécifiques
-            add_missing_columns(champ_table_id, column_types["champs"])
-        else:
-            add_missing_columns(champ_table_id, column_types["champs"])
-
-        # Créer ou mettre à jour la table des annotations
-        if not annotation_table:
-            # ✅ NOUVELLE CONDITION : Ne créer que s'il y a des annotations
-            if (
-                len(column_types["annotations"]) > 1
-            ):  # > 1 car il y a toujours dossier_number
-                base_columns = [{"id": "dossier_number", "type": "Int"}]
-                annotation_table_result = client.create_table(
-                    annotation_table_id, base_columns
-                )
-                annotation_table = annotation_table_result["tables"][0]
-                annotation_table_id = annotation_table.get("id")
-
-                # Ajouter toutes les colonnes spécifiques
-                add_missing_columns(annotation_table_id, column_types["annotations"])
-            else:
-                log(f"Aucune annotation - table {annotation_table_id} non créée")
-                annotation_table_id = None
-        else:
-            add_missing_columns(annotation_table_id, column_types["annotations"])
-
-        #  NOUVEAU : Créer ou mettre à jour les tables des blocs répétables (une par bloc)
-        repetable_table_ids = {}
-        if has_repetable_blocks and "repetable_blocks" in column_types:
-            for block_key, block_info in column_types["repetable_blocks"].items():
-                table_id = f"Demarche_{demarche_number}_repetable_{block_key}"
-
-                # Chercher si la table existe déjà
-                existing_table = None
-                for table in tables:
-                    if table.get("id", "").lower() == table_id.lower():
-                        existing_table = table
-                        table_id = table.get("id")
-                        log(
-                            f"Table répétable '{block_info['original_label']}' existante trouvée: {table_id}"
-                        )
-                        break
-
-                if not existing_table:
-                    log(
-                        f"Création de la table {table_id} pour le bloc '{block_info['original_label']}'"
-                    )
-                    table_result = client.create_table(table_id, block_info["columns"])
-                    table_id = table_result["tables"][0].get("id")
-                else:
-                    # Ajouter les colonnes manquantes
-                    add_missing_columns(table_id, block_info["columns"])
-
-                repetable_table_ids[block_key] = table_id
-
-        #  NOUVEAU : Créer ou mettre à jour la table demandeurs
-        log("Création/mise à jour de la table demandeurs...")
-        demandeurs_table_id = f"Demarche_{demarche_number}_demandeurs"
-
-        # Détecter le type et créer les colonnes
-        demandeurs_columns, demandeur_type = create_demandeurs_columns(demarche_number)
-        log(f"Type de demandeur: {demandeur_type} - {len(demandeurs_columns)} colonnes")
-
-        # Chercher si la table existe
-        demandeurs_table = None
-        for table in tables:
-            if table.get("id", "").lower() == demandeurs_table_id.lower():
-                demandeurs_table = table
-                demandeurs_table_id = table.get("id")
-                log(f"Table demandeurs existante trouvée: {demandeurs_table_id}")
-                break
-
-        # Créer ou mettre à jour
-        if not demandeurs_table:
-            demandeurs_table_result = client.create_table(
-                demandeurs_table_id, demandeurs_columns
-            )
-            demandeurs_table = demandeurs_table_result["tables"][0]
-            demandeurs_table_id = demandeurs_table.get("id")
-        else:
-            log("Mise à jour des colonnes de la table demandeurs")
-            add_missing_columns(demandeurs_table_id, demandeurs_columns)
-
-        # Créer/mettre à jour la table instructeurs
-        log("Création/mise à jour de la table instructeurs...")
-        instructeurs_table_id = f"Demarche_{demarche_number}_instructeurs"
-        instructeurs_table = next(
-            (t for t in tables if t.get("id") == instructeurs_table_id), None
-        )
-
-        if not instructeurs_table:
-            instructeurs_columns = create_instructeurs_columns()
-            instructeurs_table_result = client.create_table(
-                instructeurs_table_id, instructeurs_columns
-            )
-            instructeurs_table = instructeurs_table_result["tables"][0]
-            instructeurs_table_id = instructeurs_table.get("id")
-        else:
-            log("Mise à jour des colonnes de la table instructeurs")
-            instructeurs_columns = create_instructeurs_columns()
-            add_missing_columns(instructeurs_table_id, instructeurs_columns)
-
-        # Créer/mettre à jour la table avis (seulement si elle existe déjà)
-        avis_table_id = f"Demarche_{demarche_number}_avis"
-        avis_table = next((t for t in tables if t.get("id") == avis_table_id), None)
-
-        if avis_table:
-            log(f"Table avis existante trouvée: {avis_table_id}")
-            add_missing_columns(avis_table_id, create_avis_columns())
-        else:
-            log("Table avis non créée (sera créée au premier avis détecté)")
-            avis_table_id = None
-
-        # Retourner les IDs des tables
-        result = {
-            "dossiers": dossier_table_id,
-            "champs": champ_table_id,
-            "demandeurs": demandeurs_table_id,
-            "demandeur_type": demandeur_type,
-            "instructeurs": instructeurs_table_id,
-            "avis": avis_table_id,  # None si pas encore créée
+            for block_key, block_info in column_types.get(
+                "repetable_blocks", {}
+            ).items()
         }
 
-        # ✅ Ajouter annotations seulement si la table existe
-        if annotation_table_id:
-            result["annotations"] = annotation_table_id
+    demandeurs_columns, demandeur_type = create_demandeurs_columns(demarche_number)
+    log(f"Type de demandeur: {demandeur_type} - {len(demandeurs_columns)} colonnes")
+    result["demandeurs"] = _ensure_table_structure(
+        client,
+        existing_ids,
+        f"{prefix}_demandeurs",
+        demandeurs_columns,
+        demarche_number=demarche_number,
+    )
+    result["demandeur_type"] = demandeur_type
 
-        # Ajouter les blocs répétables si présents
-        if has_repetable_blocks:
-            result["repetable_blocks"] = repetable_table_ids
+    result["instructeurs"] = _ensure_table_structure(
+        client,
+        existing_ids,
+        f"{prefix}_instructeurs",
+        create_instructeurs_columns(),
+        demarche_number=demarche_number,
+    )
 
-        # Créer ou mettre à jour la table Sync_metadata
-        sync_metadata_table_id = "Sync_metadata"
-        sync_metadata_columns = [
-            {"id": "demarche_number", "type": "Int"},
-            {"id": "last_sync_at", "type": "Text"},
-            {"id": "updated_since_cursor", "type": "Text"},
-            {"id": "deleted_since_cursor", "type": "Text"},
-            {"id": "deleted_after_cursor", "type": "Text"},
-            {"id": "last_sync_status", "type": "Text"},
-            {"id": "last_sync_duration", "type": "Numeric"},
-            {
-                "id": "force_full_sync",
-                "type": "Bool",
-                "fields": {"type": "Bool", "isFormula": False, "formula": ""},
-            },
-            {"id": "filters_hash", "type": "Text"},
-        ]
+    avis_table_id = existing_ids.get(_get_avis_table_id(demarche_number).lower())
+    if avis_table_id:
+        _add_missing_columns(client, avis_table_id, create_avis_columns())
+    else:
+        log("Table avis non créée (sera créée au premier avis détecté)")
+    result["avis"] = avis_table_id
 
-        # Recharger la liste des tables pour les inclure celles créées pendant cette exécution
-        fresh_tables = client.list_tables()
-        if isinstance(fresh_tables, dict) and "tables" in fresh_tables:
-            fresh_tables = fresh_tables["tables"]
-        sync_table = next(
-            (t for t in fresh_tables if t.get("id") == sync_metadata_table_id), None
-        )
-        if not sync_table:
-            client.create_table(sync_metadata_table_id, sync_metadata_columns)
-        else:
-            add_missing_columns(sync_metadata_table_id, sync_metadata_columns)
+    result["sync_metadata"] = _ensure_table_structure(
+        client, existing_ids, SYNC_METADATA_TABLE_ID, SYNC_METADATA_COLUMNS
+    )
 
-        result["sync_metadata"] = sync_metadata_table_id
+    log("Mise à jour des tables terminée avec succès")
 
-        log("Mise à jour des tables terminée avec succès")
-        return result
-
-    except Exception as e:
-        log_error(f"Erreur lors de la mise à jour des tables: {str(e)}")
-        raise
+    return result
 
 
-# ========================================
-# FONCTIONS OPTIMISÉES (Version robuste)
-# ========================================
+def create_avis_table(client: GristClient, demarche_number: int | str) -> str:
+    """Crée la table des avis de la démarche, au premier avis rencontré."""
+    result = client.create_demarche_table(
+        demarche_number, _get_avis_table_id(demarche_number), create_avis_columns()
+    )
 
-
-def get_demarche_schema_robust(demarche_number: int) -> Dict[str, Any]:
-    """
-    Version robuste et optimisée de get_demarche_schema.
-
-    Améliorations:
-    - Gestion d'erreur plus robuste
-    - Filtrage automatique des champs problématiques
-    - Métadonnées pour le suivi des changements
-    - Performance optimisée
-
-    Args:
-        demarche_number: Numéro de la démarche
-
-    Returns:
-        dict: Schéma robuste avec métadonnées
-    """
-    try:
-        # Utiliser la fonction de base
-        demarche = get_demarche_schema(demarche_number)
-
-        active_revision = demarche.get("activeRevision")
-        if not active_revision:
-            raise Exception(
-                f"Aucune révision active pour la démarche {demarche_number}"
-            )
-
-        #  EXTRAIRE LES IDs PROBLÉMATIQUES AVANT LE NETTOYAGE
-        problematic_ids = get_problematic_descriptor_ids_from_schema(demarche)
-
-        # Nettoyage automatique des champs problématiques
-        cleaned_schema = auto_clean_schema_descriptors(demarche)
-
-        # Ajout de métadonnées
-        from datetime import datetime
-
-        cleaned_schema["metadata"] = {
-            "revision_id": active_revision.get("id"),
-            "date_publication": active_revision.get("datePublication"),
-            "retrieved_at": datetime.now().isoformat(),
-            "optimized": True,
-            "problematic_ids": problematic_ids,  # STOCKER LES IDs DANS LE SCHÉMA
-        }
-
-        print("Schéma récupéré:")
-        print(
-            f"Champs utiles: {len(cleaned_schema['activeRevision']['champDescriptors'])}"
-        )
-        print(
-            f"Annotations: {len(cleaned_schema['activeRevision']['annotationDescriptors'])}"
-        )
-        print(f"Champs problématiques détectés: {len(problematic_ids)}")  #  LOG
-
-        return cleaned_schema
-
-    except Exception as e:
-        raise Exception(f"Erreur lors de la récupération du schéma: {e}")
+    return result["tables"][0]["id"]
 
 
 def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
@@ -1250,7 +1045,7 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
             filtered.append(descriptor)
 
         if problematic_count > 0:
-            print(f"{problematic_count} champs problématiques filtrés ({context})")
+            log_verbose(f"{problematic_count} champs sans données filtrés ({context})")
 
         return filtered
 
@@ -1271,20 +1066,6 @@ def auto_clean_schema_descriptors(demarche: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     return cleaned_demarche
-
-
-def get_demarche_schema_enhanced(demarche_number: int, prefer_robust: bool = True):
-    """
-    Point d'entrée principal pour obtenir le schéma avec choix de version.
-    """
-    if prefer_robust:
-        try:
-            return get_demarche_schema_robust(demarche_number)
-        except Exception as e:
-            print(f"Fallback vers version classique suite à: {e}")
-            return get_demarche_schema(demarche_number)
-    else:
-        return get_demarche_schema(demarche_number)
 
 
 # --- Helpers privés (module) ---
@@ -1336,3 +1117,76 @@ def _pj_ocr_columns(
         for sub_label, dn_type in sub_labels
         if dn_type in PJ_OCR_GRIST_TYPES
     ]
+
+
+def _get_existing_table_ids(client: GristClient) -> dict[str, str]:
+    """Ids des tables du document, indexés en minuscules : Grist ne distingue
+    pas deux tables par la casse."""
+    return {
+        table["id"].lower(): table["id"]
+        for table in client.list_tables().get("tables", [])
+    }
+
+
+def _get_avis_table_id(demarche_number: int | str) -> str:
+    return f"Demarche_{demarche_number}_avis"
+
+
+def _ensure_table_structure(
+    client: GristClient,
+    existing_ids: dict[str, str],
+    table_id: str,
+    columns: list[dict[str, Any]],
+    demarche_number: int | str | None = None,
+    creation_columns: list[dict[str, Any]] | None = None,
+) -> str:
+    """
+    Table créée si elle manque, sinon complétée des colonnes manquantes ;
+    renvoie son id réel.
+
+    `creation_columns` remplace `columns` à la création, qui sont ajoutées
+    ensuite. Avec `demarche_number`, la table est rangée sous la page de la
+    démarche.
+    """
+    existing_id = existing_ids.get(table_id.lower())
+    if existing_id:
+        log(f"Table existante trouvée: {existing_id}")
+        _add_missing_columns(client, existing_id, columns)
+        return existing_id
+
+    initial_columns = creation_columns if creation_columns is not None else columns
+    if demarche_number is None:
+        created = client.create_table(table_id, initial_columns)
+    else:
+        created = client.create_demarche_table(
+            demarche_number, table_id, initial_columns
+        )
+    created_id = created["tables"][0]["id"]
+
+    if creation_columns is not None:
+        _add_missing_columns(client, created_id, columns)
+
+    return created_id
+
+
+def _add_missing_columns(
+    client: GristClient, table_id: str, columns: list[dict[str, Any]]
+) -> None:
+    """Ajoute à la table les colonnes de `columns` qu'elle n'a pas encore."""
+    existing_columns = client.get_columns(table_id)
+    if not existing_columns:
+        log_error(
+            f"Erreur lors de la récupération des colonnes pour la table {table_id}"
+        )
+        return
+
+    missing_columns = [col for col in columns if col["id"] not in existing_columns]
+    if not missing_columns:
+        return
+
+    log(f"Ajout de {len(missing_columns)} colonnes manquantes à la table {table_id}")
+    add_response = client.add_columns(table_id, missing_columns)
+    if add_response.status_code == 200:
+        log("Colonnes ajoutées avec succès")
+    else:
+        log_error(f"Erreur lors de l'ajout des colonnes: {add_response.status_code}")
