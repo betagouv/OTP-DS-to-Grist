@@ -103,6 +103,10 @@ def resolve_grist_api_key(base_url: str, api_key: str, doc_id: str) -> ResolvedG
     email = client.get_profile().get("email")
 
     if is_service_account_email(email):
+        # Clé de compte de service fournie telle quelle : elle doit quand même
+        # avoir accès propriétaire au document, sinon la config serait
+        # enregistrée avec une clé inutilisable.
+        require_owner_access(base_url, api_key, doc_id)
         return ResolvedGristKey(api_key, email, service_account_created=False)
 
     require_owner_access(base_url, api_key, doc_id)

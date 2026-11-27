@@ -20,6 +20,7 @@ from grist.service_account import (
     ServiceAccountsNotEnabledError,
     resolve_grist_api_key,
 )
+from grist.utils import GristKeyAccessError
 
 BASE_URL = "https://grist.test"
 DOC_ID = "doc123"
@@ -42,9 +43,15 @@ class FakeGristApi:
     posés via PATCH /docs/{doc}/access.
     """
 
-    def __init__(self, email="user@example.com", service_accounts_enabled=True):
+    def __init__(
+        self,
+        email="user@example.com",
+        service_accounts_enabled=True,
+        doc_access_level="owners",
+    ):
         self.email = email
         self.service_accounts_enabled = service_accounts_enabled
+        self.doc_access_level = doc_access_level
         self.service_accounts = {}
         self.doc_access = {}
         self._next_sa_id = 0
@@ -83,7 +90,7 @@ class FakeGristApi:
             )
 
         if method == "GET" and len(parts) == 2 and parts[0] == "docs":
-            return build_response({"id": parts[1], "access": "owners"})
+            return build_response({"id": parts[1], "access": self.doc_access_level})
 
         if (
             method == "PATCH"
@@ -198,6 +205,18 @@ class TestResolveGristApiKey:
         with grist_transport(server):
             with pytest.raises(ServiceAccountsNotEnabledError):
                 resolve_grist_api_key(BASE_URL, "user-key", DOC_ID)
+
+        assert server.service_accounts == {}
+        assert server.doc_access == {}
+
+    def test_service_account_key_without_owner_access_fails(self):
+        """Clé de compte de service sans droit propriétaire sur le doc -> erreur."""
+        server = FakeGristApi(
+            email="sa-9@serviceaccounts.invalid", doc_access_level="editors"
+        )
+        with grist_transport(server):
+            with pytest.raises(GristKeyAccessError):
+                resolve_grist_api_key(BASE_URL, "sa-key", DOC_ID)
 
         assert server.service_accounts == {}
         assert server.doc_access == {}

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from grist.utils import GristKeyInsufficientAccessError
 from grist.service_account import (
     ResolvedGristKey,
     ServiceAccountsNotEnabledError,
@@ -128,7 +129,21 @@ class TestResolveGristApiKey:
         assert result == ResolvedGristKey(
             "sa-key", "sa-1@serviceaccounts.invalid", False
         )
-        mock_owner.assert_not_called()
+        # Mais l'accès propriétaire au document est quand même vérifié
+        mock_owner.assert_called_once_with("https://grist.test", "sa-key", "doc123")
+        client.create_service_account.assert_not_called()
+
+    def test_service_account_key_without_owner_access_raises(self):
+        """Clé de compte de service sans accès propriétaire -> erreur, pas de création."""
+        client = self._client("sa-1@serviceaccounts.invalid")
+        with (
+            patch("grist.service_account.GristClient", return_value=client),
+            patch("grist.service_account.require_owner_access") as mock_owner,
+        ):
+            mock_owner.side_effect = GristKeyInsufficientAccessError("editors")
+            with pytest.raises(GristKeyInsufficientAccessError):
+                resolve_grist_api_key("https://grist.test", "sa-key", "doc123")
+
         client.create_service_account.assert_not_called()
 
     def test_user_key_creates_service_account_and_grants_owner(self):
