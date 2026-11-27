@@ -151,6 +151,11 @@ const handleSave = async (index) => {
       await loadConfig()
       pendingOpenId = null
       if (!actionErrors.value[index]) notify('Configuration sauvegardée', 'success')
+      if (result.service_account_created)
+        notify(
+          'Un compte de service Grist a été créé et rattaché au document',
+          'success'
+        )
     } else {
       actionErrors.value[index] = result.message || 'Erreur lors de la sauvegarde'
     }

@@ -461,6 +461,7 @@ def api_config():
                 grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
             )
             _mark_configs_used(config["otp_config_id"] for config in configs)
+            config_manager.migrate_stored_grist_keys(configs)
 
             # Masquer les tokens et ajouter les flags pour chaque config
             for config in configs:
@@ -515,6 +516,7 @@ def api_config():
             # Une clé d'utilisateur est remplacée par la clé d'un compte de
             # service créé pour l'occasion et rattaché au document en propriétaire.
             grist_user_email = None
+            service_account_created = False
             if grist_api_key:
                 base_url = (
                     grist_base_url
@@ -528,6 +530,7 @@ def api_config():
                 # Conserver l'email du propriétaire de la clé d'origine, pas
                 # celui du compte de service.
                 grist_user_email = resolved_key.owner_email
+                service_account_created = resolved_key.service_account_created
 
             saved_id = config_manager.save_config(
                 submitted_config, grist_user_email=grist_user_email
@@ -540,7 +543,12 @@ def api_config():
                 message = "Configuration sauvegardée avec succès"
 
             return jsonify(
-                {"success": True, "message": message, "otp_config_id": saved_id}
+                {
+                    "success": True,
+                    "message": message,
+                    "otp_config_id": saved_id,
+                    "service_account_created": service_account_created,
+                }
             )
 
         except GristBaseUrlImmutableError:

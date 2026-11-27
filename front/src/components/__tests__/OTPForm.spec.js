@@ -6,6 +6,7 @@ import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
 import OtpAlert from '../OtpAlert.vue'
 import { useSyncTask } from '../../composables/useSyncTask'
+import { useNotification } from '../../composables/useNotification'
 
 describe('hasUnsavedSection computation', () => {
   const mockContext = { params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi', docId: 'doc-123' }
@@ -1643,5 +1644,69 @@ describe('Demarche section title', () => {
     const wrapper = await mountWithConfigs([])
 
     expect(title(wrapper)).toBe('2. Démarche numérique (0)')
+  })
+})
+
+describe('Service account notification on save', () => {
+  const mountAndSave = async (saveResult) => {
+    globalThis.getGristContext = vi.fn().mockResolvedValue({
+      params: '?grist_base_url=https%3A%2F%2Fgrist.example.com%2Fapi',
+      docId: 'doc-123'
+    })
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(saveResult)
+    })
+    globalThis.fetch = mockFetch
+
+    const wrapper = mount(OTPForm, {
+      global: { stubs: { GristFormSection: true, DNFormSection: true } }
+    })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    wrapper.getComponent(GristFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(DNFormSection).vm.$emit('error-update', '')
+    wrapper.getComponent(GristFormSection).vm.getData = () => ({
+      baseUrl: 'https://grist.example.com',
+      token: 'grist-token'
+    })
+    wrapper.getComponent(DNFormSection).vm.getData = () => ({
+      token: 'dn-token',
+      demarche_number: '12345'
+    })
+    await wrapper.vm.$nextTick()
+    wrapper.getComponent(DNFormSection).vm.$emit('save', 0)
+    await wrapper.vm.$nextTick()
+    await new Promise(process.nextTick)
+
+    return wrapper
+  }
+
+  afterEach(() => {
+    delete globalThis.getGristContext
+    vi.restoreAllMocks()
+  })
+
+  it('notifies when a service account was created', async () => {
+    const { notifications } = useNotification()
+    notifications.value = []
+
+    await mountAndSave({ success: true, otp_config_id: 1, service_account_created: true })
+
+    expect(
+      notifications.value.some((n) => n.message.includes('compte de service'))
+    ).toBe(true)
+  })
+
+  it('does not notify about a service account otherwise', async () => {
+    const { notifications } = useNotification()
+    notifications.value = []
+
+    await mountAndSave({ success: true, otp_config_id: 1 })
+
+    expect(
+      notifications.value.some((n) => n.message.includes('compte de service'))
+    ).toBe(false)
   })
 })
