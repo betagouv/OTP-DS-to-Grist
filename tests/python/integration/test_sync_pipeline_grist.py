@@ -246,6 +246,27 @@ class FakeGristServer:
         for col_id in col_ids:
             self._insert(COLUMNS_TABLE, {"parentId": table_ref, "colId": col_id})
 
+    def remove_table(self, table_id):
+        """Supprime une table comme l'interface Grist : ses données, sa vue, sa
+        page, sa section et ses colonnes."""
+        tables = self.store[TABLES_TABLE]
+        table_ref, table = next(
+            (ref, t) for ref, t in tables.items() if t["tableId"] == table_id
+        )
+        view_id = table["primaryViewId"]
+        del tables[table_ref]
+        del self.store[VIEWS_TABLE][view_id]
+        for meta_table, matches in (
+            (PAGES_TABLE, lambda r: r["viewRef"] == view_id),
+            (SECTIONS_TABLE, lambda r: r["tableRef"] == table_ref),
+            (COLUMNS_TABLE, lambda r: r["parentId"] == table_ref),
+        ):
+            records = self.store.get(meta_table, {})
+            for ref in [ref for ref, r in records.items() if matches(r)]:
+                del records[ref]
+        self.tables.pop(table_id)
+        self.store.pop(table_id, None)
+
     def page_section(self, table_id):
         """Section affichée par la page de la table."""
         tables = self.store.get(TABLES_TABLE, {})
@@ -1768,6 +1789,33 @@ class TestPageTree:
             if name.startswith("Demarche_12345_repetable_")
         ]
         assert repetable_pages == [("Demarche_12345_repetable_membres", 1)]
+
+    def test_avis_table_recreated_after_deletion_filed_under_parent(self):
+        """table avis supprimée dans Grist puis recréée par une synchro : sa
+        page revient sous la page parente, pas en bas de la liste"""
+        server = FakeGristServer(with_demarche_tables=False)
+        run_pipeline(server, FakeDemarchesServer([make_dossier(1)]), parallel=False)
+        server.remove_table(AVIS_TABLE)
+
+        # Dossier modifié après la première synchro : repris par le delta
+        recent = "2099-01-01T00:00:00Z"
+        result, _ = run_pipeline(
+            server,
+            FakeDemarchesServer([make_dossier(1, dateDerniereModification=recent)]),
+            parallel=False,
+        )
+
+        assert result is True
+        assert server.page_tree() == [
+            ("N° 12345", 0, True),
+            (DOSSIERS_TABLE, 1, False),
+            (CHAMPS_TABLE, 1, False),
+            (ANNOTATIONS_TABLE, 1, False),
+            ("Demarche_12345_demandeurs", 1, False),
+            ("Demarche_12345_instructeurs", 1, False),
+            (AVIS_TABLE, 1, False),
+            (SYNC_METADATA_TABLE, 0, False),
+        ]
 
     def test_demarche_synced_before_tree_keeps_root_pages(self):
         """démarche déjà synchronisée sans page parente : aucune page parente,
