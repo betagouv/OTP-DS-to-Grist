@@ -10,6 +10,7 @@ from grist.service_account import (
     is_service_account_email,
     resolve_grist_api_key,
     service_account_expires_at,
+    service_accounts_usable,
 )
 
 
@@ -63,6 +64,31 @@ def _http_error(status: int) -> requests.HTTPError:
     response = requests.Response()
     response.status_code = status
     return requests.HTTPError(response=response)
+
+
+class TestServiceAccountsUsable:
+    """Tests unitaires pour service_accounts_usable"""
+
+    def test_service_account_key_always_usable(self):
+        """Clé de compte de service -> utilisable, sans sonder l'instance."""
+        client = MagicMock()
+        client.get_grist_user_email.return_value = "sa-1@serviceaccounts.invalid"
+        with patch("grist.service_account.GristClient", return_value=client):
+            assert service_accounts_usable("https://grist.test", "sa-key") is True
+
+        client.service_accounts_enabled.assert_not_called()
+
+    def test_user_key_needs_enabled_service_accounts(self):
+        """Clé utilisateur -> utilisable seulement si l'instance active les comptes de service."""
+        client = MagicMock()
+        client.get_grist_user_email.return_value = "user@example.com"
+        client.service_accounts_enabled.return_value = False
+        with patch("grist.service_account.GristClient", return_value=client):
+            assert service_accounts_usable("https://grist.test", "user-key") is False
+
+        client.service_accounts_enabled.return_value = True
+        with patch("grist.service_account.GristClient", return_value=client):
+            assert service_accounts_usable("https://grist.test", "user-key") is True
 
 
 class TestResolveGristApiKey:

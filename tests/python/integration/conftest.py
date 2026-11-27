@@ -83,6 +83,9 @@ def client(monkeypatch):
         return ResolvedGristKey(api_key, "user@example.com", False)
 
     monkeypatch.setattr("app.resolve_grist_api_key", fake_resolve_grist_api_key)
+    monkeypatch.setattr(
+        "utils.api_validator.service_accounts_usable", lambda base_url, api_key: True
+    )
 
     with test_client:
         yield test_client

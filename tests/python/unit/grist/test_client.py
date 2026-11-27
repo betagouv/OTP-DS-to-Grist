@@ -523,6 +523,42 @@ class TestCreateServiceAccount:
                 )
 
 
+class TestServiceAccountsEnabled:
+    """Tests unitaires pour GristClient.service_accounts_enabled"""
+
+    def setup_method(self):
+        self.client = GristClient("https://grist.example.com", "test_key")
+
+    def test_200_means_enabled(self):
+        """200 -> True"""
+        session = MagicMock()
+        session.get.return_value = MagicMock(status_code=200)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            assert self.client.service_accounts_enabled() is True
+        session.get.assert_called_once_with(
+            "https://grist.example.com/service-accounts", headers=self.client.headers
+        )
+
+    def test_404_means_disabled(self):
+        """404 -> False (route inexistante : comptes de service désactivés)"""
+        session = MagicMock()
+        session.get.return_value = MagicMock(status_code=404)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            assert self.client.service_accounts_enabled() is False
+
+    def test_other_error_raises(self):
+        """Autre erreur -> raise_for_status"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        mock_response.raise_for_status.side_effect = Exception("HTTP 500")
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(Exception):
+                self.client.service_accounts_enabled()
+
+
 class TestUpdateDocAccess:
     """Tests unitaires pour GristClient.update_doc_access"""
 

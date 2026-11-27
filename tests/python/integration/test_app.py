@@ -473,6 +473,29 @@ class TestEndpoints:
         assert "Erreur" in data["message"]
         assert data["title"] is None
 
+    def test_api_test_connection_grist_user_key_without_service_accounts(
+        self, client, monkeypatch
+    ):
+        """Clé utilisateur + instance sans comptes de service -> échec explicite au test"""
+        monkeypatch.setattr(
+            "utils.api_validator.service_accounts_usable", lambda base_url, api_key: False
+        )
+
+        response = client.post(
+            "/api/test-connection",
+            json={
+                "type": "grist",
+                "base_url": "https://grist.example.com/api",
+                "api_key": "user-key",
+                "doc_id": "docA",
+            },
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "GRIST_ENABLE_SERVICE_ACCOUNTS" in data["message"]
+
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_test_connection_no_params_missing_ds_token(self, mock_load, client):
         """Test sans paramètres - token DS manquant dans le body"""

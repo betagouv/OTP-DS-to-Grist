@@ -25,6 +25,13 @@ SERVICE_ACCOUNTS_TLD = "serviceaccounts.invalid"
 # l'utilisateur Grist propriétaire de la clé fournie.
 SERVICE_ACCOUNT_LABEL_PREFIX = "OTP-DS-to-Grist"
 
+# Message affiché quand l'instance Grist n'a pas activé les comptes de service.
+SERVICE_ACCOUNTS_DISABLED_MESSAGE = (
+    "Les comptes de service ne sont pas activés sur cette instance Grist : "
+    "fournissez une clé de compte de service, ou activez "
+    "GRIST_ENABLE_SERVICE_ACCOUNTS côté serveur."
+)
+
 
 class ServiceAccountsNotEnabledError(Exception):
     """L'instance Grist cible n'a pas activé les comptes de service."""
@@ -55,6 +62,20 @@ def service_account_expires_at(today: dt.date | None = None) -> str:
     return f"{expiry.isoformat()}T00:00:00.000Z"
 
 
+def service_accounts_usable(base_url: str, api_key: str) -> bool:
+    """
+    Si une clé utilisateur pourra être remplacée par un compte de service sur
+    cette instance : toujours oui pour une clé de compte de service, sinon
+    seulement si l'instance active les comptes de service (sonde en lecture,
+    aucun compte créé).
+    """
+    client = GristClient(base_url, api_key)
+    if is_service_account_email(client.get_grist_user_email()):
+        return True
+
+    return client.service_accounts_enabled()
+
+
 def resolve_grist_api_key(base_url: str, api_key: str, doc_id: str) -> ResolvedGristKey:
     """
     Clé API Grist à stocker pour la configuration.
@@ -82,9 +103,7 @@ def resolve_grist_api_key(base_url: str, api_key: str, doc_id: str) -> ResolvedG
     except HTTPError as error:
         if error.response is not None and error.response.status_code == 404:
             raise ServiceAccountsNotEnabledError(
-                "Les comptes de service ne sont pas activés sur cette instance "
-                "Grist : fournissez une clé de compte de service, ou activez "
-                "GRIST_ENABLE_SERVICE_ACCOUNTS côté serveur."
+                SERVICE_ACCOUNTS_DISABLED_MESSAGE
             ) from error
         raise
 

@@ -298,6 +298,22 @@ class GristClient:
 
         return response.json()
 
+    def service_accounts_enabled(self) -> bool:
+        """
+        Si l'instance accepte les comptes de service (GET /service-accounts) :
+        200 -> activés, 404 -> la route n'existe pas, ils sont désactivés.
+        """
+        url = f"{self.base_url}/service-accounts"
+        log_verbose(f"GET {url}")
+        response = self._get_session().get(url, headers=self.headers)
+        if response.status_code == 404:
+            return False
+        if response.status_code != 200:
+            log_error(f"Erreur {response.status_code}: {response.text}")
+            response.raise_for_status()
+
+        return True
+
     def update_doc_access(self, users: dict[str, str]) -> dict[str, Any]:
         """
         Modifie les accès du document (PATCH /docs/{docId}/access) : `users`
