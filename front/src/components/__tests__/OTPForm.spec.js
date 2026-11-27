@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import OTPForm from '../OTPForm.vue'
 import GristFormSection from '../GristFormSection.vue'
 import DNFormSection from '../DNFormSection.vue'
-import OtpAlert from '../OtpAlert.vue'
+import OtpAlert from '../ui/OtpAlert.vue'
 import { useSyncTask } from '../../composables/useSyncTask'
 
 describe('hasUnsavedSection computation', () => {
@@ -1050,6 +1050,21 @@ describe('Sync action', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ otp_config_id: 1 })
+    })
+  })
+
+  it('calls sync API route with force_full_sync for a forced sync', async () => {
+    globalThis.fetch.mockReset()
+    globalThis.fetch.mockResolvedValue({ ok: true })
+
+    wrapper.getComponent(DNFormSection).vm.$emit('sync', 0, { forceFullSync: true })
+    await new Promise(process.nextTick)
+    await wrapper.vm.$nextTick()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/start-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp_config_id: 1, force_full_sync: true })
     })
   })
 

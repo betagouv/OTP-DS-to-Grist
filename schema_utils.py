@@ -17,7 +17,7 @@ import requests
 
 from dn.client import get_demarche_descriptors, get_pj_ocr_columns
 from dn.extract import pj_ocr_sub_label
-from grist.client import SYNC_METADATA_TABLE_ID, GristClient
+from grist.client import GristClient
 from grist.utils import normalize_column_name
 from utils.constants import DEMARCHES_API_URL
 from utils.log import log, log_error, log_verbose
@@ -44,23 +44,6 @@ PJ_OCR_RIB_FALLBACK = [
     ("IBAN", "TextColumn"),
     ("BIC", "TextColumn"),
     ("Nom de la Banque", "TextColumn"),
-]
-
-# Colonnes de la table Sync_metadata, partagée par toutes les démarches
-SYNC_METADATA_COLUMNS = [
-    {"id": "demarche_number", "type": "Int"},
-    {"id": "last_sync_at", "type": "Text"},
-    {"id": "updated_since_cursor", "type": "Text"},
-    {"id": "deleted_since_cursor", "type": "Text"},
-    {"id": "deleted_after_cursor", "type": "Text"},
-    {"id": "last_sync_status", "type": "Text"},
-    {"id": "last_sync_duration", "type": "Numeric"},
-    {
-        "id": "force_full_sync",
-        "type": "Bool",
-        "fields": {"type": "Bool", "isFormula": False, "formula": ""},
-    },
-    {"id": "filters_hash", "type": "Text"},
 ]
 
 # Colonnes posées à la création des tables champs et annotations : les
@@ -992,10 +975,6 @@ def ensure_sync_table_structure(
     else:
         log("Table avis non créée (sera créée au premier avis détecté)")
     result["avis"] = avis_table_id
-
-    result["sync_metadata"] = _ensure_table_structure(
-        client, existing_ids, SYNC_METADATA_TABLE_ID, SYNC_METADATA_COLUMNS
-    )
 
     log("Mise à jour des tables terminée avec succès")
 

@@ -11,12 +11,13 @@ import {
   DsfrToggleSwitch
 } from '@gouvminint/vue-dsfr'
 
-import DsfrInfoIcon from './icons/DsfrInfoIcon.vue'
+import DsfrInfoIcon from './ui/icons/DsfrInfoIcon.vue'
 import FieldLabel from './FieldLabel.vue'
 import DNFiltersSection from './DNFiltersSection.vue'
 import { useAutoSync } from '../composables/useAutoSync'
 import { useConnectionCheck, CONNECTION_STATUS } from '../composables/useConnectionCheck'
-import OtpAlert from './OtpAlert.vue'
+import OtpAlert from './ui/OtpAlert.vue'
+import SplitButton from './ui/SplitButton.vue'
 import { debounce } from '../utils/debounce'
 
 const props = defineProps({
@@ -28,6 +29,13 @@ const props = defineProps({
   error: { type: String, default: null },
   index: { type: Number, required: true }
 })
+
+// Action secondaire du bouton de synchronisation : synchro complète, qui
+// redemande tous les dossiers à DN au lieu des seuls modifiés
+const FORCE_FULL_SYNC = 'force-full-sync'
+const SYNC_ACTIONS = [
+  { label: 'Synchronisation forcée', value: FORCE_FULL_SYNC, icon: 'fr-icon-restart-line' }
+]
 
 const {HELP_LINKS} = window
 const DEFAULT_DN_TITLE = 'Configurer votre démarche'
@@ -92,6 +100,10 @@ const validateDSConnection = async () => {
 }
 
 const emit = defineEmits(['error-update', 'save', 'delete', 'sync', 'clear-error', 'title-loaded'])
+
+const handleSyncAction = (value) => {
+  if (value === FORCE_FULL_SYNC) emit('sync', props.index, { forceFullSync: true })
+}
 
 const sectionEmpty = computed(() => {
   const isUnsaved = props.existingConfig === null
@@ -302,13 +314,14 @@ watch(() => props.existingConfig, async (config) => {
         inline-layout-when="always"
         size="medium"
       >
-        <DsfrButton
-          label="Synchroniser maintenant"
-          icon="fr-icon-refresh-line"
+        <SplitButton
+          label="Lancer la synchronisation"
+          toggle-label="Autres options de synchronisation"
           data-test-id="sync-button"
-          primary
+          :actions="SYNC_ACTIONS"
           :disabled="!canSync || sectionEmpty || inFlight"
           @click="$emit('sync', index)"
+          @action="handleSyncAction"
         />
 
         <DsfrButton

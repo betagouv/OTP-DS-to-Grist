@@ -701,6 +701,55 @@ class TestEndpoints:
         assert data["success"] is False
         assert "manquants" in data["message"]
 
+    @pytest.mark.parametrize(
+        "sync_data, expected",
+        [
+            ({"otp_config_id": 123}, False),
+            ({"otp_config_id": 123, "force_full_sync": True}, True),
+        ],
+    )
+    @patch.object(sync_manager, "start_sync")
+    @patch.object(ConfigManager, "load_config_by_id")
+    def test_api_start_sync_force_full_sync_transmis(
+        self, mock_load, mock_start, client, sync_data, expected
+    ):
+        """Synchro complète demandée transmise au gestionnaire ; faux par défaut"""
+        mock_load.return_value = {
+            "otp_config_id": 123,
+            "ds_api_token": "token",
+            "demarche_number": "123",
+            "grist_api_key": "key",
+            "grist_base_url": "https://grist.example.com/api",
+            "grist_doc_id": "docA",
+            "grist_user_id": "userA",
+        }
+        mock_start.return_value = "task_123"
+
+        response = client.post(
+            "/api/start-sync",
+            data=json.dumps(sync_data),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        assert mock_start.call_args.kwargs["force_full_sync"] is expected
+
+    @patch.object(sync_manager, "start_sync")
+    def test_api_start_sync_force_full_sync_non_booleen_refuse(
+        self, mock_start, client
+    ):
+        """Valeur mal formée : refusée plutôt que lue comme une synchro
+        incrémentale"""
+        response = client.post(
+            "/api/start-sync",
+            data=json.dumps({"otp_config_id": 123, "force_full_sync": "true"}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert json.loads(response.data)["success"] is False
+        mock_start.assert_not_called()
+
 
 class TestErrorHandling:
     """Tests d'intégration pour la gestion d'erreurs"""
@@ -1933,7 +1982,8 @@ class TestWidgetAuth:
     def test_editor_token_allows_write(self, client, monkeypatch):
         self._stub_owned_config(monkeypatch, WIDGET_TEST_CONFIG)
         monkeypatch.setattr(
-            "app.sync_manager.start_sync", lambda config, auto=False: "task-1"
+            "app.sync_manager.start_sync",
+            lambda config, auto=False, force_full_sync=False: "task-1",
         )
         response = client.post("/api/start-sync", json={"otp_config_id": 7})
         assert response.status_code == 200

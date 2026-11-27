@@ -122,6 +122,18 @@ describe('InternalApi', () => {
       expect(result).toEqual({ success: true, task_id: 'abc' })
     })
 
+    it('sends force_full_sync when a forced sync is requested', async () => {
+      globalThis.fetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) })
+
+      await api.startSync(7, { forceFullSync: true })
+
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/start-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp_config_id: 7, force_full_sync: true })
+      })
+    })
+
     it('throws on non-ok response', async () => {
       globalThis.fetch.mockResolvedValue({ ok: false, status: 500 })
 
