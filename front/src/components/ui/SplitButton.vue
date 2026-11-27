@@ -121,7 +121,10 @@ onBeforeUnmount(() => {
       class="split-button__actions"
       :style="actionsPosition"
     >
-      <li v-for="action in actions" :key="action.value">
+      <li
+        v-for="action in actions"
+        :key="action.value"
+      >
         <button
           type="button"
           class="fr-btn fr-btn--secondary split-button__action"

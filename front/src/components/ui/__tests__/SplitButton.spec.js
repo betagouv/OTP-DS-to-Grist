@@ -55,7 +55,8 @@ describe('SplitButton', () => {
     wrapper = mountSplitButton()
     await toggleOf(wrapper).trigger('click')
 
-    await actionsOf(wrapper).find('button').trigger('click')
+    await actionsOf(wrapper).find('button')
+      .trigger('click')
 
     expect(wrapper.emitted('action')).toEqual([['secondaire']])
     expect(wrapper.emitted('click')).toBeUndefined()
@@ -67,7 +68,8 @@ describe('SplitButton', () => {
     await toggleOf(wrapper).trigger('click')
     actionsOf(wrapper).find('button').element.focus()
 
-    await actionsOf(wrapper).find('button').trigger('keydown', { key: 'Escape' })
+    await actionsOf(wrapper).find('button')
+      .trigger('keydown', { key: 'Escape' })
 
     expect(actionsOf(wrapper).isVisible()).toBe(false)
     expect(document.activeElement).toBe(toggleOf(wrapper).element)
@@ -108,7 +110,7 @@ describe('SplitButton', () => {
 
     await toggleOf(wrapper).trigger('click')
 
-    const style = actionsOf(wrapper).element.style
+    const {style} = actionsOf(wrapper).element
     expect(style.top).toBe('120px')
     expect(style.left).toBe('30px')
     expect(style.minWidth).toBe('240px')
