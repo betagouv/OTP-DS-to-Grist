@@ -278,6 +278,63 @@ class GristClient:
         data = response.json()
         return data
 
+    def create_service_account(
+        self, label: str, description: str, expires_at: str
+    ) -> dict[str, Any]:
+        """
+        Crée un compte de service rattaché à l'utilisateur de la clé API
+        (POST /service-accounts) et renvoie la réponse de Grist, qui contient
+        la clé API du compte (`key`) et son login (`login`).
+        """
+        url = f"{self.base_url}/service-accounts"
+        log_verbose(f"POST {url}")
+
+        payload = {"label": label, "description": description, "expiresAt": expires_at}
+        response = self._get_session().post(url, headers=self.headers, json=payload)
+
+        if response.status_code not in (200, 201):
+            log_error(f"Erreur {response.status_code}: {response.text}")
+            response.raise_for_status()
+
+        return response.json()
+
+    def service_accounts_enabled(self) -> bool:
+        """
+        Si l'instance accepte les comptes de service (GET /service-accounts) :
+        200 -> activés, 404 -> la route n'existe pas, ils sont désactivés.
+        """
+        url = f"{self.base_url}/service-accounts"
+        log_verbose(f"GET {url}")
+        response = self._get_session().get(url, headers=self.headers)
+        if response.status_code == 404:
+            return False
+        if response.status_code != 200:
+            log_error(f"Erreur {response.status_code}: {response.text}")
+            response.raise_for_status()
+
+        return True
+
+    def update_doc_access(self, users: dict[str, str]) -> dict[str, Any]:
+        """
+        Modifie les accès du document (PATCH /docs/{docId}/access) : `users`
+        associe un email (ou le login d'un compte de service) à un rôle Grist
+        ("owners", "editors", ...).
+        """
+        if not self.doc_id:
+            raise ValueError("Document ID is required")
+
+        url = f"{self.base_url}/docs/{self.doc_id}/access"
+        log_verbose(f"PATCH {url}")
+
+        payload = {"delta": {"users": users}}
+        response = self._get_session().patch(url, headers=self.headers, json=payload)
+
+        if response.status_code != 200:
+            log_error(f"Erreur {response.status_code}: {response.text}")
+            response.raise_for_status()
+
+        return response.json()
+
     def run_sql(self, sql: str) -> list[dict[str, Any]]:
         """
         Exécute une requête SQL en lecture seule sur le document.

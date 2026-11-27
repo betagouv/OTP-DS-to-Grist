@@ -471,6 +471,141 @@ class TestGetDocumentInfo:
                 self.client.get_document_info()
 
 
+class TestCreateServiceAccount:
+    """Tests unitaires pour GristClient.create_service_account"""
+
+    def setup_method(self):
+        self.client = GristClient("https://grist.example.com", "test_key")
+
+    def test_success_returns_key_and_login(self):
+        """200 -> renvoie la réponse (key, login, expiresAt...)"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": 42,
+            "login": "uuid@serviceaccounts.invalid",
+            "key": "sa_key",
+            "label": "OTP-DS-to-Grist — user@example.com",
+            "expiresAt": "2027-11-01T00:00:00.000Z",
+        }
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.create_service_account(
+                "OTP-DS-to-Grist — user@example.com",
+                "doc doc123",
+                "2027-11-01T00:00:00.000Z",
+            )
+        assert result["key"] == "sa_key"
+        assert result["login"] == "uuid@serviceaccounts.invalid"
+        session.post.assert_called_once_with(
+            "https://grist.example.com/service-accounts",
+            headers=self.client.headers,
+            json={
+                "label": "OTP-DS-to-Grist — user@example.com",
+                "description": "doc doc123",
+                "expiresAt": "2027-11-01T00:00:00.000Z",
+            },
+        )
+
+    def test_not_enabled_raises(self):
+        """404 (comptes de service non activés) -> raise_for_status"""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "not found"
+        mock_response.raise_for_status.side_effect = Exception("HTTP 404")
+        session = MagicMock()
+        session.post.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(Exception):
+                self.client.create_service_account(
+                    "label", "desc", "2027-11-01T00:00:00.000Z"
+                )
+
+
+class TestServiceAccountsEnabled:
+    """Tests unitaires pour GristClient.service_accounts_enabled"""
+
+    def setup_method(self):
+        self.client = GristClient("https://grist.example.com", "test_key")
+
+    def test_200_means_enabled(self):
+        """200 -> True"""
+        session = MagicMock()
+        session.get.return_value = MagicMock(status_code=200)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            assert self.client.service_accounts_enabled() is True
+        session.get.assert_called_once_with(
+            "https://grist.example.com/service-accounts", headers=self.client.headers
+        )
+
+    def test_404_means_disabled(self):
+        """404 -> False (route inexistante : comptes de service désactivés)"""
+        session = MagicMock()
+        session.get.return_value = MagicMock(status_code=404)
+        with patch.object(GristClient, "_get_session", return_value=session):
+            assert self.client.service_accounts_enabled() is False
+
+    def test_other_error_raises(self):
+        """Autre erreur -> raise_for_status"""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "boom"
+        mock_response.raise_for_status.side_effect = Exception("HTTP 500")
+        session = MagicMock()
+        session.get.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(Exception):
+                self.client.service_accounts_enabled()
+
+
+class TestUpdateDocAccess:
+    """Tests unitaires pour GristClient.update_doc_access"""
+
+    def setup_method(self):
+        self.client = GristClient(
+            "https://grist.example.com", "test_key", doc_id="doc123"
+        )
+
+    def test_success_sends_users_delta(self):
+        """200 -> PATCH /docs/doc123/access avec le delta users"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"users": {}}
+        session = MagicMock()
+        session.patch.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            result = self.client.update_doc_access(
+                {"uuid@serviceaccounts.invalid": "owners"}
+            )
+        assert result == {"users": {}}
+        session.patch.assert_called_once_with(
+            "https://grist.example.com/docs/doc123/access",
+            headers=self.client.headers,
+            json={"delta": {"users": {"uuid@serviceaccounts.invalid": "owners"}}},
+        )
+
+    def test_raises_without_doc_id(self):
+        """sans doc_id -> ValueError"""
+        client = GristClient("https://grist.example.com", "test_key")
+        with pytest.raises(ValueError):
+            client.update_doc_access({"uuid@serviceaccounts.invalid": "owners"})
+
+    def test_error_raises(self):
+        """non-200 -> raise_for_status"""
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.text = "forbidden"
+        mock_response.raise_for_status.side_effect = Exception("HTTP 403")
+        session = MagicMock()
+        session.patch.return_value = mock_response
+        with patch.object(GristClient, "_get_session", return_value=session):
+            with pytest.raises(Exception):
+                self.client.update_doc_access(
+                    {"uuid@serviceaccounts.invalid": "owners"}
+                )
+
+
 class TestListTables:
     """Tests unitaires pour GristClient.list_tables"""
 

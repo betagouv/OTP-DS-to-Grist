@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 import requests
@@ -11,6 +11,8 @@ from app import ConfigManager, sync_manager
 from configuration.config_manager import ConfigIncompleteError, ConfigNotFoundError
 from grist.base_url import GristBaseUrlImmutableError, GristBaseUrlNotAllowedError
 from grist.client import GristClient
+from grist.service_account import ResolvedGristKey, ServiceAccountsNotEnabledError
+from grist.utils import GristKeyInsufficientAccessError
 from security.widget_token import WidgetTokenInvalidError, WidgetTokenUnavailableError
 from sync.scheduled_sync import DAILY_SYNC_JOB_ID
 from sync.sync_manager import SyncSeriesAlreadyRunningError
@@ -471,6 +473,57 @@ class TestEndpoints:
         assert "Erreur" in data["message"]
         assert data["title"] is None
 
+    def test_api_test_connection_grist_user_key_without_service_accounts(
+        self, client, monkeypatch
+    ):
+        """Clé utilisateur + instance sans comptes de service -> échec explicite au test"""
+        monkeypatch.setattr(
+            "utils.api_validator.service_accounts_usable", lambda base_url, api_key: False
+        )
+
+        response = client.post(
+            "/api/test-connection",
+            json={
+                "type": "grist",
+                "base_url": "https://grist.example.com/api",
+                "api_key": "user-key",
+                "doc_id": "docA",
+            },
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "GRIST_ENABLE_SERVICE_ACCOUNTS" in data["message"]
+
+    def test_api_test_connection_grist_expired_service_account(
+        self, client, monkeypatch
+    ):
+        """Clé de compte de service expirée (401) -> message de péremption explicite"""
+        grist_client = MagicMock()
+        grist_client.return_value.get_document_info.side_effect = (
+            requests.exceptions.HTTPError(response=MagicMock(status_code=401))
+        )
+        monkeypatch.setattr("grist.utils.GristClient", grist_client)
+        monkeypatch.setattr(
+            "utils.api_validator.is_service_account_key", lambda base_url, key: True
+        )
+
+        response = client.post(
+            "/api/test-connection",
+            json={
+                "type": "grist",
+                "base_url": "https://grist.example.com/api",
+                "api_key": "sa-key",
+                "doc_id": "docA",
+            },
+        )
+
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "expiré" in data["message"]
+
     @patch.object(ConfigManager, "load_config_by_id")
     def test_api_test_connection_no_params_missing_ds_token(self, mock_load, client):
         """Test sans paramètres - token DS manquant dans le body"""
@@ -700,6 +753,151 @@ class TestEndpoints:
         data = json.loads(response.data)
         assert data["success"] is False
         assert "manquants" in data["message"]
+
+
+class TestApiConfigResolveGristKey:
+    """POST /api/config : une clé d'utilisateur est remplacée par la clé d'un
+    compte de service ; les erreurs de résolution remontent en 400 explicites."""
+
+    def _payload(self, **overrides):
+        payload = {
+            "ds_api_token": "token123",
+            "demarche_number": "12345",
+            "grist_base_url": "https://grist.test.com/api",
+            "grist_api_key": "user-key",
+        }
+        payload.update(overrides)
+        return payload
+
+    @patch.object(ConfigManager, "save_config")
+    def test_user_key_replaced_by_service_account_key(self, mock_save, client):
+        """La clé stockée est celle du compte de service créé."""
+        mock_save.return_value = 42
+        with patch(
+            "app.resolve_grist_api_key",
+            return_value=ResolvedGristKey("sa-key", "user@example.com", True),
+        ) as mock_resolve:
+            response = client.post("/api/config", json=self._payload())
+
+        assert response.status_code == 200
+        mock_resolve.assert_called_once_with(
+            "https://grist.test.com/api", "user-key", "docA"
+        )
+        assert mock_save.call_args[0][0]["grist_api_key"] == "sa-key"
+        # L'email du propriétaire de la clé d'origine est conservé
+        assert mock_save.call_args.kwargs["grist_user_email"] == "user@example.com"
+        data = json.loads(response.data)
+        assert data["service_account_created"] is True
+
+    @patch.object(ConfigManager, "save_config")
+    def test_service_accounts_not_enabled_returns_400(self, mock_save, client):
+        """Comptes de service non activés -> 400 explicite, rien n'est sauvegardé."""
+        with patch(
+            "app.resolve_grist_api_key",
+            side_effect=ServiceAccountsNotEnabledError(
+                "Les comptes de service ne sont pas activés sur cette instance "
+                "Grist : activez GRIST_ENABLE_SERVICE_ACCOUNTS côté serveur."
+            ),
+        ):
+            response = client.post("/api/config", json=self._payload())
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "GRIST_ENABLE_SERVICE_ACCOUNTS" in data["message"]
+        mock_save.assert_not_called()
+
+    @patch.object(ConfigManager, "save_config")
+    def test_insufficient_access_returns_400(self, mock_save, client):
+        """Clé utilisateur non propriétaire du document -> 400 explicite."""
+        with patch(
+            "app.resolve_grist_api_key",
+            side_effect=GristKeyInsufficientAccessError("editors"),
+        ):
+            response = client.post("/api/config", json=self._payload())
+
+        assert response.status_code == 400
+        data = json.loads(response.data)
+        assert data["success"] is False
+        assert "propriétaire" in data["message"]
+        mock_save.assert_not_called()
+
+    @patch.object(ConfigManager, "save_config")
+    def test_update_without_key_does_not_resolve(self, mock_save, client):
+        """Update sans clé fournie -> pas de résolution, la clé en base est gardée."""
+        mock_save.return_value = 7
+        with patch("app.resolve_grist_api_key") as mock_resolve:
+            response = client.post(
+                "/api/config", json=self._payload(otp_config_id=7, grist_api_key="")
+            )
+
+        assert response.status_code == 200
+        mock_resolve.assert_not_called()
+        assert mock_save.call_args[0][0]["grist_api_key"] == ""
+        assert mock_save.call_args.kwargs["grist_user_email"] is None
+        data = json.loads(response.data)
+        assert data["service_account_created"] is False
+
+
+class TestApiConfigMigrateStoredKey:
+    """GET /api/config : les clés d'utilisateur stockées migrent vers un compte de service."""
+
+    def _config(self, otp_config_id, grist_api_key):
+        return {
+            "otp_config_id": otp_config_id,
+            "ds_api_token": "token",
+            "demarche_number": "123",
+            "grist_base_url": "https://grist.example.com/api",
+            "grist_api_key": grist_api_key,
+            "grist_doc_id": "docA",
+            "grist_user_id": "userA",
+        }
+
+    def test_user_key_migrated_once_and_shared(self, client, monkeypatch):
+        """Une seule résolution par clé d'origine, propagée à toutes les configs."""
+        configs = [
+            self._config(1, "user-key"),
+            self._config(2, "user-key"),
+            self._config(3, "sa-key"),
+        ]
+        monkeypatch.setattr(
+            ConfigManager,
+            "load_config",
+            lambda self, grist_user_id, grist_doc_id: [dict(c) for c in configs],
+        )
+
+        def fake_resolve(base_url, api_key, doc_id):
+            if api_key == "sa-key":
+                return ResolvedGristKey(api_key, "sa@serviceaccounts.invalid", False)
+            return ResolvedGristKey("new-sa-key", "user@example.com", True)
+
+        resolve = MagicMock(side_effect=fake_resolve)
+        monkeypatch.setattr("configuration.config_manager.resolve_grist_api_key", resolve)
+        replace = MagicMock()
+        monkeypatch.setattr("app.config_manager.replace_grist_api_key", replace)
+
+        response = client.get("/api/config")
+
+        assert response.status_code == 200
+        assert resolve.call_count == 2  # une fois par clé distincte
+        assert replace.call_args_list == [call(1, "new-sa-key"), call(2, "new-sa-key")]
+        data = json.loads(response.data)
+        for config in data["configs"]:
+            assert "grist_api_key" not in config  # toujours masquée
+
+    def test_migration_error_keeps_loading(self, client, monkeypatch):
+        """Si la migration échoue, le GET répond quand même 200, clé non remplacée."""
+        monkeypatch.setattr(
+            "configuration.config_manager.resolve_grist_api_key",
+            MagicMock(side_effect=ServiceAccountsNotEnabledError("instance sans SA")),
+        )
+        replace = MagicMock()
+        monkeypatch.setattr("app.config_manager.replace_grist_api_key", replace)
+
+        response = client.get("/api/config")
+
+        assert response.status_code == 200
+        replace.assert_not_called()
 
 
 class TestErrorHandling:
@@ -2051,7 +2249,9 @@ class TestWidgetAuth:
             "id": "service-account-42"
         }
         monkeypatch.setattr("grist.utils.GristClient", grist_client)
-        monkeypatch.setattr("app.config_manager.save_config", lambda config: True)
+        monkeypatch.setattr(
+            "app.config_manager.save_config", lambda config, grist_user_email=None: True
+        )
         response = client.post(
             "/api/config",
             json={"otp_config_id": 1, "grist_api_key": "sa-key"},
@@ -2062,7 +2262,7 @@ class TestWidgetAuth:
         saved = {}
         monkeypatch.setattr(
             "app.config_manager.save_config",
-            lambda config: saved.update(config) or True,
+            lambda config, grist_user_email=None: saved.update(config) or True,
         )
         mock_db = MagicMock()
         mock_db.query.return_value.filter_by.return_value.first.return_value = MagicMock(

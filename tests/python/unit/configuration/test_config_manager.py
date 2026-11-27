@@ -232,6 +232,81 @@ class TestConfigManager:
     @patch.dict(
         os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
     )
+    def test_save_config_with_known_grist_user_email(self, mock_db_manager):
+        """Un email connu est écrit tel quel, sans appeler l'API Grist."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+        mock_cursor.fetchone.return_value = [
+            "existing_encrypted_token",
+            "existing_encrypted_key",
+            "https://test.grist.com",
+        ]
+
+        with (
+            patch.object(
+                ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "decrypt_value", side_effect=lambda x: f"decrypted_{x}"
+            ),
+            patch.object(
+                ConfigManager, "fetch_and_store_grist_user_email"
+            ) as mock_fetch,
+        ):
+            config_manager = ConfigManager("dummy_url")
+            result = config_manager.save_config(
+                {
+                    "otp_config_id": 1,
+                    "ds_api_token": "test_token",
+                    "demarche_number": "12345",
+                    "grist_base_url": "https://test.grist.com",
+                    "grist_api_key": "test_key",
+                    "grist_doc_id": "test_doc",
+                    "grist_user_id": "test_user",
+                },
+                grist_user_email="user@example.com",
+            )
+
+        assert result == 1
+        mock_fetch.assert_not_called()
+        email_writes = [
+            call
+            for call in mock_cursor.execute.call_args_list
+            if "grist_user_email" in call[0][0]
+        ]
+        assert len(email_writes) == 1
+        assert email_writes[0][0][1] == ("user@example.com", 1)
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
+    def test_replace_grist_api_key_encrypts_and_updates(self, mock_db_manager):
+        """La clé est chiffrée puis écrite par UPDATE sur la bonne ligne."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        mock_db_manager.get_connection.return_value = mock_conn
+
+        with patch.object(
+            ConfigManager, "encrypt_value", side_effect=lambda x: f"encrypted_{x}"
+        ):
+            config_manager = ConfigManager("dummy_url")
+            config_manager.replace_grist_api_key(7, "sa-key")
+
+        mock_cursor.execute.assert_called_once_with(
+            "UPDATE otp_configurations SET grist_api_key = %s WHERE id = %s",
+            ("encrypted_sa-key", 7),
+        )
+        mock_conn.commit.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    @patch("configuration.config_manager.DatabaseManager")
+    @patch.dict(
+        os.environ, {"ENCRYPTION_KEY": "test_key_12345678901234567890123456789012"}
+    )
     def test_save_config_update_returns_id(self, mock_db_manager):
         """UPDATE → save_config retourne l'id de la config mise à jour"""
         mock_conn = MagicMock()

@@ -40,7 +40,11 @@ from grist.base_url import (
     GristBaseUrlImmutableError,
     GristBaseUrlNotAllowedError
 )
-from grist.utils import key_access_level
+from grist.service_account import (
+    ServiceAccountsNotEnabledError,
+    resolve_grist_api_key,
+)
+from grist.utils import GristKeyAccessError, key_access_level
 from security.ip_blocklist import (
     is_whitelisted,
     parse_whitelist,
@@ -457,6 +461,7 @@ def api_config():
                 grist_user_id=grist_user_id, grist_doc_id=grist_doc_id
             )
             _mark_configs_used(config["otp_config_id"] for config in configs)
+            config_manager.migrate_stored_grist_keys(configs)
 
             # Masquer les tokens et ajouter les flags pour chaque config
             for config in configs:
@@ -481,49 +486,70 @@ def api_config():
 
     elif request.method == "POST":
         try:
-            new_config = request.get_json()
+            submitted_config = request.get_json()
 
-            new_config = ConfigManager.normalize_config(new_config)
+            submitted_config = ConfigManager.normalize_config(submitted_config)
 
             identity = g.get("widget_identity")
             if identity:
-                new_config["grist_user_id"] = str(identity.get("userId", ""))
-                new_config["grist_doc_id"] = str(identity.get("docId", ""))
+                submitted_config["grist_user_id"] = str(identity.get("userId", ""))
+                submitted_config["grist_doc_id"] = str(identity.get("docId", ""))
 
-            otp_config_id = new_config.get("otp_config_id")
+            grist_user_id = submitted_config.get("grist_user_id")
+            grist_doc_id = submitted_config.get("grist_doc_id")
+            grist_api_key = submitted_config.get("grist_api_key")
+            grist_base_url = submitted_config.get("grist_base_url")
+            otp_config_id = submitted_config.get("otp_config_id")
+
+            existing_config = None
             if otp_config_id:
-                # Update existant - Charger la config pour vérification
+                # Édition : charger la config existante pour vérifier son appartenance
                 existing_config = config_manager.load_config_by_id(otp_config_id)
 
-                # Vérification de sécurité : IDs doivent correspondre
-                if existing_config.get("grist_user_id") != new_config.get(
-                    "grist_user_id"
-                ) or existing_config.get("grist_doc_id") != new_config.get(
-                    "grist_doc_id"
+                # Les IDs user/doc doivent correspondre à ceux du jeton
+                if (
+                    existing_config.get("grist_user_id") != grist_user_id
+                    or existing_config.get("grist_doc_id") != grist_doc_id
                 ):
                     return jsonify({"success": False, "message": "Forbidden"}), 403
 
-                # Passer le dict à save_config() qui gère l'update par ID et les tokens
-                config_manager.save_config(new_config)
-
-                return jsonify(
-                    {
-                        "success": True,
-                        "message": "Configuration mise à jour avec succès",
-                        "otp_config_id": otp_config_id,
-                    }
-                ), 200
-            else:
-                otp_config_id = config_manager.save_config(new_config)
-                _mark_configs_used([otp_config_id])
-
-                return jsonify(
-                    {
-                        "success": True,
-                        "message": "Configuration sauvegardée avec succès",
-                        "otp_config_id": otp_config_id,
-                    }
+            # Une clé d'utilisateur est remplacée par la clé d'un compte de
+            # service créé pour l'occasion et rattaché au document en propriétaire.
+            grist_user_email = None
+            service_account_created = False
+            if grist_api_key:
+                base_url = (
+                    grist_base_url
+                    or (existing_config or {}).get("grist_base_url")
+                    or ""
                 )
+                resolved_key = resolve_grist_api_key(
+                    base_url, grist_api_key, grist_doc_id or ""
+                )
+                submitted_config["grist_api_key"] = resolved_key.api_key
+                # Conserver l'email du propriétaire de la clé d'origine, pas
+                # celui du compte de service.
+                grist_user_email = resolved_key.owner_email
+                service_account_created = resolved_key.service_account_created
+
+            saved_id = config_manager.save_config(
+                submitted_config, grist_user_email=grist_user_email
+            )
+            if otp_config_id:
+                message = "Configuration mise à jour avec succès"
+            else:
+                # Noter que l'IP de la requête utilise cette configuration
+                _mark_configs_used([saved_id])
+                message = "Configuration sauvegardée avec succès"
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": message,
+                    "otp_config_id": saved_id,
+                    "service_account_created": service_account_created,
+                }
+            )
 
         except GristBaseUrlImmutableError:
             return jsonify(
@@ -535,6 +561,10 @@ def api_config():
         except GristBaseUrlNotAllowedError as e:
             return jsonify({"success": False, "message": str(e)}), 400
         except ConfigIncompleteError as e:
+            return jsonify({"success": False, "message": str(e)}), 400
+        except ServiceAccountsNotEnabledError as e:
+            return jsonify({"success": False, "message": str(e)}), 400
+        except GristKeyAccessError as e:
             return jsonify({"success": False, "message": str(e)}), 400
         except ConfigNotFoundError:
             raise

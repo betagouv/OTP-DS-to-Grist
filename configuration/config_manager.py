@@ -8,6 +8,7 @@ from grist.base_url import (
     assert_base_url_allowed,
 )
 from grist.client import GristClient
+from grist.service_account import resolve_grist_api_key
 from utils.constants import DEMARCHES_API_URL
 
 logger = logging.getLogger(__name__)
@@ -180,6 +181,19 @@ class ConfigManager:
         if not email:
             return None
 
+        if not self._store_grist_user_email(otp_config_id, email):
+            return None
+
+        return email
+
+    def _store_grist_user_email(self, otp_config_id, email: str) -> bool:
+        """
+        Écrit l'email Grist en base, retourne True si l'écriture a réussi.
+        Non-bloquant : un échec est journalisé sans lever.
+
+        Reçoit un email déjà connu, par exemple celui de l'utilisateur dont la clé
+        a été remplacée par celle d'un compte de service.
+        """
         conn = DatabaseManager.get_connection(self.database_url)
 
         try:
@@ -191,13 +205,12 @@ class ConfigManager:
                 conn.commit()
         except Exception as e:
             logger.warning(f"Impossible de stocker l'email Grist: {e}")
-
-            return None
+            return False
         finally:
             if conn:
                 conn.close()
 
-        return email
+        return True
 
     def load_config(self, grist_user_id, grist_doc_id):
         """Charge la configuration depuis la base de données - retourne une liste"""
@@ -285,8 +298,11 @@ class ConfigManager:
         finally:
             conn.close()
 
-    def save_config(self, config: dict) -> int:
+    def save_config(self, config: dict, grist_user_email: str | None = None) -> int:
         """Sauvegarde la configuration et retourne son id.
+
+        Un `grist_user_email` déjà connu est écrit tel quel, sans interroger
+        Grist avec la clé. Sinon, l'email est relu via la clé sauvegardée.
 
         Lève ConfigIncompleteError quand un champ requis est absent : la
         validation des créations précède toute connexion à la base.
@@ -459,7 +475,11 @@ class ConfigManager:
 
                 conn.commit()
 
-                if grist_api_key_encrypted:
+                if grist_user_email:
+                    # Email déjà connu (ex. propriétaire d'une clé remplacée par
+                    # celle d'un compte de service) : écrit tel quel.
+                    self._store_grist_user_email(otp_config_id, grist_user_email)
+                elif grist_api_key_encrypted:
                     grist_api_key_decrypted = ConfigManager.decrypt_value(
                         grist_api_key_encrypted
                     )
@@ -480,3 +500,59 @@ class ConfigManager:
                 conn.close()
 
         return otp_config_id
+
+    def replace_grist_api_key(self, otp_config_id, api_key: str) -> None:
+        """Remplace la clé API Grist chiffrée d'une configuration."""
+        encrypted = ConfigManager.encrypt_value(api_key)
+        conn = DatabaseManager.get_connection(self.database_url)
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE otp_configurations SET grist_api_key = %s WHERE id = %s",
+                    (encrypted, otp_config_id),
+                )
+                conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    def migrate_stored_grist_keys(self, configs: list[dict]) -> None:
+        """
+        Remplace les clés d'utilisateur stockées par la clé d'un compte de service.
+
+        Dédupliqué par clé d'origine : toutes les configurations partageant la même
+        clé reçoivent la clé du même compte de service. Une erreur (instance sans
+        comptes de service, clé sans accès propriétaire…) est journalisée sans
+        empêcher le chargement : la clé d'origine reste en place.
+        """
+        configs_by_key: dict[str, list[dict]] = {}
+        for config in configs:
+            api_key = config.get("grist_api_key")
+            if api_key:
+                configs_by_key.setdefault(api_key, []).append(config)
+
+        for api_key, grouped in configs_by_key.items():
+            try:
+                resolved = resolve_grist_api_key(
+                    grouped[0].get("grist_base_url") or "",
+                    api_key,
+                    grouped[0].get("grist_doc_id") or "",
+                )
+            except Exception as e:
+                logger.warning(
+                    "Migration de la clé Grist stockée en compte de service "
+                    f"impossible : {e}"
+                )
+                continue
+
+            if not resolved.service_account_created:
+                continue
+
+            for config in grouped:
+                self.replace_grist_api_key(config["otp_config_id"], resolved.api_key)
+                config["grist_api_key"] = resolved.api_key
+            logger.info(
+                "Clé Grist remplacée par celle d'un compte de service pour "
+                f"{len(grouped)} configuration(s)"
+            )

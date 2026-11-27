@@ -9,8 +9,15 @@ import logging
 
 from .constants import DEMARCHES_API_URL
 from grist.base_url import GristBaseUrlNotAllowedError
+from grist.service_account import (
+    SERVICE_ACCOUNTS_DISABLED_MESSAGE,
+    SERVICE_ACCOUNT_EXPIRED_MESSAGE,
+    is_service_account_key,
+    service_accounts_usable,
+)
 from grist.utils import (
     GristKeyAccessError,
+    GristKeyNoAccessError,
     GristUnavailableError,
     require_owner_access,
 )
@@ -127,22 +134,32 @@ def test_grist_api(base_url: str, api_key: str, doc_id: str) -> tuple[bool, str]
     """
     try:
         doc_info = require_owner_access(base_url, api_key, doc_id)
-
-        return True, f"Connexion à Grist réussie! Document: {doc_info.get('name', doc_id)}"
-
     except GristBaseUrlNotAllowedError as error:
         # Instance hors liste blanche : aucune requête n'a été émise. Le message
         # est renvoyé tel quel à l'appelant, qui répond en 200 avec success=false.
         return False, str(error)
-
     except GristUnavailableError as error:
         logger.error(
             f"Test de l'API Grist impossible : {error.__cause__ or error}"
         )
         return False, str(error)
+    except GristKeyNoAccessError:
+        # Un compte de service expiré répond 401 : le distinguer d'un simple
+        # refus d'accès pour signaler la péremption.
+        if is_service_account_key(base_url, api_key):
+            return False, SERVICE_ACCOUNT_EXPIRED_MESSAGE
 
+        return False, "Clé API sans accès au document Grist"
     except GristKeyAccessError as error:
         return False, str(error)
+
+    # Une clé d'utilisateur sera remplacée par un compte de service à la
+    # sauvegarde : l'instance doit les avoir activés, sinon le test serait
+    # vert mais la sauvegarde échouerait.
+    if not service_accounts_usable(base_url, api_key):
+        return False, SERVICE_ACCOUNTS_DISABLED_MESSAGE
+
+    return True, f"Connexion à Grist réussie! Document: {doc_info.get('name', doc_id)}"
 
 
 def verify_api_connections(
