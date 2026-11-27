@@ -34,7 +34,8 @@ describe('SplitButton', () => {
     wrapper = mountSplitButton()
     const toggle = toggleOf(wrapper)
 
-    expect(toggle.text()).toBe('Autres actions')
+    expect(toggle.attributes('aria-label')).toBe('Autres actions')
+    expect(toggle.text()).toBe('')
     expect(toggle.attributes('aria-expanded')).toBe('false')
     expect(toggle.attributes('aria-controls')).toBe(actionsOf(wrapper).attributes('id'))
     expect(actionsOf(wrapper).isVisible()).toBe(false)

@@ -105,15 +105,21 @@ onBeforeUnmount(() => {
     <button
       ref="toggle"
       type="button"
-      class="fr-btn fr-btn--icon-only split-button__toggle"
-      :class="expanded ? 'fr-icon-arrow-up-s-line' : 'fr-icon-arrow-down-s-line'"
+      class="fr-btn split-button__toggle"
       :title="toggleLabel"
+      :aria-label="toggleLabel"
       :aria-expanded="String(expanded)"
       :aria-controls="actionsId"
       :disabled="disabled"
       @click="toggleActions"
     >
-      {{ toggleLabel }}
+      <!-- Icône dans un span, et non en classe du bouton : dans un
+           fr-btns-group--icon-left, le DSFR affiche le texte de tout bouton
+           qui porte une classe d'icône -->
+      <span
+        :class="expanded ? 'fr-icon-arrow-up-s-line' : 'fr-icon-arrow-down-s-line'"
+        aria-hidden="true"
+      />
     </button>
     <ul
       v-show="expanded"
@@ -161,6 +167,10 @@ onBeforeUnmount(() => {
   margin-left: 0;
   /* Séparateur entre les deux boutons, de la couleur de leur texte */
   border-left: 1px solid var(--text-inverted-blue-france);
+  /* Largeur icône seule : sans classe d'icône sur le bouton (icône dans un
+     span), un fr-btns-group--icon-left ne le réduit pas automatiquement */
+  width: 2.5rem;
+  justify-content: center;
 }
 
 .split-button__actions {
